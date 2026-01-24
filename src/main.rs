@@ -380,7 +380,14 @@ fn format_yaml_value(key: &str, value: &serde_yaml::Value) -> String {
             let items: Vec<String> = seq
                 .iter()
                 .map(|v| match v {
-                    Value::String(s) => s.magenta().to_string(),
+                    Value::String(s) => {
+                        // Color commits like commit hashes
+                        if key == "commits" {
+                            s.cyan().to_string()
+                        } else {
+                            s.magenta().to_string()
+                        }
+                    }
                     _ => format_yaml_value("", v),
                 })
                 .collect();
@@ -801,12 +808,16 @@ fn cmd_work(
                 );
             }
 
-            // Get the commit hash
-            let commit = get_latest_commit_for_spec(&spec.id)?;
+            // Get the commits
+            let commits = get_commits_for_spec(&spec.id)?;
 
             // Update spec to completed
             spec.frontmatter.status = SpecStatus::Completed;
-            spec.frontmatter.commit = commit;
+            spec.frontmatter.commits = if commits.is_empty() {
+                None
+            } else {
+                Some(commits.clone())
+            };
             spec.frontmatter.completed_at = Some(
                 chrono::Local::now()
                     .format("%Y-%m-%dT%H:%M:%SZ")
@@ -815,8 +826,10 @@ fn cmd_work(
             spec.frontmatter.model = get_model_name(Some(&config));
 
             println!("\n{} Spec completed!", "✓".green());
-            if let Some(commit) = &spec.frontmatter.commit {
-                println!("Commit: {}", commit);
+            if let Some(commits) = &spec.frontmatter.commits {
+                for commit in commits {
+                    println!("Commit: {}", commit);
+                }
             }
             if let Some(model) = &spec.frontmatter.model {
                 println!("Model: {}", model);
@@ -867,7 +880,7 @@ fn cmd_work(
 struct ParallelResult {
     spec_id: String,
     success: bool,
-    commit: Option<String>,
+    commits: Option<Vec<String>>,
     error: Option<String>,
 }
 
@@ -980,16 +993,16 @@ fn cmd_work_parallel(
                 &prompt_name_clone,
                 config_model.as_deref(),
             );
-            let (success, commit, error) = match result {
+            let (success, commits, error) = match result {
                 Ok(_) => {
-                    // Get the commit hash
-                    let commit = get_latest_commit_for_spec(&spec_id).ok().flatten();
+                    // Get the commits
+                    let commits = get_commits_for_spec(&spec_id).ok();
 
                     // Update spec to completed
                     let spec_path = specs_dir_clone.join(format!("{}.md", spec_id));
                     if let Ok(mut spec) = spec::resolve_spec(&specs_dir_clone, &spec_id) {
                         spec.frontmatter.status = SpecStatus::Completed;
-                        spec.frontmatter.commit = commit.clone();
+                        spec.frontmatter.commits = commits.clone().filter(|c| !c.is_empty());
                         spec.frontmatter.completed_at = Some(
                             chrono::Local::now()
                                 .format("%Y-%m-%dT%H:%M:%SZ")
@@ -1000,7 +1013,7 @@ fn cmd_work_parallel(
                         let _ = spec.save(&spec_path);
                     }
 
-                    (true, commit, None)
+                    (true, commits, None)
                 }
                 Err(e) => {
                     // Update spec to failed
@@ -1017,7 +1030,7 @@ fn cmd_work_parallel(
             let _ = tx_clone.send(ParallelResult {
                 spec_id,
                 success,
-                commit,
+                commits,
                 error,
             });
         });
@@ -1037,12 +1050,13 @@ fn cmd_work_parallel(
     for result in rx {
         if result.success {
             completed += 1;
-            if let Some(commit) = result.commit {
+            if let Some(commits) = result.commits {
+                let commits_str = commits.join(", ");
                 println!(
-                    "[{}] {} Completed (commit: {})",
+                    "[{}] {} Completed (commits: {})",
                     result.spec_id.cyan(),
                     "✓".green(),
-                    commit
+                    commits_str
                 );
             } else {
                 println!("[{}] {} Completed", result.spec_id.cyan(), "✓".green());
@@ -1221,53 +1235,58 @@ fn invoke_agent(message: &str, spec: &Spec, prompt_name: &str, config: &Config) 
     Ok(captured_output)
 }
 
-fn get_latest_commit_for_spec(spec_id: &str) -> Result<Option<String>> {
+fn get_commits_for_spec(spec_id: &str) -> Result<Vec<String>> {
     use std::process::Command;
 
-    // Look for a commit with the chant(spec_id) pattern
+    // Look for all commits with the chant(spec_id) pattern
     let pattern = format!("chant({})", spec_id);
 
     let output = Command::new("git")
-        .args(["log", "--oneline", "-1", "--grep", &pattern])
+        .args(["log", "--oneline", "--grep", &pattern, "--reverse"])
         .output()?;
+
+    let mut commits = Vec::new();
 
     if output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout);
-        if let Some(hash) = stdout.split_whitespace().next() {
-            if !hash.is_empty() {
-                return Ok(Some(hash.to_string()));
+        for line in stdout.lines() {
+            if let Some(hash) = line.split_whitespace().next() {
+                if !hash.is_empty() {
+                    commits.push(hash.to_string());
+                }
             }
         }
     }
 
-    // Fallback: get HEAD commit if no spec-specific commit found
-    let head_output = Command::new("git")
-        .args(["rev-parse", "--short=7", "HEAD"])
-        .output()?;
+    // If no matching commits found, use HEAD as fallback
+    if commits.is_empty() {
+        let head_output = Command::new("git")
+            .args(["rev-parse", "--short=7", "HEAD"])
+            .output()?;
 
-    if head_output.status.success() {
-        let head_hash = String::from_utf8_lossy(&head_output.stdout)
-            .trim()
-            .to_string();
-        if !head_hash.is_empty() {
+        if head_output.status.success() {
+            let head_hash = String::from_utf8_lossy(&head_output.stdout)
+                .trim()
+                .to_string();
+            if !head_hash.is_empty() {
+                eprintln!(
+                    "{} No commit with 'chant({})' found, using HEAD: {}",
+                    "⚠".yellow(),
+                    spec_id,
+                    head_hash
+                );
+                commits.push(head_hash);
+            }
+        } else {
             eprintln!(
-                "{} No commit with 'chant({})' found, using HEAD: {}",
+                "{} Could not find any commit for spec '{}'",
                 "⚠".yellow(),
-                spec_id,
-                head_hash
+                spec_id
             );
-            return Ok(Some(head_hash));
         }
     }
 
-    // No commit found at all - log warning
-    eprintln!(
-        "{} Could not find any commit for spec '{}'",
-        "⚠".yellow(),
-        spec_id
-    );
-
-    Ok(None)
+    Ok(commits)
 }
 
 fn create_or_switch_branch(branch_name: &str) -> Result<()> {

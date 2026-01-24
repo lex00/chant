@@ -32,7 +32,7 @@ pub struct SpecFrontmatter {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub branch: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub commit: Option<String>,
+    pub commits: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pr: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -56,7 +56,7 @@ impl Default for SpecFrontmatter {
             context: None,
             prompt: None,
             branch: None,
-            commit: None,
+            commits: None,
             pr: None,
             completed_at: None,
             model: None,
@@ -378,7 +378,8 @@ status: pending
         let content = r#"---
 type: code
 status: completed
-commit: abc1234
+commits:
+  - abc1234
 completed_at: 2026-01-24T15:30:00Z
 model: claude-opus-4-5
 ---
@@ -390,7 +391,7 @@ Description here.
         let spec = Spec::parse("2026-01-24-001-abc", content).unwrap();
         assert_eq!(spec.frontmatter.model, Some("claude-opus-4-5".to_string()));
         assert_eq!(spec.frontmatter.status, SpecStatus::Completed);
-        assert_eq!(spec.frontmatter.commit, Some("abc1234".to_string()));
+        assert_eq!(spec.frontmatter.commits, Some(vec!["abc1234".to_string()]));
     }
 
     #[test]
@@ -418,6 +419,7 @@ status: pending
             frontmatter: SpecFrontmatter {
                 status: SpecStatus::Completed,
                 model: Some("claude-opus-4-5".to_string()),
+                commits: Some(vec!["abc1234".to_string()]),
                 ..Default::default()
             },
             title: Some("Test spec".to_string()),
@@ -428,5 +430,6 @@ status: pending
 
         let saved_content = std::fs::read_to_string(&spec_path).unwrap();
         assert!(saved_content.contains("model: claude-opus-4-5"));
+        assert!(saved_content.contains("commits:"));
     }
 }
