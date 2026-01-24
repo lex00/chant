@@ -192,6 +192,28 @@ fn handle_tools_list() -> Result<Value> {
                     },
                     "required": ["id"]
                 }
+            },
+            {
+                "name": "chant_spec_update",
+                "description": "Update a chant spec status or add output",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "string",
+                            "description": "Spec ID (full or partial)"
+                        },
+                        "status": {
+                            "type": "string",
+                            "description": "New status (pending, in_progress, completed, failed)"
+                        },
+                        "output": {
+                            "type": "string",
+                            "description": "Output text to append to spec body"
+                        }
+                    },
+                    "required": ["id"]
+                }
             }
         ]
     }))
@@ -210,6 +232,7 @@ fn handle_tools_call(params: Option<&Value>) -> Result<Value> {
     match name {
         "chant_spec_list" => tool_chant_spec_list(arguments),
         "chant_spec_get" => tool_chant_spec_get(arguments),
+        "chant_spec_update" => tool_chant_spec_update(arguments),
         _ => anyhow::bail!("Unknown tool: {}", name),
     }
 }
@@ -335,6 +358,107 @@ fn tool_chant_spec_get(arguments: Option<&Value>) -> Result<Value> {
     }))
 }
 
+fn tool_chant_spec_update(arguments: Option<&Value>) -> Result<Value> {
+    let specs_dir = PathBuf::from(".chant/specs");
+
+    if !specs_dir.exists() {
+        return Ok(json!({
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Chant not initialized. Run `chant init` first."
+                }
+            ],
+            "isError": true
+        }));
+    }
+
+    let args = arguments.ok_or_else(|| anyhow::anyhow!("Missing arguments"))?;
+
+    let id = args
+        .get("id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Missing required parameter: id"))?;
+
+    let mut spec = match resolve_spec(&specs_dir, id) {
+        Ok(s) => s,
+        Err(e) => {
+            return Ok(json!({
+                "content": [
+                    {
+                        "type": "text",
+                        "text": e.to_string()
+                    }
+                ],
+                "isError": true
+            }));
+        }
+    };
+
+    let mut updated = false;
+
+    // Update status if provided
+    if let Some(status_str) = args.get("status").and_then(|v| v.as_str()) {
+        let new_status = match status_str {
+            "pending" => SpecStatus::Pending,
+            "in_progress" => SpecStatus::InProgress,
+            "completed" => SpecStatus::Completed,
+            "failed" => SpecStatus::Failed,
+            _ => {
+                return Ok(json!({
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": format!("Invalid status: {}. Must be one of: pending, in_progress, completed, failed", status_str)
+                        }
+                    ],
+                    "isError": true
+                }));
+            }
+        };
+        spec.frontmatter.status = new_status;
+        updated = true;
+    }
+
+    // Append output if provided
+    if let Some(output) = args.get("output").and_then(|v| v.as_str()) {
+        if !output.is_empty() {
+            if !spec.body.ends_with('\n') && !spec.body.is_empty() {
+                spec.body.push('\n');
+            }
+            spec.body.push_str("\n## Output\n\n");
+            spec.body.push_str(output);
+            spec.body.push('\n');
+            updated = true;
+        }
+    }
+
+    if !updated {
+        return Ok(json!({
+            "content": [
+                {
+                    "type": "text",
+                    "text": "No updates specified. Provide 'status' or 'output' parameter."
+                }
+            ],
+            "isError": true
+        }));
+    }
+
+    // Save the spec
+    let spec_path = specs_dir.join(format!("{}.md", spec.id));
+    spec.save(&spec_path)?;
+
+    Ok(json!({
+        "content": [
+            {
+                "type": "text",
+                "text": format!("Updated spec: {}", spec.id)
+            }
+        ]
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -350,9 +474,10 @@ mod tests {
     fn test_handle_tools_list() {
         let result = handle_tools_list().unwrap();
         let tools = result["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 2);
+        assert_eq!(tools.len(), 3);
         assert_eq!(tools[0]["name"], "chant_spec_list");
         assert_eq!(tools[1]["name"], "chant_spec_get");
+        assert_eq!(tools[2]["name"], "chant_spec_update");
     }
 
     #[test]
