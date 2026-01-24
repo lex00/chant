@@ -287,3 +287,90 @@ Created:
 
 Driver 001 status: pending (waiting for members)
 ```
+
+## Acceptance Criteria Validation
+
+Chant validates that all acceptance criteria checkboxes are checked before marking a spec complete. This validation happens after the agent exits.
+
+```markdown
+## Acceptance Criteria
+
+- [x] Implement login endpoint
+- [ ] Add rate limiting        <- Unchecked!
+- [x] Write tests
+```
+
+If unchecked boxes exist, chant shows a warning and fails:
+
+```
+⚠ Found 1 unchecked acceptance criterion.
+Use --force to skip this validation.
+error: Cannot complete spec with 1 unchecked acceptance criteria
+```
+
+The spec is marked as `failed` until all criteria are checked.
+
+### Skipping Validation
+
+Use `--force` to complete despite unchecked boxes:
+
+```bash
+chant work 001 --force
+```
+
+### Best Practice
+
+Agents should check off criteria as they complete each item:
+- Change `- [ ]` to `- [x]` in the spec file
+- This creates a clear record of completion
+
+## Agent Output
+
+After successful completion, chant appends the agent's output to the spec file. This creates an audit trail of agent work.
+
+### Format
+
+The output is appended as a new section with timestamp:
+
+```markdown
+## Agent Output
+
+2026-01-24T15:30:00Z
+
+\`\`\`
+Done! I've implemented the authentication middleware.
+
+Summary:
+- Added JWT validation in src/auth/middleware.go
+- Added tests in src/auth/middleware_test.go
+- All 5 tests pass
+\`\`\`
+```
+
+### Multiple Runs
+
+Each replay with `--force` appends a new output section:
+
+```markdown
+## Agent Output
+
+2026-01-24T15:30:00Z
+
+\`\`\`
+[first run output]
+\`\`\`
+
+## Agent Output
+
+2026-01-24T16:00:00Z
+
+\`\`\`
+[replay output - agent detected implementation exists]
+\`\`\`
+```
+
+This allows tracking how the agent behaved across multiple executions.
+
+### Truncation
+
+Outputs longer than 5000 characters are truncated with a note indicating the truncation. This prevents spec files from growing excessively large while still capturing the essential information about what the agent accomplished.
