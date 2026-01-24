@@ -4,8 +4,8 @@ project:
 
 defaults:
   prompt: standard
-  branch: true
-  pr: true
+  branch: false
+  pr: false
 ---
 
 # Chant Configuration
