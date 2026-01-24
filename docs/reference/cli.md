@@ -132,6 +132,24 @@ chant search "auth"                   # Search archive
 chant search "label:feature"          # Search by label
 ```
 
+## Logs
+
+View agent output logs for a spec:
+
+```bash
+chant log 001                         # Show last 50 lines of log
+chant log 001 -f                      # Follow log in real-time
+chant log 001 --lines 100             # Show last 100 lines
+chant log 001 -n 100 -f               # Show last 100 lines and follow
+```
+
+Logs are stored in `.chant/logs/{spec-id}.log` and are created when a spec is executed with `chant work`. The log contains the full agent output including timestamp and prompt used.
+
+**Use cases:**
+- Monitor spec execution in real-time with `-f`
+- Review agent output after execution
+- Debug failed specs
+
 ## Status
 
 ```bash

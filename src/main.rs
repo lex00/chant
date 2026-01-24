@@ -79,6 +79,17 @@ enum Commands {
     Ready,
     /// Validate all specs for common issues
     Lint,
+    /// Show log for a spec
+    Log {
+        /// Spec ID (full or partial)
+        id: String,
+        /// Number of lines to show (default: 50)
+        #[arg(long, short = 'n', default_value = "50")]
+        lines: usize,
+        /// Follow the log in real-time
+        #[arg(long, short = 'f')]
+        follow: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -97,11 +108,20 @@ fn main() -> Result<()> {
             force,
             parallel,
             label,
-        } => cmd_work(id.as_deref(), prompt.as_deref(), branch, pr, force, parallel, &label),
+        } => cmd_work(
+            id.as_deref(),
+            prompt.as_deref(),
+            branch,
+            pr,
+            force,
+            parallel,
+            &label,
+        ),
         Commands::Mcp => mcp::run_server(),
         Commands::Status => cmd_status(),
         Commands::Ready => cmd_list(true, &[]),
         Commands::Lint => cmd_lint(),
+        Commands::Log { id, lines, follow } => cmd_log(&id, lines, follow),
     }
 }
 
@@ -471,6 +491,85 @@ fn cmd_lint() -> Result<()> {
     }
 }
 
+fn cmd_log(id: &str, lines: usize, follow: bool) -> Result<()> {
+    cmd_log_at(&PathBuf::from(".chant"), id, lines, follow)
+}
+
+/// Result of log file lookup
+#[derive(Debug)]
+enum LogLookupResult {
+    /// Log file exists at the given path
+    Found(PathBuf),
+    /// Log file not found for the spec
+    NotFound { spec_id: String, log_path: PathBuf },
+}
+
+fn cmd_log_at(base_path: &std::path::Path, id: &str, lines: usize, follow: bool) -> Result<()> {
+    let specs_dir = base_path.join("specs");
+    let logs_dir = base_path.join("logs");
+
+    if !specs_dir.exists() {
+        anyhow::bail!("Chant not initialized. Run `chant init` first.");
+    }
+
+    // Resolve spec ID to get the full ID
+    let spec = spec::resolve_spec(&specs_dir, id)?;
+    let log_path = logs_dir.join(format!("{}.log", spec.id));
+
+    if !log_path.exists() {
+        println!(
+            "{} No log file found for spec '{}'.",
+            "⚠".yellow(),
+            spec.id.cyan()
+        );
+        println!("\nLogs are created when a spec is executed with `chant work`.");
+        println!("Log path: {}", log_path.display());
+        return Ok(());
+    }
+
+    // Use tail command to show/follow the log
+    let mut args = vec!["-n".to_string(), lines.to_string()];
+
+    if follow {
+        args.push("-f".to_string());
+    }
+
+    args.push(log_path.to_string_lossy().to_string());
+
+    let status = std::process::Command::new("tail")
+        .args(&args)
+        .status()
+        .context("Failed to run tail command")?;
+
+    if !status.success() {
+        anyhow::bail!("tail command exited with status: {}", status);
+    }
+
+    Ok(())
+}
+
+/// Look up the log file for a spec (used for testing)
+fn lookup_log_file(base_path: &std::path::Path, id: &str) -> Result<LogLookupResult> {
+    let specs_dir = base_path.join("specs");
+    let logs_dir = base_path.join("logs");
+
+    if !specs_dir.exists() {
+        anyhow::bail!("Chant not initialized. Run `chant init` first.");
+    }
+
+    let spec = spec::resolve_spec(&specs_dir, id)?;
+    let log_path = logs_dir.join(format!("{}.log", spec.id));
+
+    if log_path.exists() {
+        Ok(LogLookupResult::Found(log_path))
+    } else {
+        Ok(LogLookupResult::NotFound {
+            spec_id: spec.id,
+            log_path,
+        })
+    }
+}
+
 fn cmd_work(
     id: Option<&str>,
     prompt_name: Option<&str>,
@@ -619,10 +718,14 @@ fn cmd_work(
                     .format("%Y-%m-%dT%H:%M:%SZ")
                     .to_string(),
             );
+            spec.frontmatter.model = get_model_name();
 
             println!("\n{} Spec completed!", "✓".green());
             if let Some(commit) = &spec.frontmatter.commit {
                 println!("Commit: {}", commit);
+            }
+            if let Some(model) = &spec.frontmatter.model {
+                println!("Model: {}", model);
             }
 
             // Create PR if requested
@@ -749,12 +852,7 @@ fn cmd_work_parallel(
         let mut spec_clone = spec.clone();
         spec_clone.frontmatter.status = SpecStatus::InProgress;
         if let Err(e) = spec_clone.save(&spec_path) {
-            println!(
-                "{} [{}] Failed to update status: {}",
-                "✗".red(),
-                spec.id,
-                e
-            );
+            println!("{} [{}] Failed to update status: {}", "✗".red(), spec.id, e);
             continue;
         }
 
@@ -797,6 +895,7 @@ fn cmd_work_parallel(
                                 .format("%Y-%m-%dT%H:%M:%SZ")
                                 .to_string(),
                         );
+                        spec.frontmatter.model = get_model_name();
                         let _ = spec.save(&spec_path);
                     }
 
@@ -914,7 +1013,12 @@ fn invoke_agent_with_prefix(message: &str, spec_id: &str, prompt_name: &str) -> 
 
     // Write full output to log file (regardless of success/failure)
     if let Err(e) = write_agent_log(spec_id, prompt_name, &captured_output) {
-        eprintln!("{} [{}] Failed to write agent log: {}", "⚠".yellow(), spec_id, e);
+        eprintln!(
+            "{} [{}] Failed to write agent log: {}",
+            "⚠".yellow(),
+            spec_id,
+            e
+        );
     }
 
     if !status.success() {
@@ -1131,6 +1235,15 @@ fn write_agent_log_at(
     Ok(())
 }
 
+/// Get the model name from environment variables.
+/// Checks CHANT_MODEL first, then ANTHROPIC_MODEL.
+fn get_model_name() -> Option<String> {
+    std::env::var("CHANT_MODEL")
+        .ok()
+        .or_else(|| std::env::var("ANTHROPIC_MODEL").ok())
+        .filter(|s| !s.is_empty())
+}
+
 fn append_agent_output(spec: &mut Spec, output: &str) {
     let timestamp = chrono::Local::now()
         .format("%Y-%m-%dT%H:%M:%SZ")
@@ -1231,7 +1344,10 @@ mod tests {
 
         // .gitignore should still have only one "logs/" entry
         let content = std::fs::read_to_string(&gitignore_path).unwrap();
-        let count = content.lines().filter(|line| line.trim() == "logs/").count();
+        let count = content
+            .lines()
+            .filter(|line| line.trim() == "logs/")
+            .count();
         assert_eq!(count, 1);
     }
 
@@ -1283,5 +1399,258 @@ mod tests {
         // Should contain only Content B
         assert!(content.contains("Content B"));
         assert!(!content.contains("Content A"));
+    }
+
+    #[test]
+    fn test_lookup_log_file_not_found() {
+        let temp_dir = TempDir::new().unwrap();
+        let base_path = temp_dir.path().to_path_buf();
+
+        // Create specs directory and a spec file
+        let specs_dir = base_path.join("specs");
+        std::fs::create_dir_all(&specs_dir).unwrap();
+
+        let spec_content = r#"---
+type: code
+status: pending
+---
+
+# Test spec
+"#;
+        std::fs::write(specs_dir.join("2026-01-24-00a-xyz.md"), spec_content).unwrap();
+
+        // Lookup log without creating logs directory
+        let result = lookup_log_file(&base_path, "xyz").unwrap();
+
+        match result {
+            LogLookupResult::NotFound { spec_id, log_path } => {
+                assert_eq!(spec_id, "2026-01-24-00a-xyz");
+                assert!(log_path
+                    .to_string_lossy()
+                    .contains("2026-01-24-00a-xyz.log"));
+            }
+            LogLookupResult::Found(_) => panic!("Expected NotFound, got Found"),
+        }
+    }
+
+    #[test]
+    fn test_lookup_log_file_found() {
+        let temp_dir = TempDir::new().unwrap();
+        let base_path = temp_dir.path().to_path_buf();
+
+        // Create specs directory and a spec file
+        let specs_dir = base_path.join("specs");
+        let logs_dir = base_path.join("logs");
+        std::fs::create_dir_all(&specs_dir).unwrap();
+        std::fs::create_dir_all(&logs_dir).unwrap();
+
+        let spec_content = r#"---
+type: code
+status: pending
+---
+
+# Test spec
+"#;
+        std::fs::write(specs_dir.join("2026-01-24-00b-abc.md"), spec_content).unwrap();
+
+        // Create a log file
+        std::fs::write(
+            logs_dir.join("2026-01-24-00b-abc.log"),
+            "# Agent Log\nTest output",
+        )
+        .unwrap();
+
+        // Lookup log
+        let result = lookup_log_file(&base_path, "abc").unwrap();
+
+        match result {
+            LogLookupResult::Found(path) => {
+                assert!(path.to_string_lossy().contains("2026-01-24-00b-abc.log"));
+            }
+            LogLookupResult::NotFound { .. } => panic!("Expected Found, got NotFound"),
+        }
+    }
+
+    #[test]
+    fn test_lookup_log_file_spec_resolution() {
+        let temp_dir = TempDir::new().unwrap();
+        let base_path = temp_dir.path().to_path_buf();
+
+        // Create specs directory and multiple spec files
+        let specs_dir = base_path.join("specs");
+        let logs_dir = base_path.join("logs");
+        std::fs::create_dir_all(&specs_dir).unwrap();
+        std::fs::create_dir_all(&logs_dir).unwrap();
+
+        let spec_content = r#"---
+type: code
+status: pending
+---
+
+# Test spec
+"#;
+        std::fs::write(specs_dir.join("2026-01-24-00c-def.md"), spec_content).unwrap();
+        std::fs::write(specs_dir.join("2026-01-24-00d-ghi.md"), spec_content).unwrap();
+
+        // Create log file for one spec
+        std::fs::write(
+            logs_dir.join("2026-01-24-00c-def.log"),
+            "# Agent Log\nOutput for def",
+        )
+        .unwrap();
+
+        // Lookup using partial ID should resolve correctly
+        let result = lookup_log_file(&base_path, "def").unwrap();
+        match result {
+            LogLookupResult::Found(path) => {
+                assert!(path.to_string_lossy().contains("2026-01-24-00c-def.log"));
+            }
+            LogLookupResult::NotFound { .. } => panic!("Expected Found for 'def'"),
+        }
+
+        // Lookup for spec without log
+        let result = lookup_log_file(&base_path, "ghi").unwrap();
+        match result {
+            LogLookupResult::NotFound { spec_id, .. } => {
+                assert_eq!(spec_id, "2026-01-24-00d-ghi");
+            }
+            LogLookupResult::Found(_) => panic!("Expected NotFound for 'ghi'"),
+        }
+    }
+
+    #[test]
+    fn test_lookup_log_file_not_initialized() {
+        let temp_dir = TempDir::new().unwrap();
+        let base_path = temp_dir.path().to_path_buf();
+
+        // Don't create specs directory
+        let result = lookup_log_file(&base_path, "abc");
+
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Chant not initialized"));
+    }
+
+    #[test]
+    fn test_get_model_name_from_chant_model() {
+        // Save original env vars
+        let orig_chant = std::env::var("CHANT_MODEL").ok();
+        let orig_anthropic = std::env::var("ANTHROPIC_MODEL").ok();
+
+        // Set CHANT_MODEL
+        std::env::set_var("CHANT_MODEL", "claude-opus-4-5");
+        std::env::remove_var("ANTHROPIC_MODEL");
+
+        let result = get_model_name();
+        assert_eq!(result, Some("claude-opus-4-5".to_string()));
+
+        // Restore original env vars
+        if let Some(val) = orig_chant {
+            std::env::set_var("CHANT_MODEL", val);
+        } else {
+            std::env::remove_var("CHANT_MODEL");
+        }
+        if let Some(val) = orig_anthropic {
+            std::env::set_var("ANTHROPIC_MODEL", val);
+        }
+    }
+
+    #[test]
+    fn test_get_model_name_from_anthropic_model() {
+        // Save original env vars
+        let orig_chant = std::env::var("CHANT_MODEL").ok();
+        let orig_anthropic = std::env::var("ANTHROPIC_MODEL").ok();
+
+        // Set only ANTHROPIC_MODEL
+        std::env::remove_var("CHANT_MODEL");
+        std::env::set_var("ANTHROPIC_MODEL", "claude-sonnet-4");
+
+        let result = get_model_name();
+        assert_eq!(result, Some("claude-sonnet-4".to_string()));
+
+        // Restore original env vars
+        if let Some(val) = orig_chant {
+            std::env::set_var("CHANT_MODEL", val);
+        }
+        if let Some(val) = orig_anthropic {
+            std::env::set_var("ANTHROPIC_MODEL", val);
+        } else {
+            std::env::remove_var("ANTHROPIC_MODEL");
+        }
+    }
+
+    #[test]
+    fn test_get_model_name_chant_takes_precedence() {
+        // Save original env vars
+        let orig_chant = std::env::var("CHANT_MODEL").ok();
+        let orig_anthropic = std::env::var("ANTHROPIC_MODEL").ok();
+
+        // Set both env vars
+        std::env::set_var("CHANT_MODEL", "claude-opus-4-5");
+        std::env::set_var("ANTHROPIC_MODEL", "claude-sonnet-4");
+
+        let result = get_model_name();
+        // CHANT_MODEL takes precedence
+        assert_eq!(result, Some("claude-opus-4-5".to_string()));
+
+        // Restore original env vars
+        if let Some(val) = orig_chant {
+            std::env::set_var("CHANT_MODEL", val);
+        } else {
+            std::env::remove_var("CHANT_MODEL");
+        }
+        if let Some(val) = orig_anthropic {
+            std::env::set_var("ANTHROPIC_MODEL", val);
+        } else {
+            std::env::remove_var("ANTHROPIC_MODEL");
+        }
+    }
+
+    #[test]
+    fn test_get_model_name_none_when_unset() {
+        // Save original env vars
+        let orig_chant = std::env::var("CHANT_MODEL").ok();
+        let orig_anthropic = std::env::var("ANTHROPIC_MODEL").ok();
+
+        // Unset both env vars
+        std::env::remove_var("CHANT_MODEL");
+        std::env::remove_var("ANTHROPIC_MODEL");
+
+        let result = get_model_name();
+        assert_eq!(result, None);
+
+        // Restore original env vars
+        if let Some(val) = orig_chant {
+            std::env::set_var("CHANT_MODEL", val);
+        }
+        if let Some(val) = orig_anthropic {
+            std::env::set_var("ANTHROPIC_MODEL", val);
+        }
+    }
+
+    #[test]
+    fn test_get_model_name_empty_string_returns_none() {
+        // Save original env vars
+        let orig_chant = std::env::var("CHANT_MODEL").ok();
+        let orig_anthropic = std::env::var("ANTHROPIC_MODEL").ok();
+
+        // Set empty string
+        std::env::set_var("CHANT_MODEL", "");
+        std::env::remove_var("ANTHROPIC_MODEL");
+
+        let result = get_model_name();
+        assert_eq!(result, None);
+
+        // Restore original env vars
+        if let Some(val) = orig_chant {
+            std::env::set_var("CHANT_MODEL", val);
+        } else {
+            std::env::remove_var("CHANT_MODEL");
+        }
+        if let Some(val) = orig_anthropic {
+            std::env::set_var("ANTHROPIC_MODEL", val);
+        }
     }
 }
