@@ -226,7 +226,10 @@ pub fn resolve_spec(specs_dir: &Path, partial_id: &str) -> Result<Spec> {
     }
 
     // Suffix match (random suffix)
-    let suffix_matches: Vec<_> = specs.iter().filter(|s| s.id.ends_with(partial_id)).collect();
+    let suffix_matches: Vec<_> = specs
+        .iter()
+        .filter(|s| s.id.ends_with(partial_id))
+        .collect();
     if suffix_matches.len() == 1 {
         return Ok(suffix_matches[0].clone());
     }

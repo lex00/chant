@@ -61,11 +61,10 @@ impl Config {
 
     pub fn parse(content: &str) -> Result<Self> {
         // Extract YAML frontmatter
-        let frontmatter = extract_frontmatter(content)
-            .context("Failed to extract frontmatter from config")?;
+        let frontmatter =
+            extract_frontmatter(content).context("Failed to extract frontmatter from config")?;
 
-        serde_yaml::from_str(&frontmatter)
-            .context("Failed to parse config frontmatter")
+        serde_yaml::from_str(&frontmatter).context("Failed to parse config frontmatter")
     }
 
     /// Load merged configuration from global and project configs.
@@ -132,11 +131,10 @@ impl PartialConfig {
     }
 
     fn parse(content: &str) -> Result<Self> {
-        let frontmatter = extract_frontmatter(content)
-            .context("Failed to extract frontmatter from config")?;
+        let frontmatter =
+            extract_frontmatter(content).context("Failed to extract frontmatter from config")?;
 
-        serde_yaml::from_str(&frontmatter)
-            .context("Failed to parse config frontmatter")
+        serde_yaml::from_str(&frontmatter).context("Failed to parse config frontmatter")
     }
 
     /// Merge this global config with a project config, returning the merged result.
@@ -156,16 +154,17 @@ impl PartialConfig {
             },
             defaults: DefaultsConfig {
                 // Project value > global value > default
-                prompt: project_defaults.prompt
+                prompt: project_defaults
+                    .prompt
                     .or(global_defaults.prompt)
                     .unwrap_or_else(default_prompt),
-                branch: project_defaults.branch
+                branch: project_defaults
+                    .branch
                     .or(global_defaults.branch)
                     .unwrap_or(false),
-                pr: project_defaults.pr
-                    .or(global_defaults.pr)
-                    .unwrap_or(false),
-                branch_prefix: project_defaults.branch_prefix
+                pr: project_defaults.pr.or(global_defaults.pr).unwrap_or(false),
+                branch_prefix: project_defaults
+                    .branch_prefix
                     .or(global_defaults.branch_prefix)
                     .unwrap_or_else(default_branch_prefix),
             },
@@ -191,8 +190,8 @@ fn extract_frontmatter(content: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::fs;
+    use tempfile::TempDir;
 
     #[test]
     fn test_parse_config() {
@@ -229,7 +228,10 @@ project:
     fn test_global_config_path() {
         std::env::set_var("HOME", "/home/testuser");
         let path = global_config_path().unwrap();
-        assert_eq!(path.to_str().unwrap(), "/home/testuser/.config/chant/config.md");
+        assert_eq!(
+            path.to_str().unwrap(),
+            "/home/testuser/.config/chant/config.md"
+        );
     }
 
     #[test]
@@ -237,13 +239,17 @@ project:
         let tmp = TempDir::new().unwrap();
         let project_path = tmp.path().join("config.md");
 
-        fs::write(&project_path, r#"---
+        fs::write(
+            &project_path,
+            r#"---
 project:
   name: my-project
 defaults:
   prompt: custom
 ---
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let config = Config::load_merged_from(None, &project_path).unwrap();
         assert_eq!(config.project.name, "my-project");
@@ -256,7 +262,9 @@ defaults:
         let global_path = tmp.path().join("global.md");
         let project_path = tmp.path().join("project.md");
 
-        fs::write(&global_path, r#"---
+        fs::write(
+            &global_path,
+            r#"---
 project:
   prefix: global-prefix
 defaults:
@@ -264,15 +272,21 @@ defaults:
   pr: true
   branch_prefix: global/
 ---
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
-        fs::write(&project_path, r#"---
+        fs::write(
+            &project_path,
+            r#"---
 project:
   name: my-project
 defaults:
   branch: false
 ---
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let config = Config::load_merged_from(Some(&global_path), &project_path).unwrap();
 
@@ -285,7 +299,7 @@ defaults:
         // Since project has branch: false, we use global's value
         // Wait, that's not right - let me check the logic
         assert!(!config.defaults.branch); // Project sets false
-        // pr from global (not set in project)
+                                          // pr from global (not set in project)
         assert!(config.defaults.pr);
         // branch_prefix from global (project uses default)
         assert_eq!(config.defaults.branch_prefix, "global/");
@@ -297,21 +311,29 @@ defaults:
         let global_path = tmp.path().join("global.md");
         let project_path = tmp.path().join("project.md");
 
-        fs::write(&global_path, r#"---
+        fs::write(
+            &global_path,
+            r#"---
 defaults:
   prompt: global-prompt
   branch_prefix: global/
 ---
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
-        fs::write(&project_path, r#"---
+        fs::write(
+            &project_path,
+            r#"---
 project:
   name: my-project
 defaults:
   prompt: project-prompt
   branch_prefix: project/
 ---
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let config = Config::load_merged_from(Some(&global_path), &project_path).unwrap();
 
@@ -326,11 +348,15 @@ defaults:
         let global_path = tmp.path().join("nonexistent.md");
         let project_path = tmp.path().join("project.md");
 
-        fs::write(&project_path, r#"---
+        fs::write(
+            &project_path,
+            r#"---
 project:
   name: my-project
 ---
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let config = Config::load_merged_from(Some(&global_path), &project_path).unwrap();
         assert_eq!(config.project.name, "my-project");

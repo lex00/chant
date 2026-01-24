@@ -79,7 +79,12 @@ fn main() -> Result<()> {
         Commands::Add { description } => cmd_add(&description),
         Commands::List { ready, label } => cmd_list(ready, &label),
         Commands::Show { id } => cmd_show(&id),
-        Commands::Work { id, prompt, branch, pr } => cmd_work(&id, prompt.as_deref(), branch, pr),
+        Commands::Work {
+            id,
+            prompt,
+            branch,
+            pr,
+        } => cmd_work(&id, prompt.as_deref(), branch, pr),
         Commands::Mcp => mcp::run_server(),
         Commands::Status => cmd_status(),
         Commands::Ready => cmd_list(true, &[]),
@@ -96,7 +101,8 @@ fn cmd_init(name: Option<String>) -> Result<()> {
     }
 
     // Detect project name
-    let project_name = name.unwrap_or_else(|| detect_project_name().unwrap_or_else(|| "my-project".to_string()));
+    let project_name =
+        name.unwrap_or_else(|| detect_project_name().unwrap_or_else(|| "my-project".to_string()));
 
     // Create directory structure
     std::fs::create_dir_all(chant_dir.join("specs"))?;
@@ -488,7 +494,8 @@ fn cmd_work(id: &str, prompt_name: Option<&str>, cli_branch: bool, cli_pr: bool)
                 let dep = all_specs.iter().find(|s| s.id == *dep_id);
                 match dep {
                     Some(d) if d.frontmatter.status == SpecStatus::Completed => continue,
-                    Some(d) => blocking.push(format!("{} ({:?})", dep_id, d.frontmatter.status).to_lowercase()),
+                    Some(d) => blocking
+                        .push(format!("{} ({:?})", dep_id, d.frontmatter.status).to_lowercase()),
                     None => blocking.push(format!("{} (not found)", dep_id)),
                 }
             }
@@ -530,7 +537,12 @@ fn cmd_work(id: &str, prompt_name: Option<&str>, cli_branch: bool, cli_pr: bool)
     spec.frontmatter.status = SpecStatus::InProgress;
     spec.save(&spec_path)?;
 
-    println!("{} {} with prompt '{}'", "Working".cyan(), spec.id, prompt_name);
+    println!(
+        "{} {} with prompt '{}'",
+        "Working".cyan(),
+        spec.id,
+        prompt_name
+    );
 
     // Assemble prompt
     let message = prompt::assemble(&spec, &prompt_path, &config)?;
@@ -547,7 +559,11 @@ fn cmd_work(id: &str, prompt_name: Option<&str>, cli_branch: bool, cli_pr: bool)
             let mut spec = spec::resolve_spec(&specs_dir, &spec.id)?;
             spec.frontmatter.status = SpecStatus::Completed;
             spec.frontmatter.commit = commit;
-            spec.frontmatter.completed_at = Some(chrono::Local::now().format("%Y-%m-%dT%H:%M:%SZ").to_string());
+            spec.frontmatter.completed_at = Some(
+                chrono::Local::now()
+                    .format("%Y-%m-%dT%H:%M:%SZ")
+                    .to_string(),
+            );
 
             println!("\n{} Spec completed!", "✓".green());
             if let Some(commit) = &spec.frontmatter.commit {
@@ -556,7 +572,9 @@ fn cmd_work(id: &str, prompt_name: Option<&str>, cli_branch: bool, cli_pr: bool)
 
             // Create PR if requested
             if create_pr {
-                let branch_name = branch_name.as_ref().expect("branch_name should exist when create_pr is true");
+                let branch_name = branch_name
+                    .as_ref()
+                    .expect("branch_name should exist when create_pr is true");
                 println!("\n{} Pushing branch to remote...", "→".cyan());
                 push_branch(branch_name)?;
 
@@ -667,7 +685,11 @@ fn create_or_switch_branch(branch_name: &str) -> Result<()> {
 
     // Both failed, return error
     let stderr = String::from_utf8_lossy(&switch_output.stderr);
-    anyhow::bail!("Failed to create or switch to branch '{}': {}", branch_name, stderr)
+    anyhow::bail!(
+        "Failed to create or switch to branch '{}': {}",
+        branch_name,
+        stderr
+    )
 }
 
 fn push_branch(branch_name: &str) -> Result<()> {
