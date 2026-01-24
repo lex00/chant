@@ -60,6 +60,9 @@ enum Commands {
         /// Create a pull request after spec completes
         #[arg(long)]
         pr: bool,
+        /// Skip validation of unchecked acceptance criteria
+        #[arg(long)]
+        force: bool,
     },
     /// Start MCP server (Model Context Protocol)
     Mcp,
@@ -84,7 +87,8 @@ fn main() -> Result<()> {
             prompt,
             branch,
             pr,
-        } => cmd_work(&id, prompt.as_deref(), branch, pr),
+            force,
+        } => cmd_work(&id, prompt.as_deref(), branch, pr, force),
         Commands::Mcp => mcp::run_server(),
         Commands::Status => cmd_status(),
         Commands::Ready => cmd_list(true, &[]),
@@ -458,7 +462,13 @@ fn cmd_lint() -> Result<()> {
     }
 }
 
-fn cmd_work(id: &str, prompt_name: Option<&str>, cli_branch: bool, cli_pr: bool) -> Result<()> {
+fn cmd_work(
+    id: &str,
+    prompt_name: Option<&str>,
+    cli_branch: bool,
+    cli_pr: bool,
+    force: bool,
+) -> Result<()> {
     let specs_dir = PathBuf::from(".chant/specs");
     let prompts_dir = PathBuf::from(".chant/prompts");
     let config = Config::load()?;
@@ -552,11 +562,36 @@ fn cmd_work(id: &str, prompt_name: Option<&str>, cli_branch: bool, cli_pr: bool)
 
     match result {
         Ok(()) => {
+            // Reload spec (it may have been modified by the agent)
+            let mut spec = spec::resolve_spec(&specs_dir, &spec.id)?;
+
+            // Check for unchecked acceptance criteria
+            let unchecked_count = spec.count_unchecked_checkboxes();
+            if unchecked_count > 0 && !force {
+                println!(
+                    "\n{} Found {} unchecked acceptance {}.",
+                    "⚠".yellow(),
+                    unchecked_count,
+                    if unchecked_count == 1 {
+                        "criterion"
+                    } else {
+                        "criteria"
+                    }
+                );
+                println!("Use {} to skip this validation.", "--force".cyan());
+                // Mark as failed since we can't complete with unchecked items
+                spec.frontmatter.status = SpecStatus::Failed;
+                spec.save(&spec_path)?;
+                anyhow::bail!(
+                    "Cannot complete spec with {} unchecked acceptance criteria",
+                    unchecked_count
+                );
+            }
+
             // Get the commit hash
             let commit = get_latest_commit_for_spec(&spec.id)?;
 
             // Update spec to completed
-            let mut spec = spec::resolve_spec(&specs_dir, &spec.id)?;
             spec.frontmatter.status = SpecStatus::Completed;
             spec.frontmatter.commit = commit;
             spec.frontmatter.completed_at = Some(

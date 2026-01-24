@@ -70,6 +70,12 @@ pub struct Spec {
 }
 
 impl Spec {
+    /// Count unchecked checkboxes (`- [ ]`) in the spec body.
+    /// Returns the count of unchecked items.
+    pub fn count_unchecked_checkboxes(&self) -> usize {
+        self.body.matches("- [ ]").count()
+    }
+
     /// Parse a spec from file content.
     pub fn parse(id: &str, content: &str) -> Result<Self> {
         let (frontmatter_str, body) = split_frontmatter(content);
@@ -320,5 +326,47 @@ status: in_progress
         .unwrap();
 
         assert!(!spec.is_ready(&[]));
+    }
+
+    #[test]
+    fn test_count_unchecked_checkboxes() {
+        let spec = Spec::parse(
+            "001",
+            r#"---
+status: pending
+---
+# Test
+
+## Acceptance Criteria
+
+- [ ] First unchecked item
+- [x] Checked item
+- [ ] Second unchecked item
+- [X] Another checked item
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(spec.count_unchecked_checkboxes(), 2);
+    }
+
+    #[test]
+    fn test_count_unchecked_checkboxes_none() {
+        let spec = Spec::parse(
+            "001",
+            r#"---
+status: pending
+---
+# Test
+
+## Acceptance Criteria
+
+- [x] All checked
+- [X] Also checked
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(spec.count_unchecked_checkboxes(), 0);
     }
 }
