@@ -56,6 +56,9 @@ pub struct DefaultsConfig {
     pub pr: bool,
     #[serde(default = "default_branch_prefix")]
     pub branch_prefix: String,
+    /// Default model name to use when env vars are not set
+    #[serde(default)]
+    pub model: Option<String>,
 }
 
 fn default_prompt() -> String {
@@ -73,6 +76,7 @@ impl Default for DefaultsConfig {
             branch: false,
             pr: false,
             branch_prefix: default_branch_prefix(),
+            model: None,
         }
     }
 }
@@ -165,6 +169,7 @@ struct PartialDefaultsConfig {
     pub branch: Option<bool>,
     pub pr: Option<bool>,
     pub branch_prefix: Option<String>,
+    pub model: Option<String>,
 }
 
 #[allow(dead_code)]
@@ -215,6 +220,7 @@ impl PartialConfig {
                     .branch_prefix
                     .or(global_defaults.branch_prefix)
                     .unwrap_or_else(default_branch_prefix),
+                model: project_defaults.model.or(global_defaults.model),
             },
             git: GitConfig {
                 provider: project_git
@@ -505,5 +511,93 @@ git:
         let config = Config::load_merged_from(Some(&global_path), &project_path).unwrap();
         // Project overrides global
         assert_eq!(config.git.provider, GitProvider::Bitbucket);
+    }
+
+    #[test]
+    fn test_parse_defaults_model() {
+        let content = r#"---
+project:
+  name: test-project
+defaults:
+  model: claude-sonnet-4
+---
+"#;
+        let config = Config::parse(content).unwrap();
+        assert_eq!(config.defaults.model, Some("claude-sonnet-4".to_string()));
+    }
+
+    #[test]
+    fn test_defaults_model_none_when_not_specified() {
+        let content = r#"---
+project:
+  name: test-project
+---
+"#;
+        let config = Config::parse(content).unwrap();
+        assert_eq!(config.defaults.model, None);
+    }
+
+    #[test]
+    fn test_load_merged_defaults_model() {
+        let tmp = TempDir::new().unwrap();
+        let global_path = tmp.path().join("global.md");
+        let project_path = tmp.path().join("project.md");
+
+        fs::write(
+            &global_path,
+            r#"---
+defaults:
+  model: claude-opus-4
+---
+"#,
+        )
+        .unwrap();
+
+        fs::write(
+            &project_path,
+            r#"---
+project:
+  name: my-project
+---
+"#,
+        )
+        .unwrap();
+
+        let config = Config::load_merged_from(Some(&global_path), &project_path).unwrap();
+        // Global model is used when project doesn't specify
+        assert_eq!(config.defaults.model, Some("claude-opus-4".to_string()));
+    }
+
+    #[test]
+    fn test_load_merged_defaults_model_project_overrides() {
+        let tmp = TempDir::new().unwrap();
+        let global_path = tmp.path().join("global.md");
+        let project_path = tmp.path().join("project.md");
+
+        fs::write(
+            &global_path,
+            r#"---
+defaults:
+  model: claude-opus-4
+---
+"#,
+        )
+        .unwrap();
+
+        fs::write(
+            &project_path,
+            r#"---
+project:
+  name: my-project
+defaults:
+  model: claude-sonnet-4
+---
+"#,
+        )
+        .unwrap();
+
+        let config = Config::load_merged_from(Some(&global_path), &project_path).unwrap();
+        // Project model overrides global
+        assert_eq!(config.defaults.model, Some("claude-sonnet-4".to_string()));
     }
 }

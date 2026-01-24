@@ -6,6 +6,7 @@ defaults:
   prompt: standard
   branch: false
   pr: false
+  model: claude-opus-4-5
 ---
 
 # Chant Configuration

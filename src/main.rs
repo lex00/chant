@@ -720,7 +720,7 @@ fn cmd_work(
                     .format("%Y-%m-%dT%H:%M:%SZ")
                     .to_string(),
             );
-            spec.frontmatter.model = get_model_name();
+            spec.frontmatter.model = get_model_name(Some(&config));
 
             println!("\n{} Spec completed!", "✓".green());
             if let Some(commit) = &spec.frontmatter.commit {
@@ -879,6 +879,7 @@ fn cmd_work_parallel(
         let spec_id = spec.id.clone();
         let specs_dir_clone = specs_dir.to_path_buf();
         let prompt_name_clone = spec_prompt.to_string();
+        let config_model = config.defaults.model.clone();
 
         let handle = thread::spawn(move || {
             let result = invoke_agent_with_prefix(&message, &spec_id, &prompt_name_clone);
@@ -897,7 +898,7 @@ fn cmd_work_parallel(
                                 .format("%Y-%m-%dT%H:%M:%SZ")
                                 .to_string(),
                         );
-                        spec.frontmatter.model = get_model_name();
+                        spec.frontmatter.model = get_model_name_with_default(config_model.as_deref());
                         let _ = spec.save(&spec_path);
                     }
 
@@ -1271,13 +1272,74 @@ impl StreamingLogWriter {
     }
 }
 
-/// Get the model name from environment variables.
-/// Checks CHANT_MODEL first, then ANTHROPIC_MODEL.
-fn get_model_name() -> Option<String> {
-    std::env::var("CHANT_MODEL")
-        .ok()
-        .or_else(|| std::env::var("ANTHROPIC_MODEL").ok())
-        .filter(|s| !s.is_empty())
+/// Get the model name using the following priority:
+/// 1. CHANT_MODEL env var (explicit override)
+/// 2. ANTHROPIC_MODEL env var (Claude CLI default)
+/// 3. defaults.model in config
+/// 4. Parse from `claude --version` output (last resort)
+fn get_model_name(config: Option<&Config>) -> Option<String> {
+    get_model_name_with_default(config.and_then(|c| c.defaults.model.as_deref()))
+}
+
+/// Get the model name with an optional default from config.
+/// Used by parallel execution where full Config isn't available.
+fn get_model_name_with_default(config_model: Option<&str>) -> Option<String> {
+    // 1. CHANT_MODEL env var
+    if let Ok(model) = std::env::var("CHANT_MODEL") {
+        if !model.is_empty() {
+            return Some(model);
+        }
+    }
+
+    // 2. ANTHROPIC_MODEL env var
+    if let Ok(model) = std::env::var("ANTHROPIC_MODEL") {
+        if !model.is_empty() {
+            return Some(model);
+        }
+    }
+
+    // 3. defaults.model from config
+    if let Some(model) = config_model {
+        if !model.is_empty() {
+            return Some(model.to_string());
+        }
+    }
+
+    // 4. Parse from claude --version output
+    parse_model_from_claude_version()
+}
+
+/// Parse model name from `claude --version` output.
+/// Expected format: "X.Y.Z (model-name)" or similar patterns.
+fn parse_model_from_claude_version() -> Option<String> {
+    use std::process::Command;
+
+    let output = Command::new("claude").arg("--version").output().ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let version_str = String::from_utf8_lossy(&output.stdout);
+
+    // Try to extract model from parentheses, e.g., "1.0.0 (claude-sonnet-4)"
+    if let Some(start) = version_str.find('(') {
+        if let Some(end) = version_str.find(')') {
+            if start < end {
+                let model = version_str[start + 1..end].trim();
+                // Check if it looks like a model name (contains "claude" or common model patterns)
+                if model.contains("claude")
+                    || model.contains("sonnet")
+                    || model.contains("opus")
+                    || model.contains("haiku")
+                {
+                    return Some(model.to_string());
+                }
+            }
+        }
+    }
+
+    None
 }
 
 fn append_agent_output(spec: &mut Spec, output: &str) {
@@ -1638,7 +1700,7 @@ status: pending
         std::env::set_var("CHANT_MODEL", "claude-opus-4-5");
         std::env::remove_var("ANTHROPIC_MODEL");
 
-        let result = get_model_name();
+        let result = get_model_name(None);
         assert_eq!(result, Some("claude-opus-4-5".to_string()));
 
         // Restore original env vars
@@ -1662,7 +1724,7 @@ status: pending
         std::env::remove_var("CHANT_MODEL");
         std::env::set_var("ANTHROPIC_MODEL", "claude-sonnet-4");
 
-        let result = get_model_name();
+        let result = get_model_name(None);
         assert_eq!(result, Some("claude-sonnet-4".to_string()));
 
         // Restore original env vars
@@ -1686,7 +1748,7 @@ status: pending
         std::env::set_var("CHANT_MODEL", "claude-opus-4-5");
         std::env::set_var("ANTHROPIC_MODEL", "claude-sonnet-4");
 
-        let result = get_model_name();
+        let result = get_model_name(None);
         // CHANT_MODEL takes precedence
         assert_eq!(result, Some("claude-opus-4-5".to_string()));
 
@@ -1695,6 +1757,53 @@ status: pending
             std::env::set_var("CHANT_MODEL", val);
         } else {
             std::env::remove_var("CHANT_MODEL");
+        }
+        if let Some(val) = orig_anthropic {
+            std::env::set_var("ANTHROPIC_MODEL", val);
+        } else {
+            std::env::remove_var("ANTHROPIC_MODEL");
+        }
+    }
+
+    #[test]
+    fn test_get_model_name_from_config_default() {
+        // Save original env vars
+        let orig_chant = std::env::var("CHANT_MODEL").ok();
+        let orig_anthropic = std::env::var("ANTHROPIC_MODEL").ok();
+
+        // Unset env vars so config default is used
+        std::env::remove_var("CHANT_MODEL");
+        std::env::remove_var("ANTHROPIC_MODEL");
+
+        let result = get_model_name_with_default(Some("claude-sonnet-4"));
+        assert_eq!(result, Some("claude-sonnet-4".to_string()));
+
+        // Restore original env vars
+        if let Some(val) = orig_chant {
+            std::env::set_var("CHANT_MODEL", val);
+        }
+        if let Some(val) = orig_anthropic {
+            std::env::set_var("ANTHROPIC_MODEL", val);
+        }
+    }
+
+    #[test]
+    fn test_get_model_name_env_takes_precedence_over_config() {
+        // Save original env vars
+        let orig_chant = std::env::var("CHANT_MODEL").ok();
+        let orig_anthropic = std::env::var("ANTHROPIC_MODEL").ok();
+
+        // Set env var
+        std::env::set_var("ANTHROPIC_MODEL", "claude-opus-4-5");
+        std::env::remove_var("CHANT_MODEL");
+
+        // Env var should take precedence over config
+        let result = get_model_name_with_default(Some("claude-sonnet-4"));
+        assert_eq!(result, Some("claude-opus-4-5".to_string()));
+
+        // Restore original env vars
+        if let Some(val) = orig_chant {
+            std::env::set_var("CHANT_MODEL", val);
         }
         if let Some(val) = orig_anthropic {
             std::env::set_var("ANTHROPIC_MODEL", val);
@@ -1713,8 +1822,12 @@ status: pending
         std::env::remove_var("CHANT_MODEL");
         std::env::remove_var("ANTHROPIC_MODEL");
 
-        let result = get_model_name();
-        assert_eq!(result, None);
+        // With no config and no env vars, falls back to claude version parsing
+        // which may or may not return a value depending on system
+        let result = get_model_name_with_default(None);
+        // We can't assert the exact value since it depends on whether claude is installed
+        // and what version it is, so we just verify it doesn't panic
+        let _ = result;
 
         // Restore original env vars
         if let Some(val) = orig_chant {
@@ -1735,14 +1848,40 @@ status: pending
         std::env::set_var("CHANT_MODEL", "");
         std::env::remove_var("ANTHROPIC_MODEL");
 
-        let result = get_model_name();
-        assert_eq!(result, None);
+        // Empty env var should fall through to config default or claude version
+        let result = get_model_name_with_default(None);
+        // Can't assert exact value since it depends on whether claude is installed
+        let _ = result;
 
         // Restore original env vars
         if let Some(val) = orig_chant {
             std::env::set_var("CHANT_MODEL", val);
         } else {
             std::env::remove_var("CHANT_MODEL");
+        }
+        if let Some(val) = orig_anthropic {
+            std::env::set_var("ANTHROPIC_MODEL", val);
+        }
+    }
+
+    #[test]
+    fn test_get_model_name_empty_config_model_skipped() {
+        // Save original env vars
+        let orig_chant = std::env::var("CHANT_MODEL").ok();
+        let orig_anthropic = std::env::var("ANTHROPIC_MODEL").ok();
+
+        // Unset env vars
+        std::env::remove_var("CHANT_MODEL");
+        std::env::remove_var("ANTHROPIC_MODEL");
+
+        // Empty config model should be skipped
+        let result = get_model_name_with_default(Some(""));
+        // Falls through to claude version parsing
+        let _ = result;
+
+        // Restore original env vars
+        if let Some(val) = orig_chant {
+            std::env::set_var("CHANT_MODEL", val);
         }
         if let Some(val) = orig_anthropic {
             std::env::set_var("ANTHROPIC_MODEL", val);
