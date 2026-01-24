@@ -50,6 +50,9 @@ enum Commands {
         /// Prompt to use
         #[arg(long)]
         prompt: Option<String>,
+        /// Create a feature branch before executing
+        #[arg(long)]
+        branch: bool,
     },
 }
 
@@ -61,7 +64,7 @@ fn main() -> Result<()> {
         Commands::Add { description } => cmd_add(&description),
         Commands::List { ready } => cmd_list(ready),
         Commands::Show { id } => cmd_show(&id),
-        Commands::Work { id, prompt } => cmd_work(&id, prompt.as_deref()),
+        Commands::Work { id, prompt, branch } => cmd_work(&id, prompt.as_deref(), branch),
     }
 }
 
@@ -293,7 +296,7 @@ fn cmd_show(id: &str) -> Result<()> {
     Ok(())
 }
 
-fn cmd_work(id: &str, prompt_name: Option<&str>) -> Result<()> {
+fn cmd_work(id: &str, prompt_name: Option<&str>, create_branch: bool) -> Result<()> {
     let specs_dir = PathBuf::from(".chant/specs");
     let prompts_dir = PathBuf::from(".chant/prompts");
     let config = Config::load()?;
@@ -316,6 +319,14 @@ fn cmd_work(id: &str, prompt_name: Option<&str>) -> Result<()> {
     if spec.frontmatter.status == SpecStatus::InProgress {
         println!("{} Spec already in progress.", "⚠".yellow());
         return Ok(());
+    }
+
+    // Handle branch creation/switching if requested
+    if create_branch {
+        let branch_name = format!("{}{}", config.defaults.branch_prefix, spec.id);
+        create_or_switch_branch(&branch_name)?;
+        spec.frontmatter.branch = Some(branch_name.clone());
+        println!("{} Branch: {}", "→".cyan(), branch_name);
     }
 
     // Resolve prompt
@@ -425,4 +436,32 @@ fn get_latest_commit_for_spec(spec_id: &str) -> Result<Option<String>> {
     }
 
     Ok(None)
+}
+
+fn create_or_switch_branch(branch_name: &str) -> Result<()> {
+    use std::process::Command;
+
+    // Try to create a new branch
+    let create_output = Command::new("git")
+        .args(["checkout", "-b", branch_name])
+        .output()
+        .context("Failed to run git checkout")?;
+
+    if create_output.status.success() {
+        return Ok(());
+    }
+
+    // Branch might already exist, try to switch to it
+    let switch_output = Command::new("git")
+        .args(["checkout", branch_name])
+        .output()
+        .context("Failed to run git checkout")?;
+
+    if switch_output.status.success() {
+        return Ok(());
+    }
+
+    // Both failed, return error
+    let stderr = String::from_utf8_lossy(&switch_output.stderr);
+    anyhow::bail!("Failed to create or switch to branch '{}': {}", branch_name, stderr)
 }
