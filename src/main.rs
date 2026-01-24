@@ -202,7 +202,13 @@ fn detect_project_name() -> Option<String> {
             if line.starts_with("module") {
                 if let Some(module) = line.split_whitespace().nth(1) {
                     // Get last segment of module path
-                    return Some(module.split('/').last().unwrap_or(module).to_string());
+                    return Some(
+                        module
+                            .rsplit('/')
+                            .next()
+                            .unwrap_or(module)
+                            .to_string(),
+                    );
                 }
             }
         }
@@ -363,12 +369,12 @@ fn cmd_status() -> Result<()> {
     let total = specs.len();
 
     println!("{}", "Chant Status".bold());
-    println!("{}", "============");
+    println!("============");
     println!("  {:<12} {}", "Pending:", pending);
     println!("  {:<12} {}", "In Progress:", in_progress);
     println!("  {:<12} {}", "Completed:", completed);
     println!("  {:<12} {}", "Failed:", failed);
-    println!("  {}", "─────────────");
+    println!("  ─────────────");
     println!("  {:<12} {}", "Total:", total);
 
     Ok(())
@@ -624,10 +630,8 @@ fn invoke_agent(message: &str, spec: &Spec) -> Result<()> {
     // Stream stdout
     if let Some(stdout) = child.stdout.take() {
         let reader = BufReader::new(stdout);
-        for line in reader.lines() {
-            if let Ok(line) = line {
-                println!("{}", line);
-            }
+        for line in reader.lines().map_while(Result::ok) {
+            println!("{}", line);
         }
     }
 

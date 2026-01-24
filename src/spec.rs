@@ -3,9 +3,10 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum SpecStatus {
+    #[default]
     Pending,
     InProgress,
     Completed,
@@ -42,11 +43,6 @@ fn default_type() -> String {
     "code".to_string()
 }
 
-impl Default for SpecStatus {
-    fn default() -> Self {
-        SpecStatus::Pending
-    }
-}
 
 impl Default for SpecFrontmatter {
     fn default() -> Self {
@@ -86,7 +82,7 @@ impl Spec {
         };
 
         // Extract title from first heading
-        let title = extract_title(&body);
+        let title = extract_title(body);
 
         Ok(Self {
             id: id.to_string(),
@@ -184,8 +180,8 @@ fn split_frontmatter(content: &str) -> (Option<String>, &str) {
 fn extract_title(body: &str) -> Option<String> {
     for line in body.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with("# ") {
-            return Some(trimmed[2..].to_string());
+        if let Some(title) = trimmed.strip_prefix("# ") {
+            return Some(title.to_string());
         }
     }
     None

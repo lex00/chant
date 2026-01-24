@@ -13,6 +13,7 @@ pub struct Config {
 #[derive(Debug, Deserialize)]
 pub struct ProjectConfig {
     pub name: String,
+    #[allow(dead_code)]
     pub prefix: Option<String>,
 }
 
@@ -48,10 +49,12 @@ impl Default for DefaultsConfig {
 }
 
 impl Config {
+    #[allow(dead_code)]
     pub fn load() -> Result<Self> {
         Self::load_from(Path::new(".chant/config.md"))
     }
 
+    #[allow(dead_code)]
     pub fn load_from(path: &Path) -> Result<Self> {
         let content = fs::read_to_string(path)
             .with_context(|| format!("Failed to read config from {}", path.display()))?;
@@ -69,6 +72,7 @@ impl Config {
 
     /// Load merged configuration from global and project configs.
     /// Project config values override global config values.
+    #[allow(dead_code)]
     pub fn load_merged() -> Result<Self> {
         Self::load_merged_from(
             global_config_path().as_deref(),
@@ -78,6 +82,7 @@ impl Config {
 
     /// Load merged configuration from specified global and project config paths.
     /// Project config values override global config values.
+    #[allow(dead_code)]
     pub fn load_merged_from(global_path: Option<&Path>, project_path: &Path) -> Result<Self> {
         // Load global config if it exists
         let global_config = global_path
@@ -95,6 +100,7 @@ impl Config {
 }
 
 /// Returns the path to the global config file at ~/.config/chant/config.md
+#[allow(dead_code)]
 pub fn global_config_path() -> Option<PathBuf> {
     std::env::var("HOME")
         .ok()
@@ -102,18 +108,21 @@ pub fn global_config_path() -> Option<PathBuf> {
 }
 
 /// Partial config for merging - all fields optional
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Default)]
 struct PartialConfig {
     pub project: Option<PartialProjectConfig>,
     pub defaults: Option<PartialDefaultsConfig>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Default)]
 struct PartialProjectConfig {
     pub name: Option<String>,
     pub prefix: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Default)]
 struct PartialDefaultsConfig {
     pub prompt: Option<String>,
@@ -122,6 +131,7 @@ struct PartialDefaultsConfig {
     pub branch_prefix: Option<String>,
 }
 
+#[allow(dead_code)]
 impl PartialConfig {
     fn load_from(path: &Path) -> Result<Self> {
         let content = fs::read_to_string(path)
@@ -180,11 +190,7 @@ fn extract_frontmatter(content: &str) -> Option<String> {
     }
 
     let rest = &content[3..];
-    if let Some(end) = rest.find("---") {
-        Some(rest[..end].to_string())
-    } else {
-        None
-    }
+    rest.find("---").map(|end| rest[..end].to_string())
 }
 
 #[cfg(test)]
