@@ -328,6 +328,30 @@ fn cmd_work(id: &str, prompt_name: Option<&str>, cli_branch: bool, cli_pr: bool)
         return Ok(());
     }
 
+    // Check if dependencies are satisfied
+    let all_specs = spec::load_all_specs(&specs_dir)?;
+    if !spec.is_ready(&all_specs) {
+        // Find which dependencies are blocking
+        let mut blocking: Vec<String> = Vec::new();
+
+        if let Some(deps) = &spec.frontmatter.depends_on {
+            for dep_id in deps {
+                let dep = all_specs.iter().find(|s| s.id == *dep_id);
+                match dep {
+                    Some(d) if d.frontmatter.status == SpecStatus::Completed => continue,
+                    Some(d) => blocking.push(format!("{} ({:?})", dep_id, d.frontmatter.status).to_lowercase()),
+                    None => blocking.push(format!("{} (not found)", dep_id)),
+                }
+            }
+        }
+
+        if !blocking.is_empty() {
+            println!("{} Spec has unsatisfied dependencies.", "✗".red());
+            println!("Blocked by: {}", blocking.join(", "));
+            anyhow::bail!("Cannot execute spec with unsatisfied dependencies");
+        }
+    }
+
     // CLI flags override config defaults
     let create_pr = cli_pr || config.defaults.pr;
     let create_branch = cli_branch || config.defaults.branch || create_pr;
