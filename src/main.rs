@@ -561,7 +561,7 @@ fn cmd_work(
     let result = invoke_agent(&message, &spec);
 
     match result {
-        Ok(()) => {
+        Ok(agent_output) => {
             // Reload spec (it may have been modified by the agent)
             let mut spec = spec::resolve_spec(&specs_dir, &spec.id)?;
 
@@ -622,6 +622,9 @@ fn cmd_work(
                 println!("{} PR created: {}", "✓".green(), pr_url);
             }
 
+            // Append agent output to spec body
+            append_agent_output(&mut spec, &agent_output);
+
             spec.save(&spec_path)?;
         }
         Err(e) => {
@@ -638,7 +641,7 @@ fn cmd_work(
     Ok(())
 }
 
-fn invoke_agent(message: &str, spec: &Spec) -> Result<()> {
+fn invoke_agent(message: &str, spec: &Spec) -> Result<String> {
     use std::io::{BufRead, BufReader};
     use std::process::{Command, Stdio};
 
@@ -656,11 +659,14 @@ fn invoke_agent(message: &str, spec: &Spec) -> Result<()> {
         .spawn()
         .context("Failed to invoke claude CLI. Is it installed and in PATH?")?;
 
-    // Stream stdout
+    // Stream stdout and capture it
+    let mut captured_output = String::new();
     if let Some(stdout) = child.stdout.take() {
         let reader = BufReader::new(stdout);
         for line in reader.lines().map_while(Result::ok) {
             println!("{}", line);
+            captured_output.push_str(&line);
+            captured_output.push('\n');
         }
     }
 
@@ -670,7 +676,7 @@ fn invoke_agent(message: &str, spec: &Spec) -> Result<()> {
         anyhow::bail!("Agent exited with status: {}", status);
     }
 
-    Ok(())
+    Ok(captured_output)
 }
 
 fn get_latest_commit_for_spec(spec_id: &str) -> Result<Option<String>> {
@@ -756,4 +762,29 @@ fn create_pull_request(title: &str, body: &str) -> Result<String> {
 
     let pr_url = String::from_utf8_lossy(&output.stdout).trim().to_string();
     Ok(pr_url)
+}
+
+const MAX_AGENT_OUTPUT_CHARS: usize = 5000;
+
+fn append_agent_output(spec: &mut Spec, output: &str) {
+    let timestamp = chrono::Local::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+
+    let formatted_output = if output.len() > MAX_AGENT_OUTPUT_CHARS {
+        let truncated = &output[..MAX_AGENT_OUTPUT_CHARS];
+        format!(
+            "{}\n\n... (output truncated, {} chars total)",
+            truncated,
+            output.len()
+        )
+    } else {
+        output.to_string()
+    };
+
+    let agent_section = format!(
+        "\n\n## Agent Output\n\n{}\n\n```\n{}```\n",
+        timestamp,
+        formatted_output.trim_end()
+    );
+
+    spec.body.push_str(&agent_section);
 }
