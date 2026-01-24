@@ -53,6 +53,9 @@ enum Commands {
         /// Create a feature branch before executing
         #[arg(long)]
         branch: bool,
+        /// Create a pull request after spec completes
+        #[arg(long)]
+        pr: bool,
     },
 }
 
@@ -64,7 +67,7 @@ fn main() -> Result<()> {
         Commands::Add { description } => cmd_add(&description),
         Commands::List { ready } => cmd_list(ready),
         Commands::Show { id } => cmd_show(&id),
-        Commands::Work { id, prompt, branch } => cmd_work(&id, prompt.as_deref(), branch),
+        Commands::Work { id, prompt, branch, pr } => cmd_work(&id, prompt.as_deref(), branch, pr),
     }
 }
 
@@ -296,7 +299,7 @@ fn cmd_show(id: &str) -> Result<()> {
     Ok(())
 }
 
-fn cmd_work(id: &str, prompt_name: Option<&str>, create_branch: bool) -> Result<()> {
+fn cmd_work(id: &str, prompt_name: Option<&str>, create_branch: bool, create_pr: bool) -> Result<()> {
     let specs_dir = PathBuf::from(".chant/specs");
     let prompts_dir = PathBuf::from(".chant/prompts");
     let config = Config::load()?;
@@ -321,13 +324,19 @@ fn cmd_work(id: &str, prompt_name: Option<&str>, create_branch: bool) -> Result<
         return Ok(());
     }
 
+    // --pr implies --branch (can't create PR without a branch)
+    let create_branch = create_branch || create_pr;
+
     // Handle branch creation/switching if requested
-    if create_branch {
+    let branch_name = if create_branch {
         let branch_name = format!("{}{}", config.defaults.branch_prefix, spec.id);
         create_or_switch_branch(&branch_name)?;
         spec.frontmatter.branch = Some(branch_name.clone());
         println!("{} Branch: {}", "→".cyan(), branch_name);
-    }
+        Some(branch_name)
+    } else {
+        None
+    };
 
     // Resolve prompt
     let prompt_name = prompt_name
@@ -361,12 +370,28 @@ fn cmd_work(id: &str, prompt_name: Option<&str>, create_branch: bool) -> Result<
             spec.frontmatter.status = SpecStatus::Completed;
             spec.frontmatter.commit = commit;
             spec.frontmatter.completed_at = Some(chrono::Local::now().format("%Y-%m-%dT%H:%M:%SZ").to_string());
-            spec.save(&spec_path)?;
 
             println!("\n{} Spec completed!", "✓".green());
             if let Some(commit) = &spec.frontmatter.commit {
                 println!("Commit: {}", commit);
             }
+
+            // Create PR if requested
+            if create_pr {
+                let branch_name = branch_name.as_ref().expect("branch_name should exist when create_pr is true");
+                println!("\n{} Pushing branch to remote...", "→".cyan());
+                push_branch(branch_name)?;
+
+                println!("{} Creating pull request...", "→".cyan());
+                let pr_title = spec.title.clone().unwrap_or_else(|| spec.id.clone());
+                let pr_body = spec.body.clone();
+                let pr_url = create_pull_request(&pr_title, &pr_body)?;
+
+                spec.frontmatter.pr = Some(pr_url.clone());
+                println!("{} PR created: {}", "✓".green(), pr_url);
+            }
+
+            spec.save(&spec_path)?;
         }
         Err(e) => {
             // Update spec to failed
@@ -391,6 +416,7 @@ fn invoke_agent(message: &str, spec: &Spec) -> Result<()> {
 
     let mut child = Command::new("claude")
         .arg("--print")
+        .arg("--dangerously-skip-permissions")
         .arg(message)
         .env("CHANT_SPEC_ID", &spec.id)
         .env("CHANT_SPEC_FILE", &spec_file)
@@ -464,4 +490,37 @@ fn create_or_switch_branch(branch_name: &str) -> Result<()> {
     // Both failed, return error
     let stderr = String::from_utf8_lossy(&switch_output.stderr);
     anyhow::bail!("Failed to create or switch to branch '{}': {}", branch_name, stderr)
+}
+
+fn push_branch(branch_name: &str) -> Result<()> {
+    use std::process::Command;
+
+    let output = Command::new("git")
+        .args(["push", "-u", "origin", branch_name])
+        .output()
+        .context("Failed to run git push")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Failed to push branch '{}': {}", branch_name, stderr);
+    }
+
+    Ok(())
+}
+
+fn create_pull_request(title: &str, body: &str) -> Result<String> {
+    use std::process::Command;
+
+    let output = Command::new("gh")
+        .args(["pr", "create", "--title", title, "--body", body])
+        .output()
+        .context("Failed to run gh pr create. Is gh CLI installed?")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Failed to create pull request: {}", stderr);
+    }
+
+    let pr_url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok(pr_url)
 }
