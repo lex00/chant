@@ -150,6 +150,22 @@ Logs are stored in `.chant/logs/{spec-id}.log` and are created when a spec is ex
 - Review agent output after execution
 - Debug failed specs
 
+### Real-time Log Streaming
+
+Logs are streamed to the log file in real-time as the agent produces output, not buffered until completion. This enables monitoring spec execution as it happens:
+
+**Terminal 1:**
+```bash
+chant work 001    # Agent runs, streams to stdout AND log file
+```
+
+**Terminal 2 (simultaneously):**
+```bash
+chant log 001 -f  # See output in real-time as agent works
+```
+
+The log file header (spec ID, timestamp, prompt name) is written before the agent starts, so `chant log -f` will begin showing content immediately.
+
 ## Status
 
 ```bash
