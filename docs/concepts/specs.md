@@ -391,3 +391,40 @@ This allows tracking how the agent behaved across multiple executions.
 ### Truncation
 
 Outputs longer than 5000 characters are truncated with a note indicating the truncation. This prevents spec files from growing excessively large while still capturing the essential information about what the agent accomplished.
+
+## Model Tagging
+
+When a spec completes, chant records the AI model used in the frontmatter:
+
+```yaml
+---
+status: completed
+commit: abc1234
+model: claude-opus-4-5
+---
+```
+
+### How Model is Detected
+
+The model is detected from environment variables at execution time. Chant checks these variables in order:
+
+1. `CHANT_MODEL` - chant-specific override
+2. `ANTHROPIC_MODEL` - standard Anthropic environment variable
+
+The first non-empty value found is recorded. If neither is set, the `model` field is omitted from the frontmatter.
+
+### Possible Values
+
+The `model` field contains whatever value is in the environment variable. Common values include:
+
+- `claude-opus-4-5` - Claude Opus 4.5
+- `claude-sonnet-4` - Claude Sonnet 4
+- `claude-haiku-3-5` - Claude Haiku 3.5
+
+The value is recorded as-is without validation, so it may also contain version suffixes or custom identifiers depending on your setup.
+
+### Use Cases
+
+- **Cost tracking**: See which models completed which specs to understand costs
+- **Debugging**: Identify model-specific behavior differences when issues arise
+- **Auditing**: Know which AI version produced each change for compliance or review
