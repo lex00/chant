@@ -136,7 +136,7 @@ Do not implement. Only create the spec breakdown.
 
 ## Community Prompts
 
-Install with `chant prompt add <name>`.
+> **Note**: The prompt registry (`chant prompt add`) is planned but not yet implemented. For now, copy these prompts manually into `.chant/prompts/`.
 
 ### tdd (Test-Driven Development)
 
@@ -717,7 +717,9 @@ chant prompt pack my-workflow
 #   - examples/ (if present)
 ```
 
-### Publish
+### Publish (Planned)
+
+> **Status: Planned** - Prompt publishing commands are on the roadmap but not yet implemented.
 
 ```bash
 # To GitHub (recommended)
@@ -726,14 +728,16 @@ git add prompts/
 git commit -m "Add my-workflow prompt"
 git push
 
-# Others install with:
+# Others install with (planned):
 chant prompt add --from github:you/repo/prompts/my-workflow.md
 
-# To official registry (requires approval)
+# To official registry (requires approval, planned)
 chant prompt publish my-workflow
 ```
 
-### Version Updates
+### Version Updates (Planned)
+
+> **Status: Planned** - Prompt versioning commands are on the roadmap but not yet implemented.
 
 ```bash
 # Bump version
@@ -776,6 +780,7 @@ Prompts for [use case].
 ## Installation
 
 ```bash
+# Planned - for now, copy prompts manually to .chant/prompts/
 chant prompt add --from github:you/my-prompts/prompts/workflow-a.md
 ```
 
@@ -801,10 +806,12 @@ chant prompt add --from github:you/my-prompts/prompts/workflow-a.md
 
 ## Quick Reference
 
-### Using Community Prompts
+### Using Community Prompts (Planned)
+
+> **Status: Planned** - The prompt registry is on the roadmap. For now, copy prompts manually to `.chant/prompts/`.
 
 ```bash
-# Install
+# Install (planned)
 chant prompt add tdd
 chant prompt add security-review
 chant prompt add --from github:user/repo/prompt.md
@@ -813,7 +820,7 @@ chant prompt add --from github:user/repo/prompt.md
 chant work 001 --prompt tdd
 chant work 001 --prompt security-review
 
-# List installed
+# List installed (planned)
 chant prompt list
 
 # Update

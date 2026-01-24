@@ -116,7 +116,9 @@ lifecycle:
     max_size: 100M             # Per file (if rotate: size)
 ```
 
-### Index Rebuild
+### Index Rebuild (Planned)
+
+> **Status: Planned** - Index management commands are on the roadmap but not yet implemented.
 
 Index is derived, can always be rebuilt:
 
@@ -125,7 +127,9 @@ chant index rebuild            # Rebuild from spec files
 chant index clear              # Delete index (rebuilds on next query)
 ```
 
-## Cleanup Commands
+## Cleanup Commands (Planned)
+
+> **Status: Planned** - Cleanup commands are on the roadmap but not yet implemented.
 
 ```bash
 # Show what would be cleaned
@@ -219,7 +223,9 @@ chant cleanup branches --merged
 chant cleanup branches --dry-run
 ```
 
-## Disk Usage
+## Disk Usage (Planned)
+
+> **Status: Planned** - The `chant disk` command is on the roadmap but not yet implemented.
 
 ```bash
 $ chant disk
@@ -239,7 +245,9 @@ Recommendations:
   - Run 'chant cleanup clones' to reclaim
 ```
 
-## Export
+## Export (Planned)
+
+> **Status: Planned** - Export commands are on the roadmap but not yet implemented.
 
 ### Export Specs
 
@@ -286,7 +294,9 @@ Spec files are git-tracked. Normal git backup applies:
 - Mirror to backup location
 - Standard git disaster recovery
 
-### Local State Backup
+### Local State Backup (Planned)
+
+> **Status: Planned** - Backup/restore commands are on the roadmap but not yet implemented.
 
 For local state (not in git):
 

@@ -88,14 +88,16 @@ defaults:
 git:
   provider: github          # PR provider: github, gitlab, bitbucket
 
-# Optional - schema validation
+# Optional - schema validation (Planned)
+# Note: Schema validation is on the roadmap but not yet implemented
 schema:
   spec:
     required: [status]      # Required frontmatter fields (id comes from filename)
     status:
       enum: [pending, in_progress, completed, failed]
 
-# Optional - scale deployment settings
+# Optional - scale deployment settings (Planned)
+# Note: Scale features are on the roadmap but not yet implemented
 scale:
   # Project prefix auto-detection (monorepos)
   id_prefix:
@@ -174,7 +176,9 @@ defaults:
 
 In this example, the global config sets `branch: true` and `pr: true`, but the project config overrides both to `false`. The `git.provider: github` from global config is still applied since the project doesn't override it.
 
-## Environment Overrides
+## Environment Overrides (Planned)
+
+> **Status: Planned** - Environment variable overrides are on the roadmap but not yet implemented.
 
 ```bash
 CHANT_BRANCH=true chant work 2026-01-22-001-x7m

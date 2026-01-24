@@ -64,14 +64,18 @@ See [spec-types.md](spec-types.md) for field usage by type.
 
 ```
 waiting → pending → in_progress → completed
-                               ↘ failed
+                  ↘             ↘ failed
+                   cancelled
 ```
 
-- **waiting**: Has triggers that are not yet satisfied (see [triggers.md](triggers.md))
+- **waiting**: Has triggers that are not yet satisfied (see [triggers.md](triggers.md)) *(Planned)*
 - **pending**: Ready to execute (no triggers, or all triggers satisfied)
 - **in_progress**: Agent currently executing
 - **completed**: Work done, committed
 - **failed**: Execution failed, needs attention
+- **cancelled**: Work was cancelled before completion *(Planned)*
+
+> **Note**: The `waiting` and `cancelled` states are planned but not yet implemented. Currently only `pending`, `in_progress`, `completed`, and `failed` are supported.
 
 ## Drift Detection
 
@@ -100,7 +104,9 @@ When origin files change after spec completion → drift detected.
 | `documentation` | Origin source code changes |
 | `research` | Origin data files change |
 
-### Checking for Drift
+### Checking for Drift (Planned)
+
+> **Status: Planned** - The `chant verify` command is on the roadmap but not yet implemented.
 
 ```bash
 $ chant verify --docs
@@ -136,7 +142,9 @@ No `driver` field needed. The `.N` suffix establishes group membership.
 
 A driver with incomplete members cannot be marked complete. See [groups.md](groups.md).
 
-## Spec Cancellation
+## Spec Cancellation (Planned)
+
+> **Status: Planned** - This feature is on the roadmap but not yet implemented.
 
 ### Cancelling a Pending Spec
 
@@ -190,7 +198,9 @@ partial_commit: def456          # If agent committed partial work
 ---
 ```
 
-### Resuming Cancelled Specs
+### Resuming Cancelled Specs (Planned)
+
+> **Status: Planned** - This feature is on the roadmap but not yet implemented.
 
 ```bash
 $ chant resume 001
@@ -212,7 +222,9 @@ Specs are **append-only by default**. Prefer:
 - Add member specs for new requirements
 - Create follow-up spec
 
-### Editing Before Work
+### Editing Before Work (Planned)
+
+> **Status: Planned** - The `chant edit` command is on the roadmap but not yet implemented. For now, edit spec files directly in your text editor.
 
 Freely edit pending specs:
 
@@ -223,7 +235,9 @@ $ chant edit 001
 
 Or edit directly - it's just a markdown file.
 
-### Editing During/After Work
+### Editing During/After Work (Planned)
+
+> **Status: Planned** - This feature is on the roadmap but not yet implemented.
 
 If spec is `in_progress` or `completed`:
 
@@ -265,7 +279,9 @@ amendments:
 ---
 ```
 
-### Splitting Specs
+### Splitting Specs (Planned)
+
+> **Status: Planned** - The `chant split` command is on the roadmap but not yet implemented.
 
 If a spec grows too large:
 

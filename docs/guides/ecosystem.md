@@ -28,7 +28,9 @@ agent:
   endpoint: ${PROVIDER_ENDPOINT}
 ```
 
-## Prompt Registry
+## Prompt Registry (Planned)
+
+> **Status: Planned** - The prompt registry feature is on the roadmap but not yet implemented. Currently, prompts are managed by manually creating markdown files in `.chant/prompts/`.
 
 ### Installing Prompts
 

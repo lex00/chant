@@ -66,13 +66,15 @@ Template variables like `{{spec.title}}` and `{{project.name}}` are replaced wit
 
 That's it. No plugins, no framework code.
 
-## Using Community Prompts
+## Using Community Prompts (Planned)
+
+> **Status: Planned** - The prompt registry is on the roadmap but not yet implemented. For now, create prompts manually in `.chant/prompts/`.
 
 ```bash
-# Install from registry
+# Install from registry (planned)
 chant prompt add tdd --from chant-prompts/tdd
 
-# Or from git
+# Or from git (planned)
 chant prompt add security --from github:acme/security-prompts
 
 # Use it
