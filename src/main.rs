@@ -1609,16 +1609,16 @@ fn cmd_split(id: &str) -> Result<()> {
     );
 
     // Create subtask spec files
-    let parent_id = spec.id.clone();
+    let driver_id = spec.id.clone();
     for (index, subtask) in subtasks.iter().enumerate() {
         let subtask_number = index + 1;
-        let subtask_id = format!("{}.{}", parent_id, subtask_number);
+        let subtask_id = format!("{}.{}", driver_id, subtask_number);
         let subtask_filename = format!("{}.md", subtask_id);
         let subtask_path = specs_dir.join(&subtask_filename);
 
         // Create frontmatter with dependencies
         let depends_on = if index > 0 {
-            Some(vec![format!("{}.{}", parent_id, index)])
+            Some(vec![format!("{}.{}", driver_id, index)])
         } else {
             None
         };
@@ -1642,12 +1642,12 @@ fn cmd_split(id: &str) -> Result<()> {
         println!("  {} {}", "✓".green(), subtask_id);
     }
 
-    // Update parent spec to type: group
+    // Update driver spec to type: group
     spec.frontmatter.r#type = "group".to_string();
     spec.save(&spec_path)?;
 
     println!(
-        "\n{} Split complete! Parent spec {} is now type: group",
+        "\n{} Split complete! Driver spec {} is now type: group",
         "✓".green(),
         spec.id
     );
@@ -1668,11 +1668,11 @@ struct Subtask {
 
 fn assemble_split_prompt(spec: &Spec, config: &Config) -> String {
     format!(
-        r#"# Split Specification into Subtasks
+        r#"# Split Driver Specification into Subtasks
 
-You are analyzing a specification for the {} project and proposing how to split it into smaller, ordered subtasks.
+You are analyzing a driver specification for the {} project and proposing how to split it into smaller, ordered subtasks.
 
-## Specification to Split
+## Driver Specification to Split
 
 **ID:** {}
 **Title:** {}
