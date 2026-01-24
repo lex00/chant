@@ -202,13 +202,7 @@ fn detect_project_name() -> Option<String> {
             if line.starts_with("module") {
                 if let Some(module) = line.split_whitespace().nth(1) {
                     // Get last segment of module path
-                    return Some(
-                        module
-                            .rsplit('/')
-                            .next()
-                            .unwrap_or(module)
-                            .to_string(),
-                    );
+                    return Some(module.rsplit('/').next().unwrap_or(module).to_string());
                 }
             }
         }

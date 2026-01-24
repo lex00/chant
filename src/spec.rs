@@ -43,7 +43,6 @@ fn default_type() -> String {
     "code".to_string()
 }
 
-
 impl Default for SpecFrontmatter {
     fn default() -> Self {
         Self {
