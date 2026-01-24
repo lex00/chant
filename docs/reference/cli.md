@@ -6,17 +6,94 @@
 chant add "Fix authentication bug"    # Create spec
 chant list                            # List all specs
 chant list --ready                    # List ready specs
+chant list --label auth               # Filter by label
+chant list --label auth --label api   # Filter by multiple labels (OR)
+chant list --ready --label feature    # Combine filters
 chant show 2026-01-22-001-x7m         # Show spec details
 chant edit 2026-01-22-001-x7m         # Open in editor
+```
+
+### Label Filtering
+
+Filter specs by labels defined in their frontmatter:
+
+```yaml
+# In spec frontmatter
+labels: [auth, feature]
+```
+
+```bash
+# Filter by single label
+chant list --label auth
+
+# Filter by multiple labels (OR - shows specs matching ANY label)
+chant list --label auth --label api
+
+# Combine with --ready
+chant list --ready --label feature
 ```
 
 ## Execution
 
 ```bash
-chant work 2026-01-22-001-x7m         # Execute single spec
-chant work 2026-01-22-001-x7m --prompt tdd  # Execute with specific prompt
-chant work 2026-01-22-001-x7m --parallel  # Execute all ready members
-chant split 2026-01-22-001-x7m           # Split into group members
+chant work 2026-01-22-001-x7m              # Execute single spec
+chant work 2026-01-22-001-x7m --prompt tdd # Execute with specific prompt
+chant work 2026-01-22-001-x7m --force      # Replay a completed spec
+chant work --parallel                      # Execute all ready specs in parallel
+chant work --parallel --label auth         # Execute ready specs with label
+chant split 2026-01-22-001-x7m             # Split into group members
+```
+
+### Replaying Completed Specs
+
+Use `--force` to replay a spec that has already been completed:
+
+```bash
+# Replay a completed spec to verify implementation
+chant work 001 --force
+```
+
+When replaying, the agent will:
+1. Detect the implementation already exists
+2. Verify acceptance criteria are met
+3. Append a new Agent Output section to the spec
+4. Not create duplicate commits (replay is idempotent)
+
+**When to use `--force`:**
+- Verification: Re-check that acceptance criteria are still satisfied
+- Prompt changes: Re-run after updating the prompt template
+- Testing: Validate agent behavior on known implementations
+
+### Parallel Execution
+
+Execute multiple ready specs concurrently:
+
+```bash
+# Execute all ready specs in parallel
+chant work --parallel
+
+# Filter by label
+chant work --parallel --label auth
+chant work --parallel --label feature --label urgent
+
+# Specify prompt for all specs
+chant work --parallel --prompt tdd
+```
+
+Example output:
+
+```
+→ Starting 3 specs in parallel...
+
+[00m-khh] Working with prompt 'standard'
+[00n-1nl] Working with prompt 'standard'
+[00o-6w7] Working with prompt 'standard'
+
+[00m-khh] ✓ Completed (commit: abc1234)
+[00n-1nl] ✓ Completed (commit: def5678)
+[00o-6w7] ✓ Completed (commit: ghi9012)
+
+Summary: 3 completed, 0 failed
 ```
 
 ## Search
