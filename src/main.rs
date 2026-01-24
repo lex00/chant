@@ -765,7 +765,7 @@ fn cmd_work(
     let message = prompt::assemble(&spec, &prompt_path, &config)?;
 
     // Invoke agent
-    let result = invoke_agent(&message, &spec, prompt_name);
+    let result = invoke_agent(&message, &spec, prompt_name, &config);
 
     match result {
         Ok(agent_output) => {
@@ -968,7 +968,7 @@ fn cmd_work_parallel(
         let config_model = config.defaults.model.clone();
 
         let handle = thread::spawn(move || {
-            let result = invoke_agent_with_prefix(&message, &spec_id, &prompt_name_clone);
+            let result = invoke_agent_with_prefix(&message, &spec_id, &prompt_name_clone, config_model.as_deref());
             let (success, commit, error) = match result {
                 Ok(_) => {
                     // Get the commit hash
@@ -1068,7 +1068,7 @@ fn cmd_work_parallel(
 }
 
 /// Invoke the agent with output prefixed by spec ID
-fn invoke_agent_with_prefix(message: &str, spec_id: &str, prompt_name: &str) -> Result<()> {
+fn invoke_agent_with_prefix(message: &str, spec_id: &str, prompt_name: &str, config_model: Option<&str>) -> Result<()> {
     use std::io::{BufRead, BufReader};
     use std::process::{Command, Stdio};
 
@@ -1089,11 +1089,16 @@ fn invoke_agent_with_prefix(message: &str, spec_id: &str, prompt_name: &str) -> 
     // Set environment variables
     let spec_file = std::fs::canonicalize(format!(".chant/specs/{}.md", spec_id))?;
 
+    // Get the model to use
+    let model = get_model_for_invocation(config_model);
+
     let mut child = Command::new("claude")
         .arg("--print")
         .arg("--output-format")
         .arg("stream-json")
         .arg("--verbose")
+        .arg("--model")
+        .arg(&model)
         .arg("--dangerously-skip-permissions")
         .arg(message)
         .env("CHANT_SPEC_ID", spec_id)
@@ -1135,7 +1140,7 @@ fn invoke_agent_with_prefix(message: &str, spec_id: &str, prompt_name: &str) -> 
     Ok(())
 }
 
-fn invoke_agent(message: &str, spec: &Spec, prompt_name: &str) -> Result<String> {
+fn invoke_agent(message: &str, spec: &Spec, prompt_name: &str, config: &Config) -> Result<String> {
     use std::io::{BufRead, BufReader};
     use std::process::{Command, Stdio};
 
@@ -1151,11 +1156,16 @@ fn invoke_agent(message: &str, spec: &Spec, prompt_name: &str) -> Result<String>
     // Set environment variables
     let spec_file = std::fs::canonicalize(format!(".chant/specs/{}.md", spec.id))?;
 
+    // Get the model to use
+    let model = get_model_for_invocation(config.defaults.model.as_deref());
+
     let mut child = Command::new("claude")
         .arg("--print")
         .arg("--output-format")
         .arg("stream-json")
         .arg("--verbose")
+        .arg("--model")
+        .arg(&model)
         .arg("--dangerously-skip-permissions")
         .arg(message)
         .env("CHANT_SPEC_ID", &spec.id)
@@ -1403,6 +1413,41 @@ impl StreamingLogWriter {
 /// 4. Parse from `claude --version` output (last resort)
 fn get_model_name(config: Option<&Config>) -> Option<String> {
     get_model_name_with_default(config.and_then(|c| c.defaults.model.as_deref()))
+}
+
+/// Default model when no env var or config is set
+const DEFAULT_MODEL: &str = "haiku";
+
+/// Get the model to use for agent invocation.
+/// Priority:
+/// 1. CHANT_MODEL env var
+/// 2. ANTHROPIC_MODEL env var
+/// 3. defaults.model in config
+/// 4. "haiku" as hardcoded fallback
+fn get_model_for_invocation(config_model: Option<&str>) -> String {
+    // 1. CHANT_MODEL env var
+    if let Ok(model) = std::env::var("CHANT_MODEL") {
+        if !model.is_empty() {
+            return model;
+        }
+    }
+
+    // 2. ANTHROPIC_MODEL env var
+    if let Ok(model) = std::env::var("ANTHROPIC_MODEL") {
+        if !model.is_empty() {
+            return model;
+        }
+    }
+
+    // 3. defaults.model from config
+    if let Some(model) = config_model {
+        if !model.is_empty() {
+            return model.to_string();
+        }
+    }
+
+    // 4. Hardcoded fallback
+    DEFAULT_MODEL.to_string()
 }
 
 /// Get the model name with an optional default from config.
@@ -2166,5 +2211,174 @@ status: pending
         let json_line = r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Analyzing..."},{"type":"tool_use","name":"read_file"}]}}"#;
         let texts = extract_text_from_stream_json(json_line);
         assert_eq!(texts, vec!["Analyzing..."]);
+    }
+
+    #[test]
+    fn test_get_model_for_invocation_from_chant_model() {
+        // Save original env vars
+        let orig_chant = std::env::var("CHANT_MODEL").ok();
+        let orig_anthropic = std::env::var("ANTHROPIC_MODEL").ok();
+
+        // Set CHANT_MODEL
+        std::env::set_var("CHANT_MODEL", "claude-opus-4-5");
+        std::env::remove_var("ANTHROPIC_MODEL");
+
+        let result = get_model_for_invocation(None);
+        assert_eq!(result, "claude-opus-4-5");
+
+        // Restore original env vars
+        if let Some(val) = orig_chant {
+            std::env::set_var("CHANT_MODEL", val);
+        } else {
+            std::env::remove_var("CHANT_MODEL");
+        }
+        if let Some(val) = orig_anthropic {
+            std::env::set_var("ANTHROPIC_MODEL", val);
+        }
+    }
+
+    #[test]
+    fn test_get_model_for_invocation_from_anthropic_model() {
+        // Save original env vars
+        let orig_chant = std::env::var("CHANT_MODEL").ok();
+        let orig_anthropic = std::env::var("ANTHROPIC_MODEL").ok();
+
+        // Set only ANTHROPIC_MODEL
+        std::env::remove_var("CHANT_MODEL");
+        std::env::set_var("ANTHROPIC_MODEL", "claude-sonnet-4");
+
+        let result = get_model_for_invocation(None);
+        assert_eq!(result, "claude-sonnet-4");
+
+        // Restore original env vars
+        if let Some(val) = orig_chant {
+            std::env::set_var("CHANT_MODEL", val);
+        }
+        if let Some(val) = orig_anthropic {
+            std::env::set_var("ANTHROPIC_MODEL", val);
+        } else {
+            std::env::remove_var("ANTHROPIC_MODEL");
+        }
+    }
+
+    #[test]
+    fn test_get_model_for_invocation_chant_takes_precedence() {
+        // Save original env vars
+        let orig_chant = std::env::var("CHANT_MODEL").ok();
+        let orig_anthropic = std::env::var("ANTHROPIC_MODEL").ok();
+
+        // Set both env vars
+        std::env::set_var("CHANT_MODEL", "claude-opus-4-5");
+        std::env::set_var("ANTHROPIC_MODEL", "claude-sonnet-4");
+
+        let result = get_model_for_invocation(Some("config-model"));
+        // CHANT_MODEL takes precedence
+        assert_eq!(result, "claude-opus-4-5");
+
+        // Restore original env vars
+        if let Some(val) = orig_chant {
+            std::env::set_var("CHANT_MODEL", val);
+        } else {
+            std::env::remove_var("CHANT_MODEL");
+        }
+        if let Some(val) = orig_anthropic {
+            std::env::set_var("ANTHROPIC_MODEL", val);
+        } else {
+            std::env::remove_var("ANTHROPIC_MODEL");
+        }
+    }
+
+    #[test]
+    fn test_get_model_for_invocation_from_config() {
+        // Save original env vars
+        let orig_chant = std::env::var("CHANT_MODEL").ok();
+        let orig_anthropic = std::env::var("ANTHROPIC_MODEL").ok();
+
+        // Unset env vars so config default is used
+        std::env::remove_var("CHANT_MODEL");
+        std::env::remove_var("ANTHROPIC_MODEL");
+
+        let result = get_model_for_invocation(Some("claude-sonnet-4"));
+        assert_eq!(result, "claude-sonnet-4");
+
+        // Restore original env vars
+        if let Some(val) = orig_chant {
+            std::env::set_var("CHANT_MODEL", val);
+        }
+        if let Some(val) = orig_anthropic {
+            std::env::set_var("ANTHROPIC_MODEL", val);
+        }
+    }
+
+    #[test]
+    fn test_get_model_for_invocation_defaults_to_haiku() {
+        // Save original env vars
+        let orig_chant = std::env::var("CHANT_MODEL").ok();
+        let orig_anthropic = std::env::var("ANTHROPIC_MODEL").ok();
+
+        // Unset both env vars and no config
+        std::env::remove_var("CHANT_MODEL");
+        std::env::remove_var("ANTHROPIC_MODEL");
+
+        let result = get_model_for_invocation(None);
+        assert_eq!(result, "haiku");
+
+        // Restore original env vars
+        if let Some(val) = orig_chant {
+            std::env::set_var("CHANT_MODEL", val);
+        }
+        if let Some(val) = orig_anthropic {
+            std::env::set_var("ANTHROPIC_MODEL", val);
+        }
+    }
+
+    #[test]
+    fn test_get_model_for_invocation_empty_env_falls_through() {
+        // Save original env vars
+        let orig_chant = std::env::var("CHANT_MODEL").ok();
+        let orig_anthropic = std::env::var("ANTHROPIC_MODEL").ok();
+
+        // Set empty env vars
+        std::env::set_var("CHANT_MODEL", "");
+        std::env::set_var("ANTHROPIC_MODEL", "");
+
+        let result = get_model_for_invocation(Some("config-model"));
+        // Empty env vars should fall through to config
+        assert_eq!(result, "config-model");
+
+        // Restore original env vars
+        if let Some(val) = orig_chant {
+            std::env::set_var("CHANT_MODEL", val);
+        } else {
+            std::env::remove_var("CHANT_MODEL");
+        }
+        if let Some(val) = orig_anthropic {
+            std::env::set_var("ANTHROPIC_MODEL", val);
+        } else {
+            std::env::remove_var("ANTHROPIC_MODEL");
+        }
+    }
+
+    #[test]
+    fn test_get_model_for_invocation_empty_config_falls_to_haiku() {
+        // Save original env vars
+        let orig_chant = std::env::var("CHANT_MODEL").ok();
+        let orig_anthropic = std::env::var("ANTHROPIC_MODEL").ok();
+
+        // Unset env vars
+        std::env::remove_var("CHANT_MODEL");
+        std::env::remove_var("ANTHROPIC_MODEL");
+
+        // Empty config model should fall through to haiku
+        let result = get_model_for_invocation(Some(""));
+        assert_eq!(result, "haiku");
+
+        // Restore original env vars
+        if let Some(val) = orig_chant {
+            std::env::set_var("CHANT_MODEL", val);
+        }
+        if let Some(val) = orig_anthropic {
+            std::env::set_var("ANTHROPIC_MODEL", val);
+        }
     }
 }
