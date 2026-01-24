@@ -38,6 +38,9 @@ enum Commands {
         /// Show only ready specs
         #[arg(long)]
         ready: bool,
+        /// Filter by label (can be specified multiple times, shows specs with any matching label)
+        #[arg(long)]
+        label: Vec<String>,
     },
     /// Show spec details
     Show {
@@ -68,7 +71,7 @@ fn main() -> Result<()> {
     match cli.command {
         Commands::Init { name } => cmd_init(name),
         Commands::Add { description } => cmd_add(&description),
-        Commands::List { ready } => cmd_list(ready),
+        Commands::List { ready, label } => cmd_list(ready, &label),
         Commands::Show { id } => cmd_show(&id),
         Commands::Work { id, prompt, branch, pr } => cmd_work(&id, prompt.as_deref(), branch, pr),
         Commands::Mcp => mcp::run_server(),
@@ -229,7 +232,7 @@ status: pending
     Ok(())
 }
 
-fn cmd_list(ready_only: bool) -> Result<()> {
+fn cmd_list(ready_only: bool, labels: &[String]) -> Result<()> {
     let specs_dir = PathBuf::from(".chant/specs");
 
     if !specs_dir.exists() {
@@ -244,9 +247,24 @@ fn cmd_list(ready_only: bool) -> Result<()> {
         specs.retain(|s| s.is_ready(&all_specs));
     }
 
+    // Filter by labels if specified (OR logic - show specs with any matching label)
+    if !labels.is_empty() {
+        specs.retain(|s| {
+            if let Some(spec_labels) = &s.frontmatter.labels {
+                labels.iter().any(|l| spec_labels.contains(l))
+            } else {
+                false
+            }
+        });
+    }
+
     if specs.is_empty() {
-        if ready_only {
+        if ready_only && !labels.is_empty() {
+            println!("No ready specs with specified labels.");
+        } else if ready_only {
             println!("No ready specs.");
+        } else if !labels.is_empty() {
+            println!("No specs with specified labels.");
         } else {
             println!("No specs. Create one with `chant add \"description\"`");
         }
