@@ -67,6 +67,8 @@ enum Commands {
     Status,
     /// Show ready specs (shortcut for `list --ready`)
     Ready,
+    /// Validate all specs for common issues
+    Lint,
 }
 
 fn main() -> Result<()> {
@@ -81,6 +83,7 @@ fn main() -> Result<()> {
         Commands::Mcp => mcp::run_server(),
         Commands::Status => cmd_status(),
         Commands::Ready => cmd_list(true, &[]),
+        Commands::Lint => cmd_lint(),
     }
 }
 
@@ -363,6 +366,90 @@ fn cmd_status() -> Result<()> {
     println!("  {:<12} {}", "Total:", total);
 
     Ok(())
+}
+
+fn cmd_lint() -> Result<()> {
+    let specs_dir = PathBuf::from(".chant/specs");
+
+    if !specs_dir.exists() {
+        anyhow::bail!("Chant not initialized. Run `chant init` first.");
+    }
+
+    println!("Linting specs...");
+
+    let mut issues: Vec<(String, String)> = Vec::new();
+    let mut total_specs = 0;
+
+    // First pass: collect all spec IDs and check for parse errors
+    let mut all_spec_ids: Vec<String> = Vec::new();
+    let mut specs_to_check: Vec<Spec> = Vec::new();
+
+    for entry in std::fs::read_dir(&specs_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+
+        if path.extension().map(|e| e == "md").unwrap_or(false) {
+            total_specs += 1;
+            let id = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("unknown")
+                .to_string();
+
+            match Spec::load(&path) {
+                Ok(spec) => {
+                    all_spec_ids.push(spec.id.clone());
+                    specs_to_check.push(spec);
+                }
+                Err(e) => {
+                    let issue = format!("Invalid YAML frontmatter: {}", e);
+                    println!("{} {}: {}", "✗".red(), id, issue);
+                    issues.push((id, issue));
+                }
+            }
+        }
+    }
+
+    // Second pass: validate each spec
+    for spec in &specs_to_check {
+        let mut spec_issues: Vec<String> = Vec::new();
+
+        // Check for title
+        if spec.title.is_none() {
+            spec_issues.push("Missing title".to_string());
+        }
+
+        // Check depends_on references
+        if let Some(deps) = &spec.frontmatter.depends_on {
+            for dep_id in deps {
+                if !all_spec_ids.contains(dep_id) {
+                    spec_issues.push(format!("Unknown dependency '{}'", dep_id));
+                }
+            }
+        }
+
+        if spec_issues.is_empty() {
+            println!("{} {}", "✓".green(), spec.id);
+        } else {
+            for issue in spec_issues {
+                println!("{} {}: {}", "✗".red(), spec.id, issue);
+                issues.push((spec.id.clone(), issue));
+            }
+        }
+    }
+
+    if issues.is_empty() {
+        println!("\nAll {} specs valid.", total_specs);
+        Ok(())
+    } else {
+        println!(
+            "\nFound {} {} in {} specs.",
+            issues.len(),
+            if issues.len() == 1 { "issue" } else { "issues" },
+            total_specs
+        );
+        std::process::exit(1);
+    }
 }
 
 fn cmd_work(id: &str, prompt_name: Option<&str>, cli_branch: bool, cli_pr: bool) -> Result<()> {
