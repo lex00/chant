@@ -482,8 +482,9 @@ fn cmd_work(
     let spec_path = specs_dir.join(format!("{}.md", spec.id));
 
     // Check if already completed
-    if spec.frontmatter.status == SpecStatus::Completed {
+    if spec.frontmatter.status == SpecStatus::Completed && !force {
         println!("{} Spec already completed.", "⚠".yellow());
+        println!("Use {} to replay.", "--force".cyan());
         return Ok(());
     }
 
