@@ -692,9 +692,38 @@ fn get_latest_commit_for_spec(spec_id: &str) -> Result<Option<String>> {
     if output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout);
         if let Some(hash) = stdout.split_whitespace().next() {
-            return Ok(Some(hash.to_string()));
+            if !hash.is_empty() {
+                return Ok(Some(hash.to_string()));
+            }
         }
     }
+
+    // Fallback: get HEAD commit if no spec-specific commit found
+    let head_output = Command::new("git")
+        .args(["rev-parse", "--short=7", "HEAD"])
+        .output()?;
+
+    if head_output.status.success() {
+        let head_hash = String::from_utf8_lossy(&head_output.stdout)
+            .trim()
+            .to_string();
+        if !head_hash.is_empty() {
+            eprintln!(
+                "{} No commit with 'chant({})' found, using HEAD: {}",
+                "⚠".yellow(),
+                spec_id,
+                head_hash
+            );
+            return Ok(Some(head_hash));
+        }
+    }
+
+    // No commit found at all - log warning
+    eprintln!(
+        "{} Could not find any commit for spec '{}'",
+        "⚠".yellow(),
+        spec_id
+    );
 
     Ok(None)
 }
