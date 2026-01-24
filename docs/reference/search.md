@@ -1,4 +1,6 @@
-# Search Syntax
+# Search Syntax (Planned)
+
+> **Status: Planned** - The `chant search` command is on the roadmap but not yet implemented. Spec filtering is currently available via `chant list --label`.
 
 ## Overview
 

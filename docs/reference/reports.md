@@ -1,4 +1,6 @@
-# Export
+# Export (Planned)
+
+> **Status: Planned** - The `chant export` command is on the roadmap but not yet implemented.
 
 ## Philosophy
 

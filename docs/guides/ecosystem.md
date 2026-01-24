@@ -196,7 +196,9 @@ models:
 ---
 ```
 
-## Discovery
+## Discovery (Planned)
+
+> **Status: Planned** - Prompt discovery commands are on the roadmap but not yet implemented.
 
 ```bash
 # Search registry

@@ -126,7 +126,9 @@ Agent can then fix and retry.
 
 The format is human-readable AND machine-validatable. Chant chooses human-first with machine validation.
 
-## Linter as Coach
+## Linter as Coach (Planned)
+
+> **Status: Planned** - Advanced linter features are on the roadmap but not yet implemented. Basic `chant lint` is available for validating specs.
 
 ### Philosophy
 
