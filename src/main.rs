@@ -578,7 +578,7 @@ fn cmd_work(
     let message = prompt::assemble(&spec, &prompt_path, &config)?;
 
     // Invoke agent
-    let result = invoke_agent(&message, &spec);
+    let result = invoke_agent(&message, &spec, prompt_name);
 
     match result {
         Ok(agent_output) => {
@@ -778,9 +778,10 @@ fn cmd_work_parallel(
         let tx_clone = tx.clone();
         let spec_id = spec.id.clone();
         let specs_dir_clone = specs_dir.clone();
+        let prompt_name_clone = spec_prompt.to_string();
 
         let handle = thread::spawn(move || {
-            let result = invoke_agent_with_prefix(&message, &spec_id);
+            let result = invoke_agent_with_prefix(&message, &spec_id, &prompt_name_clone);
             let (success, commit, error) = match result {
                 Ok(_) => {
                     // Get the commit hash
@@ -879,7 +880,7 @@ fn cmd_work_parallel(
 }
 
 /// Invoke the agent with output prefixed by spec ID
-fn invoke_agent_with_prefix(message: &str, spec_id: &str) -> Result<()> {
+fn invoke_agent_with_prefix(message: &str, spec_id: &str, prompt_name: &str) -> Result<()> {
     use std::io::{BufRead, BufReader};
     use std::process::{Command, Stdio};
 
@@ -897,16 +898,24 @@ fn invoke_agent_with_prefix(message: &str, spec_id: &str) -> Result<()> {
         .spawn()
         .context("Failed to invoke claude CLI. Is it installed and in PATH?")?;
 
-    // Stream stdout with prefix
+    // Stream stdout with prefix and capture it
+    let mut captured_output = String::new();
     if let Some(stdout) = child.stdout.take() {
         let reader = BufReader::new(stdout);
         let prefix = format!("[{}]", spec_id);
         for line in reader.lines().map_while(Result::ok) {
             println!("{} {}", prefix.cyan(), line);
+            captured_output.push_str(&line);
+            captured_output.push('\n');
         }
     }
 
     let status = child.wait()?;
+
+    // Write full output to log file (regardless of success/failure)
+    if let Err(e) = write_agent_log(spec_id, prompt_name, &captured_output) {
+        eprintln!("{} [{}] Failed to write agent log: {}", "⚠".yellow(), spec_id, e);
+    }
 
     if !status.success() {
         anyhow::bail!("Agent exited with status: {}", status);
@@ -915,7 +924,7 @@ fn invoke_agent_with_prefix(message: &str, spec_id: &str) -> Result<()> {
     Ok(())
 }
 
-fn invoke_agent(message: &str, spec: &Spec) -> Result<String> {
+fn invoke_agent(message: &str, spec: &Spec, prompt_name: &str) -> Result<String> {
     use std::io::{BufRead, BufReader};
     use std::process::{Command, Stdio};
 
@@ -945,6 +954,11 @@ fn invoke_agent(message: &str, spec: &Spec) -> Result<String> {
     }
 
     let status = child.wait()?;
+
+    // Write full output to log file (regardless of success/failure)
+    if let Err(e) = write_agent_log(&spec.id, prompt_name, &captured_output) {
+        eprintln!("{} Failed to write agent log: {}", "⚠".yellow(), e);
+    }
 
     if !status.success() {
         anyhow::bail!("Agent exited with status: {}", status);
@@ -1051,6 +1065,56 @@ fn push_branch(branch_name: &str) -> Result<()> {
 }
 
 const MAX_AGENT_OUTPUT_CHARS: usize = 5000;
+
+/// Ensure the logs directory exists and is in .gitignore
+fn ensure_logs_dir() -> Result<()> {
+    let logs_dir = PathBuf::from(".chant/logs");
+    let gitignore_path = PathBuf::from(".chant/.gitignore");
+
+    // Create logs directory if it doesn't exist
+    if !logs_dir.exists() {
+        std::fs::create_dir_all(&logs_dir)?;
+
+        // Add logs/ to .gitignore if not already present
+        let gitignore_content = if gitignore_path.exists() {
+            std::fs::read_to_string(&gitignore_path)?
+        } else {
+            String::new()
+        };
+
+        if !gitignore_content.lines().any(|line| line.trim() == "logs/") {
+            let new_content = if gitignore_content.is_empty() {
+                "logs/\n".to_string()
+            } else if gitignore_content.ends_with('\n') {
+                format!("{}logs/\n", gitignore_content)
+            } else {
+                format!("{}\nlogs/\n", gitignore_content)
+            };
+            std::fs::write(&gitignore_path, new_content)?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Write full agent output to log file
+fn write_agent_log(spec_id: &str, prompt_name: &str, output: &str) -> Result<()> {
+    ensure_logs_dir()?;
+
+    let log_path = PathBuf::from(format!(".chant/logs/{}.log", spec_id));
+    let timestamp = chrono::Local::now()
+        .format("%Y-%m-%dT%H:%M:%SZ")
+        .to_string();
+
+    let log_content = format!(
+        "# Agent Log: {}\n# Started: {}\n# Prompt: {}\n\n{}",
+        spec_id, timestamp, prompt_name, output
+    );
+
+    std::fs::write(&log_path, log_content)?;
+
+    Ok(())
+}
 
 fn append_agent_output(spec: &mut Spec, output: &str) {
     let timestamp = chrono::Local::now()
