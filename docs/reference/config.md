@@ -84,6 +84,10 @@ defaults:
   pr: false                 # Create PRs?
   branch_prefix: "chant/"   # Branch name prefix
 
+# Optional - git provider settings
+git:
+  provider: github          # PR provider: github, gitlab, bitbucket
+
 # Optional - schema validation
 schema:
   spec:

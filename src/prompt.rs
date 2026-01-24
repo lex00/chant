@@ -106,6 +106,7 @@ mod tests {
                 prefix: None,
             },
             defaults: crate::config::DefaultsConfig::default(),
+            git: crate::config::GitConfig::default(),
         }
     }
 
