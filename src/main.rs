@@ -65,6 +65,8 @@ enum Commands {
     Mcp,
     /// Show project status summary
     Status,
+    /// Show ready specs (shortcut for `list --ready`)
+    Ready,
 }
 
 fn main() -> Result<()> {
@@ -78,6 +80,7 @@ fn main() -> Result<()> {
         Commands::Work { id, prompt, branch, pr } => cmd_work(&id, prompt.as_deref(), branch, pr),
         Commands::Mcp => mcp::run_server(),
         Commands::Status => cmd_status(),
+        Commands::Ready => cmd_list(true, &[]),
     }
 }
 
