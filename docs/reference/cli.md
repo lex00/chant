@@ -123,7 +123,9 @@ Example output:
 Summary: 3 completed, 0 failed
 ```
 
-## Search
+## Search (Planned)
+
+> **Status: Planned** - This feature is on the roadmap but not yet implemented.
 
 ```bash
 chant search "auth"                   # Search archive
@@ -137,7 +139,9 @@ chant status                          # Overview
 chant ready                           # Show ready specs
 ```
 
-## DAG Visualization
+## DAG Visualization (Planned)
+
+> **Status: Planned** - This feature is on the roadmap but not yet implemented.
 
 ```bash
 chant dag                             # ASCII dependency graph
@@ -180,7 +184,9 @@ graph LR
     003 --> 006[Add docs]
 ```
 
-## Daemon (Scale)
+## Daemon (Planned)
+
+> **Status: Planned** - This feature is on the roadmap but not yet implemented.
 
 ```bash
 chant daemon start                    # Start daemon
@@ -193,7 +199,9 @@ chant daemon status                   # Check if running
 Daemon provides: persistent index, lock table, queue, metrics.
 CLI auto-connects to daemon if running, falls back to direct mode.
 
-## Queue (Daemon Required)
+## Queue (Planned)
+
+> **Status: Planned** - This feature is on the roadmap but not yet implemented.
 
 ```bash
 chant queue next                      # Get next ready spec
@@ -201,9 +209,11 @@ chant queue next --project auth       # Filter by project
 chant queue stats                     # Queue depth, wait times
 ```
 
-Used by orchestrators and worker mode.
+Used by orchestrators and worker mode. Requires daemon.
 
-## Lock (Optional)
+## Lock (Planned)
+
+> **Status: Planned** - This feature is on the roadmap but not yet implemented.
 
 ```bash
 chant lock list                       # Show all locks
@@ -214,7 +224,9 @@ chant lock status <id>                # Check lock status
 
 Without daemon: PID files. With daemon: in-memory table.
 
-## Agent Worker (Scale)
+## Agent Worker (Planned)
+
+> **Status: Planned** - This feature is on the roadmap but not yet implemented.
 
 ```bash
 chant agent worker                    # Start worker mode

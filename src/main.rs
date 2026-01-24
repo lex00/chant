@@ -50,8 +50,8 @@ enum Commands {
     },
     /// Execute a spec
     Work {
-        /// Spec ID (full or partial)
-        id: String,
+        /// Spec ID (full or partial). If omitted with --parallel, executes all ready specs.
+        id: Option<String>,
         /// Prompt to use
         #[arg(long)]
         prompt: Option<String>,
@@ -64,6 +64,12 @@ enum Commands {
         /// Skip validation of unchecked acceptance criteria
         #[arg(long)]
         force: bool,
+        /// Execute all ready specs in parallel (when no spec ID provided)
+        #[arg(long)]
+        parallel: bool,
+        /// Filter by label (can be specified multiple times, used with --parallel)
+        #[arg(long)]
+        label: Vec<String>,
     },
     /// Start MCP server (Model Context Protocol)
     Mcp,
@@ -89,7 +95,9 @@ fn main() -> Result<()> {
             branch,
             pr,
             force,
-        } => cmd_work(&id, prompt.as_deref(), branch, pr, force),
+            parallel,
+            label,
+        } => cmd_work(id.as_deref(), prompt.as_deref(), branch, pr, force, parallel, &label),
         Commands::Mcp => mcp::run_server(),
         Commands::Status => cmd_status(),
         Commands::Ready => cmd_list(true, &[]),
@@ -464,11 +472,13 @@ fn cmd_lint() -> Result<()> {
 }
 
 fn cmd_work(
-    id: &str,
+    id: Option<&str>,
     prompt_name: Option<&str>,
     cli_branch: bool,
     cli_pr: bool,
     force: bool,
+    parallel: bool,
+    labels: &[String],
 ) -> Result<()> {
     let specs_dir = PathBuf::from(".chant/specs");
     let prompts_dir = PathBuf::from(".chant/prompts");
@@ -477,6 +487,14 @@ fn cmd_work(
     if !specs_dir.exists() {
         anyhow::bail!("Chant not initialized. Run `chant init` first.");
     }
+
+    // Handle parallel execution mode
+    if parallel && id.is_none() {
+        return cmd_work_parallel(&specs_dir, &prompts_dir, &config, prompt_name, labels);
+    }
+
+    // If no ID and not parallel, require an ID
+    let id = id.ok_or_else(|| anyhow::anyhow!("Spec ID required (or use --parallel)"))?;
 
     // Resolve spec
     let mut spec = spec::resolve_spec(&specs_dir, id)?;
@@ -643,6 +661,255 @@ fn cmd_work(
             println!("\n{} Spec failed: {}", "✗".red(), e);
             return Err(e);
         }
+    }
+
+    Ok(())
+}
+
+/// Result of a single spec execution in parallel mode
+struct ParallelResult {
+    spec_id: String,
+    success: bool,
+    commit: Option<String>,
+    error: Option<String>,
+}
+
+fn cmd_work_parallel(
+    specs_dir: &PathBuf,
+    prompts_dir: &PathBuf,
+    config: &Config,
+    prompt_name: Option<&str>,
+    labels: &[String],
+) -> Result<()> {
+    use std::sync::mpsc;
+    use std::thread;
+
+    // Load all specs and filter to ready ones
+    let all_specs = spec::load_all_specs(specs_dir)?;
+    let mut ready_specs: Vec<Spec> = all_specs
+        .iter()
+        .filter(|s| s.is_ready(&all_specs))
+        .cloned()
+        .collect();
+
+    // Filter by labels if specified
+    if !labels.is_empty() {
+        ready_specs.retain(|s| {
+            if let Some(spec_labels) = &s.frontmatter.labels {
+                labels.iter().any(|l| spec_labels.contains(l))
+            } else {
+                false
+            }
+        });
+    }
+
+    if ready_specs.is_empty() {
+        if !labels.is_empty() {
+            println!("No ready specs with specified labels.");
+        } else {
+            println!("No ready specs to execute.");
+        }
+        return Ok(());
+    }
+
+    println!(
+        "{} Starting {} specs in parallel...\n",
+        "→".cyan(),
+        ready_specs.len()
+    );
+
+    // Resolve prompt name for all specs
+    let default_prompt = &config.defaults.prompt;
+
+    // Create channels for collecting results
+    let (tx, rx) = mpsc::channel::<ParallelResult>();
+
+    // Spawn threads for each spec
+    let mut handles = Vec::new();
+
+    for spec in ready_specs.iter() {
+        // Determine prompt for this spec
+        let spec_prompt = prompt_name
+            .or(spec.frontmatter.prompt.as_deref())
+            .unwrap_or(default_prompt);
+
+        let prompt_path = prompts_dir.join(format!("{}.md", spec_prompt));
+        if !prompt_path.exists() {
+            println!(
+                "{} [{}] Prompt not found: {}",
+                "✗".red(),
+                spec.id,
+                spec_prompt
+            );
+            continue;
+        }
+
+        // Update spec status to in_progress
+        let spec_path = specs_dir.join(format!("{}.md", spec.id));
+        let mut spec_clone = spec.clone();
+        spec_clone.frontmatter.status = SpecStatus::InProgress;
+        if let Err(e) = spec_clone.save(&spec_path) {
+            println!(
+                "{} [{}] Failed to update status: {}",
+                "✗".red(),
+                spec.id,
+                e
+            );
+            continue;
+        }
+
+        println!("[{}] Working with prompt '{}'", spec.id.cyan(), spec_prompt);
+
+        // Assemble the prompt message
+        let message = match prompt::assemble(&spec_clone, &prompt_path, config) {
+            Ok(m) => m,
+            Err(e) => {
+                println!(
+                    "{} [{}] Failed to assemble prompt: {}",
+                    "✗".red(),
+                    spec.id,
+                    e
+                );
+                continue;
+            }
+        };
+
+        // Clone data for the thread
+        let tx_clone = tx.clone();
+        let spec_id = spec.id.clone();
+        let specs_dir_clone = specs_dir.clone();
+
+        let handle = thread::spawn(move || {
+            let result = invoke_agent_with_prefix(&message, &spec_id);
+            let (success, commit, error) = match result {
+                Ok(_) => {
+                    // Get the commit hash
+                    let commit = get_latest_commit_for_spec(&spec_id).ok().flatten();
+
+                    // Update spec to completed
+                    let spec_path = specs_dir_clone.join(format!("{}.md", spec_id));
+                    if let Ok(mut spec) = spec::resolve_spec(&specs_dir_clone, &spec_id) {
+                        spec.frontmatter.status = SpecStatus::Completed;
+                        spec.frontmatter.commit = commit.clone();
+                        spec.frontmatter.completed_at = Some(
+                            chrono::Local::now()
+                                .format("%Y-%m-%dT%H:%M:%SZ")
+                                .to_string(),
+                        );
+                        let _ = spec.save(&spec_path);
+                    }
+
+                    (true, commit, None)
+                }
+                Err(e) => {
+                    // Update spec to failed
+                    let spec_path = specs_dir_clone.join(format!("{}.md", spec_id));
+                    if let Ok(mut spec) = spec::resolve_spec(&specs_dir_clone, &spec_id) {
+                        spec.frontmatter.status = SpecStatus::Failed;
+                        let _ = spec.save(&spec_path);
+                    }
+
+                    (false, None, Some(e.to_string()))
+                }
+            };
+
+            let _ = tx_clone.send(ParallelResult {
+                spec_id,
+                success,
+                commit,
+                error,
+            });
+        });
+
+        handles.push(handle);
+    }
+
+    // Drop the original sender so the receiver knows when all threads are done
+    drop(tx);
+
+    // Collect results
+    let mut completed = 0;
+    let mut failed = 0;
+
+    println!();
+
+    for result in rx {
+        if result.success {
+            completed += 1;
+            if let Some(commit) = result.commit {
+                println!(
+                    "[{}] {} Completed (commit: {})",
+                    result.spec_id.cyan(),
+                    "✓".green(),
+                    commit
+                );
+            } else {
+                println!("[{}] {} Completed", result.spec_id.cyan(), "✓".green());
+            }
+        } else {
+            failed += 1;
+            let error_msg = result.error.unwrap_or_else(|| "Unknown error".to_string());
+            println!(
+                "[{}] {} Failed: {}",
+                result.spec_id.cyan(),
+                "✗".red(),
+                error_msg
+            );
+        }
+    }
+
+    // Wait for all threads to finish
+    for handle in handles {
+        let _ = handle.join();
+    }
+
+    // Print summary
+    println!(
+        "\n{}: {} completed, {} failed",
+        "Summary".bold(),
+        completed,
+        failed
+    );
+
+    if failed > 0 {
+        std::process::exit(1);
+    }
+
+    Ok(())
+}
+
+/// Invoke the agent with output prefixed by spec ID
+fn invoke_agent_with_prefix(message: &str, spec_id: &str) -> Result<()> {
+    use std::io::{BufRead, BufReader};
+    use std::process::{Command, Stdio};
+
+    // Set environment variables
+    let spec_file = std::fs::canonicalize(format!(".chant/specs/{}.md", spec_id))?;
+
+    let mut child = Command::new("claude")
+        .arg("--print")
+        .arg("--dangerously-skip-permissions")
+        .arg(message)
+        .env("CHANT_SPEC_ID", spec_id)
+        .env("CHANT_SPEC_FILE", &spec_file)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .context("Failed to invoke claude CLI. Is it installed and in PATH?")?;
+
+    // Stream stdout with prefix
+    if let Some(stdout) = child.stdout.take() {
+        let reader = BufReader::new(stdout);
+        let prefix = format!("[{}]", spec_id);
+        for line in reader.lines().map_while(Result::ok) {
+            println!("{} {}", prefix.cyan(), line);
+        }
+    }
+
+    let status = child.wait()?;
+
+    if !status.success() {
+        anyhow::bail!("Agent exited with status: {}", status);
     }
 
     Ok(())
