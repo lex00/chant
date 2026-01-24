@@ -362,6 +362,9 @@ fn cmd_show(id: &str) -> Result<()> {
     if let Some(completed_at) = &spec.frontmatter.completed_at {
         println!("{}: {}", "Completed".bold(), completed_at);
     }
+    if let Some(model) = &spec.frontmatter.model {
+        println!("{}: {}", "Model".bold(), model);
+    }
 
     println!("\n{}", "--- Body ---".dimmed());
     println!("{}", spec.body);
