@@ -1,5 +1,6 @@
 mod config;
 mod id;
+mod mcp;
 mod prompt;
 mod spec;
 
@@ -57,6 +58,8 @@ enum Commands {
         #[arg(long)]
         pr: bool,
     },
+    /// Start MCP server (Model Context Protocol)
+    Mcp,
 }
 
 fn main() -> Result<()> {
@@ -68,6 +71,7 @@ fn main() -> Result<()> {
         Commands::List { ready } => cmd_list(ready),
         Commands::Show { id } => cmd_show(&id),
         Commands::Work { id, prompt, branch, pr } => cmd_work(&id, prompt.as_deref(), branch, pr),
+        Commands::Mcp => mcp::run_server(),
     }
 }
 
