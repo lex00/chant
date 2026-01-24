@@ -10,6 +10,13 @@ chant list --label auth               # Filter by label
 chant list --label auth --label api   # Filter by multiple labels (OR)
 chant list --ready --label feature    # Combine filters
 chant show 2026-01-22-001-x7m         # Show spec details
+```
+
+### Edit Spec (Planned)
+
+> **Status: Planned** - This feature is on the roadmap but not yet implemented.
+
+```bash
 chant edit 2026-01-22-001-x7m         # Open in editor
 ```
 
@@ -41,6 +48,13 @@ chant work 2026-01-22-001-x7m --prompt tdd # Execute with specific prompt
 chant work 2026-01-22-001-x7m --force      # Replay a completed spec
 chant work --parallel                      # Execute all ready specs in parallel
 chant work --parallel --label auth         # Execute ready specs with label
+```
+
+### Split Spec (Planned)
+
+> **Status: Planned** - This feature is on the roadmap but not yet implemented.
+
+```bash
 chant split 2026-01-22-001-x7m             # Split into group members
 ```
 
@@ -63,6 +77,19 @@ When replaying, the agent will:
 - Verification: Re-check that acceptance criteria are still satisfied
 - Prompt changes: Re-run after updating the prompt template
 - Testing: Validate agent behavior on known implementations
+- Skip validation: Complete a spec with unchecked acceptance criteria
+
+### Acceptance Criteria Validation
+
+After the agent exits, chant validates that all acceptance criteria checkboxes are checked:
+
+```
+⚠ Found 1 unchecked acceptance criterion.
+Use --force to skip this validation.
+error: Cannot complete spec with 1 unchecked acceptance criteria
+```
+
+If unchecked boxes exist, the spec is marked as `failed`. Use `--force` to skip this validation and complete the spec anyway.
 
 ### Parallel Execution
 
