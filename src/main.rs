@@ -796,7 +796,9 @@ fn create_pull_request(title: &str, body: &str) -> Result<String> {
 const MAX_AGENT_OUTPUT_CHARS: usize = 5000;
 
 fn append_agent_output(spec: &mut Spec, output: &str) {
-    let timestamp = chrono::Local::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let timestamp = chrono::Local::now()
+        .format("%Y-%m-%dT%H:%M:%SZ")
+        .to_string();
 
     let formatted_output = if output.len() > MAX_AGENT_OUTPUT_CHARS {
         let truncated = &output[..MAX_AGENT_OUTPUT_CHARS];
