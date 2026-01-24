@@ -63,6 +63,8 @@ enum Commands {
     },
     /// Start MCP server (Model Context Protocol)
     Mcp,
+    /// Show project status summary
+    Status,
 }
 
 fn main() -> Result<()> {
@@ -75,6 +77,7 @@ fn main() -> Result<()> {
         Commands::Show { id } => cmd_show(&id),
         Commands::Work { id, prompt, branch, pr } => cmd_work(&id, prompt.as_deref(), branch, pr),
         Commands::Mcp => mcp::run_server(),
+        Commands::Status => cmd_status(),
     }
 }
 
@@ -317,6 +320,44 @@ fn cmd_show(id: &str) -> Result<()> {
 
     println!("\n{}", "--- Body ---".dimmed());
     println!("{}", spec.body);
+
+    Ok(())
+}
+
+fn cmd_status() -> Result<()> {
+    let specs_dir = PathBuf::from(".chant/specs");
+
+    if !specs_dir.exists() {
+        anyhow::bail!("Chant not initialized. Run `chant init` first.");
+    }
+
+    let specs = spec::load_all_specs(&specs_dir)?;
+
+    // Count by status
+    let mut pending = 0;
+    let mut in_progress = 0;
+    let mut completed = 0;
+    let mut failed = 0;
+
+    for spec in &specs {
+        match spec.frontmatter.status {
+            SpecStatus::Pending => pending += 1,
+            SpecStatus::InProgress => in_progress += 1,
+            SpecStatus::Completed => completed += 1,
+            SpecStatus::Failed => failed += 1,
+        }
+    }
+
+    let total = specs.len();
+
+    println!("{}", "Chant Status".bold());
+    println!("{}", "============");
+    println!("  {:<12} {}", "Pending:", pending);
+    println!("  {:<12} {}", "In Progress:", in_progress);
+    println!("  {:<12} {}", "Completed:", completed);
+    println!("  {:<12} {}", "Failed:", failed);
+    println!("  {}", "─────────────");
+    println!("  {:<12} {}", "Total:", total);
 
     Ok(())
 }
