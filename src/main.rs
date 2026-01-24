@@ -983,6 +983,20 @@ fn invoke_agent_with_prefix(message: &str, spec_id: &str, prompt_name: &str) -> 
     use std::io::{BufRead, BufReader};
     use std::process::{Command, Stdio};
 
+    // Create streaming log writer before spawning agent (writes header immediately)
+    let mut log_writer = match StreamingLogWriter::new(spec_id, prompt_name) {
+        Ok(writer) => Some(writer),
+        Err(e) => {
+            eprintln!(
+                "{} [{}] Failed to create agent log: {}",
+                "⚠".yellow(),
+                spec_id,
+                e
+            );
+            None
+        }
+    };
+
     // Set environment variables
     let spec_file = std::fs::canonicalize(format!(".chant/specs/{}.md", spec_id))?;
 
@@ -997,29 +1011,28 @@ fn invoke_agent_with_prefix(message: &str, spec_id: &str, prompt_name: &str) -> 
         .spawn()
         .context("Failed to invoke claude CLI. Is it installed and in PATH?")?;
 
-    // Stream stdout with prefix and capture it
-    let mut captured_output = String::new();
+    // Stream stdout with prefix to both terminal and log file
     if let Some(stdout) = child.stdout.take() {
         let reader = BufReader::new(stdout);
         let prefix = format!("[{}]", spec_id);
         for line in reader.lines().map_while(Result::ok) {
             println!("{} {}", prefix.cyan(), line);
-            captured_output.push_str(&line);
-            captured_output.push('\n');
+
+            // Write to log file in real-time
+            if let Some(ref mut writer) = log_writer {
+                if let Err(e) = writer.write_line(&line) {
+                    eprintln!(
+                        "{} [{}] Failed to write to agent log: {}",
+                        "⚠".yellow(),
+                        spec_id,
+                        e
+                    );
+                }
+            }
         }
     }
 
     let status = child.wait()?;
-
-    // Write full output to log file (regardless of success/failure)
-    if let Err(e) = write_agent_log(spec_id, prompt_name, &captured_output) {
-        eprintln!(
-            "{} [{}] Failed to write agent log: {}",
-            "⚠".yellow(),
-            spec_id,
-            e
-        );
-    }
 
     if !status.success() {
         anyhow::bail!("Agent exited with status: {}", status);
@@ -1031,6 +1044,15 @@ fn invoke_agent_with_prefix(message: &str, spec_id: &str, prompt_name: &str) -> 
 fn invoke_agent(message: &str, spec: &Spec, prompt_name: &str) -> Result<String> {
     use std::io::{BufRead, BufReader};
     use std::process::{Command, Stdio};
+
+    // Create streaming log writer before spawning agent (writes header immediately)
+    let mut log_writer = match StreamingLogWriter::new(&spec.id, prompt_name) {
+        Ok(writer) => Some(writer),
+        Err(e) => {
+            eprintln!("{} Failed to create agent log: {}", "⚠".yellow(), e);
+            None
+        }
+    };
 
     // Set environment variables
     let spec_file = std::fs::canonicalize(format!(".chant/specs/{}.md", spec.id))?;
@@ -1046,7 +1068,7 @@ fn invoke_agent(message: &str, spec: &Spec, prompt_name: &str) -> Result<String>
         .spawn()
         .context("Failed to invoke claude CLI. Is it installed and in PATH?")?;
 
-    // Stream stdout and capture it
+    // Stream stdout to both terminal and log file
     let mut captured_output = String::new();
     if let Some(stdout) = child.stdout.take() {
         let reader = BufReader::new(stdout);
@@ -1054,15 +1076,17 @@ fn invoke_agent(message: &str, spec: &Spec, prompt_name: &str) -> Result<String>
             println!("{}", line);
             captured_output.push_str(&line);
             captured_output.push('\n');
+
+            // Write to log file in real-time
+            if let Some(ref mut writer) = log_writer {
+                if let Err(e) = writer.write_line(&line) {
+                    eprintln!("{} Failed to write to agent log: {}", "⚠".yellow(), e);
+                }
+            }
         }
     }
 
     let status = child.wait()?;
-
-    // Write full output to log file (regardless of success/failure)
-    if let Err(e) = write_agent_log(&spec.id, prompt_name, &captured_output) {
-        eprintln!("{} Failed to write agent log: {}", "⚠".yellow(), e);
-    }
 
     if !status.success() {
         anyhow::bail!("Agent exited with status: {}", status);
@@ -1206,33 +1230,48 @@ fn ensure_logs_dir_at(base_path: &PathBuf) -> Result<()> {
     Ok(())
 }
 
-/// Write full agent output to log file
-fn write_agent_log(spec_id: &str, prompt_name: &str, output: &str) -> Result<()> {
-    write_agent_log_at(&PathBuf::from(".chant"), spec_id, prompt_name, output)
+/// A streaming log writer that writes to a log file in real-time
+struct StreamingLogWriter {
+    file: std::fs::File,
 }
 
-/// Write full agent output to log file at the given base path
-fn write_agent_log_at(
-    base_path: &PathBuf,
-    spec_id: &str,
-    prompt_name: &str,
-    output: &str,
-) -> Result<()> {
-    ensure_logs_dir_at(base_path)?;
+impl StreamingLogWriter {
+    /// Create a new streaming log writer that opens the log file and writes the header
+    fn new(spec_id: &str, prompt_name: &str) -> Result<Self> {
+        Self::new_at(&PathBuf::from(".chant"), spec_id, prompt_name)
+    }
 
-    let log_path = base_path.join("logs").join(format!("{}.log", spec_id));
-    let timestamp = chrono::Local::now()
-        .format("%Y-%m-%dT%H:%M:%SZ")
-        .to_string();
+    /// Create a new streaming log writer at the given base path
+    fn new_at(base_path: &std::path::Path, spec_id: &str, prompt_name: &str) -> Result<Self> {
+        use std::io::Write;
 
-    let log_content = format!(
-        "# Agent Log: {}\n# Started: {}\n# Prompt: {}\n\n{}",
-        spec_id, timestamp, prompt_name, output
-    );
+        ensure_logs_dir_at(&base_path.to_path_buf())?;
 
-    std::fs::write(&log_path, log_content)?;
+        let log_path = base_path.join("logs").join(format!("{}.log", spec_id));
+        let timestamp = chrono::Local::now()
+            .format("%Y-%m-%dT%H:%M:%SZ")
+            .to_string();
 
-    Ok(())
+        let mut file = std::fs::File::create(&log_path)?;
+
+        // Write header immediately
+        writeln!(file, "# Agent Log: {}", spec_id)?;
+        writeln!(file, "# Started: {}", timestamp)?;
+        writeln!(file, "# Prompt: {}", prompt_name)?;
+        writeln!(file)?;
+        file.flush()?;
+
+        Ok(Self { file })
+    }
+
+    /// Write a line to the log file and flush immediately for real-time visibility
+    fn write_line(&mut self, line: &str) -> Result<()> {
+        use std::io::Write;
+
+        writeln!(self.file, "{}", line)?;
+        self.file.flush()?;
+        Ok(())
+    }
 }
 
 /// Get the model name from environment variables.
@@ -1352,18 +1391,17 @@ mod tests {
     }
 
     #[test]
-    fn test_write_agent_log_format() {
+    fn test_streaming_log_writer_creates_header() {
         let temp_dir = TempDir::new().unwrap();
         let base_path = temp_dir.path().to_path_buf();
 
         let spec_id = "2026-01-24-00a-xyz";
         let prompt_name = "standard";
-        let output = "Test agent output\nWith multiple lines";
 
-        // Write the log
-        write_agent_log_at(&base_path, spec_id, prompt_name, output).unwrap();
+        // Create log writer (this writes the header)
+        let _writer = StreamingLogWriter::new_at(&base_path, spec_id, prompt_name).unwrap();
 
-        // Read it back
+        // Check that log file exists with header BEFORE any lines are written
         let log_path = base_path.join("logs").join(format!("{}.log", spec_id));
         assert!(log_path.exists());
 
@@ -1373,24 +1411,84 @@ mod tests {
         assert!(content.starts_with("# Agent Log: 2026-01-24-00a-xyz\n"));
         assert!(content.contains("# Started: "));
         assert!(content.contains("# Prompt: standard\n"));
-
-        // Check output is preserved
-        assert!(content.contains("Test agent output\nWith multiple lines"));
     }
 
     #[test]
-    fn test_write_agent_log_overwrites() {
+    fn test_streaming_log_writer_writes_lines() {
+        let temp_dir = TempDir::new().unwrap();
+        let base_path = temp_dir.path().to_path_buf();
+
+        let spec_id = "2026-01-24-00a-xyz";
+        let prompt_name = "standard";
+
+        // Create log writer and write lines
+        let mut writer = StreamingLogWriter::new_at(&base_path, spec_id, prompt_name).unwrap();
+        writer.write_line("Test agent output").unwrap();
+        writer.write_line("With multiple lines").unwrap();
+
+        // Read it back
+        let log_path = base_path.join("logs").join(format!("{}.log", spec_id));
+        let content = std::fs::read_to_string(&log_path).unwrap();
+
+        // Check header format
+        assert!(content.starts_with("# Agent Log: 2026-01-24-00a-xyz\n"));
+        assert!(content.contains("# Started: "));
+        assert!(content.contains("# Prompt: standard\n"));
+
+        // Check output is preserved
+        assert!(content.contains("Test agent output\n"));
+        assert!(content.contains("With multiple lines\n"));
+    }
+
+    #[test]
+    fn test_streaming_log_writer_flushes_each_line() {
+        let temp_dir = TempDir::new().unwrap();
+        let base_path = temp_dir.path().to_path_buf();
+
+        let spec_id = "2026-01-24-00a-xyz";
+        let prompt_name = "standard";
+
+        // Create log writer
+        let mut writer = StreamingLogWriter::new_at(&base_path, spec_id, prompt_name).unwrap();
+        let log_path = base_path.join("logs").join(format!("{}.log", spec_id));
+
+        // Write first line
+        writer.write_line("Line 1").unwrap();
+
+        // Verify it's visible immediately (flushed) by reading the file
+        let content = std::fs::read_to_string(&log_path).unwrap();
+        assert!(content.contains("Line 1"));
+
+        // Write second line
+        writer.write_line("Line 2").unwrap();
+
+        // Verify both lines are visible
+        let content = std::fs::read_to_string(&log_path).unwrap();
+        assert!(content.contains("Line 1"));
+        assert!(content.contains("Line 2"));
+    }
+
+    #[test]
+    fn test_streaming_log_writer_overwrites_on_new_run() {
         let temp_dir = TempDir::new().unwrap();
         let base_path = temp_dir.path().to_path_buf();
 
         let spec_id = "2026-01-24-00b-abc";
         let prompt_name = "standard";
 
-        // Write first log
-        write_agent_log_at(&base_path, spec_id, prompt_name, "Content A").unwrap();
+        // First run
+        {
+            let mut writer =
+                StreamingLogWriter::new_at(&base_path, spec_id, prompt_name).unwrap();
+            writer.write_line("Content A").unwrap();
+        }
 
-        // Write second log (simulating replay)
-        write_agent_log_at(&base_path, spec_id, prompt_name, "Content B").unwrap();
+        // Second run (simulating replay)
+        {
+            let mut writer =
+                StreamingLogWriter::new_at(&base_path, spec_id, prompt_name).unwrap();
+            writer.write_line("Content B").unwrap();
+        }
 
         // Read it back
         let log_path = base_path.join("logs").join(format!("{}.log", spec_id));
