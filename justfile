@@ -6,35 +6,35 @@ default:
 
 # Build the binary
 build:
-    cargo build
+    ~/.cargo/bin/cargo build
 
 # Build with optimizations
 build-release:
-    cargo build --release
+    ~/.cargo/bin/cargo build --release
 
 # Run tests
 test:
-    cargo test
+    ~/.cargo/bin/cargo test
 
 # Run tests with coverage
 test-coverage:
-    cargo llvm-cov --html
+    ~/.cargo/bin/cargo llvm-cov --html
 
 # Run linter
 lint:
-    cargo clippy -- -D warnings
+    ~/.cargo/bin/cargo clippy -- -D warnings
 
 # Format code
 fmt:
-    cargo fmt
+    ~/.cargo/bin/cargo fmt
 
 # Check formatting without modifying
 fmt-check:
-    cargo fmt -- --check
+    ~/.cargo/bin/cargo fmt -- --check
 
 # Clean build artifacts
 clean:
-    cargo clean
+    ~/.cargo/bin/cargo clean
 
 # --- Documentation ---
 
@@ -67,7 +67,7 @@ deps:
 
 # Install chant locally
 install:
-    cargo install --path .
+    ~/.cargo/bin/cargo install --path .
 
 # Build and run chant with arguments
 chant *ARGS:
