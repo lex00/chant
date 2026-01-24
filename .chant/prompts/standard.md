@@ -20,7 +20,7 @@ You are implementing a spec for {{project.name}}.
 3. **Implement** the changes
 3a. write tests that validate behavior
 3b. iterate on test until it works
-3c. lint all and fix errors
+3c. lint all and fix errors and warnings
 3d. run all tests and fix errors
 3e. ensure chant binary builds
 4. **Verify** the implementation works
@@ -29,8 +29,7 @@ You are implementing a spec for {{project.name}}.
 
 ## Constraints
 
-- Always stream your output to .chant/logs/{{spec.id}}.log
 - Always use "just chant" if available otherwise use ./target/debug/chant
 - Only modify files related to this spec
-- Follow existing code patterns
 - Do not refactor unrelated code
+- Always add model: {{spec.model}} to frontmatter after all acc criteria met
