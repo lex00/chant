@@ -71,5 +71,5 @@ install:
 
 # Build and run chant with arguments
 chant *ARGS:
-    cargo build
+    ~/.cargo/bin/cargo build
     ./target/debug/chant {{ARGS}}
