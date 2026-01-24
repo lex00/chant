@@ -299,7 +299,7 @@ fn cmd_show(id: &str) -> Result<()> {
     Ok(())
 }
 
-fn cmd_work(id: &str, prompt_name: Option<&str>, create_branch: bool, create_pr: bool) -> Result<()> {
+fn cmd_work(id: &str, prompt_name: Option<&str>, cli_branch: bool, cli_pr: bool) -> Result<()> {
     let specs_dir = PathBuf::from(".chant/specs");
     let prompts_dir = PathBuf::from(".chant/prompts");
     let config = Config::load()?;
@@ -324,8 +324,9 @@ fn cmd_work(id: &str, prompt_name: Option<&str>, create_branch: bool, create_pr:
         return Ok(());
     }
 
-    // --pr implies --branch (can't create PR without a branch)
-    let create_branch = create_branch || create_pr;
+    // CLI flags override config defaults
+    let create_pr = cli_pr || config.defaults.pr;
+    let create_branch = cli_branch || config.defaults.branch || create_pr;
 
     // Handle branch creation/switching if requested
     let branch_name = if create_branch {
