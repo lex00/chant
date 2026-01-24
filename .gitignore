@@ -1,0 +1,27 @@
+# Build outputs
+bin/
+dist/
+/target/
+
+# Coverage
+coverage.out
+coverage.html
+
+# Documentation build
+docs/book/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Chant local state (if testing locally)
+.chant/state/
+.chant/logs/
+.chant/locks/

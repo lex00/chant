@@ -1,0 +1,80 @@
+/* Chant Documentation Theme */
+
+/* Shared header on all pages */
+.chant-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--table-border-color);
+    padding-bottom: 0.5em;
+    margin-bottom: 1em;
+}
+
+.chant-header .tagline {
+    font-size: 1.2em;
+    color: #666;
+}
+
+/* Code blocks */
+pre code {
+    font-size: 0.9em;
+}
+
+/* Tables */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1em 0;
+}
+
+table th, table td {
+    padding: 0.5em 1em;
+    border: 1px solid var(--table-border-color);
+}
+
+table th {
+    background-color: var(--table-header-bg);
+}
+
+/* Inline code */
+code {
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+}
+
+/* Section separators */
+hr {
+    margin: 2em 0;
+    border: none;
+    border-top: 1px solid var(--table-border-color);
+}
+
+/* Improve readability */
+.content main {
+    max-width: 800px;
+}
+
+/* ASCII diagrams - preserve alignment */
+pre code.language-text,
+pre code.language-plaintext {
+    font-family: 'Consolas', 'DejaVu Sans Mono', 'Courier New', monospace;
+    line-height: 1.2;
+}
+
+/* Warning/note callouts */
+blockquote {
+    border-left: 4px solid var(--quote-border);
+    margin: 1em 0;
+    padding: 0.5em 1em;
+    background-color: var(--quote-bg);
+}
+
+/* Print styles */
+@media print {
+    .sidebar, .menu-bar {
+        display: none;
+    }
+    .content {
+        max-width: 100%;
+    }
+}
