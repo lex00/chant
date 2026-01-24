@@ -8,7 +8,7 @@ mod spec;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use colored::Colorize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use config::Config;
 use spec::{Spec, SpecStatus};
@@ -495,7 +495,8 @@ fn cmd_log(id: &str, lines: usize, follow: bool) -> Result<()> {
     cmd_log_at(&PathBuf::from(".chant"), id, lines, follow)
 }
 
-/// Result of log file lookup
+/// Result of log file lookup (used in tests)
+#[cfg(test)]
 #[derive(Debug)]
 enum LogLookupResult {
     /// Log file exists at the given path
@@ -549,6 +550,7 @@ fn cmd_log_at(base_path: &std::path::Path, id: &str, lines: usize, follow: bool)
 }
 
 /// Look up the log file for a spec (used for testing)
+#[cfg(test)]
 fn lookup_log_file(base_path: &std::path::Path, id: &str) -> Result<LogLookupResult> {
     let specs_dir = base_path.join("specs");
     let logs_dir = base_path.join("logs");
@@ -778,8 +780,8 @@ struct ParallelResult {
 }
 
 fn cmd_work_parallel(
-    specs_dir: &PathBuf,
-    prompts_dir: &PathBuf,
+    specs_dir: &Path,
+    prompts_dir: &Path,
     config: &Config,
     prompt_name: Option<&str>,
     labels: &[String],
@@ -875,7 +877,7 @@ fn cmd_work_parallel(
         // Clone data for the thread
         let tx_clone = tx.clone();
         let spec_id = spec.id.clone();
-        let specs_dir_clone = specs_dir.clone();
+        let specs_dir_clone = specs_dir.to_path_buf();
         let prompt_name_clone = spec_prompt.to_string();
 
         let handle = thread::spawn(move || {
@@ -1194,13 +1196,8 @@ fn push_branch(branch_name: &str) -> Result<()> {
 
 const MAX_AGENT_OUTPUT_CHARS: usize = 5000;
 
-/// Ensure the logs directory exists and is in .gitignore
-fn ensure_logs_dir() -> Result<()> {
-    ensure_logs_dir_at(&PathBuf::from(".chant"))
-}
-
 /// Ensure the logs directory exists and is in .gitignore at the given base path
-fn ensure_logs_dir_at(base_path: &PathBuf) -> Result<()> {
+fn ensure_logs_dir_at(base_path: &Path) -> Result<()> {
     let logs_dir = base_path.join("logs");
     let gitignore_path = base_path.join(".gitignore");
 
@@ -1245,7 +1242,7 @@ impl StreamingLogWriter {
     fn new_at(base_path: &std::path::Path, spec_id: &str, prompt_name: &str) -> Result<Self> {
         use std::io::Write;
 
-        ensure_logs_dir_at(&base_path.to_path_buf())?;
+        ensure_logs_dir_at(base_path)?;
 
         let log_path = base_path.join("logs").join(format!("{}.log", spec_id));
         let timestamp = chrono::Local::now()
