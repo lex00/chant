@@ -1091,6 +1091,9 @@ fn invoke_agent_with_prefix(message: &str, spec_id: &str, prompt_name: &str) -> 
 
     let mut child = Command::new("claude")
         .arg("--print")
+        .arg("--output-format")
+        .arg("stream-json")
+        .arg("--verbose")
         .arg("--dangerously-skip-permissions")
         .arg(message)
         .env("CHANT_SPEC_ID", spec_id)
@@ -1105,17 +1108,19 @@ fn invoke_agent_with_prefix(message: &str, spec_id: &str, prompt_name: &str) -> 
         let reader = BufReader::new(stdout);
         let prefix = format!("[{}]", spec_id);
         for line in reader.lines().map_while(Result::ok) {
-            println!("{} {}", prefix.cyan(), line);
-
-            // Write to log file in real-time
-            if let Some(ref mut writer) = log_writer {
-                if let Err(e) = writer.write_line(&line) {
-                    eprintln!(
-                        "{} [{}] Failed to write to agent log: {}",
-                        "⚠".yellow(),
-                        spec_id,
-                        e
-                    );
+            for text in extract_text_from_stream_json(&line) {
+                for text_line in text.lines() {
+                    println!("{} {}", prefix.cyan(), text_line);
+                    if let Some(ref mut writer) = log_writer {
+                        if let Err(e) = writer.write_line(text_line) {
+                            eprintln!(
+                                "{} [{}] Failed to write to agent log: {}",
+                                "⚠".yellow(),
+                                spec_id,
+                                e
+                            );
+                        }
+                    }
                 }
             }
         }
@@ -1148,6 +1153,9 @@ fn invoke_agent(message: &str, spec: &Spec, prompt_name: &str) -> Result<String>
 
     let mut child = Command::new("claude")
         .arg("--print")
+        .arg("--output-format")
+        .arg("stream-json")
+        .arg("--verbose")
         .arg("--dangerously-skip-permissions")
         .arg(message)
         .env("CHANT_SPEC_ID", &spec.id)
@@ -1162,14 +1170,20 @@ fn invoke_agent(message: &str, spec: &Spec, prompt_name: &str) -> Result<String>
     if let Some(stdout) = child.stdout.take() {
         let reader = BufReader::new(stdout);
         for line in reader.lines().map_while(Result::ok) {
-            println!("{}", line);
-            captured_output.push_str(&line);
-            captured_output.push('\n');
-
-            // Write to log file in real-time
-            if let Some(ref mut writer) = log_writer {
-                if let Err(e) = writer.write_line(&line) {
-                    eprintln!("{} Failed to write to agent log: {}", "⚠".yellow(), e);
+            for text in extract_text_from_stream_json(&line) {
+                for text_line in text.lines() {
+                    println!("{}", text_line);
+                    captured_output.push_str(text_line);
+                    captured_output.push('\n');
+                    if let Some(ref mut writer) = log_writer {
+                        if let Err(e) = writer.write_line(text_line) {
+                            eprintln!(
+                                "{} Failed to write to agent log: {}",
+                                "⚠".yellow(),
+                                e
+                            );
+                        }
+                    }
                 }
             }
         }
@@ -1282,6 +1296,30 @@ fn push_branch(branch_name: &str) -> Result<()> {
 }
 
 const MAX_AGENT_OUTPUT_CHARS: usize = 5000;
+
+/// Extract text content from a Claude CLI stream-json line.
+/// Returns Vec of text strings from assistant message content blocks.
+fn extract_text_from_stream_json(line: &str) -> Vec<String> {
+    let mut texts = Vec::new();
+
+    if let Ok(json) = serde_json::from_str::<serde_json::Value>(line) {
+        if let Some("assistant") = json.get("type").and_then(|t| t.as_str()) {
+            if let Some(content) = json
+                .get("message")
+                .and_then(|m| m.get("content"))
+                .and_then(|c| c.as_array())
+            {
+                for item in content {
+                    if let Some(text) = item.get("text").and_then(|t| t.as_str()) {
+                        texts.push(text.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    texts
+}
 
 /// Ensure the logs directory exists and is in .gitignore at the given base path
 fn ensure_logs_dir_at(base_path: &Path) -> Result<()> {
@@ -2085,5 +2123,48 @@ status: pending
         // For keys not in the special list, string should be plain
         let result = format_yaml_value("prompt", &Value::String("standard".to_string()));
         assert_eq!(result, "standard");
+    }
+
+    #[test]
+    fn test_extract_text_from_stream_json_assistant_message() {
+        let json_line = r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Hello, world!"}]}}"#;
+        let texts = extract_text_from_stream_json(json_line);
+        assert_eq!(texts, vec!["Hello, world!"]);
+    }
+
+    #[test]
+    fn test_extract_text_from_stream_json_multiple_content_blocks() {
+        let json_line = r#"{"type":"assistant","message":{"content":[{"type":"text","text":"First"},{"type":"text","text":"Second"}]}}"#;
+        let texts = extract_text_from_stream_json(json_line);
+        assert_eq!(texts, vec!["First", "Second"]);
+    }
+
+    #[test]
+    fn test_extract_text_from_stream_json_system_message() {
+        let json_line = r#"{"type":"system","subtype":"init"}"#;
+        let texts = extract_text_from_stream_json(json_line);
+        assert!(texts.is_empty());
+    }
+
+    #[test]
+    fn test_extract_text_from_stream_json_result_message() {
+        let json_line = r#"{"type":"result","subtype":"success","result":"Done"}"#;
+        let texts = extract_text_from_stream_json(json_line);
+        assert!(texts.is_empty());
+    }
+
+    #[test]
+    fn test_extract_text_from_stream_json_invalid_json() {
+        let json_line = "not valid json";
+        let texts = extract_text_from_stream_json(json_line);
+        assert!(texts.is_empty());
+    }
+
+    #[test]
+    fn test_extract_text_from_stream_json_mixed_content_types() {
+        // Content can include tool_use blocks which we should skip
+        let json_line = r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Analyzing..."},{"type":"tool_use","name":"read_file"}]}}"#;
+        let texts = extract_text_from_stream_json(json_line);
+        assert_eq!(texts, vec!["Analyzing..."]);
     }
 }
