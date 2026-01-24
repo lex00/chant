@@ -68,3 +68,8 @@ deps:
 # Install chant locally
 install:
     cargo install --path .
+
+# Build and run chant with arguments
+chant *ARGS:
+    cargo build
+    ./target/debug/chant {{ARGS}}
