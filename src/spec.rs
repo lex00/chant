@@ -37,6 +37,8 @@ pub struct SpecFrontmatter {
     pub pr: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub completed_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
 }
 
 fn default_type() -> String {
@@ -57,6 +59,7 @@ impl Default for SpecFrontmatter {
             commit: None,
             pr: None,
             completed_at: None,
+            model: None,
         }
     }
 }
@@ -368,5 +371,62 @@ status: pending
         .unwrap();
 
         assert_eq!(spec.count_unchecked_checkboxes(), 0);
+    }
+
+    #[test]
+    fn test_parse_spec_with_model() {
+        let content = r#"---
+type: code
+status: completed
+commit: abc1234
+completed_at: 2026-01-24T15:30:00Z
+model: claude-opus-4-5
+---
+
+# Test spec with model
+
+Description here.
+"#;
+        let spec = Spec::parse("2026-01-24-001-abc", content).unwrap();
+        assert_eq!(spec.frontmatter.model, Some("claude-opus-4-5".to_string()));
+        assert_eq!(spec.frontmatter.status, SpecStatus::Completed);
+        assert_eq!(spec.frontmatter.commit, Some("abc1234".to_string()));
+    }
+
+    #[test]
+    fn test_parse_spec_without_model() {
+        let content = r#"---
+type: code
+status: pending
+---
+
+# Test spec without model
+"#;
+        let spec = Spec::parse("2026-01-24-002-def", content).unwrap();
+        assert_eq!(spec.frontmatter.model, None);
+    }
+
+    #[test]
+    fn test_spec_save_includes_model() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let spec_path = temp_dir.path().join("test-spec.md");
+
+        let spec = Spec {
+            id: "2026-01-24-003-ghi".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                model: Some("claude-opus-4-5".to_string()),
+                ..Default::default()
+            },
+            title: Some("Test spec".to_string()),
+            body: "# Test spec\n\nBody content.".to_string(),
+        };
+
+        spec.save(&spec_path).unwrap();
+
+        let saved_content = std::fs::read_to_string(&spec_path).unwrap();
+        assert!(saved_content.contains("model: claude-opus-4-5"));
     }
 }

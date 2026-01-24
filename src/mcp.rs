@@ -345,6 +345,7 @@ fn tool_chant_spec_get(arguments: Option<&Value>) -> Result<Value> {
         "commit": spec.frontmatter.commit,
         "pr": spec.frontmatter.pr,
         "completed_at": spec.frontmatter.completed_at,
+        "model": spec.frontmatter.model,
         "body": spec.body
     });
 
