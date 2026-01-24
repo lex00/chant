@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 
-use crate::spec::{load_all_specs, SpecStatus};
+use crate::spec::{load_all_specs, resolve_spec, SpecStatus};
 
 /// JSON-RPC 2.0 Request
 #[derive(Debug, Deserialize)]
@@ -178,6 +178,20 @@ fn handle_tools_list() -> Result<Value> {
                         }
                     }
                 }
+            },
+            {
+                "name": "chant_spec_get",
+                "description": "Get details of a chant spec",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "string",
+                            "description": "Spec ID (full or partial)"
+                        }
+                    },
+                    "required": ["id"]
+                }
             }
         ]
     }))
@@ -195,6 +209,7 @@ fn handle_tools_call(params: Option<&Value>) -> Result<Value> {
 
     match name {
         "chant_spec_list" => tool_chant_spec_list(arguments),
+        "chant_spec_get" => tool_chant_spec_get(arguments),
         _ => anyhow::bail!("Unknown tool: {}", name),
     }
 }
@@ -258,6 +273,68 @@ fn tool_chant_spec_list(arguments: Option<&Value>) -> Result<Value> {
     }))
 }
 
+fn tool_chant_spec_get(arguments: Option<&Value>) -> Result<Value> {
+    let specs_dir = PathBuf::from(".chant/specs");
+
+    if !specs_dir.exists() {
+        return Ok(json!({
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Chant not initialized. Run `chant init` first."
+                }
+            ],
+            "isError": true
+        }));
+    }
+
+    let id = arguments
+        .and_then(|a| a.get("id"))
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Missing required parameter: id"))?;
+
+    let spec = match resolve_spec(&specs_dir, id) {
+        Ok(s) => s,
+        Err(e) => {
+            return Ok(json!({
+                "content": [
+                    {
+                        "type": "text",
+                        "text": e.to_string()
+                    }
+                ],
+                "isError": true
+            }));
+        }
+    };
+
+    let spec_json = json!({
+        "id": spec.id,
+        "title": spec.title,
+        "status": format!("{:?}", spec.frontmatter.status).to_lowercase(),
+        "type": spec.frontmatter.r#type,
+        "depends_on": spec.frontmatter.depends_on,
+        "labels": spec.frontmatter.labels,
+        "target_files": spec.frontmatter.target_files,
+        "context": spec.frontmatter.context,
+        "prompt": spec.frontmatter.prompt,
+        "branch": spec.frontmatter.branch,
+        "commit": spec.frontmatter.commit,
+        "pr": spec.frontmatter.pr,
+        "completed_at": spec.frontmatter.completed_at,
+        "body": spec.body
+    });
+
+    Ok(json!({
+        "content": [
+            {
+                "type": "text",
+                "text": serde_json::to_string_pretty(&spec_json)?
+            }
+        ]
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -273,8 +350,9 @@ mod tests {
     fn test_handle_tools_list() {
         let result = handle_tools_list().unwrap();
         let tools = result["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 1);
+        assert_eq!(tools.len(), 2);
         assert_eq!(tools[0]["name"], "chant_spec_list");
+        assert_eq!(tools[1]["name"], "chant_spec_get");
     }
 
     #[test]
