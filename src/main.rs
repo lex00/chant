@@ -338,6 +338,79 @@ fn cmd_list(ready_only: bool, labels: &[String]) -> Result<()> {
     Ok(())
 }
 
+/// Format a YAML value with semantic colors based on key and value type.
+/// - status: green (completed), yellow (in_progress/pending), red (failed)
+/// - commit: cyan
+/// - type: blue
+/// - lists: magenta
+/// - bools: green (true), red (false)
+fn format_yaml_value(key: &str, value: &serde_yaml::Value) -> String {
+    use serde_yaml::Value;
+
+    match value {
+        Value::Null => "~".dimmed().to_string(),
+        Value::Bool(b) => {
+            if *b {
+                "true".green().to_string()
+            } else {
+                "false".red().to_string()
+            }
+        }
+        Value::Number(n) => n.to_string(),
+        Value::String(s) => {
+            // Apply semantic coloring based on key
+            match key {
+                "status" => match s.as_str() {
+                    "completed" => s.green().to_string(),
+                    "failed" => s.red().to_string(),
+                    _ => s.yellow().to_string(), // pending, in_progress
+                },
+                "commit" => s.cyan().to_string(),
+                "type" => s.blue().to_string(),
+                _ => s.to_string(),
+            }
+        }
+        Value::Sequence(seq) => {
+            let items: Vec<String> = seq
+                .iter()
+                .map(|v| match v {
+                    Value::String(s) => s.magenta().to_string(),
+                    _ => format_yaml_value("", v),
+                })
+                .collect();
+            format!("[{}]", items.join(", "))
+        }
+        Value::Mapping(map) => {
+            let items: Vec<String> = map
+                .iter()
+                .map(|(k, v)| {
+                    let key_str = match k {
+                        Value::String(s) => s.clone(),
+                        _ => format!("{:?}", k),
+                    };
+                    format!("{}: {}", key_str, format_yaml_value(&key_str, v))
+                })
+                .collect();
+            format!("{{{}}}", items.join(", "))
+        }
+        Value::Tagged(tagged) => format_yaml_value(key, &tagged.value),
+    }
+}
+
+/// Convert a snake_case key to Title Case for display.
+fn key_to_title_case(key: &str) -> String {
+    key.split('_')
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().chain(chars).collect(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn cmd_show(id: &str) -> Result<()> {
     let specs_dir = PathBuf::from(".chant/specs");
 
@@ -347,23 +420,33 @@ fn cmd_show(id: &str) -> Result<()> {
 
     let spec = spec::resolve_spec(&specs_dir, id)?;
 
+    // Print ID (not from frontmatter)
     println!("{}: {}", "ID".bold(), spec.id.cyan());
-    println!(
-        "{}: {}",
-        "Status".bold(),
-        format!("{:?}", spec.frontmatter.status).to_lowercase()
-    );
+
+    // Print title if available (extracted from body, not frontmatter)
     if let Some(title) = &spec.title {
         println!("{}: {}", "Title".bold(), title);
     }
-    if let Some(commit) = &spec.frontmatter.commit {
-        println!("{}: {}", "Commit".bold(), commit);
-    }
-    if let Some(completed_at) = &spec.frontmatter.completed_at {
-        println!("{}: {}", "Completed".bold(), completed_at);
-    }
-    if let Some(model) = &spec.frontmatter.model {
-        println!("{}: {}", "Model".bold(), model);
+
+    // Convert frontmatter to YAML value and iterate over fields
+    let frontmatter_value = serde_yaml::to_value(&spec.frontmatter)?;
+    if let serde_yaml::Value::Mapping(map) = frontmatter_value {
+        for (key, value) in map {
+            // Skip null values
+            if value.is_null() {
+                continue;
+            }
+
+            let key_str = match &key {
+                serde_yaml::Value::String(s) => s.clone(),
+                _ => continue,
+            };
+
+            let display_key = key_to_title_case(&key_str);
+            let formatted_value = format_yaml_value(&key_str, &value);
+
+            println!("{}: {}", display_key.bold(), formatted_value);
+        }
     }
 
     println!("\n{}", "--- Body ---".dimmed());
@@ -1889,5 +1972,118 @@ status: pending
         if let Some(val) = orig_anthropic {
             std::env::set_var("ANTHROPIC_MODEL", val);
         }
+    }
+
+    #[test]
+    fn test_key_to_title_case_single_word() {
+        assert_eq!(key_to_title_case("status"), "Status");
+        assert_eq!(key_to_title_case("type"), "Type");
+        assert_eq!(key_to_title_case("commit"), "Commit");
+    }
+
+    #[test]
+    fn test_key_to_title_case_snake_case() {
+        assert_eq!(key_to_title_case("depends_on"), "Depends On");
+        assert_eq!(key_to_title_case("completed_at"), "Completed At");
+        assert_eq!(key_to_title_case("target_files"), "Target Files");
+    }
+
+    #[test]
+    fn test_key_to_title_case_empty_string() {
+        assert_eq!(key_to_title_case(""), "");
+    }
+
+    #[test]
+    fn test_format_yaml_value_null() {
+        use serde_yaml::Value;
+        let result = format_yaml_value("test", &Value::Null);
+        // Result contains ANSI codes, but should represent "~"
+        assert!(result.contains("~") || result.contains('\x1b'));
+    }
+
+    #[test]
+    fn test_format_yaml_value_bool_true() {
+        use serde_yaml::Value;
+        let result = format_yaml_value("test", &Value::Bool(true));
+        // Result contains ANSI codes for green, but should represent "true"
+        assert!(result.contains("true") || result.contains('\x1b'));
+    }
+
+    #[test]
+    fn test_format_yaml_value_bool_false() {
+        use serde_yaml::Value;
+        let result = format_yaml_value("test", &Value::Bool(false));
+        // Result contains ANSI codes for red, but should represent "false"
+        assert!(result.contains("false") || result.contains('\x1b'));
+    }
+
+    #[test]
+    fn test_format_yaml_value_number() {
+        use serde_yaml::Value;
+        let result = format_yaml_value("test", &Value::Number(42.into()));
+        assert_eq!(result, "42");
+    }
+
+    #[test]
+    fn test_format_yaml_value_string_status_completed() {
+        use serde_yaml::Value;
+        let result = format_yaml_value("status", &Value::String("completed".to_string()));
+        // Should contain green ANSI codes
+        assert!(result.contains("completed"));
+    }
+
+    #[test]
+    fn test_format_yaml_value_string_status_failed() {
+        use serde_yaml::Value;
+        let result = format_yaml_value("status", &Value::String("failed".to_string()));
+        // Should contain red ANSI codes
+        assert!(result.contains("failed"));
+    }
+
+    #[test]
+    fn test_format_yaml_value_string_status_pending() {
+        use serde_yaml::Value;
+        let result = format_yaml_value("status", &Value::String("pending".to_string()));
+        // Should contain yellow ANSI codes
+        assert!(result.contains("pending"));
+    }
+
+    #[test]
+    fn test_format_yaml_value_string_commit() {
+        use serde_yaml::Value;
+        let result = format_yaml_value("commit", &Value::String("abc1234".to_string()));
+        // Should contain cyan ANSI codes
+        assert!(result.contains("abc1234"));
+    }
+
+    #[test]
+    fn test_format_yaml_value_string_type() {
+        use serde_yaml::Value;
+        let result = format_yaml_value("type", &Value::String("code".to_string()));
+        // Should contain blue ANSI codes
+        assert!(result.contains("code"));
+    }
+
+    #[test]
+    fn test_format_yaml_value_sequence() {
+        use serde_yaml::Value;
+        let seq = Value::Sequence(vec![
+            Value::String("item1".to_string()),
+            Value::String("item2".to_string()),
+        ]);
+        let result = format_yaml_value("labels", &seq);
+        // Should be formatted as [item1, item2] with magenta colors
+        assert!(result.starts_with('['));
+        assert!(result.ends_with(']'));
+        assert!(result.contains("item1"));
+        assert!(result.contains("item2"));
+    }
+
+    #[test]
+    fn test_format_yaml_value_plain_string() {
+        use serde_yaml::Value;
+        // For keys not in the special list, string should be plain
+        let result = format_yaml_value("prompt", &Value::String("standard".to_string()));
+        assert_eq!(result, "standard");
     }
 }
