@@ -19,7 +19,8 @@ You are implementing a spec for {{project.name}}.
 2. **Plan** your approach before coding
 3. **Implement** the changes
 4. **Verify** the implementation works
-5. **Commit** with message: `chant({{spec.id}}): <description>`
+5. **Check off** each acceptance criterion by changing `- [ ]` to `- [x]` in the spec file
+6. **Commit** with message: `chant({{spec.id}}): <description>`
 
 ## Constraints
 
