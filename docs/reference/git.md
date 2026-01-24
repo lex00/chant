@@ -12,6 +12,24 @@ defaults:
   branch_prefix: "chant/"
 ```
 
+## Provider Configuration
+
+Chant supports multiple git hosting providers for PR/MR creation:
+
+```yaml
+# .chant/config.md frontmatter
+git:
+  provider: github   # github (default), gitlab, or bitbucket
+```
+
+| Provider | CLI Tool | PR Type |
+|----------|----------|---------|
+| `github` | `gh` | Pull Request |
+| `gitlab` | `glab` | Merge Request |
+| `bitbucket` | `bb` | Pull Request |
+
+Each provider requires its respective CLI tool to be installed and authenticated.
+
 ## Spec Override
 
 Individual specs can override defaults:

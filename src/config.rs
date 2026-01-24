@@ -1,13 +1,42 @@
 use anyhow::{Context, Result};
 use serde::Deserialize;
+use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+/// Git hosting provider for PR creation
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum GitProvider {
+    #[default]
+    Github,
+    Gitlab,
+    Bitbucket,
+}
+
+impl fmt::Display for GitProvider {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            GitProvider::Github => write!(f, "github"),
+            GitProvider::Gitlab => write!(f, "gitlab"),
+            GitProvider::Bitbucket => write!(f, "bitbucket"),
+        }
+    }
+}
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
     pub project: ProjectConfig,
     #[serde(default)]
     pub defaults: DefaultsConfig,
+    #[serde(default)]
+    pub git: GitConfig,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct GitConfig {
+    #[serde(default)]
+    pub provider: GitProvider,
 }
 
 #[derive(Debug, Deserialize)]
@@ -113,6 +142,13 @@ pub fn global_config_path() -> Option<PathBuf> {
 struct PartialConfig {
     pub project: Option<PartialProjectConfig>,
     pub defaults: Option<PartialDefaultsConfig>,
+    pub git: Option<PartialGitConfig>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize, Default)]
+struct PartialGitConfig {
+    pub provider: Option<GitProvider>,
 }
 
 #[allow(dead_code)]
@@ -152,8 +188,10 @@ impl PartialConfig {
     fn merge_with(self, project: PartialConfig) -> Config {
         let global_project = self.project.unwrap_or_default();
         let global_defaults = self.defaults.unwrap_or_default();
+        let global_git = self.git.unwrap_or_default();
         let project_project = project.project.unwrap_or_default();
         let project_defaults = project.defaults.unwrap_or_default();
+        let project_git = project.git.unwrap_or_default();
 
         Config {
             project: ProjectConfig {
@@ -177,6 +215,12 @@ impl PartialConfig {
                     .branch_prefix
                     .or(global_defaults.branch_prefix)
                     .unwrap_or_else(default_branch_prefix),
+            },
+            git: GitConfig {
+                provider: project_git
+                    .provider
+                    .or(global_git.provider)
+                    .unwrap_or_default(),
             },
         }
     }
@@ -366,5 +410,100 @@ project:
 
         let config = Config::load_merged_from(Some(&global_path), &project_path).unwrap();
         assert_eq!(config.project.name, "my-project");
+    }
+
+    #[test]
+    fn test_parse_git_provider() {
+        let content = r#"---
+project:
+  name: test-project
+git:
+  provider: gitlab
+---
+"#;
+        let config = Config::parse(content).unwrap();
+        assert_eq!(config.git.provider, GitProvider::Gitlab);
+    }
+
+    #[test]
+    fn test_git_provider_defaults_to_github() {
+        let content = r#"---
+project:
+  name: test-project
+---
+"#;
+        let config = Config::parse(content).unwrap();
+        assert_eq!(config.git.provider, GitProvider::Github);
+    }
+
+    #[test]
+    fn test_git_provider_display() {
+        assert_eq!(format!("{}", GitProvider::Github), "github");
+        assert_eq!(format!("{}", GitProvider::Gitlab), "gitlab");
+        assert_eq!(format!("{}", GitProvider::Bitbucket), "bitbucket");
+    }
+
+    #[test]
+    fn test_load_merged_git_provider() {
+        let tmp = TempDir::new().unwrap();
+        let global_path = tmp.path().join("global.md");
+        let project_path = tmp.path().join("project.md");
+
+        fs::write(
+            &global_path,
+            r#"---
+git:
+  provider: gitlab
+---
+"#,
+        )
+        .unwrap();
+
+        fs::write(
+            &project_path,
+            r#"---
+project:
+  name: my-project
+---
+"#,
+        )
+        .unwrap();
+
+        let config = Config::load_merged_from(Some(&global_path), &project_path).unwrap();
+        // Global sets gitlab, project doesn't override
+        assert_eq!(config.git.provider, GitProvider::Gitlab);
+    }
+
+    #[test]
+    fn test_load_merged_git_provider_override() {
+        let tmp = TempDir::new().unwrap();
+        let global_path = tmp.path().join("global.md");
+        let project_path = tmp.path().join("project.md");
+
+        fs::write(
+            &global_path,
+            r#"---
+git:
+  provider: gitlab
+---
+"#,
+        )
+        .unwrap();
+
+        fs::write(
+            &project_path,
+            r#"---
+project:
+  name: my-project
+git:
+  provider: bitbucket
+---
+"#,
+        )
+        .unwrap();
+
+        let config = Config::load_merged_from(Some(&global_path), &project_path).unwrap();
+        // Project overrides global
+        assert_eq!(config.git.provider, GitProvider::Bitbucket);
     }
 }

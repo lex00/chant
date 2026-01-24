@@ -1,4 +1,5 @@
 mod config;
+mod git;
 mod id;
 mod mcp;
 mod prompt;
@@ -613,10 +614,15 @@ fn cmd_work(
                 println!("\n{} Pushing branch to remote...", "→".cyan());
                 push_branch(branch_name)?;
 
-                println!("{} Creating pull request...", "→".cyan());
+                let provider = git::get_provider(config.git.provider);
+                println!(
+                    "{} Creating pull request via {}...",
+                    "→".cyan(),
+                    provider.name()
+                );
                 let pr_title = spec.title.clone().unwrap_or_else(|| spec.id.clone());
                 let pr_body = spec.body.clone();
-                let pr_url = create_pull_request(&pr_title, &pr_body)?;
+                let pr_url = provider.create_pr(&pr_title, &pr_body)?;
 
                 spec.frontmatter.pr = Some(pr_url.clone());
                 println!("{} PR created: {}", "✓".green(), pr_url);
@@ -774,23 +780,6 @@ fn push_branch(branch_name: &str) -> Result<()> {
     }
 
     Ok(())
-}
-
-fn create_pull_request(title: &str, body: &str) -> Result<String> {
-    use std::process::Command;
-
-    let output = Command::new("gh")
-        .args(["pr", "create", "--title", title, "--body", body])
-        .output()
-        .context("Failed to run gh pr create. Is gh CLI installed?")?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("Failed to create pull request: {}", stderr);
-    }
-
-    let pr_url = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    Ok(pr_url)
 }
 
 const MAX_AGENT_OUTPUT_CHARS: usize = 5000;
