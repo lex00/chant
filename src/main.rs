@@ -1068,30 +1068,35 @@ const MAX_AGENT_OUTPUT_CHARS: usize = 5000;
 
 /// Ensure the logs directory exists and is in .gitignore
 fn ensure_logs_dir() -> Result<()> {
-    let logs_dir = PathBuf::from(".chant/logs");
-    let gitignore_path = PathBuf::from(".chant/.gitignore");
+    ensure_logs_dir_at(&PathBuf::from(".chant"))
+}
+
+/// Ensure the logs directory exists and is in .gitignore at the given base path
+fn ensure_logs_dir_at(base_path: &PathBuf) -> Result<()> {
+    let logs_dir = base_path.join("logs");
+    let gitignore_path = base_path.join(".gitignore");
 
     // Create logs directory if it doesn't exist
     if !logs_dir.exists() {
         std::fs::create_dir_all(&logs_dir)?;
+    }
 
-        // Add logs/ to .gitignore if not already present
-        let gitignore_content = if gitignore_path.exists() {
-            std::fs::read_to_string(&gitignore_path)?
+    // Add logs/ to .gitignore if not already present
+    let gitignore_content = if gitignore_path.exists() {
+        std::fs::read_to_string(&gitignore_path)?
+    } else {
+        String::new()
+    };
+
+    if !gitignore_content.lines().any(|line| line.trim() == "logs/") {
+        let new_content = if gitignore_content.is_empty() {
+            "logs/\n".to_string()
+        } else if gitignore_content.ends_with('\n') {
+            format!("{}logs/\n", gitignore_content)
         } else {
-            String::new()
+            format!("{}\nlogs/\n", gitignore_content)
         };
-
-        if !gitignore_content.lines().any(|line| line.trim() == "logs/") {
-            let new_content = if gitignore_content.is_empty() {
-                "logs/\n".to_string()
-            } else if gitignore_content.ends_with('\n') {
-                format!("{}logs/\n", gitignore_content)
-            } else {
-                format!("{}\nlogs/\n", gitignore_content)
-            };
-            std::fs::write(&gitignore_path, new_content)?;
-        }
+        std::fs::write(&gitignore_path, new_content)?;
     }
 
     Ok(())
@@ -1099,9 +1104,19 @@ fn ensure_logs_dir() -> Result<()> {
 
 /// Write full agent output to log file
 fn write_agent_log(spec_id: &str, prompt_name: &str, output: &str) -> Result<()> {
-    ensure_logs_dir()?;
+    write_agent_log_at(&PathBuf::from(".chant"), spec_id, prompt_name, output)
+}
 
-    let log_path = PathBuf::from(format!(".chant/logs/{}.log", spec_id));
+/// Write full agent output to log file at the given base path
+fn write_agent_log_at(
+    base_path: &PathBuf,
+    spec_id: &str,
+    prompt_name: &str,
+    output: &str,
+) -> Result<()> {
+    ensure_logs_dir_at(base_path)?;
+
+    let log_path = base_path.join("logs").join(format!("{}.log", spec_id));
     let timestamp = chrono::Local::now()
         .format("%Y-%m-%dT%H:%M:%SZ")
         .to_string();
@@ -1139,4 +1154,134 @@ fn append_agent_output(spec: &mut Spec, output: &str) {
     );
 
     spec.body.push_str(&agent_section);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_ensure_logs_dir_creates_directory() {
+        let temp_dir = TempDir::new().unwrap();
+        let base_path = temp_dir.path().to_path_buf();
+
+        // Logs dir shouldn't exist yet
+        assert!(!base_path.join("logs").exists());
+
+        // Call ensure_logs_dir_at
+        ensure_logs_dir_at(&base_path).unwrap();
+
+        // Logs dir should now exist
+        assert!(base_path.join("logs").exists());
+        assert!(base_path.join("logs").is_dir());
+    }
+
+    #[test]
+    fn test_ensure_logs_dir_updates_gitignore() {
+        let temp_dir = TempDir::new().unwrap();
+        let base_path = temp_dir.path().to_path_buf();
+
+        // Create base dir without .gitignore
+        // (tempdir already exists, no need to create)
+
+        // Call ensure_logs_dir_at
+        ensure_logs_dir_at(&base_path).unwrap();
+
+        // .gitignore should now exist and contain "logs/"
+        let gitignore_path = base_path.join(".gitignore");
+        assert!(gitignore_path.exists());
+
+        let content = std::fs::read_to_string(&gitignore_path).unwrap();
+        assert!(content.contains("logs/"));
+    }
+
+    #[test]
+    fn test_ensure_logs_dir_appends_to_existing_gitignore() {
+        let temp_dir = TempDir::new().unwrap();
+        let base_path = temp_dir.path().to_path_buf();
+
+        // Create existing .gitignore with other content
+        let gitignore_path = base_path.join(".gitignore");
+        std::fs::write(&gitignore_path, "*.tmp\n").unwrap();
+
+        // Call ensure_logs_dir_at
+        ensure_logs_dir_at(&base_path).unwrap();
+
+        // .gitignore should contain both original and new content
+        let content = std::fs::read_to_string(&gitignore_path).unwrap();
+        assert!(content.contains("*.tmp"));
+        assert!(content.contains("logs/"));
+    }
+
+    #[test]
+    fn test_ensure_logs_dir_no_duplicate_gitignore_entry() {
+        let temp_dir = TempDir::new().unwrap();
+        let base_path = temp_dir.path().to_path_buf();
+
+        // Create existing .gitignore that already has logs/
+        let gitignore_path = base_path.join(".gitignore");
+        std::fs::write(&gitignore_path, "logs/\n").unwrap();
+
+        // Create logs dir (since ensure_logs_dir only updates gitignore when creating dir)
+        std::fs::create_dir_all(base_path.join("logs")).unwrap();
+
+        // Call ensure_logs_dir_at
+        ensure_logs_dir_at(&base_path).unwrap();
+
+        // .gitignore should still have only one "logs/" entry
+        let content = std::fs::read_to_string(&gitignore_path).unwrap();
+        let count = content.lines().filter(|line| line.trim() == "logs/").count();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_write_agent_log_format() {
+        let temp_dir = TempDir::new().unwrap();
+        let base_path = temp_dir.path().to_path_buf();
+
+        let spec_id = "2026-01-24-00a-xyz";
+        let prompt_name = "standard";
+        let output = "Test agent output\nWith multiple lines";
+
+        // Write the log
+        write_agent_log_at(&base_path, spec_id, prompt_name, output).unwrap();
+
+        // Read it back
+        let log_path = base_path.join("logs").join(format!("{}.log", spec_id));
+        assert!(log_path.exists());
+
+        let content = std::fs::read_to_string(&log_path).unwrap();
+
+        // Check header format
+        assert!(content.starts_with("# Agent Log: 2026-01-24-00a-xyz\n"));
+        assert!(content.contains("# Started: "));
+        assert!(content.contains("# Prompt: standard\n"));
+
+        // Check output is preserved
+        assert!(content.contains("Test agent output\nWith multiple lines"));
+    }
+
+    #[test]
+    fn test_write_agent_log_overwrites() {
+        let temp_dir = TempDir::new().unwrap();
+        let base_path = temp_dir.path().to_path_buf();
+
+        let spec_id = "2026-01-24-00b-abc";
+        let prompt_name = "standard";
+
+        // Write first log
+        write_agent_log_at(&base_path, spec_id, prompt_name, "Content A").unwrap();
+
+        // Write second log (simulating replay)
+        write_agent_log_at(&base_path, spec_id, prompt_name, "Content B").unwrap();
+
+        // Read it back
+        let log_path = base_path.join("logs").join(format!("{}.log", spec_id));
+        let content = std::fs::read_to_string(&log_path).unwrap();
+
+        // Should contain only Content B
+        assert!(content.contains("Content B"));
+        assert!(!content.contains("Content A"));
+    }
 }
