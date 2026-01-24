@@ -11,7 +11,7 @@ use colored::Colorize;
 use std::path::{Path, PathBuf};
 
 use config::Config;
-use spec::{Spec, SpecStatus};
+use spec::{Spec, SpecFrontmatter, SpecStatus};
 
 #[derive(Parser)]
 #[command(name = "chant")]
@@ -90,6 +90,11 @@ enum Commands {
         #[arg(long, short = 'f')]
         follow: bool,
     },
+    /// Split a spec into subtasks
+    Split {
+        /// Spec ID to split (full or partial)
+        id: String,
+    },
 }
 
 fn main() -> Result<()> {
@@ -122,6 +127,7 @@ fn main() -> Result<()> {
         Commands::Ready => cmd_list(true, &[]),
         Commands::Lint => cmd_lint(),
         Commands::Log { id, lines, follow } => cmd_log(&id, lines, follow),
+        Commands::Split { id } => cmd_split(&id),
     }
 }
 
@@ -968,7 +974,12 @@ fn cmd_work_parallel(
         let config_model = config.defaults.model.clone();
 
         let handle = thread::spawn(move || {
-            let result = invoke_agent_with_prefix(&message, &spec_id, &prompt_name_clone, config_model.as_deref());
+            let result = invoke_agent_with_prefix(
+                &message,
+                &spec_id,
+                &prompt_name_clone,
+                config_model.as_deref(),
+            );
             let (success, commit, error) = match result {
                 Ok(_) => {
                     // Get the commit hash
@@ -984,7 +995,8 @@ fn cmd_work_parallel(
                                 .format("%Y-%m-%dT%H:%M:%SZ")
                                 .to_string(),
                         );
-                        spec.frontmatter.model = get_model_name_with_default(config_model.as_deref());
+                        spec.frontmatter.model =
+                            get_model_name_with_default(config_model.as_deref());
                         let _ = spec.save(&spec_path);
                     }
 
@@ -1068,7 +1080,12 @@ fn cmd_work_parallel(
 }
 
 /// Invoke the agent with output prefixed by spec ID
-fn invoke_agent_with_prefix(message: &str, spec_id: &str, prompt_name: &str, config_model: Option<&str>) -> Result<()> {
+fn invoke_agent_with_prefix(
+    message: &str,
+    spec_id: &str,
+    prompt_name: &str,
+    config_model: Option<&str>,
+) -> Result<()> {
     use std::io::{BufRead, BufReader};
     use std::process::{Command, Stdio};
 
@@ -1187,11 +1204,7 @@ fn invoke_agent(message: &str, spec: &Spec, prompt_name: &str, config: &Config) 
                     captured_output.push('\n');
                     if let Some(ref mut writer) = log_writer {
                         if let Err(e) = writer.write_line(text_line) {
-                            eprintln!(
-                                "{} Failed to write to agent log: {}",
-                                "⚠".yellow(),
-                                e
-                            );
+                            eprintln!("{} Failed to write to agent log: {}", "⚠".yellow(), e);
                         }
                     }
                 }
@@ -1536,6 +1549,236 @@ fn append_agent_output(spec: &mut Spec, output: &str) {
     spec.body.push_str(&agent_section);
 }
 
+fn cmd_split(id: &str) -> Result<()> {
+    let specs_dir = PathBuf::from(".chant/specs");
+    let config = Config::load()?;
+
+    if !specs_dir.exists() {
+        anyhow::bail!("Chant not initialized. Run `chant init` first.");
+    }
+
+    // Resolve the spec to split
+    let mut spec = spec::resolve_spec(&specs_dir, id)?;
+    let spec_path = specs_dir.join(format!("{}.md", spec.id));
+
+    // Check if already a group
+    if spec.frontmatter.r#type == "group" {
+        println!("{} Spec {} is already a group.", "⚠".yellow(), spec.id);
+        return Ok(());
+    }
+
+    println!("{} Analyzing spec {} for splitting...", "→".cyan(), spec.id);
+
+    // Assemble prompt for split analysis
+    let split_prompt = assemble_split_prompt(&spec, &config);
+
+    // Invoke agent to propose split
+    let agent_output = invoke_agent(&split_prompt, &spec, "split", &config)?;
+
+    // Parse subtasks from agent output
+    let subtasks = parse_subtasks_from_agent_output(&agent_output)?;
+
+    if subtasks.is_empty() {
+        anyhow::bail!("Agent did not propose any subtasks. Check the agent output in the log.");
+    }
+
+    println!(
+        "{} Creating {} subtasks for spec {}",
+        "→".cyan(),
+        subtasks.len(),
+        spec.id
+    );
+
+    // Create subtask spec files
+    let parent_id = spec.id.clone();
+    for (index, subtask) in subtasks.iter().enumerate() {
+        let subtask_number = index + 1;
+        let subtask_id = format!("{}.{}", parent_id, subtask_number);
+        let subtask_filename = format!("{}.md", subtask_id);
+        let subtask_path = specs_dir.join(&subtask_filename);
+
+        // Create frontmatter with dependencies
+        let depends_on = if index > 0 {
+            Some(vec![format!("{}.{}", parent_id, index)])
+        } else {
+            None
+        };
+
+        let subtask_frontmatter = SpecFrontmatter {
+            r#type: "code".to_string(),
+            status: SpecStatus::Pending,
+            depends_on,
+            target_files: subtask.target_files.clone(),
+            ..Default::default()
+        };
+
+        let subtask_spec = Spec {
+            id: subtask_id.clone(),
+            frontmatter: subtask_frontmatter,
+            title: Some(subtask.title.clone()),
+            body: subtask.description.clone(),
+        };
+
+        subtask_spec.save(&subtask_path)?;
+        println!("  {} {}", "✓".green(), subtask_id);
+    }
+
+    // Update parent spec to type: group
+    spec.frontmatter.r#type = "group".to_string();
+    spec.save(&spec_path)?;
+
+    println!(
+        "\n{} Split complete! Parent spec {} is now type: group",
+        "✓".green(),
+        spec.id
+    );
+    println!("Subtasks:");
+    for i in 1..=subtasks.len() {
+        println!("  • {}.{}", spec.id, i);
+    }
+
+    Ok(())
+}
+
+#[derive(Debug, Clone)]
+struct Subtask {
+    title: String,
+    description: String,
+    target_files: Option<Vec<String>>,
+}
+
+fn assemble_split_prompt(spec: &Spec, config: &Config) -> String {
+    format!(
+        r#"# Split Specification into Subtasks
+
+You are analyzing a specification for the {} project and proposing how to split it into smaller, ordered subtasks.
+
+## Specification to Split
+
+**ID:** {}
+**Title:** {}
+
+{}
+
+## Your Task
+
+1. Analyze the specification and its acceptance criteria
+2. Propose a sequence of subtasks where:
+   - Each subtask leaves code in a compilable state
+   - Each subtask is independently testable and valuable
+   - Dependencies are minimized (parallelize where possible)
+   - Common patterns are respected (add new alongside old → update callers → remove old)
+3. For each subtask, provide:
+   - A clear, concise title
+   - Description of what should be implemented
+   - List of affected files (if identifiable from the spec)
+
+## Output Format
+
+For each subtask, output exactly this format:
+
+```
+## Subtask N: <title>
+
+<description of what this subtask accomplishes>
+
+**Affected Files:**
+- file1.rs
+- file2.rs
+```
+
+If no files are identified, you can omit the Affected Files section.
+
+Create as many subtasks as needed (typically 3-5 for a medium spec).
+"#,
+        &config.project.name,
+        spec.id,
+        spec.title.as_deref().unwrap_or("(no title)"),
+        spec.body
+    )
+}
+
+fn parse_subtasks_from_agent_output(output: &str) -> Result<Vec<Subtask>> {
+    let mut subtasks = Vec::new();
+    let mut current_subtask: Option<(String, String, Vec<String>)> = None;
+    let mut collecting_files = false;
+    let mut in_code_block = false;
+
+    for line in output.lines() {
+        // Check for subtask headers (## Subtask N: ...)
+        if line.starts_with("## Subtask ") && line.contains(':') {
+            // Save previous subtask if any
+            if let Some((title, desc, files)) = current_subtask.take() {
+                subtasks.push(Subtask {
+                    title,
+                    description: desc,
+                    target_files: if files.is_empty() { None } else { Some(files) },
+                });
+            }
+
+            // Extract title from "## Subtask N: Title Here"
+            if let Some(title_part) = line.split(':').nth(1) {
+                let title = title_part.trim().to_string();
+                current_subtask = Some((title, String::new(), Vec::new()));
+                collecting_files = false;
+            }
+        } else if current_subtask.is_some() {
+            // Check for code block markers
+            if line.trim() == "```" {
+                in_code_block = !in_code_block;
+                continue;
+            }
+
+            // Check for "Affected Files:" header
+            if line.contains("**Affected Files:**") || line.contains("Affected Files:") {
+                collecting_files = true;
+                continue;
+            }
+
+            // If collecting files, parse them (format: "- filename")
+            if collecting_files {
+                if let Some(stripped) = line.strip_prefix("- ") {
+                    let file = stripped.trim().to_string();
+                    if !file.is_empty() {
+                        if let Some((_, _, ref mut files)) = current_subtask {
+                            files.push(file);
+                        }
+                    }
+                } else if line.starts_with('-') && !line.starts_with("- ") {
+                    // Not a bullet list, stop collecting
+                    collecting_files = false;
+                } else if line.trim().is_empty() {
+                    // Empty line might end the files section, depending on context
+                } else if line.starts_with("##") {
+                    // New section
+                    collecting_files = false;
+                }
+            } else if !in_code_block && !line.trim().is_empty() && !line.starts_with('#') {
+                // Add to description if not in code block and not a header
+                if let Some((_, ref mut desc, _)) = &mut current_subtask {
+                    desc.push_str(line);
+                    desc.push('\n');
+                }
+            }
+        }
+    }
+
+    // Save last subtask
+    if let Some((title, desc, files)) = current_subtask {
+        subtasks.push(Subtask {
+            title,
+            description: desc.trim().to_string(),
+            target_files: if files.is_empty() { None } else { Some(files) },
+        });
+    }
+
+    if subtasks.is_empty() {
+        anyhow::bail!("No subtasks found in agent output");
+    }
+
+    Ok(subtasks)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1706,15 +1949,13 @@ mod tests {
 
         // First run
         {
-            let mut writer =
-                StreamingLogWriter::new_at(&base_path, spec_id, prompt_name).unwrap();
+            let mut writer = StreamingLogWriter::new_at(&base_path, spec_id, prompt_name).unwrap();
             writer.write_line("Content A").unwrap();
         }
 
         // Second run (simulating replay)
         {
-            let mut writer =
-                StreamingLogWriter::new_at(&base_path, spec_id, prompt_name).unwrap();
+            let mut writer = StreamingLogWriter::new_at(&base_path, spec_id, prompt_name).unwrap();
             writer.write_line("Content B").unwrap();
         }
 
@@ -2380,5 +2621,66 @@ status: pending
         if let Some(val) = orig_anthropic {
             std::env::set_var("ANTHROPIC_MODEL", val);
         }
+    }
+
+    #[test]
+    fn test_parse_subtasks_from_agent_output_single() {
+        let output = r#"## Subtask 1: Add new field
+
+Add a new field to the struct alongside the old one.
+
+**Affected Files:**
+- src/lib.rs
+- src/main.rs
+"#;
+        let result = parse_subtasks_from_agent_output(output).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].title, "Add new field");
+        assert!(result[0].description.contains("Add a new field"));
+        assert_eq!(
+            result[0].target_files,
+            Some(vec!["src/lib.rs".to_string(), "src/main.rs".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_parse_subtasks_from_agent_output_multiple() {
+        let output = r#"## Subtask 1: First task
+
+Description of first task.
+
+**Affected Files:**
+- file1.rs
+
+## Subtask 2: Second task
+
+Description of second task.
+
+**Affected Files:**
+- file2.rs
+"#;
+        let result = parse_subtasks_from_agent_output(output).unwrap();
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].title, "First task");
+        assert_eq!(result[1].title, "Second task");
+    }
+
+    #[test]
+    fn test_parse_subtasks_without_files() {
+        let output = r#"## Subtask 1: Simple task
+
+Just a simple task without files listed.
+"#;
+        let result = parse_subtasks_from_agent_output(output).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].title, "Simple task");
+        assert!(result[0].target_files.is_none());
+    }
+
+    #[test]
+    fn test_parse_subtasks_empty_output() {
+        let output = "No subtasks here";
+        let result = parse_subtasks_from_agent_output(output);
+        assert!(result.is_err());
     }
 }
