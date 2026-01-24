@@ -123,6 +123,57 @@ scale:
 ---
 ```
 
+## Global Configuration
+
+Chant supports a global config file for user-wide defaults:
+
+```
+~/.config/chant/config.md
+```
+
+### Merge Behavior
+
+Project config overrides global config. Values are merged at the key level:
+
+```
+~/.config/chant/config.md    <- Global defaults
+.chant/config.md             <- Project overrides
+```
+
+### Example Global Config
+
+```markdown
+# ~/.config/chant/config.md
+---
+defaults:
+  branch: true
+  pr: true
+
+git:
+  provider: github
+---
+
+# Global Chant Settings
+
+My default settings for all projects.
+```
+
+### Example Project Override
+
+```markdown
+# .chant/config.md
+---
+project:
+  name: quick-prototype
+
+defaults:
+  branch: false   # Override: direct commits for this project
+  pr: false
+---
+```
+
+In this example, the global config sets `branch: true` and `pr: true`, but the project config overrides both to `false`. The `git.provider: github` from global config is still applied since the project doesn't override it.
+
 ## Environment Overrides
 
 ```bash
@@ -134,5 +185,6 @@ CHANT_PROMPT=tdd chant work 2026-01-22-001-x7m
 
 1. Spec frontmatter (highest)
 2. Environment variables
-3. Config file
-4. Built-in defaults (lowest)
+3. Project config (`.chant/config.md`)
+4. Global config (`~/.config/chant/config.md`)
+5. Built-in defaults (lowest)
