@@ -1,1 +1,0 @@
-Hello! Welcome to chant - your spec execution platform for AI-assisted development.
