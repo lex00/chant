@@ -367,7 +367,46 @@ If you don't know how to proceed:
 Don't spin. Try, document, move on.
 ```
 
-## Prompt Variables
+## Template Variables
+
+Prompts use `{{variable}}` syntax for substitution. Chant provides built-in variables from the spec and project configuration.
+
+### Built-in Variables
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `{{project.name}}` | Project name | `my-app` |
+| `{{spec.id}}` | Spec identifier | `2026-01-24-001-x7m` |
+| `{{spec.title}}` | First heading | `Add authentication` |
+| `{{spec.description}}` | Full spec body | Markdown content |
+| `{{spec.target_files}}` | Target files list | Array of paths |
+| `{{spec.acceptance}}` | Acceptance criteria | Array of strings |
+
+Use these in your prompts:
+
+```markdown
+# Execute Spec
+
+You are implementing **{{spec.title}}** for {{project.name}}.
+
+{{spec.description}}
+
+## Files to Modify
+
+{{#each spec.target_files}}
+- {{this}}
+{{/each}}
+
+## Commit
+
+When done: `chant({{spec.id}}): {{spec.title}}`
+```
+
+See [prompts.md](../concepts/prompts.md#template-variables) for the complete list of available variables.
+
+## Custom Prompt Variables
+
+Beyond built-in variables, you can define custom variables in your prompt's frontmatter.
 
 ### Defining Variables
 

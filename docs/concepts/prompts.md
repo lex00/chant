@@ -36,19 +36,125 @@ You are implementing a spec for {{project.name}}.
 
 ## Template Variables
 
-| Variable | Description |
-|----------|-------------|
-| `{{spec.id}}` | Spec identifier |
-| `{{spec.title}}` | Spec title (first heading) |
-| `{{spec.description}}` | Spec body content |
-| `{{spec.acceptance}}` | List of acceptance criteria |
-| `{{spec.target_files}}` | List of target files |
-| `{{spec.context}}` | Content of context files (all types) |
-| `{{spec.tracks}}` | Tracked source files (documentation) |
-| `{{spec.sources}}` | Source materials (research) |
-| `{{spec.data}}` | Input data files (research) |
-| `{{spec.driver}}` | Driver spec content (if group member) |
-| `{{project.name}}` | Project name from config |
+Prompts support variable substitution using `{{variable}}` syntax. When a prompt is assembled, Chant replaces these placeholders with actual values from the spec and project configuration.
+
+### Substitution Syntax
+
+Variables are enclosed in double curly braces: `{{variable}}`
+
+```markdown
+You are implementing a spec for {{project.name}}.
+
+## Your Spec
+
+**{{spec.title}}**
+
+{{spec.description}}
+
+Commit with: `chant({{spec.id}}): <description>`
+```
+
+### Available Variables
+
+| Variable | Description | Example Value |
+|----------|-------------|---------------|
+| `{{project.name}}` | Project name from config | `my-app` |
+| `{{spec.id}}` | Full spec identifier | `2026-01-24-001-x7m` |
+| `{{spec.title}}` | Spec title (first `#` heading) | `Add user authentication` |
+| `{{spec.description}}` | Full spec body content | The markdown content after frontmatter |
+| `{{spec.acceptance}}` | List of acceptance criteria | Array of criterion strings |
+| `{{spec.target_files}}` | List of target files from frontmatter | Array of file paths |
+| `{{spec.context}}` | Content of referenced context files | Concatenated file contents |
+| `{{spec.tracks}}` | Tracked source files (documentation specs) | Array of file paths |
+| `{{spec.sources}}` | Source materials (research specs) | Array of URLs or references |
+| `{{spec.data}}` | Input data files (research specs) | Array of file paths |
+| `{{spec.driver}}` | Driver spec content (if group member) | Parent spec markdown |
+
+### Examples
+
+**Spec file:**
+```markdown
+---
+status: pending
+target_files:
+  - src/auth/login.ts
+  - src/auth/logout.ts
+---
+
+# Add user authentication
+
+Implement JWT-based authentication for the API.
+
+## Acceptance Criteria
+
+- [ ] Login endpoint returns JWT
+- [ ] Logout invalidates token
+```
+
+**In your prompt:**
+```markdown
+# Task: {{spec.title}}
+
+{{spec.description}}
+
+## Files to Modify
+
+{{#each spec.target_files}}
+- {{this}}
+{{/each}}
+
+## When Done
+
+Commit with message: `chant({{spec.id}}): {{spec.title}}`
+```
+
+**Rendered output:**
+```markdown
+# Task: Add user authentication
+
+Implement JWT-based authentication for the API.
+
+## Acceptance Criteria
+
+- [ ] Login endpoint returns JWT
+- [ ] Logout invalidates token
+
+## Files to Modify
+
+- src/auth/login.ts
+- src/auth/logout.ts
+
+## When Done
+
+Commit with message: `chant(2026-01-24-001-x7m): Add user authentication`
+```
+
+### Iteration with `{{#each}}`
+
+Use Handlebars-style iteration for list variables:
+
+```markdown
+{{#each spec.target_files}}
+- {{this}}
+{{/each}}
+
+{{#each spec.acceptance}}
+- [ ] {{this}}
+{{/each}}
+```
+
+### Conditionals with `{{#if}}`
+
+Check if variables exist before using them:
+
+```markdown
+{{#if spec.target_files}}
+Focus on these files:
+{{#each spec.target_files}}
+- {{this}}
+{{/each}}
+{{/if}}
+```
 
 ## Built-in Prompts
 

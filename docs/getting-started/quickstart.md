@@ -41,18 +41,28 @@ Want different agent behavior? Edit the prompt.
 # .chant/prompts/standard.md
 ---
 name: standard
+purpose: Default execution prompt
 ---
 
-# Your Spec
+# Execute Spec
 
-{{spec.body}}
+You are implementing a spec for {{project.name}}.
 
-## How to Work
+## Your Spec
 
-1. Read the code first
+**{{spec.title}}**
+
+{{spec.description}}
+
+## Instructions
+
+1. Read the relevant code first
 2. Make minimal changes
 3. Run tests before committing
+4. Commit with message: `chant({{spec.id}}): <description>`
 ```
+
+Template variables like `{{spec.title}}` and `{{project.name}}` are replaced with actual values when the prompt runs. See [prompts.md](../concepts/prompts.md#template-variables) for all available variables.
 
 That's it. No plugins, no framework code.
 
