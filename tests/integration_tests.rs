@@ -6,6 +6,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::OnceLock;
 
 // Import serial_test for marking tests that must run serially
 use serial_test::serial;
@@ -1026,4 +1027,498 @@ original_spec: 2026-01-25-conflict-001
         conflict_spec_content.contains("## Acceptance Criteria"),
         "Should have Acceptance Criteria section"
     );
+}
+
+// ============================================================================
+// SILENT MODE TESTS
+// ============================================================================
+
+// Thread-local storage for the chant binary path
+thread_local! {
+    static CHANT_BINARY: OnceLock<PathBuf> = OnceLock::new();
+}
+
+/// Get the path to the chant binary
+fn get_chant_binary() -> PathBuf {
+    CHANT_BINARY.with(|cell| {
+        cell.get_or_init(|| {
+            // Start from the test executable's current directory
+            let mut current = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
+
+            // Walk up the directory tree to find target/debug/chant
+            for _ in 0..15 {
+                let chant_path = current.join("target/debug/chant");
+                if chant_path.exists() {
+                    return chant_path;
+                }
+
+                if let Some(parent) = current.parent() {
+                    current = parent.to_path_buf();
+                } else {
+                    break;
+                }
+            }
+
+            // Fallback: assume we're in the chant repo root
+            PathBuf::from("./target/debug/chant")
+        })
+        .clone()
+    })
+}
+
+/// Helper function to run chant binary in a given directory
+/// Assumes chant is already built (done by cargo test)
+fn run_chant(repo_dir: &Path, args: &[&str]) -> std::io::Result<std::process::Output> {
+    let chant_binary = get_chant_binary();
+    Command::new(&chant_binary)
+        .args(args)
+        .current_dir(repo_dir)
+        .output()
+}
+
+/// Get git exclude file content for a repo
+fn get_git_exclude_content(repo_dir: &Path) -> std::io::Result<String> {
+    let output = Command::new("git")
+        .args(["rev-parse", "--git-common-dir"])
+        .current_dir(repo_dir)
+        .output()?;
+
+    if !output.status.success() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "Failed to get git common dir",
+        ));
+    }
+
+    let git_dir = String::from_utf8(output.stdout)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+
+    // Handle both absolute and relative paths from git
+    let git_dir_path = PathBuf::from(git_dir.trim());
+    let git_dir_abs = if git_dir_path.is_absolute() {
+        git_dir_path
+    } else {
+        repo_dir.join(&git_dir_path)
+    };
+
+    let exclude_path = git_dir_abs.join("info/exclude");
+
+    fs::read_to_string(&exclude_path)
+}
+
+/// Check if .chant/ is in git exclude file
+fn is_chant_excluded(repo_dir: &Path) -> bool {
+    match get_git_exclude_content(repo_dir) {
+        Ok(content) => content.lines().any(|l| {
+            let trimmed = l.trim();
+            trimmed == ".chant/" || trimmed == ".chant"
+        }),
+        Err(_) => false,
+    }
+}
+
+/// Get git status output for a repo
+fn get_git_status(repo_dir: &Path) -> std::io::Result<String> {
+    let output = Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(repo_dir)
+        .output()?;
+
+    if !output.status.success() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "Failed to get git status",
+        ));
+    }
+
+    Ok(String::from_utf8(output.stdout).unwrap_or_default())
+}
+
+#[test]
+#[serial]
+fn test_silent_mode_isolation() {
+    let normal_repo = PathBuf::from("/tmp/test-chant-silent-normal");
+    let silent_repo = PathBuf::from("/tmp/test-chant-silent-private");
+
+    // Cleanup from previous runs
+    let _ = cleanup_test_repo(&normal_repo);
+    let _ = cleanup_test_repo(&silent_repo);
+
+    // Setup: Create and initialize git repos
+    assert!(
+        setup_test_repo(&normal_repo).is_ok(),
+        "Setup normal repo failed"
+    );
+    assert!(
+        setup_test_repo(&silent_repo).is_ok(),
+        "Setup silent repo failed"
+    );
+
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
+
+    // Test 1: Initialize chant normally in repo A
+    let output = run_chant(&normal_repo, &["init"]).expect("Failed to run chant init");
+    assert!(
+        output.status.success(),
+        "Chant init failed in normal repo: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Verify .chant/ is NOT in exclude for normal repo
+    assert!(
+        !is_chant_excluded(&normal_repo),
+        ".chant/ should NOT be excluded in normal repo"
+    );
+
+    // Test 2: Initialize chant with --silent in repo B
+    let output =
+        run_chant(&silent_repo, &["init", "--silent"]).expect("Failed to run chant init --silent");
+    assert!(
+        output.status.success(),
+        "Chant init --silent failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Verify .chant/ IS in exclude for silent repo
+    assert!(
+        is_chant_excluded(&silent_repo),
+        ".chant/ should be excluded in silent repo"
+    );
+
+    // Test 3: Verify git status is clean in silent repo (no untracked .chant/)
+    let status = get_git_status(&silent_repo).expect("Failed to get git status");
+    assert!(
+        !status.contains(".chant/"),
+        ".chant/ should not appear in git status in silent repo. Status: {}",
+        status
+    );
+
+    // Test 4: Create a simple spec in normal repo
+    std::env::set_current_dir(&normal_repo).expect("Failed to change to normal repo");
+    let output = run_chant(&normal_repo, &["add", "Test spec for normal repo"])
+        .expect("Failed to create spec in normal repo");
+    assert!(
+        output.status.success(),
+        "Failed to add spec in normal repo: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Test 5: Create a simple spec in silent repo
+    let output = run_chant(&silent_repo, &["add", "Test spec for silent repo"])
+        .expect("Failed to create spec in silent repo");
+    assert!(
+        output.status.success(),
+        "Failed to add spec in silent repo: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Test 6: Verify both repos have specs in .chant/specs/
+    let normal_specs_count = fs::read_dir(normal_repo.join(".chant/specs"))
+        .expect("Failed to read normal repo specs")
+        .count();
+    assert!(normal_specs_count > 0, "Normal repo should have specs");
+
+    let silent_specs_count = fs::read_dir(silent_repo.join(".chant/specs"))
+        .expect("Failed to read silent repo specs")
+        .count();
+    assert!(silent_specs_count > 0, "Silent repo should have specs");
+
+    // Test 7: Verify chant status shows "Silent mode" only in silent repo
+    let normal_status_output =
+        run_chant(&normal_repo, &["status"]).expect("Failed to run status in normal repo");
+    let normal_status = String::from_utf8_lossy(&normal_status_output.stdout);
+    assert!(
+        !normal_status.contains("Silent mode"),
+        "Normal repo should not show Silent mode indicator. Output: {}",
+        normal_status
+    );
+
+    let silent_status_output =
+        run_chant(&silent_repo, &["status"]).expect("Failed to run status in silent repo");
+    let silent_status = String::from_utf8_lossy(&silent_status_output.stdout);
+    assert!(
+        silent_status.contains("Silent mode"),
+        "Silent repo should show Silent mode indicator. Output: {}",
+        silent_status
+    );
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&normal_repo);
+    let _ = cleanup_test_repo(&silent_repo);
+}
+
+#[test]
+#[serial]
+fn test_silent_mode_pr_fails() {
+    let silent_repo = PathBuf::from("/tmp/test-chant-silent-pr-fail");
+
+    // Cleanup from previous runs
+    let _ = cleanup_test_repo(&silent_repo);
+
+    // Setup
+    assert!(
+        setup_test_repo(&silent_repo).is_ok(),
+        "Setup silent repo failed"
+    );
+
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
+
+    // Initialize chant with --silent
+    let output =
+        run_chant(&silent_repo, &["init", "--silent"]).expect("Failed to run chant init --silent");
+    assert!(
+        output.status.success(),
+        "Chant init --silent failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Create a spec
+    let output =
+        run_chant(&silent_repo, &["add", "Test spec for PR test"]).expect("Failed to create spec");
+    assert!(
+        output.status.success(),
+        "Failed to add spec: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Get the spec ID from list
+    let list_output = run_chant(&silent_repo, &["list"]).expect("Failed to list specs");
+    let list_content = String::from_utf8_lossy(&list_output.stdout);
+
+    // Extract a spec ID (format: YYYY-MM-DD-XXX-abc)
+    let spec_id = list_content
+        .lines()
+        .find(|line| line.contains("2026") || line.contains("-"))
+        .and_then(|line| {
+            line.split_whitespace()
+                .find(|word| word.contains("-") && word.len() > 8)
+        })
+        .unwrap_or("test-spec");
+
+    // Try to work the spec with --pr, should fail
+    let output = run_chant(&silent_repo, &["work", spec_id, "--pr"])
+        .expect("Failed to run work --pr command");
+
+    // Should fail with specific error message
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let combined = format!("{}\n{}", stdout, stderr);
+
+    assert!(
+        !output.status.success(),
+        "work --pr should fail in silent mode. Output: {}",
+        combined
+    );
+    assert!(
+        combined.contains("silent mode"),
+        "Error should mention silent mode. Output: {}",
+        combined
+    );
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&silent_repo);
+}
+
+#[test]
+#[serial]
+fn test_silent_mode_branch_warning() {
+    let silent_repo = PathBuf::from("/tmp/test-chant-silent-branch-warn");
+
+    // Cleanup from previous runs
+    let _ = cleanup_test_repo(&silent_repo);
+
+    // Setup
+    assert!(
+        setup_test_repo(&silent_repo).is_ok(),
+        "Setup silent repo failed"
+    );
+
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
+
+    // Initialize chant with --silent
+    let output =
+        run_chant(&silent_repo, &["init", "--silent"]).expect("Failed to run chant init --silent");
+    assert!(
+        output.status.success(),
+        "Chant init --silent failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Create a spec
+    let output = run_chant(&silent_repo, &["add", "Test spec for branch warning"])
+        .expect("Failed to create spec");
+    assert!(
+        output.status.success(),
+        "Failed to add spec: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Get the spec ID from list
+    let list_output = run_chant(&silent_repo, &["list"]).expect("Failed to list specs");
+    let list_content = String::from_utf8_lossy(&list_output.stdout);
+
+    // Extract a spec ID
+    let spec_id = list_content
+        .lines()
+        .find(|line| line.contains("2026") || line.contains("-"))
+        .and_then(|line| {
+            line.split_whitespace()
+                .find(|word| word.contains("-") && word.len() > 8)
+        })
+        .unwrap_or("test-spec");
+
+    // Try to work the spec with --branch, should warn but still allow the work
+    let output = run_chant(&silent_repo, &["work", spec_id, "--branch"])
+        .expect("Failed to run work --branch command");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let combined = format!("{}\n{}", stdout, stderr);
+
+    // The command should process (whether it succeeds or fails due to other reasons is OK)
+    // We're just checking that --branch doesn't hard-fail like --pr does
+    // The presence of "Working" indicates chant is proceeding with the work command
+    assert!(
+        combined.contains("Working") || output.status.success() || combined.contains("Warning"),
+        "Should proceed with branch work or show warning. Output: {}",
+        combined
+    );
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&silent_repo);
+}
+
+#[test]
+#[serial]
+fn test_silent_mode_init_on_tracked_fails() {
+    let repo = PathBuf::from("/tmp/test-chant-silent-tracked");
+
+    // Cleanup from previous runs
+    let _ = cleanup_test_repo(&repo);
+
+    // Setup
+    assert!(setup_test_repo(&repo).is_ok(), "Setup repo failed");
+
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
+
+    // Initialize chant normally first (this creates .chant/ tracked in git)
+    let output = run_chant(&repo, &["init"]).expect("Failed to run chant init");
+    assert!(
+        output.status.success(),
+        "Chant init failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Commit .chant/ to git
+    let output = Command::new("git")
+        .args(["add", ".chant/"])
+        .current_dir(&repo)
+        .output()
+        .expect("Failed to add .chant/ to git");
+    assert!(output.status.success(), "Failed to stage .chant/");
+
+    let output = Command::new("git")
+        .args(["commit", "-m", "Add .chant/"])
+        .current_dir(&repo)
+        .output()
+        .expect("Failed to commit");
+    assert!(output.status.success(), "Failed to commit .chant/");
+
+    // Now try to initialize with --silent (should fail)
+    let output =
+        run_chant(&repo, &["init", "--silent"]).expect("Failed to run chant init --silent");
+
+    // Should fail
+    assert!(
+        !output.status.success(),
+        "init --silent should fail when .chant/ is already tracked"
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("already tracked") || stderr.contains("silent mode"),
+        "Error should mention that .chant/ is already tracked. Output: {}",
+        stderr
+    );
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo);
+}
+
+#[test]
+#[serial]
+fn test_silent_mode_exclude_file_structure() {
+    let silent_repo = PathBuf::from("/tmp/test-chant-silent-exclude-struct");
+
+    // Cleanup from previous runs
+    let _ = cleanup_test_repo(&silent_repo);
+
+    // Setup
+    assert!(
+        setup_test_repo(&silent_repo).is_ok(),
+        "Setup silent repo failed"
+    );
+
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
+
+    // Initialize with --silent
+    let output =
+        run_chant(&silent_repo, &["init", "--silent"]).expect("Failed to run chant init --silent");
+    assert!(
+        output.status.success(),
+        "Chant init --silent failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Get git common dir and check exclude file
+    let output = Command::new("git")
+        .args(["rev-parse", "--git-common-dir"])
+        .current_dir(&silent_repo)
+        .output()
+        .expect("Failed to get git common dir");
+
+    assert!(output.status.success(), "Failed to get git common dir");
+
+    let git_dir = String::from_utf8(output.stdout).expect("Invalid UTF-8 in git dir");
+    let git_dir_path = PathBuf::from(git_dir.trim());
+
+    // Handle relative vs absolute paths
+    let git_dir_abs = if git_dir_path.is_absolute() {
+        git_dir_path
+    } else {
+        silent_repo.join(&git_dir_path)
+    };
+
+    let exclude_path = git_dir_abs.join("info/exclude");
+
+    // Verify exclude file exists and contains .chant/
+    assert!(
+        exclude_path.exists(),
+        "Exclude file should exist at: {} (git_dir_abs: {})",
+        exclude_path.display(),
+        git_dir_abs.display()
+    );
+
+    let exclude_content = fs::read_to_string(&exclude_path).expect("Failed to read exclude file");
+    assert!(
+        exclude_content.contains(".chant/"),
+        "Exclude file should contain .chant/. Content: {}",
+        exclude_content
+    );
+
+    // Verify .git/info directory structure exists
+    let info_dir = git_dir_abs.join("info");
+    assert!(
+        info_dir.is_dir(),
+        ".git/info directory should exist at: {}",
+        info_dir.display()
+    );
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&silent_repo);
 }
