@@ -449,8 +449,18 @@ fn load_specs_recursive(dir: &Path, specs: &mut Vec<Spec>) -> Result<()> {
 }
 
 /// Resolve a partial spec ID to a full spec.
+/// Searches both active specs and archived specs.
 pub fn resolve_spec(specs_dir: &Path, partial_id: &str) -> Result<Spec> {
-    let specs = load_all_specs(specs_dir)?;
+    let mut specs = load_all_specs(specs_dir)?;
+
+    // Also load archived specs
+    let archive_dir = specs_dir.parent()
+        .ok_or_else(|| anyhow::anyhow!("Cannot determine archive directory"))?
+        .join("archive");
+    if archive_dir.exists() {
+        let archived_specs = load_all_specs(&archive_dir)?;
+        specs.extend(archived_specs);
+    }
 
     // Exact match
     if let Some(spec) = specs.iter().find(|s| s.id == partial_id) {
@@ -1351,5 +1361,114 @@ labels:
 
         // Verify labels are None
         assert_eq!(loaded_spec.frontmatter.labels, None);
+    }
+
+    #[test]
+    fn test_resolve_spec_finds_archived_specs() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path().join("specs");
+        let archive_dir = temp_dir.path().join("archive").join("2026-01-24");
+
+        // Create specs directory structure
+        fs::create_dir_all(&specs_dir).unwrap();
+        fs::create_dir_all(&archive_dir).unwrap();
+
+        // Create an archived spec
+        let archived_spec = Spec {
+            id: "2026-01-24-001-abc".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                ..Default::default()
+            },
+            title: Some("Archived spec".to_string()),
+            body: "# Archived spec\n\nArchived content.".to_string(),
+        };
+
+        let archived_path = archive_dir.join("2026-01-24-001-abc.md");
+        archived_spec.save(&archived_path).unwrap();
+
+        // Try to resolve the archived spec
+        let resolved = resolve_spec(&specs_dir, "2026-01-24-001-abc").unwrap();
+        assert_eq!(resolved.id, "2026-01-24-001-abc");
+        assert_eq!(resolved.frontmatter.status, SpecStatus::Completed);
+    }
+
+    #[test]
+    fn test_resolve_spec_finds_archived_by_partial_id() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path().join("specs");
+        let archive_dir = temp_dir.path().join("archive").join("2026-01-24");
+
+        // Create specs directory structure
+        fs::create_dir_all(&specs_dir).unwrap();
+        fs::create_dir_all(&archive_dir).unwrap();
+
+        // Create an archived spec
+        let archived_spec = Spec {
+            id: "2026-01-24-002-def".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                ..Default::default()
+            },
+            title: Some("Another archived spec".to_string()),
+            body: "# Another archived spec\n\nArchived content.".to_string(),
+        };
+
+        let archived_path = archive_dir.join("2026-01-24-002-def.md");
+        archived_spec.save(&archived_path).unwrap();
+
+        // Try to resolve by suffix
+        let resolved = resolve_spec(&specs_dir, "def").unwrap();
+        assert_eq!(resolved.id, "2026-01-24-002-def");
+    }
+
+    #[test]
+    fn test_resolve_spec_prioritizes_active_over_archived() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path().join("specs");
+        let archive_dir = temp_dir.path().join("archive").join("2026-01-24");
+
+        // Create directory structure
+        fs::create_dir_all(&specs_dir).unwrap();
+        fs::create_dir_all(&archive_dir).unwrap();
+
+        // Create an active spec
+        let active_spec = Spec {
+            id: "2026-01-24-003-ghi".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                ..Default::default()
+            },
+            title: Some("Active spec".to_string()),
+            body: "# Active spec\n\nActive content.".to_string(),
+        };
+
+        let active_path = specs_dir.join("2026-01-24-003-ghi.md");
+        active_spec.save(&active_path).unwrap();
+
+        // Create an archived spec with similar ID
+        let archived_spec = Spec {
+            id: "2026-01-24-003-xyz".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                ..Default::default()
+            },
+            title: Some("Old spec".to_string()),
+            body: "# Old spec\n\nArchived content.".to_string(),
+        };
+
+        let archived_path = archive_dir.join("2026-01-24-003-xyz.md");
+        archived_spec.save(&archived_path).unwrap();
+
+        // Resolve should find the active one
+        let resolved = resolve_spec(&specs_dir, "2026-01-24-003-ghi").unwrap();
+        assert_eq!(resolved.id, "2026-01-24-003-ghi");
+        assert_eq!(resolved.frontmatter.status, SpecStatus::Pending);
     }
 }
