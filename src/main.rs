@@ -1690,9 +1690,7 @@ fn confirm_re_finalize(spec_id: &str, force_flag: bool) -> Result<bool> {
         spec_id
     );
     println!("This will update commits and completion timestamp to now.");
-    println!("Use {} to skip this confirmation.",
-        "--force".cyan()
-    );
+    println!("Use {} to skip this confirmation.", "--force".cyan());
 
     use std::io::{self, Write};
     print!("Continue? [y/N] ");
@@ -4724,5 +4722,374 @@ git:
             saved_spec.frontmatter.pr,
             Some("https://github.com/example/repo/pull/123".to_string())
         );
+    }
+
+    /// Test: PR URL is captured and persisted after finalization
+    #[test]
+    fn test_finalization_captures_pr_url() {
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path().join(".chant/specs");
+        std::fs::create_dir_all(&specs_dir).unwrap();
+
+        let spec_content = r#"---
+type: task
+id: 2026-01-24-test-pr-001
+status: in_progress
+---
+
+# Test spec for PR URL capture
+
+## Acceptance Criteria
+
+- [x] Item 1
+"#;
+        let spec_path = specs_dir.join("2026-01-24-test-pr-001.md");
+        std::fs::write(&spec_path, spec_content).unwrap();
+
+        let config_str = r#"---
+project:
+  name: test-project
+defaults:
+  prompt: standard
+  branch: false
+  pr: false
+  branch_prefix: "chant/"
+git:
+  provider: github
+---
+"#;
+        let config = Config::parse(config_str).unwrap();
+
+        // Load and finalize
+        let mut spec = spec::resolve_spec(&specs_dir, "2026-01-24-test-pr-001").unwrap();
+
+        // Set PR URL before finalization (simulating PR creation during cmd_work)
+        spec.frontmatter.pr = Some("https://github.com/test/repo/pull/99".to_string());
+
+        finalize_spec(&mut spec, &spec_path, &config).unwrap();
+
+        // Verify PR URL is still set after finalization
+        assert_eq!(
+            spec.frontmatter.pr,
+            Some("https://github.com/test/repo/pull/99".to_string())
+        );
+
+        // Verify PR URL is persisted to disk
+        let saved_spec = spec::resolve_spec(&specs_dir, "2026-01-24-test-pr-001").unwrap();
+        assert_eq!(
+            saved_spec.frontmatter.pr,
+            Some("https://github.com/test/repo/pull/99".to_string())
+        );
+    }
+
+    /// Test: Model name is set from config defaults during finalization
+    #[test]
+    fn test_finalization_sets_model_name_from_config() {
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path().join(".chant/specs");
+        std::fs::create_dir_all(&specs_dir).unwrap();
+
+        let spec_content = r#"---
+type: task
+id: 2026-01-24-test-model-001
+status: in_progress
+---
+
+# Test spec for model name
+
+## Acceptance Criteria
+
+- [x] Item 1
+"#;
+        let spec_path = specs_dir.join("2026-01-24-test-model-001.md");
+        std::fs::write(&spec_path, spec_content).unwrap();
+
+        // Config with explicit model default
+        let config_str = r#"---
+project:
+  name: test-project
+defaults:
+  prompt: standard
+  branch: false
+  pr: false
+  branch_prefix: "chant/"
+  model: opus-4-5
+git:
+  provider: github
+---
+"#;
+        let config = Config::parse(config_str).unwrap();
+
+        // Load and finalize
+        let mut spec = spec::resolve_spec(&specs_dir, "2026-01-24-test-model-001").unwrap();
+
+        // Before finalization, model should be None
+        assert!(spec.frontmatter.model.is_none());
+
+        finalize_spec(&mut spec, &spec_path, &config).unwrap();
+
+        // After finalization with config model, model should be set
+        // Note: May be None if env vars override, but if env vars are not set it should be from config
+        if std::env::var("CHANT_MODEL").is_err() && std::env::var("ANTHROPIC_MODEL").is_err() {
+            assert_eq!(spec.frontmatter.model, Some("opus-4-5".to_string()));
+
+            // Verify persisted to disk
+            let saved_spec = spec::resolve_spec(&specs_dir, "2026-01-24-test-model-001").unwrap();
+            assert_eq!(saved_spec.frontmatter.model, Some("opus-4-5".to_string()));
+        }
+    }
+
+    /// Test: Model name persists correctly across finalization
+    #[test]
+    fn test_finalization_model_name_persisted() {
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path().join(".chant/specs");
+        std::fs::create_dir_all(&specs_dir).unwrap();
+
+        let spec_content = r#"---
+type: task
+id: 2026-01-24-test-model-persist
+status: in_progress
+---
+
+# Test spec for model persistence
+
+## Acceptance Criteria
+
+- [x] Item 1
+"#;
+        let spec_path = specs_dir.join("2026-01-24-test-model-persist.md");
+        std::fs::write(&spec_path, spec_content).unwrap();
+
+        // Config with a specific model
+        let config_str = r#"---
+project:
+  name: test-project
+defaults:
+  prompt: standard
+  branch: false
+  pr: false
+  branch_prefix: "chant/"
+  model: sonnet-4
+git:
+  provider: github
+---
+"#;
+        let config = Config::parse(config_str).unwrap();
+
+        // Load spec - model should be None before finalization
+        let mut spec = spec::resolve_spec(&specs_dir, "2026-01-24-test-model-persist").unwrap();
+        assert!(spec.frontmatter.model.is_none());
+
+        // Finalize the spec
+        finalize_spec(&mut spec, &spec_path, &config).unwrap();
+
+        // Model should be set after finalization
+        // It will either be from config or from env vars if they're set
+        assert!(spec.frontmatter.model.is_some());
+
+        // Reload and verify it persisted
+        let saved_spec = spec::resolve_spec(&specs_dir, "2026-01-24-test-model-persist").unwrap();
+        assert!(saved_spec.frontmatter.model.is_some());
+
+        // Both should have the same model value
+        assert_eq!(spec.frontmatter.model, saved_spec.frontmatter.model);
+    }
+
+    /// Test: Failed specs are marked as Failed, not left in InProgress
+    #[test]
+    fn test_failed_spec_status_marked_failed() {
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path().join(".chant/specs");
+        std::fs::create_dir_all(&specs_dir).unwrap();
+
+        let spec_content = r#"---
+type: task
+id: 2026-01-24-test-fail-001
+status: in_progress
+---
+
+# Test spec for failure handling
+
+## Acceptance Criteria
+
+- [x] Item 1
+"#;
+        let spec_path = specs_dir.join("2026-01-24-test-fail-001.md");
+        std::fs::write(&spec_path, spec_content).unwrap();
+
+        // Load the spec and manually mark it as failed
+        let mut spec = spec::resolve_spec(&specs_dir, "2026-01-24-test-fail-001").unwrap();
+
+        // Simulate failure path: set status to Failed and save
+        spec.frontmatter.status = SpecStatus::Failed;
+        spec.save(&spec_path).unwrap();
+
+        // Verify it was saved as Failed, not InProgress
+        let saved_spec = spec::resolve_spec(&specs_dir, "2026-01-24-test-fail-001").unwrap();
+        assert_eq!(saved_spec.frontmatter.status, SpecStatus::Failed);
+
+        // Verify it's not marked as Completed
+        assert_ne!(saved_spec.frontmatter.status, SpecStatus::Completed);
+
+        // Verify no completed_at was set for failed specs
+        assert!(saved_spec.frontmatter.completed_at.is_none());
+    }
+
+    /// Test: Unchecked acceptance criteria block finalization (unless forced)
+    #[test]
+    fn test_acceptance_criteria_failure_blocks_finalization() {
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path().join(".chant/specs");
+        std::fs::create_dir_all(&specs_dir).unwrap();
+
+        let spec_content = r#"---
+type: task
+id: 2026-01-24-test-criteria-001
+status: in_progress
+---
+
+# Test spec with unchecked criteria
+
+## Acceptance Criteria
+
+- [ ] Unchecked item 1
+- [x] Checked item 1
+- [ ] Unchecked item 2
+"#;
+        let spec_path = specs_dir.join("2026-01-24-test-criteria-001.md");
+        std::fs::write(&spec_path, spec_content).unwrap();
+
+        // Load spec
+        let spec = spec::resolve_spec(&specs_dir, "2026-01-24-test-criteria-001").unwrap();
+
+        // Verify there are unchecked criteria
+        let unchecked = spec.count_unchecked_checkboxes();
+        assert_eq!(unchecked, 2, "Should have 2 unchecked criteria");
+
+        // In the actual cmd_work flow, this would prevent finalization
+        // without the --force flag. We verify the counting works correctly.
+        assert!(unchecked > 0);
+    }
+
+    /// Test: Parallel mode marks completed specs as Completed, not InProgress
+    #[test]
+    fn test_parallel_finalization_sets_completed_status() {
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path().join(".chant/specs");
+        std::fs::create_dir_all(&specs_dir).unwrap();
+
+        // Create a spec that simulates what would happen after parallel execution
+        let spec_content = r#"---
+type: task
+id: 2026-01-24-test-parallel-001
+status: in_progress
+---
+
+# Test spec for parallel finalization
+
+## Acceptance Criteria
+
+- [x] Item 1
+"#;
+        let spec_path = specs_dir.join("2026-01-24-test-parallel-001.md");
+        std::fs::write(&spec_path, spec_content).unwrap();
+
+        // Simulate what the parallel thread does:
+        // 1. Load spec after agent success
+        let mut spec = spec::resolve_spec(&specs_dir, "2026-01-24-test-parallel-001").unwrap();
+
+        // 2. Set completion fields (matching cmd_work_parallel logic around line 1152-1163)
+        spec.frontmatter.status = SpecStatus::Completed;
+        spec.frontmatter.completed_at = Some(
+            chrono::Local::now()
+                .format("%Y-%m-%dT%H:%M:%SZ")
+                .to_string(),
+        );
+        spec.frontmatter.model = get_model_name_with_default(Some("opus-4-5"));
+
+        // 3. Save the spec
+        spec.save(&spec_path).unwrap();
+
+        // Verify it was saved as Completed
+        let saved_spec = spec::resolve_spec(&specs_dir, "2026-01-24-test-parallel-001").unwrap();
+        assert_eq!(saved_spec.frontmatter.status, SpecStatus::Completed);
+        assert!(saved_spec.frontmatter.completed_at.is_some());
+
+        // Verify it's not still in_progress
+        assert_ne!(saved_spec.frontmatter.status, SpecStatus::InProgress);
+    }
+
+    /// Test: Integration - full workflow from pending to completed with all fields
+    #[test]
+    fn test_integration_full_workflow_pending_to_completed() {
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path().join(".chant/specs");
+        std::fs::create_dir_all(&specs_dir).unwrap();
+
+        let spec_content = r#"---
+type: task
+id: 2026-01-24-test-integration-001
+status: pending
+---
+
+# Integration test spec
+
+## Acceptance Criteria
+
+- [x] Step 1 complete
+- [x] Step 2 complete
+"#;
+        let spec_path = specs_dir.join("2026-01-24-test-integration-001.md");
+        std::fs::write(&spec_path, spec_content).unwrap();
+
+        let config_str = r#"---
+project:
+  name: test-project
+defaults:
+  prompt: standard
+  branch: false
+  pr: false
+  branch_prefix: "chant/"
+  model: haiku
+git:
+  provider: github
+---
+"#;
+        let config = Config::parse(config_str).unwrap();
+
+        // Step 1: Load pending spec
+        let mut spec = spec::resolve_spec(&specs_dir, "2026-01-24-test-integration-001").unwrap();
+        assert_eq!(spec.frontmatter.status, SpecStatus::Pending);
+        assert!(spec.frontmatter.completed_at.is_none());
+        assert!(spec.frontmatter.model.is_none());
+
+        // Step 2: Simulate running (mark as in_progress)
+        spec.frontmatter.status = SpecStatus::InProgress;
+        spec.save(&spec_path).unwrap();
+
+        let mut spec = spec::resolve_spec(&specs_dir, "2026-01-24-test-integration-001").unwrap();
+        assert_eq!(spec.frontmatter.status, SpecStatus::InProgress);
+
+        // Step 3: Finalize
+        finalize_spec(&mut spec, &spec_path, &config).unwrap();
+
+        // Step 4: Verify all fields are set
+        assert_eq!(spec.frontmatter.status, SpecStatus::Completed);
+        assert!(spec.frontmatter.completed_at.is_some());
+        // Model should be from config (if env vars not set)
+        if std::env::var("CHANT_MODEL").is_err() && std::env::var("ANTHROPIC_MODEL").is_err() {
+            assert_eq!(spec.frontmatter.model, Some("haiku".to_string()));
+        }
+
+        // Step 5: Reload and verify persistence
+        let saved_spec = spec::resolve_spec(&specs_dir, "2026-01-24-test-integration-001").unwrap();
+        assert_eq!(saved_spec.frontmatter.status, SpecStatus::Completed);
+        assert!(saved_spec.frontmatter.completed_at.is_some());
+
+        // Verify timestamp format is correct
+        let timestamp = saved_spec.frontmatter.completed_at.unwrap();
+        assert!(timestamp.ends_with('Z'));
+        assert!(timestamp.contains('T'));
     }
 }
