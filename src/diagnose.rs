@@ -205,10 +205,7 @@ fn check_status_consistency(spec: &Spec, commit_exists: bool, unchecked: usize) 
         }
         SpecStatus::Pending => {
             if commit_exists {
-                CheckResult::fail(
-                    "Status consistency",
-                    "Status is pending but commit exists",
-                )
+                CheckResult::fail("Status consistency", "Status is pending but commit exists")
             } else {
                 CheckResult::pass("Status consistency")
             }
@@ -272,18 +269,13 @@ fn diagnose_issues(spec: &Spec, checks: &[CheckResult]) -> (String, Option<Strin
     let failed = checks.iter().filter(|c| !c.passed).collect::<Vec<_>>();
 
     if failed.is_empty() {
-        return (
-            "All checks passed. Spec appears healthy.".to_string(),
-            None,
-        );
+        return ("All checks passed. Spec appears healthy.".to_string(), None);
     }
 
     // Look for specific patterns
     if spec.frontmatter.status == SpecStatus::InProgress {
         // Check for the common "stuck in progress" pattern
-        let has_commit = checks
-            .iter()
-            .any(|c| c.name == "Git commit" && c.passed);
+        let has_commit = checks.iter().any(|c| c.name == "Git commit" && c.passed);
         let all_criteria_met = checks
             .iter()
             .find(|c| c.name == "Acceptance criteria")
@@ -293,7 +285,10 @@ fn diagnose_issues(spec: &Spec, checks: &[CheckResult]) -> (String, Option<Strin
         if has_commit && all_criteria_met {
             return (
                 "Spec appears complete but wasn't finalized.".to_string(),
-                Some(format!("Run `just chant work {} --finalize` to fix.", &spec.id)),
+                Some(format!(
+                    "Run `just chant work {} --finalize` to fix.",
+                    &spec.id
+                )),
             );
         }
 
@@ -306,10 +301,7 @@ fn diagnose_issues(spec: &Spec, checks: &[CheckResult]) -> (String, Option<Strin
 
         return (
             "Spec is in progress but has issues.".to_string(),
-            Some(format!(
-                "Check the log: `just chant log {}`",
-                &spec.id
-            )),
+            Some(format!("Check the log: `just chant log {}`", &spec.id)),
         );
     }
 
@@ -355,10 +347,7 @@ mod tests {
         let report = DiagnosticReport {
             spec_id: "test".to_string(),
             status: SpecStatus::Completed,
-            checks: vec![
-                CheckResult::pass("Check 1"),
-                CheckResult::pass("Check 2"),
-            ],
+            checks: vec![CheckResult::pass("Check 1"), CheckResult::pass("Check 2")],
             diagnosis: "All good".to_string(),
             suggestion: None,
         };
