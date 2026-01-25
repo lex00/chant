@@ -16,6 +16,10 @@ build-release:
 test:
     ~/.cargo/bin/cargo test
 
+# Test new developer clone and build experience (slow, manual only)
+test-new-dev:
+    ~/.cargo/bin/cargo test test_new_developer_experience -- --ignored --nocapture
+
 # Run tests with coverage
 test-coverage:
     ~/.cargo/bin/cargo llvm-cov --html

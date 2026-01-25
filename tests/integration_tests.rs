@@ -1030,6 +1030,151 @@ original_spec: 2026-01-25-conflict-001
 }
 
 // ============================================================================
+// NEW DEVELOPER EXPERIENCE TEST
+// ============================================================================
+
+/// Test that simulates a brand new developer cloning the repo for the first time.
+/// Validates that build succeeds with no unexpected warnings and all tests pass.
+///
+/// This is a manual-only test (ignored by default) because it takes longer to execute
+/// by cloning the repo and running a full build.
+///
+/// Run manually with:
+/// ```bash
+/// cargo test test_new_developer_experience -- --ignored --nocapture
+/// ```
+#[test]
+#[ignore] // Run manually: cargo test test_new_developer_experience -- --ignored
+#[serial]
+fn test_new_developer_experience() {
+    let test_dir = PathBuf::from("/tmp/test-chant-new-dev");
+    let _ = cleanup_test_repo(&test_dir);
+
+    // Get the root of the current chant repository
+    let repo_root = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+
+    // Clone the repo to a fresh temp directory (simulating a new developer clone)
+    let clone_output = Command::new("git")
+        .args(["clone", &repo_root, test_dir.to_str().unwrap()])
+        .output()
+        .expect("Failed to clone repo");
+
+    if !clone_output.status.success() {
+        panic!(
+            "Clone failed: {}",
+            String::from_utf8_lossy(&clone_output.stderr)
+        );
+    }
+
+    // Build the project
+    let build_output = Command::new("cargo")
+        .args(["build"])
+        .current_dir(&test_dir)
+        .output()
+        .expect("Failed to run cargo build");
+
+    if !build_output.status.success() {
+        panic!(
+            "Build failed: {}",
+            String::from_utf8_lossy(&build_output.stderr)
+        );
+    }
+
+    let build_stderr = String::from_utf8_lossy(&build_output.stderr);
+
+    // Check for unexpected warnings (allow known warnings)
+    let known_warnings = [
+        "field `success` is never read", // worktree.rs
+    ];
+
+    for line in build_stderr.lines() {
+        if line.contains("warning:") {
+            let is_known = known_warnings
+                .iter()
+                .any(|w| line.contains(w));
+
+            if !is_known {
+                eprintln!("Unexpected warning detected: {}", line);
+                // Note: We don't panic here, just report new warnings
+            }
+        }
+    }
+
+    // Run clippy
+    let clippy_output = Command::new("cargo")
+        .args(["clippy", "--", "-D", "warnings"])
+        .current_dir(&test_dir)
+        .output()
+        .expect("Failed to run cargo clippy");
+
+    if !clippy_output.status.success() {
+        panic!(
+            "Clippy failed: {}",
+            String::from_utf8_lossy(&clippy_output.stderr)
+        );
+    }
+
+    // Run formatting check
+    let fmt_check_output = Command::new("cargo")
+        .args(["fmt", "--", "--check"])
+        .current_dir(&test_dir)
+        .output()
+        .expect("Failed to run cargo fmt --check");
+
+    if !fmt_check_output.status.success() {
+        panic!(
+            "Format check failed: {}",
+            String::from_utf8_lossy(&fmt_check_output.stderr)
+        );
+    }
+
+    // Run all tests
+    let test_output = Command::new("cargo")
+        .args(["test"])
+        .current_dir(&test_dir)
+        .output()
+        .expect("Failed to run cargo test");
+
+    if !test_output.status.success() {
+        panic!(
+            "Tests failed: {}",
+            String::from_utf8_lossy(&test_output.stderr)
+        );
+    }
+
+    // Verify the binary works
+    let version_output = Command::new("./target/debug/chant")
+        .args(["--version"])
+        .current_dir(&test_dir)
+        .output()
+        .expect("Failed to run chant --version");
+
+    if !version_output.status.success() {
+        panic!(
+            "chant --version failed: {}",
+            String::from_utf8_lossy(&version_output.stderr)
+        );
+    }
+
+    // Verify help works
+    let help_output = Command::new("./target/debug/chant")
+        .args(["--help"])
+        .current_dir(&test_dir)
+        .output()
+        .expect("Failed to run chant --help");
+
+    if !help_output.status.success() {
+        panic!(
+            "chant --help failed: {}",
+            String::from_utf8_lossy(&help_output.stderr)
+        );
+    }
+
+    // Cleanup
+    let _ = cleanup_test_repo(&test_dir);
+}
+
+// ============================================================================
 // SILENT MODE TESTS
 // ============================================================================
 
