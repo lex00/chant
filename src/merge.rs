@@ -8,6 +8,7 @@
 use crate::config::Config;
 use crate::git::MergeResult;
 use crate::spec::{Spec, SpecStatus};
+use crate::spec_group::{extract_member_number, is_member_of};
 use anyhow::Result;
 
 /// Load main_branch from config with fallback to "main"
@@ -59,24 +60,16 @@ pub fn get_specs_to_merge(
 #[allow(dead_code)]
 pub fn validate_spec_can_merge(spec: &Spec, branch_exists: bool) -> Result<()> {
     // Check status is Completed
-    if spec.frontmatter.status != SpecStatus::Completed {
-        match spec.frontmatter.status {
-            SpecStatus::Pending => {
-                anyhow::bail!("Spec must be completed before merging");
-            }
-            SpecStatus::InProgress => {
-                anyhow::bail!("Spec must be completed before merging");
-            }
-            SpecStatus::Failed => {
-                anyhow::bail!("Cannot merge failed spec");
-            }
-            SpecStatus::NeedsAttention => {
-                anyhow::bail!("Spec needs attention before merging");
-            }
-            SpecStatus::Completed => {
-                // This shouldn't be reached, but included for completeness
-                anyhow::bail!("Spec must be completed before merging");
-            }
+    match spec.frontmatter.status {
+        SpecStatus::Completed => {}
+        SpecStatus::Failed => {
+            anyhow::bail!("Cannot merge failed spec");
+        }
+        SpecStatus::NeedsAttention => {
+            anyhow::bail!("Spec needs attention before merging");
+        }
+        _ => {
+            anyhow::bail!("Spec must be completed before merging");
         }
     }
 
@@ -104,7 +97,7 @@ pub fn collect_member_specs(driver_spec: &Spec, all_specs: &[Spec]) -> Vec<Spec>
     for spec in all_specs {
         if is_member_of(&spec.id, driver_id) {
             // Extract sequence number from member ID
-            if let Some(seq_num) = extract_sequence_number(&spec.id, driver_id) {
+            if let Some(seq_num) = extract_member_number(&spec.id) {
                 members.push((seq_num, spec.clone()));
             }
         }
@@ -229,71 +222,48 @@ pub fn merge_driver_spec(
     }
 }
 
-/// Check if `member_id` is a group member of `driver_id`.
-#[allow(dead_code)]
-fn is_member_of(member_id: &str, driver_id: &str) -> bool {
-    if !member_id.starts_with(driver_id) {
-        return false;
-    }
-
-    let suffix = &member_id[driver_id.len()..];
-    suffix.starts_with('.') && suffix.len() > 1
-}
-
-/// Extract the first sequence number from a member ID
-/// For "driver.1" returns Some(1)
-/// For "driver.1.2" returns Some(1)
-#[allow(dead_code)]
-fn extract_sequence_number(member_id: &str, driver_id: &str) -> Option<u32> {
-    let suffix = &member_id[driver_id.len()..];
-    if !suffix.starts_with('.') {
-        return None;
-    }
-
-    let parts: Vec<&str> = suffix[1..].split('.').collect();
-    if parts.is_empty() {
-        return None;
-    }
-
-    parts[0].parse::<u32>().ok()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::config::DefaultsConfig;
 
-    #[test]
-    fn test_load_main_branch_default() {
-        let config = Config {
+    fn make_config(defaults: DefaultsConfig) -> Config {
+        Config {
             project: crate::config::ProjectConfig {
                 name: "test".to_string(),
                 prefix: None,
             },
-            defaults: DefaultsConfig::default(),
+            defaults,
             git: crate::config::GitConfig::default(),
             providers: crate::provider::ProviderConfig::default(),
-        };
+        }
+    }
 
+    fn make_spec(id: &str, status: SpecStatus) -> Spec {
+        Spec {
+            id: id.to_string(),
+            frontmatter: crate::spec::SpecFrontmatter {
+                status,
+                ..Default::default()
+            },
+            title: Some(format!("Spec {}", id)),
+            body: format!("Body {}", id),
+        }
+    }
+
+    #[test]
+    fn test_load_main_branch_default() {
+        let config = make_config(DefaultsConfig::default());
         let branch = load_main_branch(&config);
         assert_eq!(branch, "main");
     }
 
     #[test]
     fn test_load_main_branch_custom() {
-        let config = Config {
-            project: crate::config::ProjectConfig {
-                name: "test".to_string(),
-                prefix: None,
-            },
-            defaults: DefaultsConfig {
-                main_branch: "master".to_string(),
-                ..Default::default()
-            },
-            git: crate::config::GitConfig::default(),
-            providers: crate::provider::ProviderConfig::default(),
-        };
-
+        let config = make_config(DefaultsConfig {
+            main_branch: "master".to_string(),
+            ..Default::default()
+        });
         let branch = load_main_branch(&config);
         assert_eq!(branch, "master");
     }
@@ -301,33 +271,9 @@ mod tests {
     #[test]
     fn test_get_specs_to_merge_all() {
         let specs = vec![
-            Spec {
-                id: "spec1".to_string(),
-                frontmatter: crate::spec::SpecFrontmatter {
-                    status: SpecStatus::Completed,
-                    ..Default::default()
-                },
-                title: Some("Spec 1".to_string()),
-                body: "Body 1".to_string(),
-            },
-            Spec {
-                id: "spec2".to_string(),
-                frontmatter: crate::spec::SpecFrontmatter {
-                    status: SpecStatus::Pending,
-                    ..Default::default()
-                },
-                title: Some("Spec 2".to_string()),
-                body: "Body 2".to_string(),
-            },
-            Spec {
-                id: "spec3".to_string(),
-                frontmatter: crate::spec::SpecFrontmatter {
-                    status: SpecStatus::Completed,
-                    ..Default::default()
-                },
-                title: Some("Spec 3".to_string()),
-                body: "Body 3".to_string(),
-            },
+            make_spec("spec1", SpecStatus::Completed),
+            make_spec("spec2", SpecStatus::Pending),
+            make_spec("spec3", SpecStatus::Completed),
         ];
 
         let result = get_specs_to_merge(&[], true, &specs).unwrap();
@@ -339,24 +285,8 @@ mod tests {
     #[test]
     fn test_get_specs_to_merge_specific() {
         let specs = vec![
-            Spec {
-                id: "spec1".to_string(),
-                frontmatter: crate::spec::SpecFrontmatter {
-                    status: SpecStatus::Completed,
-                    ..Default::default()
-                },
-                title: Some("Spec 1".to_string()),
-                body: "Body 1".to_string(),
-            },
-            Spec {
-                id: "spec2".to_string(),
-                frontmatter: crate::spec::SpecFrontmatter {
-                    status: SpecStatus::Completed,
-                    ..Default::default()
-                },
-                title: Some("Spec 2".to_string()),
-                body: "Body 2".to_string(),
-            },
+            make_spec("spec1", SpecStatus::Completed),
+            make_spec("spec2", SpecStatus::Completed),
         ];
 
         let result = get_specs_to_merge(&["spec1".to_string()], false, &specs).unwrap();
@@ -366,12 +296,7 @@ mod tests {
 
     #[test]
     fn test_get_specs_to_merge_not_found() {
-        let specs = vec![Spec {
-            id: "spec1".to_string(),
-            frontmatter: crate::spec::SpecFrontmatter::default(),
-            title: Some("Spec 1".to_string()),
-            body: "Body 1".to_string(),
-        }];
+        let specs = vec![make_spec("spec1", SpecStatus::Pending)];
 
         let result = get_specs_to_merge(&["nonexistent".to_string()], false, &specs);
         assert!(result.is_err());
@@ -380,32 +305,14 @@ mod tests {
 
     #[test]
     fn test_validate_spec_can_merge_completed() {
-        let spec = Spec {
-            id: "spec1".to_string(),
-            frontmatter: crate::spec::SpecFrontmatter {
-                status: SpecStatus::Completed,
-                ..Default::default()
-            },
-            title: Some("Spec 1".to_string()),
-            body: "Body 1".to_string(),
-        };
-
+        let spec = make_spec("spec1", SpecStatus::Completed);
         let result = validate_spec_can_merge(&spec, true);
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_validate_spec_can_merge_pending_fails() {
-        let spec = Spec {
-            id: "spec1".to_string(),
-            frontmatter: crate::spec::SpecFrontmatter {
-                status: SpecStatus::Pending,
-                ..Default::default()
-            },
-            title: Some("Spec 1".to_string()),
-            body: "Body 1".to_string(),
-        };
-
+        let spec = make_spec("spec1", SpecStatus::Pending);
         let result = validate_spec_can_merge(&spec, true);
         assert!(result.is_err());
         assert!(result
@@ -416,16 +323,7 @@ mod tests {
 
     #[test]
     fn test_validate_spec_can_merge_in_progress_fails() {
-        let spec = Spec {
-            id: "spec1".to_string(),
-            frontmatter: crate::spec::SpecFrontmatter {
-                status: SpecStatus::InProgress,
-                ..Default::default()
-            },
-            title: Some("Spec 1".to_string()),
-            body: "Body 1".to_string(),
-        };
-
+        let spec = make_spec("spec1", SpecStatus::InProgress);
         let result = validate_spec_can_merge(&spec, true);
         assert!(result.is_err());
         assert!(result
@@ -436,16 +334,7 @@ mod tests {
 
     #[test]
     fn test_validate_spec_can_merge_failed_fails() {
-        let spec = Spec {
-            id: "spec1".to_string(),
-            frontmatter: crate::spec::SpecFrontmatter {
-                status: SpecStatus::Failed,
-                ..Default::default()
-            },
-            title: Some("Spec 1".to_string()),
-            body: "Body 1".to_string(),
-        };
-
+        let spec = make_spec("spec1", SpecStatus::Failed);
         let result = validate_spec_can_merge(&spec, true);
         assert!(result.is_err());
         assert!(result
@@ -456,16 +345,7 @@ mod tests {
 
     #[test]
     fn test_validate_spec_can_merge_no_branch() {
-        let spec = Spec {
-            id: "spec1".to_string(),
-            frontmatter: crate::spec::SpecFrontmatter {
-                status: SpecStatus::Completed,
-                ..Default::default()
-            },
-            title: Some("Spec 1".to_string()),
-            body: "Body 1".to_string(),
-        };
-
+        let spec = make_spec("spec1", SpecStatus::Completed);
         let result = validate_spec_can_merge(&spec, false);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("No branch found"));
@@ -548,66 +428,27 @@ mod tests {
 
     #[test]
     fn test_collect_member_specs_empty() {
-        let driver = Spec {
-            id: "driver".to_string(),
-            frontmatter: crate::spec::SpecFrontmatter::default(),
-            title: Some("Driver".to_string()),
-            body: "Driver".to_string(),
-        };
-
-        let other = Spec {
-            id: "other".to_string(),
-            frontmatter: crate::spec::SpecFrontmatter::default(),
-            title: Some("Other".to_string()),
-            body: "Other".to_string(),
-        };
-
+        let driver = make_spec("driver", SpecStatus::Pending);
+        let other = make_spec("other", SpecStatus::Pending);
         let all_specs = vec![driver.clone(), other];
-
         let result = collect_member_specs(&driver, &all_specs);
         assert_eq!(result.len(), 0);
     }
 
     #[test]
     fn test_is_driver_spec_with_members() {
-        let driver = Spec {
-            id: "driver".to_string(),
-            frontmatter: crate::spec::SpecFrontmatter::default(),
-            title: Some("Driver".to_string()),
-            body: "Driver".to_string(),
-        };
-
-        let member1 = Spec {
-            id: "driver.1".to_string(),
-            frontmatter: crate::spec::SpecFrontmatter::default(),
-            title: Some("Member 1".to_string()),
-            body: "Member 1".to_string(),
-        };
-
+        let driver = make_spec("driver", SpecStatus::Pending);
+        let member1 = make_spec("driver.1", SpecStatus::Pending);
         let all_specs = vec![driver.clone(), member1];
-
         let result = is_driver_spec(&driver, &all_specs);
         assert!(result);
     }
 
     #[test]
     fn test_is_driver_spec_without_members() {
-        let driver = Spec {
-            id: "driver".to_string(),
-            frontmatter: crate::spec::SpecFrontmatter::default(),
-            title: Some("Driver".to_string()),
-            body: "Driver".to_string(),
-        };
-
-        let other = Spec {
-            id: "other".to_string(),
-            frontmatter: crate::spec::SpecFrontmatter::default(),
-            title: Some("Other".to_string()),
-            body: "Other".to_string(),
-        };
-
+        let driver = make_spec("driver", SpecStatus::Pending);
+        let other = make_spec("other", SpecStatus::Pending);
         let all_specs = vec![driver.clone(), other];
-
         let result = is_driver_spec(&driver, &all_specs);
         assert!(!result);
     }
