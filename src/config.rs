@@ -318,10 +318,12 @@ project:
     fn test_global_config_path() {
         std::env::set_var("HOME", "/home/testuser");
         let path = global_config_path().unwrap();
-        assert_eq!(
-            path.to_str().unwrap(),
-            "/home/testuser/.config/chant/config.md"
-        );
+        // Use PathBuf for cross-platform comparison
+        let expected = std::path::PathBuf::from("/home/testuser")
+            .join(".config")
+            .join("chant")
+            .join("config.md");
+        assert_eq!(path, expected);
     }
 
     #[test]
