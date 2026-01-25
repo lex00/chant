@@ -4892,6 +4892,7 @@ git:
     }
 
     #[test]
+    #[cfg(unix)] // Test relies on git repo in parent directory
     fn test_finalize_spec_empty_commits_becomes_none() {
         let temp_dir = TempDir::new().unwrap();
         let specs_dir = temp_dir.path().to_path_buf();
