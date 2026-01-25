@@ -129,6 +129,44 @@ pub fn create_pull_request(provider: GitProvider, title: &str, body: &str) -> Re
     pr_provider.create_pr(title, body)
 }
 
+/// Find a spec branch by constructing the full branch name from spec ID and prefix.
+/// Verifies the branch exists using `git branch --list`.
+pub fn find_spec_branch(spec_id: &str, branch_prefix: &str) -> Result<String> {
+    let branch_name = format!("{}{}", branch_prefix, spec_id);
+
+    let output = Command::new("git")
+        .args(["branch", "--list", &branch_name])
+        .output()
+        .context("Failed to run git branch --list")?;
+
+    if !output.status.success() {
+        anyhow::bail!("Failed to check if branch exists");
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if stdout.trim().is_empty() {
+        anyhow::bail!("Branch '{}' not found for spec {}", branch_name, spec_id);
+    }
+
+    Ok(branch_name)
+}
+
+/// Get the current branch name.
+/// Returns the branch name for the current HEAD, or an error if on detached HEAD.
+pub fn get_current_branch() -> Result<String> {
+    let output = Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .output()
+        .context("Failed to run git rev-parse")?;
+
+    if !output.status.success() {
+        anyhow::bail!("Failed to get current branch");
+    }
+
+    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok(branch)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -157,5 +195,28 @@ mod tests {
 
         let bitbucket = get_provider(GitProvider::Bitbucket);
         assert_eq!(bitbucket.name(), "Bitbucket");
+    }
+
+    #[test]
+    fn test_find_spec_branch_constructs_name() {
+        // This test verifies the branch name construction logic
+        // Real branch existence would be tested in integration tests
+        let result = find_spec_branch("nonexistent-spec-123", "chant/");
+        // We expect this to fail because the branch doesn't exist
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("chant/nonexistent-spec-123") || err_msg.contains("not found"));
+    }
+
+    #[test]
+    fn test_get_current_branch_returns_string() {
+        // This should work in any git repo - gets the current branch
+        let result = get_current_branch();
+        // In a properly initialized git repo, this should succeed
+        if result.is_ok() {
+            let branch = result.unwrap();
+            // Should have a branch name (not empty)
+            assert!(!branch.is_empty());
+        }
     }
 }

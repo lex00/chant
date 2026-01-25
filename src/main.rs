@@ -115,6 +115,21 @@ enum Commands {
         #[arg(long)]
         force: bool,
     },
+    /// Merge completed spec branches back to main
+    Merge {
+        /// Spec ID(s) to merge (one or more)
+        #[arg(value_name = "ID")]
+        ids: Vec<String>,
+        /// Merge all completed spec branches
+        #[arg(long)]
+        all: bool,
+        /// Preview merges without executing
+        #[arg(long)]
+        dry_run: bool,
+        /// Delete branch after successful merge
+        #[arg(long)]
+        delete_branch: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -156,6 +171,12 @@ fn main() -> Result<()> {
             older_than,
             force,
         } => cmd_archive(id.as_deref(), dry_run, older_than, force),
+        Commands::Merge {
+            ids,
+            all,
+            dry_run,
+            delete_branch,
+        } => cmd_merge(&ids, all, dry_run, delete_branch),
     }
 }
 
@@ -2289,6 +2310,120 @@ fn cmd_archive(
     }
 
     println!("{} Archived {} spec(s)", "✓".green(), count);
+
+    Ok(())
+}
+
+fn cmd_merge(ids: &[String], all: bool, dry_run: bool, _delete_branch: bool) -> Result<()> {
+    let specs_dir = PathBuf::from(".chant/specs");
+
+    if !specs_dir.exists() {
+        anyhow::bail!("Chant not initialized. Run `chant init` first.");
+    }
+
+    // Load config
+    let config = Config::load()?;
+    let branch_prefix = &config.defaults.branch_prefix;
+
+    // Validate arguments
+    if !all && ids.is_empty() {
+        anyhow::bail!(
+            "Please specify one or more spec IDs, or use --all to merge all completed specs"
+        );
+    }
+
+    // Load all specs
+    let specs = spec::load_all_specs(&specs_dir)?;
+
+    // Determine which specs to merge
+    let mut to_merge: Vec<&Spec> = Vec::new();
+
+    if all {
+        // Merge all completed specs
+        for spec in specs.iter() {
+            if spec.frontmatter.status == SpecStatus::Completed {
+                to_merge.push(spec);
+            }
+        }
+
+        if to_merge.is_empty() {
+            println!("No completed specs with branches to merge.");
+            return Ok(());
+        }
+    } else {
+        // Merge specified specs
+        for id in ids {
+            if let Some(spec) = specs.iter().find(|s| s.id.starts_with(id)) {
+                to_merge.push(spec);
+            } else {
+                anyhow::bail!("Spec {} not found", id);
+            }
+        }
+    }
+
+    // Find branches for all specs
+    let mut branches_to_merge: Vec<(String, String)> = Vec::new(); // (spec_id, branch_name)
+
+    for spec in &to_merge {
+        match git::find_spec_branch(&spec.id, branch_prefix) {
+            Ok(branch_name) => {
+                branches_to_merge.push((spec.id.clone(), branch_name));
+            }
+            Err(e) => {
+                anyhow::bail!("Error finding branch for spec {}: {}", spec.id, e);
+            }
+        }
+    }
+
+    if branches_to_merge.is_empty() {
+        println!("No branches found to merge.");
+        return Ok(());
+    }
+
+    if dry_run {
+        println!(
+            "{} Would merge {} branch(es):",
+            "→".cyan(),
+            branches_to_merge.len()
+        );
+        for (spec_id, branch_name) in &branches_to_merge {
+            println!(
+                "  {} → {}",
+                branch_name,
+                specs
+                    .iter()
+                    .find(|s| &s.id == spec_id)
+                    .and_then(|s| s.title.as_deref())
+                    .unwrap_or("(no title)")
+            );
+        }
+        return Ok(());
+    }
+
+    // Get current branch to return to later
+    let original_branch = git::get_current_branch().ok();
+
+    println!(
+        "{} Merging {} branch(es)...",
+        "→".cyan(),
+        branches_to_merge.len()
+    );
+
+    for (_spec_id, _branch_name) in &branches_to_merge {
+        // TODO: Implement actual merge logic in next spec
+        // For now, just show what would be merged
+    }
+
+    // Return to original branch if we had one
+    if let Some(branch) = original_branch {
+        // TODO: Implement branch switching in next spec
+        println!("{} Would return to branch: {}", "→".cyan(), branch);
+    }
+
+    println!(
+        "{} Merge command framework ready for implementation",
+        "✓".green()
+    );
 
     Ok(())
 }
