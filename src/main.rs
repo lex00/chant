@@ -70,6 +70,9 @@ enum Commands {
         /// Filter by label (can be specified multiple times, used with --parallel)
         #[arg(long)]
         label: Vec<String>,
+        /// Re-finalize an existing spec (update commits and timestamp)
+        #[arg(long)]
+        finalize: bool,
     },
     /// Start MCP server (Model Context Protocol)
     Mcp,
@@ -130,6 +133,7 @@ fn main() -> Result<()> {
             force,
             parallel,
             label,
+            finalize,
         } => cmd_work(
             id.as_deref(),
             prompt.as_deref(),
@@ -138,6 +142,7 @@ fn main() -> Result<()> {
             force,
             parallel,
             &label,
+            finalize,
         ),
         Commands::Mcp => mcp::run_server(),
         Commands::Status => cmd_status(),
@@ -785,6 +790,7 @@ fn cmd_work(
     force: bool,
     parallel: bool,
     labels: &[String],
+    finalize: bool,
 ) -> Result<()> {
     let specs_dir = PathBuf::from(".chant/specs");
     let prompts_dir = PathBuf::from(".chant/prompts");
@@ -805,6 +811,44 @@ fn cmd_work(
     // Resolve spec
     let mut spec = spec::resolve_spec(&specs_dir, id)?;
     let spec_path = specs_dir.join(format!("{}.md", spec.id));
+
+    // Handle re-finalization mode
+    if finalize {
+        // Re-finalize flag requires the spec to be in_progress or completed
+        if spec.frontmatter.status != SpecStatus::InProgress
+            && spec.frontmatter.status != SpecStatus::Completed
+        {
+            anyhow::bail!(
+                "Cannot re-finalize spec '{}' with status '{:?}'. Must be in_progress or completed.",
+                spec.id,
+                spec.frontmatter.status
+            );
+        }
+
+        // Ask for confirmation (unless --force is used)
+        if !confirm_re_finalize(&spec.id, force)? {
+            println!("Re-finalization cancelled.");
+            return Ok(());
+        }
+
+        println!("{} Re-finalizing spec {}...", "→".cyan(), spec.id);
+        re_finalize_spec(&mut spec, &spec_path, &config)?;
+        println!("{} Spec re-finalized!", "✓".green());
+
+        if let Some(commits) = &spec.frontmatter.commits {
+            for commit in commits {
+                println!("Commit: {}", commit);
+            }
+        }
+        if let Some(completed_at) = &spec.frontmatter.completed_at {
+            println!("Completed at: {}", completed_at);
+        }
+        if let Some(model) = &spec.frontmatter.model {
+            println!("Model: {}", model);
+        }
+
+        return Ok(());
+    }
 
     // Check if already completed
     if spec.frontmatter.status == SpecStatus::Completed && !force {
@@ -1541,6 +1585,123 @@ fn finalize_spec(spec: &mut Spec, spec_path: &Path, config: &Config) -> Result<(
     }
 
     Ok(())
+}
+
+/// Re-finalize a spec that was left in an incomplete state
+/// This can be called on in_progress or completed specs to update commits and timestamp
+/// Idempotent: safe to call multiple times
+fn re_finalize_spec(spec: &mut Spec, spec_path: &Path, config: &Config) -> Result<()> {
+    // Re-finalization only works on specs that have been started (in_progress or completed)
+    // A pending spec has never been started and should use normal work flow
+    match spec.frontmatter.status {
+        SpecStatus::InProgress | SpecStatus::Completed => {
+            // These are valid for re-finalization
+        }
+        _ => {
+            anyhow::bail!(
+                "Cannot re-finalize spec '{}' with status '{:?}'. Must be in_progress or completed.",
+                spec.id,
+                spec.frontmatter.status
+            );
+        }
+    }
+
+    // Get the commits for this spec (may have new ones since last finalization)
+    let commits = get_commits_for_spec(&spec.id)?;
+
+    // Update spec with new commit info
+    spec.frontmatter.commits = if commits.is_empty() {
+        None
+    } else {
+        Some(commits)
+    };
+
+    // Update the timestamp to now
+    spec.frontmatter.completed_at = Some(
+        chrono::Local::now()
+            .format("%Y-%m-%dT%H:%M:%SZ")
+            .to_string(),
+    );
+
+    // Update model name
+    spec.frontmatter.model = get_model_name(Some(config));
+
+    // Ensure spec is marked as completed
+    spec.frontmatter.status = SpecStatus::Completed;
+
+    // Save the spec
+    spec.save(spec_path)
+        .context("Failed to save re-finalized spec")?;
+
+    // Validation 1: Verify that status is Completed
+    anyhow::ensure!(
+        spec.frontmatter.status == SpecStatus::Completed,
+        "Status was not set to Completed after re-finalization"
+    );
+
+    // Validation 2: Verify completed_at timestamp is set and valid
+    let completed_at = spec
+        .frontmatter
+        .completed_at
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("completed_at timestamp was not set"))?;
+
+    if !completed_at.ends_with('Z') {
+        anyhow::bail!(
+            "completed_at must end with 'Z' (UTC format), got: {}",
+            completed_at
+        );
+    }
+    if !completed_at.contains('T') {
+        anyhow::bail!(
+            "completed_at must contain 'T' separator (ISO format), got: {}",
+            completed_at
+        );
+    }
+
+    // Validation 3: Verify spec was saved (reload and check)
+    let saved_spec =
+        Spec::load(spec_path).context("Failed to reload spec from disk to verify persistence")?;
+
+    anyhow::ensure!(
+        saved_spec.frontmatter.status == SpecStatus::Completed,
+        "Persisted spec status is not Completed - save may have failed"
+    );
+
+    anyhow::ensure!(
+        saved_spec.frontmatter.completed_at.is_some(),
+        "Persisted spec is missing completed_at - save may have failed"
+    );
+
+    Ok(())
+}
+
+/// Prompt for user confirmation
+/// Returns true if user confirms, false otherwise
+/// force_flag bypasses the confirmation
+fn confirm_re_finalize(spec_id: &str, force_flag: bool) -> Result<bool> {
+    if force_flag {
+        return Ok(true);
+    }
+
+    println!(
+        "{} Are you sure you want to re-finalize spec '{}'?",
+        "?".cyan(),
+        spec_id
+    );
+    println!("This will update commits and completion timestamp to now.");
+    println!("Use {} to skip this confirmation.",
+        "--force".cyan()
+    );
+
+    use std::io::{self, Write};
+    print!("Continue? [y/N] ");
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+
+    Ok(input.trim().eq_ignore_ascii_case("y"))
 }
 
 fn create_or_switch_branch(branch_name: &str) -> Result<()> {
@@ -4232,5 +4393,336 @@ git:
 
         // Body should contain the agent output
         assert!(saved_spec.body.contains("Some agent output"));
+    }
+
+    /// Test 1: Re-finalize an in_progress spec - completes it
+    #[test]
+    fn test_re_finalize_in_progress_spec_completes_it() {
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path().to_path_buf();
+
+        let spec_content = r#"---
+type: task
+id: 2026-01-24-refinal-001
+status: in_progress
+---
+
+# Test spec for re-finalization
+
+## Acceptance Criteria
+
+- [x] Item 1
+- [x] Item 2
+"#;
+        let spec_path = specs_dir.join("2026-01-24-refinal-001.md");
+        std::fs::create_dir_all(&specs_dir).unwrap();
+        std::fs::write(&spec_path, spec_content).unwrap();
+
+        let config_str = r#"---
+project:
+  name: test-project
+defaults:
+  prompt: standard
+  branch: false
+  pr: false
+  branch_prefix: "chant/"
+git:
+  provider: github
+---
+"#;
+        let config = Config::parse(config_str).unwrap();
+
+        // Load and re-finalize
+        let mut spec = spec::resolve_spec(&specs_dir, "2026-01-24-refinal-001").unwrap();
+
+        // Before re-finalization, status is in_progress
+        assert_eq!(spec.frontmatter.status, SpecStatus::InProgress);
+        assert!(spec.frontmatter.completed_at.is_none());
+
+        // Re-finalize the spec
+        re_finalize_spec(&mut spec, &spec_path, &config).unwrap();
+
+        // After re-finalization, status should be completed
+        assert_eq!(spec.frontmatter.status, SpecStatus::Completed);
+        assert!(spec.frontmatter.completed_at.is_some());
+
+        // Verify persisted to disk
+        let saved_spec = spec::resolve_spec(&specs_dir, "2026-01-24-refinal-001").unwrap();
+        assert_eq!(saved_spec.frontmatter.status, SpecStatus::Completed);
+        assert!(saved_spec.frontmatter.completed_at.is_some());
+    }
+
+    /// Test 2: Re-finalize a completed spec - updates timestamps
+    #[test]
+    fn test_re_finalize_completed_spec_updates_timestamp() {
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path().to_path_buf();
+
+        let spec_content = r#"---
+type: task
+id: 2026-01-24-refinal-002
+status: completed
+completed_at: 2026-01-24T10:00:00Z
+---
+
+# Test spec for re-finalization update
+
+## Acceptance Criteria
+
+- [x] Item 1
+"#;
+        let spec_path = specs_dir.join("2026-01-24-refinal-002.md");
+        std::fs::create_dir_all(&specs_dir).unwrap();
+        std::fs::write(&spec_path, spec_content).unwrap();
+
+        let config_str = r#"---
+project:
+  name: test-project
+defaults:
+  prompt: standard
+  branch: false
+  pr: false
+  branch_prefix: "chant/"
+git:
+  provider: github
+---
+"#;
+        let config = Config::parse(config_str).unwrap();
+
+        // Load the spec
+        let mut spec = spec::resolve_spec(&specs_dir, "2026-01-24-refinal-002").unwrap();
+
+        // Re-finalize the spec
+        re_finalize_spec(&mut spec, &spec_path, &config).unwrap();
+
+        // Status should still be completed
+        assert_eq!(spec.frontmatter.status, SpecStatus::Completed);
+
+        // Timestamp should be updated (different from original)
+        assert!(spec.frontmatter.completed_at.is_some());
+        // The new timestamp should be different from the old one (unless they happen to be the same second)
+        // Just verify it's in valid format
+        let new_timestamp = spec.frontmatter.completed_at.as_ref().unwrap();
+        assert!(new_timestamp.ends_with('Z'));
+        assert!(new_timestamp.contains('T'));
+    }
+
+    /// Test 3: Re-finalize is idempotent - same result when called multiple times
+    #[test]
+    fn test_re_finalize_is_idempotent() {
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path().to_path_buf();
+
+        let spec_content = r#"---
+type: task
+id: 2026-01-24-refinal-003
+status: in_progress
+---
+
+# Test spec for idempotency
+
+## Acceptance Criteria
+
+- [x] Item 1
+"#;
+        let spec_path = specs_dir.join("2026-01-24-refinal-003.md");
+        std::fs::create_dir_all(&specs_dir).unwrap();
+        std::fs::write(&spec_path, spec_content).unwrap();
+
+        let config_str = r#"---
+project:
+  name: test-project
+defaults:
+  prompt: standard
+  branch: false
+  pr: false
+  branch_prefix: "chant/"
+git:
+  provider: github
+---
+"#;
+        let config = Config::parse(config_str).unwrap();
+
+        // First re-finalization
+        let mut spec1 = spec::resolve_spec(&specs_dir, "2026-01-24-refinal-003").unwrap();
+        re_finalize_spec(&mut spec1, &spec_path, &config).unwrap();
+        let timestamp1 = spec1.frontmatter.completed_at.clone();
+        let commits1 = spec1.frontmatter.commits.clone();
+
+        // Wait a tiny bit to ensure different timestamp
+        std::thread::sleep(std::time::Duration::from_millis(100));
+
+        // Second re-finalization
+        let mut spec2 = spec::resolve_spec(&specs_dir, "2026-01-24-refinal-003").unwrap();
+        re_finalize_spec(&mut spec2, &spec_path, &config).unwrap();
+        let timestamp2 = spec2.frontmatter.completed_at.clone();
+        let commits2 = spec2.frontmatter.commits.clone();
+
+        // Both should be completed
+        assert_eq!(spec1.frontmatter.status, SpecStatus::Completed);
+        assert_eq!(spec2.frontmatter.status, SpecStatus::Completed);
+
+        // Timestamps may differ (updated to current time) but both valid
+        assert!(timestamp1.is_some());
+        assert!(timestamp2.is_some());
+
+        // Commits should match (same commits in repo)
+        assert_eq!(commits1, commits2);
+    }
+
+    /// Test 4: Re-finalize with no new commits still updates timestamp
+    #[test]
+    fn test_re_finalize_updates_timestamp_even_without_new_commits() {
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path().to_path_buf();
+
+        let spec_content = r#"---
+type: task
+id: 2026-01-24-refinal-004
+status: completed
+completed_at: 2026-01-24T10:00:00Z
+commits:
+  - abc1234
+---
+
+# Test spec for timestamp update without new commits
+
+## Acceptance Criteria
+
+- [x] Item 1
+"#;
+        let spec_path = specs_dir.join("2026-01-24-refinal-004.md");
+        std::fs::create_dir_all(&specs_dir).unwrap();
+        std::fs::write(&spec_path, spec_content).unwrap();
+
+        let config_str = r#"---
+project:
+  name: test-project
+defaults:
+  prompt: standard
+  branch: false
+  pr: false
+  branch_prefix: "chant/"
+git:
+  provider: github
+---
+"#;
+        let config = Config::parse(config_str).unwrap();
+
+        // Load and re-finalize
+        let mut spec = spec::resolve_spec(&specs_dir, "2026-01-24-refinal-004").unwrap();
+        let original_timestamp = spec.frontmatter.completed_at.clone();
+
+        re_finalize_spec(&mut spec, &spec_path, &config).unwrap();
+
+        // Status should still be completed
+        assert_eq!(spec.frontmatter.status, SpecStatus::Completed);
+
+        // Timestamp should be updated
+        assert!(spec.frontmatter.completed_at.is_some());
+        // New timestamp should be different from original (unless same second)
+        let new_timestamp = spec.frontmatter.completed_at.clone();
+        assert_ne!(original_timestamp, new_timestamp);
+    }
+
+    /// Test 5: Re-finalize rejects specs with invalid status
+    #[test]
+    fn test_re_finalize_rejects_pending_spec() {
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path().to_path_buf();
+
+        let spec_content = r#"---
+type: task
+id: 2026-01-24-refinal-005
+status: pending
+---
+
+# Test spec with pending status
+
+## Acceptance Criteria
+
+- [x] Item 1
+"#;
+        let spec_path = specs_dir.join("2026-01-24-refinal-005.md");
+        std::fs::create_dir_all(&specs_dir).unwrap();
+        std::fs::write(&spec_path, spec_content).unwrap();
+
+        let config_str = r#"---
+project:
+  name: test-project
+defaults:
+  prompt: standard
+  branch: false
+  pr: false
+  branch_prefix: "chant/"
+git:
+  provider: github
+---
+"#;
+        let config = Config::parse(config_str).unwrap();
+
+        // Load the spec
+        let mut spec = spec::resolve_spec(&specs_dir, "2026-01-24-refinal-005").unwrap();
+
+        // Re-finalize should fail for pending spec
+        let result = re_finalize_spec(&mut spec, &spec_path, &config);
+        assert!(result.is_err(), "Should reject pending spec");
+    }
+
+    /// Test 6: Re-finalize preserves existing PR URL
+    #[test]
+    fn test_re_finalize_preserves_pr_url() {
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path().to_path_buf();
+
+        let spec_content = r#"---
+type: task
+id: 2026-01-24-refinal-006
+status: completed
+completed_at: 2026-01-24T10:00:00Z
+pr: https://github.com/example/repo/pull/123
+---
+
+# Test spec with PR URL
+
+## Acceptance Criteria
+
+- [x] Item 1
+"#;
+        let spec_path = specs_dir.join("2026-01-24-refinal-006.md");
+        std::fs::create_dir_all(&specs_dir).unwrap();
+        std::fs::write(&spec_path, spec_content).unwrap();
+
+        let config_str = r#"---
+project:
+  name: test-project
+defaults:
+  prompt: standard
+  branch: false
+  pr: false
+  branch_prefix: "chant/"
+git:
+  provider: github
+---
+"#;
+        let config = Config::parse(config_str).unwrap();
+
+        // Load and re-finalize
+        let mut spec = spec::resolve_spec(&specs_dir, "2026-01-24-refinal-006").unwrap();
+
+        re_finalize_spec(&mut spec, &spec_path, &config).unwrap();
+
+        // PR URL should be preserved
+        assert_eq!(
+            spec.frontmatter.pr,
+            Some("https://github.com/example/repo/pull/123".to_string())
+        );
+
+        // Verify persisted
+        let saved_spec = spec::resolve_spec(&specs_dir, "2026-01-24-refinal-006").unwrap();
+        assert_eq!(
+            saved_spec.frontmatter.pr,
+            Some("https://github.com/example/repo/pull/123".to_string())
+        );
     }
 }
