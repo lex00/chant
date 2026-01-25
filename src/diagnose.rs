@@ -321,7 +321,6 @@ fn diagnose_issues(spec: &Spec, checks: &[CheckResult]) -> (String, Option<Strin
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
 
     #[test]
     fn test_check_result_creation() {
@@ -377,7 +376,7 @@ mod tests {
     fn test_status_consistency_in_progress_with_commit() {
         use crate::spec::SpecFrontmatter;
 
-        let mut spec = Spec {
+        let spec = Spec {
             id: "test".to_string(),
             frontmatter: SpecFrontmatter {
                 status: SpecStatus::InProgress,
