@@ -11,6 +11,25 @@
 
 Chant is a spec execution platform for AI-assisted development. Specs are markdown files that agents execute.
 
+## Installation
+
+Get Chant up and running in seconds:
+
+**Quick Install (Linux/macOS):**
+```bash
+curl -fsSL https://github.com/lex00/chant/releases/latest/download/chant-linux-x86_64 -o chant
+chmod +x chant
+sudo mv chant /usr/local/bin/
+```
+
+**Other methods:**
+- [Homebrew](#): `brew install lex00/tap/chant`
+- [Cargo](#): `cargo install --git https://github.com/lex00/chant`
+- [Download binaries](#): Visit the [Releases page](https://github.com/lex00/chant/releases/latest)
+- [Build from source](#): Clone and run `cargo build --release`
+
+For detailed platform-specific instructions and troubleshooting, see the [Installation Guide](https://lex00.github.io/chant/getting-started/installation.html).
+
 ## Documentation
 
 Full documentation is available at **[lex00.github.io/chant](https://lex00.github.io/chant)**
