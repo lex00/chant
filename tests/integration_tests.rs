@@ -162,8 +162,8 @@ fn test_worktree_creation_basic() {
     );
     assert!(branch_exists(&repo_dir, &branch), "Branch not created");
 
-    // Cleanup
-    std::env::set_current_dir(&original_dir).expect("Failed to restore dir");
+    // Cleanup - restore dir BEFORE cleaning up repo
+    let _ = std::env::set_current_dir(&original_dir);
     let _ = Command::new("git")
         .args(["worktree", "remove", worktree_path.to_str().unwrap()])
         .current_dir(&repo_dir)
