@@ -57,9 +57,9 @@ enum Commands {
         /// Prompt to use
         #[arg(long)]
         prompt: Option<String>,
-        /// Create a feature branch before executing
-        #[arg(long)]
-        branch: bool,
+        /// Create a feature branch before executing (optionally with a custom prefix)
+        #[arg(long, num_args = 0..=1, require_equals = true, value_name = "PREFIX")]
+        branch: Option<String>,
         /// Create a pull request after spec completes
         #[arg(long)]
         pr: bool,
@@ -819,7 +819,7 @@ fn lookup_log_file(base_path: &std::path::Path, id: &str) -> Result<LogLookupRes
 fn cmd_work(
     id: Option<&str>,
     prompt_name: Option<&str>,
-    cli_branch: bool,
+    cli_branch: Option<String>,
     cli_pr: bool,
     force: bool,
     parallel: bool,
@@ -836,7 +836,7 @@ fn cmd_work(
 
     // Handle parallel execution mode
     if parallel && id.is_none() {
-        return cmd_work_parallel(&specs_dir, &prompts_dir, &config, prompt_name, labels);
+        return cmd_work_parallel(&specs_dir, &prompts_dir, &config, prompt_name, labels, cli_branch.as_deref());
     }
 
     // If no ID and not parallel, require an ID
@@ -924,11 +924,12 @@ fn cmd_work(
 
     // CLI flags override config defaults
     let create_pr = cli_pr || config.defaults.pr;
-    let create_branch = cli_branch || config.defaults.branch || create_pr;
+    let use_branch_prefix = cli_branch.as_deref().unwrap_or(&config.defaults.branch_prefix);
+    let create_branch = cli_branch.is_some() || config.defaults.branch || create_pr;
 
     // Handle branch creation/switching if requested
     let branch_name = if create_branch {
-        let branch_name = format!("{}{}", config.defaults.branch_prefix, spec.id);
+        let branch_name = format!("{}{}", use_branch_prefix, spec.id);
         create_or_switch_branch(&branch_name)?;
         spec.frontmatter.branch = Some(branch_name.clone());
         println!("{} Branch: {}", "→".cyan(), branch_name);
@@ -1079,6 +1080,7 @@ fn cmd_work_parallel(
     config: &Config,
     prompt_name: Option<&str>,
     labels: &[String],
+    cli_branch_prefix: Option<&str>,
 ) -> Result<()> {
     use std::sync::mpsc;
     use std::thread;
@@ -1168,14 +1170,27 @@ fn cmd_work_parallel(
             }
         };
 
-        // Determine branch mode (check if spec has branch field explicitly set, or use config default)
-        let is_direct_mode = !config.defaults.branch && spec.frontmatter.branch.is_none();
+        // Determine branch mode
+        // Priority: CLI --branch flag > spec frontmatter.branch > config defaults.branch
+        let (is_direct_mode, branch_prefix) = if let Some(cli_prefix) = cli_branch_prefix {
+            // CLI --branch specified with explicit prefix
+            (false, cli_prefix.to_string())
+        } else if let Some(spec_branch) = &spec.frontmatter.branch {
+            // Spec has explicit branch prefix
+            (false, spec_branch.clone())
+        } else if config.defaults.branch {
+            // Config enables branch mode - use config's branch_prefix
+            (false, config.defaults.branch_prefix.clone())
+        } else {
+            // Direct mode (no branching, merge immediately)
+            (true, String::new())
+        };
 
         // Determine branch name based on mode
         let branch_name = if is_direct_mode {
             format!("spec/{}", spec.id)
         } else {
-            format!("{}{}", config.defaults.branch_prefix, spec.id)
+            format!("{}{}", branch_prefix, spec.id)
         };
 
         // Create worktree
@@ -1342,13 +1357,15 @@ fn cmd_work_parallel(
     // Collect results
     let mut completed = 0;
     let mut failed = 0;
+    let mut all_results = Vec::new();
+    let mut branch_mode_branches = Vec::new();
 
     println!();
 
     for result in rx {
         if result.success {
             completed += 1;
-            if let Some(commits) = result.commits {
+            if let Some(ref commits) = result.commits {
                 let commits_str = commits.join(", ");
                 println!(
                     "[{}] {} Completed (commits: {})",
@@ -1359,9 +1376,16 @@ fn cmd_work_parallel(
             } else {
                 println!("[{}] {} Completed", result.spec_id.cyan(), "✓".green());
             }
+
+            // Collect branch info for branch mode
+            if !result.is_direct_mode {
+                if let Some(ref branch) = result.branch_name {
+                    branch_mode_branches.push((result.spec_id.clone(), branch.clone()));
+                }
+            }
         } else {
             failed += 1;
-            let error_msg = result.error.unwrap_or_else(|| "Unknown error".to_string());
+            let error_msg = result.error.as_deref().unwrap_or("Unknown error");
             println!(
                 "[{}] {} Failed: {}",
                 result.spec_id.cyan(),
@@ -1369,6 +1393,7 @@ fn cmd_work_parallel(
                 error_msg
             );
         }
+        all_results.push(result);
     }
 
     // Wait for all threads to finish
@@ -1383,6 +1408,20 @@ fn cmd_work_parallel(
         completed,
         failed
     );
+
+    // Show branch mode information
+    if !branch_mode_branches.is_empty() {
+        println!("\n{} Branch mode branches created for reconciliation:",
+            "→".cyan());
+        for (_spec_id, branch) in branch_mode_branches {
+            println!("  {} {}", "•".yellow(), branch);
+        }
+        println!("\nUse {} to reconcile branches later.",
+            "chant reconcile".bold());
+    } else if cli_branch_prefix.is_some() || config.defaults.branch {
+        println!("\n{} Direct mode: All changes merged to main.",
+            "→".cyan());
+    }
 
     if failed > 0 {
         std::process::exit(1);
