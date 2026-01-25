@@ -25,7 +25,6 @@ use chant::git;
 use chant::id;
 use chant::merge;
 use chant::prompt;
-use chant::provider;
 use chant::spec::{self, Spec, SpecFrontmatter, SpecStatus};
 use chant::worktree;
 
@@ -1558,7 +1557,7 @@ fn cmd_work(
     let message = prompt::assemble(&spec, &prompt_path, &config)?;
 
     // Invoke agent
-    let result = invoke_agent(&message, &spec, prompt_name, &config);
+    let result = cmd::agent::invoke_agent(&message, &spec, prompt_name, &config);
 
     match result {
         Ok(agent_output) => {
@@ -1840,7 +1839,7 @@ fn cmd_work_parallel(
         let is_direct_mode_clone = is_direct_mode;
 
         let handle = thread::spawn(move || {
-            let result = invoke_agent_with_prefix(
+            let result = cmd::agent::invoke_agent_with_prefix(
                 &message,
                 &spec_id,
                 &prompt_name_clone,
@@ -2156,184 +2155,6 @@ fn cmd_work_parallel(
     }
 
     Ok(())
-}
-
-/// Invoke the agent with output prefixed by spec ID
-fn invoke_agent_with_prefix(
-    message: &str,
-    spec_id: &str,
-    prompt_name: &str,
-    config_model: Option<&str>,
-    cwd: Option<&Path>,
-) -> Result<()> {
-    use std::io::{BufRead, BufReader};
-    use std::process::{Command, Stdio};
-
-    // Create streaming log writer before spawning agent (writes header immediately)
-    let mut log_writer = match StreamingLogWriter::new(spec_id, prompt_name) {
-        Ok(writer) => Some(writer),
-        Err(e) => {
-            eprintln!(
-                "{} [{}] Failed to create agent log: {}",
-                "⚠".yellow(),
-                spec_id,
-                e
-            );
-            None
-        }
-    };
-
-    // Set environment variables
-    let spec_file = std::fs::canonicalize(format!(".chant/specs/{}.md", spec_id))?;
-
-    // Get the model to use
-    let model = get_model_for_invocation(config_model);
-
-    let mut cmd = Command::new("claude");
-    cmd.arg("--print")
-        .arg("--output-format")
-        .arg("stream-json")
-        .arg("--verbose")
-        .arg("--model")
-        .arg(&model)
-        .arg("--dangerously-skip-permissions")
-        .arg(message)
-        .env("CHANT_SPEC_ID", spec_id)
-        .env("CHANT_SPEC_FILE", &spec_file)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-
-    // Set working directory if provided
-    if let Some(path) = cwd {
-        cmd.current_dir(path);
-    }
-
-    let mut child = cmd
-        .spawn()
-        .context("Failed to invoke claude CLI. Is it installed and in PATH?")?;
-
-    // Stream stdout with prefix to both terminal and log file
-    if let Some(stdout) = child.stdout.take() {
-        let reader = BufReader::new(stdout);
-        let prefix = format!("[{}]", spec_id);
-        for line in reader.lines().map_while(Result::ok) {
-            for text in extract_text_from_stream_json(&line) {
-                for text_line in text.lines() {
-                    println!("{} {}", prefix.cyan(), text_line);
-                    if let Some(ref mut writer) = log_writer {
-                        if let Err(e) = writer.write_line(text_line) {
-                            eprintln!(
-                                "{} [{}] Failed to write to agent log: {}",
-                                "⚠".yellow(),
-                                spec_id,
-                                e
-                            );
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    let status = child.wait()?;
-
-    if !status.success() {
-        anyhow::bail!("Agent exited with status: {}", status);
-    }
-
-    Ok(())
-}
-
-fn invoke_agent(message: &str, spec: &Spec, prompt_name: &str, config: &Config) -> Result<String> {
-    invoke_agent_with_model(message, spec, prompt_name, config, None, None)
-}
-
-fn get_model_provider(
-    provider_type: provider::ProviderType,
-    config: &Config,
-) -> Result<Box<dyn provider::ModelProvider>> {
-    match provider_type {
-        provider::ProviderType::Claude => Ok(Box::new(provider::ClaudeCliProvider)),
-        provider::ProviderType::Ollama => {
-            let endpoint = config
-                .providers
-                .ollama
-                .as_ref()
-                .map(|c| c.endpoint.clone())
-                .unwrap_or_else(|| "http://localhost:11434/v1".to_string());
-            Ok(Box::new(provider::OllamaProvider { endpoint }))
-        }
-        provider::ProviderType::Openai => {
-            let endpoint = config
-                .providers
-                .openai
-                .as_ref()
-                .map(|c| c.endpoint.clone())
-                .unwrap_or_else(|| "https://api.openai.com/v1".to_string());
-            let api_key = std::env::var("OPENAI_API_KEY").ok();
-            Ok(Box::new(provider::OpenaiProvider { endpoint, api_key }))
-        }
-    }
-}
-
-fn invoke_agent_with_model(
-    message: &str,
-    spec: &Spec,
-    prompt_name: &str,
-    config: &Config,
-    override_model: Option<&str>,
-    cwd: Option<&Path>,
-) -> Result<String> {
-    // Create streaming log writer before spawning agent (writes header immediately)
-    let mut log_writer = match StreamingLogWriter::new(&spec.id, prompt_name) {
-        Ok(writer) => Some(writer),
-        Err(e) => {
-            eprintln!("{} Failed to create agent log: {}", "⚠".yellow(), e);
-            None
-        }
-    };
-
-    // Set environment variables
-    let spec_file = std::fs::canonicalize(format!(".chant/specs/{}.md", spec.id))?;
-
-    // Get the model to use - allow override
-    let model = if let Some(override_m) = override_model {
-        override_m.to_string()
-    } else {
-        get_model_for_invocation(config.defaults.model.as_deref())
-    };
-
-    // Get the appropriate provider
-    let provider_type = config.defaults.provider;
-    let model_provider = get_model_provider(provider_type, config)?;
-
-    // Set CHANT_SPEC_ID and CHANT_SPEC_FILE env vars
-    std::env::set_var("CHANT_SPEC_ID", &spec.id);
-    std::env::set_var("CHANT_SPEC_FILE", &spec_file);
-
-    // Change to working directory if provided
-    let original_cwd = std::env::current_dir().ok();
-    if let Some(path) = cwd {
-        std::env::set_current_dir(path)?;
-    }
-
-    // Invoke the model provider with streaming callback
-    let captured_output = model_provider.invoke(message, &model, &mut |text_line: &str| {
-        println!("{}", text_line);
-        if let Some(ref mut writer) = log_writer {
-            if let Err(e) = writer.write_line(text_line) {
-                eprintln!("{} Failed to write to agent log: {}", "⚠".yellow(), e);
-            }
-        }
-        Ok(())
-    })?;
-
-    // Restore original working directory
-    if let Some(original_cwd) = original_cwd {
-        std::env::set_current_dir(original_cwd)?;
-    }
-
-    Ok(captured_output)
 }
 
 /// Enum to distinguish between different commit retrieval scenarios
@@ -2690,105 +2511,6 @@ fn push_branch(branch_name: &str) -> Result<()> {
 
 const MAX_AGENT_OUTPUT_CHARS: usize = 5000;
 
-/// Extract text content from a Claude CLI stream-json line.
-/// Returns Vec of text strings from assistant message content blocks.
-fn extract_text_from_stream_json(line: &str) -> Vec<String> {
-    let mut texts = Vec::new();
-
-    if let Ok(json) = serde_json::from_str::<serde_json::Value>(line) {
-        if let Some("assistant") = json.get("type").and_then(|t| t.as_str()) {
-            if let Some(content) = json
-                .get("message")
-                .and_then(|m| m.get("content"))
-                .and_then(|c| c.as_array())
-            {
-                for item in content {
-                    if let Some(text) = item.get("text").and_then(|t| t.as_str()) {
-                        texts.push(text.to_string());
-                    }
-                }
-            }
-        }
-    }
-
-    texts
-}
-
-/// Ensure the logs directory exists and is in .gitignore at the given base path
-fn ensure_logs_dir_at(base_path: &Path) -> Result<()> {
-    let logs_dir = base_path.join("logs");
-    let gitignore_path = base_path.join(".gitignore");
-
-    // Create logs directory if it doesn't exist
-    if !logs_dir.exists() {
-        std::fs::create_dir_all(&logs_dir)?;
-    }
-
-    // Add logs/ to .gitignore if not already present
-    let gitignore_content = if gitignore_path.exists() {
-        std::fs::read_to_string(&gitignore_path)?
-    } else {
-        String::new()
-    };
-
-    if !gitignore_content.lines().any(|line| line.trim() == "logs/") {
-        let new_content = if gitignore_content.is_empty() {
-            "logs/\n".to_string()
-        } else if gitignore_content.ends_with('\n') {
-            format!("{}logs/\n", gitignore_content)
-        } else {
-            format!("{}\nlogs/\n", gitignore_content)
-        };
-        std::fs::write(&gitignore_path, new_content)?;
-    }
-
-    Ok(())
-}
-
-/// A streaming log writer that writes to a log file in real-time
-struct StreamingLogWriter {
-    file: std::fs::File,
-}
-
-impl StreamingLogWriter {
-    /// Create a new streaming log writer that opens the log file and writes the header
-    fn new(spec_id: &str, prompt_name: &str) -> Result<Self> {
-        Self::new_at(&PathBuf::from(".chant"), spec_id, prompt_name)
-    }
-
-    /// Create a new streaming log writer at the given base path
-    fn new_at(base_path: &std::path::Path, spec_id: &str, prompt_name: &str) -> Result<Self> {
-        use std::io::Write;
-
-        ensure_logs_dir_at(base_path)?;
-
-        let log_path = base_path.join("logs").join(format!("{}.log", spec_id));
-        let timestamp = chrono::Local::now()
-            .format("%Y-%m-%dT%H:%M:%SZ")
-            .to_string();
-
-        let mut file = std::fs::File::create(&log_path)?;
-
-        // Write header immediately
-        writeln!(file, "# Agent Log: {}", spec_id)?;
-        writeln!(file, "# Started: {}", timestamp)?;
-        writeln!(file, "# Prompt: {}", prompt_name)?;
-        writeln!(file)?;
-        file.flush()?;
-
-        Ok(Self { file })
-    }
-
-    /// Write a line to the log file and flush immediately for real-time visibility
-    fn write_line(&mut self, line: &str) -> Result<()> {
-        use std::io::Write;
-
-        writeln!(self.file, "{}", line)?;
-        self.file.flush()?;
-        Ok(())
-    }
-}
-
 /// Get the model name using the following priority:
 /// 1. CHANT_MODEL env var (explicit override)
 /// 2. ANTHROPIC_MODEL env var (Claude CLI default)
@@ -2796,41 +2518,6 @@ impl StreamingLogWriter {
 /// 4. Parse from `claude --version` output (last resort)
 fn get_model_name(config: Option<&Config>) -> Option<String> {
     get_model_name_with_default(config.and_then(|c| c.defaults.model.as_deref()))
-}
-
-/// Default model when no env var or config is set
-const DEFAULT_MODEL: &str = "haiku";
-
-/// Get the model to use for agent invocation.
-/// Priority:
-/// 1. CHANT_MODEL env var
-/// 2. ANTHROPIC_MODEL env var
-/// 3. defaults.model in config
-/// 4. "haiku" as hardcoded fallback
-fn get_model_for_invocation(config_model: Option<&str>) -> String {
-    // 1. CHANT_MODEL env var
-    if let Ok(model) = std::env::var("CHANT_MODEL") {
-        if !model.is_empty() {
-            return model;
-        }
-    }
-
-    // 2. ANTHROPIC_MODEL env var
-    if let Ok(model) = std::env::var("ANTHROPIC_MODEL") {
-        if !model.is_empty() {
-            return model;
-        }
-    }
-
-    // 3. defaults.model from config
-    if let Some(model) = config_model {
-        if !model.is_empty() {
-            return model.to_string();
-        }
-    }
-
-    // 4. Hardcoded fallback
-    DEFAULT_MODEL.to_string()
 }
 
 /// Get the model name with an optional default from config.
@@ -3065,8 +2752,14 @@ fn cmd_split(id: &str, override_model: Option<&str>, force: bool) -> Result<()> 
     );
 
     // Invoke agent to propose split
-    let agent_output =
-        invoke_agent_with_model(&split_prompt, &spec, "split", &config, Some(&model), None)?;
+    let agent_output = cmd::agent::invoke_agent_with_model(
+        &split_prompt,
+        &spec,
+        "split",
+        &config,
+        Some(&model),
+        None,
+    )?;
 
     // Parse member specs from agent output
     let members = parse_member_specs_from_output(&agent_output)?;
@@ -3695,7 +3388,7 @@ mod tests {
         assert!(!base_path.join("logs").exists());
 
         // Call ensure_logs_dir_at
-        ensure_logs_dir_at(&base_path).unwrap();
+        cmd::agent::ensure_logs_dir_at(&base_path).unwrap();
 
         // Logs dir should now exist
         assert!(base_path.join("logs").exists());
@@ -3711,7 +3404,7 @@ mod tests {
         // (tempdir already exists, no need to create)
 
         // Call ensure_logs_dir_at
-        ensure_logs_dir_at(&base_path).unwrap();
+        cmd::agent::ensure_logs_dir_at(&base_path).unwrap();
 
         // .gitignore should now exist and contain "logs/"
         let gitignore_path = base_path.join(".gitignore");
@@ -3731,7 +3424,7 @@ mod tests {
         std::fs::write(&gitignore_path, "*.tmp\n").unwrap();
 
         // Call ensure_logs_dir_at
-        ensure_logs_dir_at(&base_path).unwrap();
+        cmd::agent::ensure_logs_dir_at(&base_path).unwrap();
 
         // .gitignore should contain both original and new content
         let content = std::fs::read_to_string(&gitignore_path).unwrap();
@@ -3752,7 +3445,7 @@ mod tests {
         std::fs::create_dir_all(base_path.join("logs")).unwrap();
 
         // Call ensure_logs_dir_at
-        ensure_logs_dir_at(&base_path).unwrap();
+        cmd::agent::ensure_logs_dir_at(&base_path).unwrap();
 
         // .gitignore should still have only one "logs/" entry
         let content = std::fs::read_to_string(&gitignore_path).unwrap();
@@ -3772,7 +3465,7 @@ mod tests {
         let prompt_name = "standard";
 
         // Create log writer (this writes the header)
-        let _writer = StreamingLogWriter::new_at(&base_path, spec_id, prompt_name).unwrap();
+        let _writer = cmd::agent::StreamingLogWriter::new_at(&base_path, spec_id, prompt_name).unwrap();
 
         // Check that log file exists with header BEFORE any lines are written
         let log_path = base_path.join("logs").join(format!("{}.log", spec_id));
@@ -3795,7 +3488,7 @@ mod tests {
         let prompt_name = "standard";
 
         // Create log writer and write lines
-        let mut writer = StreamingLogWriter::new_at(&base_path, spec_id, prompt_name).unwrap();
+        let mut writer = cmd::agent::StreamingLogWriter::new_at(&base_path, spec_id, prompt_name).unwrap();
         writer.write_line("Test agent output").unwrap();
         writer.write_line("With multiple lines").unwrap();
 
@@ -3822,7 +3515,7 @@ mod tests {
         let prompt_name = "standard";
 
         // Create log writer
-        let mut writer = StreamingLogWriter::new_at(&base_path, spec_id, prompt_name).unwrap();
+        let mut writer = cmd::agent::StreamingLogWriter::new_at(&base_path, spec_id, prompt_name).unwrap();
         let log_path = base_path.join("logs").join(format!("{}.log", spec_id));
 
         // Write first line
@@ -3851,13 +3544,13 @@ mod tests {
 
         // First run
         {
-            let mut writer = StreamingLogWriter::new_at(&base_path, spec_id, prompt_name).unwrap();
+            let mut writer = cmd::agent::StreamingLogWriter::new_at(&base_path, spec_id, prompt_name).unwrap();
             writer.write_line("Content A").unwrap();
         }
 
         // Second run (simulating replay)
         {
-            let mut writer = StreamingLogWriter::new_at(&base_path, spec_id, prompt_name).unwrap();
+            let mut writer = cmd::agent::StreamingLogWriter::new_at(&base_path, spec_id, prompt_name).unwrap();
             writer.write_line("Content B").unwrap();
         }
 
@@ -4324,35 +4017,35 @@ status: pending
     #[test]
     fn test_extract_text_from_stream_json_assistant_message() {
         let json_line = r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Hello, world!"}]}}"#;
-        let texts = extract_text_from_stream_json(json_line);
+        let texts = cmd::agent::extract_text_from_stream_json(json_line);
         assert_eq!(texts, vec!["Hello, world!"]);
     }
 
     #[test]
     fn test_extract_text_from_stream_json_multiple_content_blocks() {
         let json_line = r#"{"type":"assistant","message":{"content":[{"type":"text","text":"First"},{"type":"text","text":"Second"}]}}"#;
-        let texts = extract_text_from_stream_json(json_line);
+        let texts = cmd::agent::extract_text_from_stream_json(json_line);
         assert_eq!(texts, vec!["First", "Second"]);
     }
 
     #[test]
     fn test_extract_text_from_stream_json_system_message() {
         let json_line = r#"{"type":"system","subtype":"init"}"#;
-        let texts = extract_text_from_stream_json(json_line);
+        let texts = cmd::agent::extract_text_from_stream_json(json_line);
         assert!(texts.is_empty());
     }
 
     #[test]
     fn test_extract_text_from_stream_json_result_message() {
         let json_line = r#"{"type":"result","subtype":"success","result":"Done"}"#;
-        let texts = extract_text_from_stream_json(json_line);
+        let texts = cmd::agent::extract_text_from_stream_json(json_line);
         assert!(texts.is_empty());
     }
 
     #[test]
     fn test_extract_text_from_stream_json_invalid_json() {
         let json_line = "not valid json";
-        let texts = extract_text_from_stream_json(json_line);
+        let texts = cmd::agent::extract_text_from_stream_json(json_line);
         assert!(texts.is_empty());
     }
 
@@ -4360,7 +4053,7 @@ status: pending
     fn test_extract_text_from_stream_json_mixed_content_types() {
         // Content can include tool_use blocks which we should skip
         let json_line = r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Analyzing..."},{"type":"tool_use","name":"read_file"}]}}"#;
-        let texts = extract_text_from_stream_json(json_line);
+        let texts = cmd::agent::extract_text_from_stream_json(json_line);
         assert_eq!(texts, vec!["Analyzing..."]);
     }
 
@@ -4375,7 +4068,7 @@ status: pending
         std::env::set_var("CHANT_MODEL", "claude-opus-4-5");
         std::env::remove_var("ANTHROPIC_MODEL");
 
-        let result = get_model_for_invocation(None);
+        let result = cmd::agent::get_model_for_invocation(None);
         assert_eq!(result, "claude-opus-4-5");
 
         // Restore original env vars
@@ -4400,7 +4093,7 @@ status: pending
         std::env::remove_var("CHANT_MODEL");
         std::env::set_var("ANTHROPIC_MODEL", "claude-sonnet-4");
 
-        let result = get_model_for_invocation(None);
+        let result = cmd::agent::get_model_for_invocation(None);
         assert_eq!(result, "claude-sonnet-4");
 
         // Restore original env vars
@@ -4425,7 +4118,7 @@ status: pending
         std::env::set_var("CHANT_MODEL", "claude-opus-4-5");
         std::env::set_var("ANTHROPIC_MODEL", "claude-sonnet-4");
 
-        let result = get_model_for_invocation(Some("config-model"));
+        let result = cmd::agent::get_model_for_invocation(Some("config-model"));
         // CHANT_MODEL takes precedence
         assert_eq!(result, "claude-opus-4-5");
 
@@ -4453,7 +4146,7 @@ status: pending
         std::env::remove_var("CHANT_MODEL");
         std::env::remove_var("ANTHROPIC_MODEL");
 
-        let result = get_model_for_invocation(Some("claude-sonnet-4"));
+        let result = cmd::agent::get_model_for_invocation(Some("claude-sonnet-4"));
         assert_eq!(result, "claude-sonnet-4");
 
         // Restore original env vars
@@ -4476,7 +4169,7 @@ status: pending
         std::env::remove_var("CHANT_MODEL");
         std::env::remove_var("ANTHROPIC_MODEL");
 
-        let result = get_model_for_invocation(None);
+        let result = cmd::agent::get_model_for_invocation(None);
         assert_eq!(result, "haiku");
 
         // Restore original env vars
@@ -4499,7 +4192,7 @@ status: pending
         std::env::set_var("CHANT_MODEL", "");
         std::env::set_var("ANTHROPIC_MODEL", "");
 
-        let result = get_model_for_invocation(Some("config-model"));
+        let result = cmd::agent::get_model_for_invocation(Some("config-model"));
         // Empty env vars should fall through to config
         assert_eq!(result, "config-model");
 
@@ -4528,7 +4221,7 @@ status: pending
         std::env::remove_var("ANTHROPIC_MODEL");
 
         // Empty config model should fall through to haiku
-        let result = get_model_for_invocation(Some(""));
+        let result = cmd::agent::get_model_for_invocation(Some(""));
         assert_eq!(result, "haiku");
 
         // Restore original env vars
