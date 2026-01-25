@@ -4988,6 +4988,7 @@ git:
     }
 
     #[test]
+    #[cfg(unix)] // Test relies on git repo in parent directory
     fn test_finalize_spec_persists_all_fields() {
         let temp_dir = TempDir::new().unwrap();
         let specs_dir = temp_dir.path().to_path_buf();
