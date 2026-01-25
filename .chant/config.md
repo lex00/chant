@@ -6,7 +6,8 @@ defaults:
   prompt: standard
   branch: false
   pr: false
-  model: haiku
+  model: qwen2.5-coder:7b
+  provider: ollama
 ---
 
 # Chant Configuration
