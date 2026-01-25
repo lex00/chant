@@ -20,6 +20,10 @@ test:
 test-new-dev:
     ~/.cargo/bin/cargo test test_new_developer_experience -- --ignored --nocapture
 
+# Test new user workflow with ollama (requires ollama to be running)
+test-ollama:
+    ~/.cargo/bin/cargo test test_new_user_workflow_ollama -- --ignored --nocapture
+
 # Run tests with coverage
 test-coverage:
     ~/.cargo/bin/cargo llvm-cov --html
