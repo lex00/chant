@@ -202,12 +202,95 @@ You are implementing a spec for {{project.name}}.
 "#;
     std::fs::write(chant_dir.join("prompts/standard.md"), prompt_content)?;
 
+    // Create split prompt
+    let split_prompt_content = r#"---
+name: split
+purpose: Split a driver spec into subtasks with detailed acceptance criteria
+---
+
+# Split Driver Specification into Subtasks
+
+You are analyzing a driver specification for the {{project.name}} project and proposing how to split it into smaller, ordered subtasks.
+
+## Driver Specification to Split
+
+**ID:** {{spec.id}}
+**Title:** {{spec.title}}
+
+{{spec.description}}
+
+## Your Task
+
+1. Analyze the specification and its acceptance criteria
+2. Propose a sequence of subtasks where:
+   - Each subtask leaves code in a compilable state
+   - Each subtask is independently testable and valuable
+   - Dependencies are minimized (parallelize where possible)
+   - Common patterns are respected (add new alongside old → update callers → remove old)
+3. For each subtask, provide:
+   - A clear, concise title
+   - Description of what should be implemented
+   - Explicit acceptance criteria with checkboxes for verification
+   - Edge cases that should be considered
+   - Example test cases where applicable
+   - List of affected files (if identifiable from the spec)
+   - Clear "done" conditions that can be verified
+
+## Why Thorough Acceptance Criteria?
+
+These subtasks will be executed by Claude Haiku, a capable but smaller model. A strong model (Opus/Sonnet) doing the split should think through edge cases and requirements thoroughly. Each subtask must have:
+
+- **Specific checkboxes** for each piece of work (not just "implement it")
+- **Edge case callouts** to prevent oversights
+- **Test scenarios** to clarify expected behavior
+- **Clear success metrics** so Haiku knows when it's done
+
+This way, Haiku has a detailed specification to follow and won't miss important aspects.
+
+## Output Format
+
+For each subtask, output exactly this format:
+
+```
+## Subtask N: <title>
+
+<description of what this subtask accomplishes>
+
+### Acceptance Criteria
+
+- [ ] Specific criterion 1
+- [ ] Specific criterion 2
+- [ ] Specific criterion 3
+
+### Edge Cases
+
+- Edge case 1: Describe what should happen and how to test it
+- Edge case 2: Describe what should happen and how to test it
+
+### Example Test Cases
+
+For this feature, verify:
+- Case 1: Input X should produce Y
+- Case 2: Input A should produce B
+
+**Affected Files:**
+- file1.rs
+- file2.rs
+```
+
+If no files are identified, you can omit the Affected Files section.
+
+Create as many subtasks as needed (typically 3-5 for a medium spec).
+"#;
+    std::fs::write(chant_dir.join("prompts/split.md"), split_prompt_content)?;
+
     // Create .gitignore
     let gitignore_content = "# Local state (not shared)\n.locks/\n.store/\n";
     std::fs::write(chant_dir.join(".gitignore"), gitignore_content)?;
 
     println!("{} .chant/config.md", "Created".green());
     println!("{} .chant/prompts/standard.md", "Created".green());
+    println!("{} .chant/prompts/split.md", "Created".green());
     println!("{} .chant/specs/", "Created".green());
     println!("\nChant initialized for project: {}", project_name.cyan());
 
@@ -1292,11 +1375,7 @@ fn get_commits_for_spec(spec_id: &str) -> Result<Vec<String>> {
 /// Finalize a spec after successful completion
 /// Sets status, commits, completed_at, and model
 /// This function is idempotent and can be called multiple times safely
-fn finalize_spec(
-    spec: &mut Spec,
-    spec_path: &Path,
-    config: &Config,
-) -> Result<()> {
+fn finalize_spec(spec: &mut Spec, spec_path: &Path, config: &Config) -> Result<()> {
     // Get the commits for this spec
     let commits = get_commits_for_spec(&spec.id)?;
 
@@ -1602,6 +1681,7 @@ fn append_agent_output(spec: &mut Spec, output: &str) {
 
 fn cmd_split(id: &str) -> Result<()> {
     let specs_dir = PathBuf::from(".chant/specs");
+    let prompts_dir = PathBuf::from(".chant/prompts");
     let config = Config::load()?;
 
     if !specs_dir.exists() {
@@ -1620,8 +1700,14 @@ fn cmd_split(id: &str) -> Result<()> {
 
     println!("{} Analyzing spec {} for splitting...", "→".cyan(), spec.id);
 
+    // Load prompt from file
+    let split_prompt_path = prompts_dir.join("split.md");
+    if !split_prompt_path.exists() {
+        anyhow::bail!("Split prompt not found: split.md");
+    }
+
     // Assemble prompt for split analysis
-    let split_prompt = assemble_split_prompt(&spec, &config);
+    let split_prompt = prompt::assemble(&spec, &split_prompt_path, &config)?;
 
     // Invoke agent to propose split
     let agent_output = invoke_agent(&split_prompt, &spec, "split", &config)?;
@@ -1703,57 +1789,6 @@ struct Subtask {
     title: String,
     description: String,
     target_files: Option<Vec<String>>,
-}
-
-fn assemble_split_prompt(spec: &Spec, config: &Config) -> String {
-    format!(
-        r#"# Split Driver Specification into Subtasks
-
-You are analyzing a driver specification for the {} project and proposing how to split it into smaller, ordered subtasks.
-
-## Driver Specification to Split
-
-**ID:** {}
-**Title:** {}
-
-{}
-
-## Your Task
-
-1. Analyze the specification and its acceptance criteria
-2. Propose a sequence of subtasks where:
-   - Each subtask leaves code in a compilable state
-   - Each subtask is independently testable and valuable
-   - Dependencies are minimized (parallelize where possible)
-   - Common patterns are respected (add new alongside old → update callers → remove old)
-3. For each subtask, provide:
-   - A clear, concise title
-   - Description of what should be implemented
-   - List of affected files (if identifiable from the spec)
-
-## Output Format
-
-For each subtask, output exactly this format:
-
-```
-## Subtask N: <title>
-
-<description of what this subtask accomplishes>
-
-**Affected Files:**
-- file1.rs
-- file2.rs
-```
-
-If no files are identified, you can omit the Affected Files section.
-
-Create as many subtasks as needed (typically 3-5 for a medium spec).
-"#,
-        &config.project.name,
-        spec.id,
-        spec.title.as_deref().unwrap_or("(no title)"),
-        spec.body
-    )
 }
 
 fn parse_subtasks_from_agent_output(output: &str) -> Result<Vec<Subtask>> {
@@ -2767,7 +2802,10 @@ status: in_progress
 - [x] Item 1
 - [x] Item 2
 "#;
-        specs_dir.join("2026-01-24-test-xyz.md").parent().and_then(|p| Some(std::fs::create_dir_all(p).ok()));
+        specs_dir
+            .join("2026-01-24-test-xyz.md")
+            .parent()
+            .and_then(|p| Some(std::fs::create_dir_all(p).ok()));
         std::fs::write(specs_dir.join("2026-01-24-test-xyz.md"), spec_content).unwrap();
 
         // Create a minimal config from string
