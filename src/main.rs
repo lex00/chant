@@ -1,4 +1,5 @@
 mod config;
+mod conflict;
 mod diagnose;
 mod git;
 mod id;
@@ -514,12 +515,16 @@ fn cmd_list(ready_only: bool, labels: &[String]) -> Result<()> {
     }
 
     for spec in &specs {
-        let status_icon = match spec.frontmatter.status {
-            SpecStatus::Pending => "○".white(),
-            SpecStatus::InProgress => "◐".yellow(),
-            SpecStatus::Completed => "●".green(),
-            SpecStatus::Failed => "✗".red(),
-            SpecStatus::NeedsAttention => "⚠".yellow(),
+        let status_icon = if spec.frontmatter.r#type == "conflict" {
+            "⚡".yellow()
+        } else {
+            match spec.frontmatter.status {
+                SpecStatus::Pending => "○".white(),
+                SpecStatus::InProgress => "◐".yellow(),
+                SpecStatus::Completed => "●".green(),
+                SpecStatus::Failed => "✗".red(),
+                SpecStatus::NeedsAttention => "⚠".yellow(),
+            }
         };
 
         println!(
@@ -946,7 +951,8 @@ fn cmd_delete(
         if spec::extract_driver_id(&spec_to_delete.id).is_some() {
             println!("  {} {} (member)", "→".cyan(), spec_to_delete.id);
         } else if cascade && !members.is_empty() {
-            println!("  {} {} (driver with {} member{})",
+            println!(
+                "  {} {} (driver with {} member{})",
                 "→".cyan(),
                 spec_to_delete.id,
                 members.len(),
@@ -1049,11 +1055,7 @@ fn cmd_delete(
     if specs_to_delete.len() == 1 {
         println!("{} Deleted spec: {}", "✓".green(), specs_to_delete[0].id);
     } else {
-        println!(
-            "{} Deleted {} spec(s)",
-            "✓".green(),
-            specs_to_delete.len()
-        );
+        println!("{} Deleted {} spec(s)", "✓".green(), specs_to_delete.len());
     }
 
     Ok(())
@@ -1612,27 +1614,74 @@ fn cmd_work_parallel(
                     let commits = get_commits_for_spec(&spec_id).ok();
 
                     // Handle cleanup based on mode
-                    let cleanup_error = if is_direct_mode_clone {
+                    let (cleanup_error, has_merge_conflict) = if is_direct_mode_clone {
                         // Direct mode: merge and cleanup
                         if let Some(ref branch) = branch_for_cleanup_clone {
-                            match worktree::merge_and_cleanup(branch) {
-                                Ok(_) => None,
-                                Err(e) => Some(e.to_string()),
-                            }
+                            let merge_result = worktree::merge_and_cleanup(branch);
+                            let error = merge_result.error.as_ref().map(|e| e.to_string());
+                            (error, merge_result.has_conflict)
                         } else {
-                            None
+                            (None, false)
                         }
                     } else {
                         // Branch mode: just remove worktree
                         if let Some(ref path) = worktree_path_clone {
                             match worktree::remove_worktree(path) {
-                                Ok(_) => None,
-                                Err(e) => Some(e.to_string()),
+                                Ok(_) => (None, false),
+                                Err(e) => (Some(e.to_string()), false),
                             }
                         } else {
-                            None
+                            (None, false)
                         }
                     };
+
+                    // Handle merge conflicts by creating a conflict spec
+                    if has_merge_conflict {
+                        // Detect conflicting files
+                        if let Ok(conflicting_files) = conflict::detect_conflicting_files() {
+                            // Get all specs to identify blocked specs
+                            let all_specs =
+                                spec::load_all_specs(&specs_dir_clone).unwrap_or_default();
+                            let blocked_specs =
+                                conflict::get_blocked_specs(&conflicting_files, &all_specs);
+
+                            // Build context for conflict spec
+                            let source_branch = if is_direct_mode_clone {
+                                format!("spec/{}", spec_id)
+                            } else {
+                                branch_for_cleanup_clone.clone().unwrap_or_default()
+                            };
+
+                            let (spec_title, _) =
+                                conflict::extract_spec_context(&specs_dir_clone, &spec_id)
+                                    .unwrap_or((None, String::new()));
+                            let diff_summary = conflict::get_diff_summary(&source_branch, "main")
+                                .unwrap_or_default();
+
+                            let context = conflict::ConflictContext {
+                                source_branch: source_branch.clone(),
+                                target_branch: "main".to_string(),
+                                conflicting_files,
+                                source_spec_id: spec_id.clone(),
+                                source_spec_title: spec_title,
+                                diff_summary,
+                            };
+
+                            // Create conflict spec
+                            if let Ok(conflict_spec_id) = conflict::create_conflict_spec(
+                                &specs_dir_clone,
+                                &context,
+                                blocked_specs,
+                            ) {
+                                eprintln!(
+                                    "{} [{}] Conflict detected. Created resolution spec: {}",
+                                    "⚡".yellow(),
+                                    spec_id,
+                                    conflict_spec_id
+                                );
+                            }
+                        }
+                    }
 
                     // Update spec status based on cleanup result
                     let mut success_final = cleanup_error.is_none();
@@ -1721,9 +1770,8 @@ fn cmd_work_parallel(
                     let _cleanup_error = if is_direct_mode_clone {
                         // Direct mode: try to merge and cleanup anyway
                         if let Some(ref branch) = branch_for_cleanup_clone {
-                            worktree::merge_and_cleanup(branch)
-                                .err()
-                                .map(|e| e.to_string())
+                            let merge_result = worktree::merge_and_cleanup(branch);
+                            merge_result.error.clone()
                         } else {
                             Some(e.to_string())
                         }
@@ -6981,17 +7029,15 @@ git:
     fn test_delete_command_exists_in_cli() {
         // Verify delete command is in the Commands enum
         // This is a compile-time check, but we verify with a unit test
-        let specs = vec![
-            Spec {
-                id: "2026-01-25-test-cli".to_string(),
-                frontmatter: SpecFrontmatter {
-                    status: SpecStatus::Pending,
-                    ..Default::default()
-                },
-                title: Some("Test".to_string()),
-                body: "# Test".to_string(),
+        let specs = vec![Spec {
+            id: "2026-01-25-test-cli".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                ..Default::default()
             },
-        ];
+            title: Some("Test".to_string()),
+            body: "# Test".to_string(),
+        }];
         assert_eq!(specs.len(), 1);
     }
 }

@@ -84,6 +84,15 @@ pub fn remove_worktree(path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Result of a merge operation
+#[derive(Debug, Clone)]
+pub struct MergeCleanupResult {
+    #[allow(dead_code)]
+    pub success: bool,
+    pub has_conflict: bool,
+    pub error: Option<String>,
+}
+
 /// Merges a branch to main and cleans up.
 ///
 /// # Arguments
@@ -92,47 +101,95 @@ pub fn remove_worktree(path: &Path) -> Result<()> {
 ///
 /// # Returns
 ///
-/// Ok(()) if the merge was successful. If there are merge conflicts, returns an error
-/// and leaves the branch intact for manual resolution.
-pub fn merge_and_cleanup(branch: &str) -> Result<()> {
+/// Returns a MergeCleanupResult indicating:
+/// - success: true if merge succeeded and branch was deleted
+/// - has_conflict: true if merge failed due to conflicts
+/// - error: optional error message
+///
+/// If there are merge conflicts, the branch is preserved for manual resolution.
+pub fn merge_and_cleanup(branch: &str) -> MergeCleanupResult {
     // Checkout main branch
-    let output = Command::new("git")
-        .args(["checkout", "main"])
-        .output()
-        .context("Failed to checkout main branch")?;
+    let output = match Command::new("git").args(["checkout", "main"]).output() {
+        Ok(o) => o,
+        Err(e) => {
+            return MergeCleanupResult {
+                success: false,
+                has_conflict: false,
+                error: Some(format!("Failed to checkout main: {}", e)),
+            };
+        }
+    };
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("Failed to checkout main: {}", stderr);
+        return MergeCleanupResult {
+            success: false,
+            has_conflict: false,
+            error: Some(format!("Failed to checkout main: {}", stderr)),
+        };
     }
 
     // Perform fast-forward merge
-    let output = Command::new("git")
+    let output = match Command::new("git")
         .args(["merge", "--ff-only", branch])
         .output()
-        .context("Failed to perform merge")?;
+    {
+        Ok(o) => o,
+        Err(e) => {
+            return MergeCleanupResult {
+                success: false,
+                has_conflict: false,
+                error: Some(format!("Failed to perform merge: {}", e)),
+            };
+        }
+    };
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!(
-            "Merge failed (branch '{}' is preserved): {}",
-            branch,
-            stderr
-        );
+        // Check if this was a conflict
+        let has_conflict = stderr.contains("CONFLICT") || stderr.contains("merge conflict");
+
+        // Abort merge if there was a conflict to preserve the branch
+        if has_conflict {
+            let _ = Command::new("git").args(["merge", "--abort"]).output();
+        }
+
+        return MergeCleanupResult {
+            success: false,
+            has_conflict,
+            error: Some(format!(
+                "Merge failed (branch '{}' is preserved): {}",
+                branch, stderr
+            )),
+        };
     }
 
     // Delete the branch after successful merge
-    let output = Command::new("git")
-        .args(["branch", "-d", branch])
-        .output()
-        .context("Failed to delete branch")?;
+    let output = match Command::new("git").args(["branch", "-d", branch]).output() {
+        Ok(o) => o,
+        Err(e) => {
+            return MergeCleanupResult {
+                success: false,
+                has_conflict: false,
+                error: Some(format!("Failed to delete branch: {}", e)),
+            };
+        }
+    };
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("Failed to delete branch '{}': {}", branch, stderr);
+        return MergeCleanupResult {
+            success: false,
+            has_conflict: false,
+            error: Some(format!("Failed to delete branch '{}': {}", branch, stderr)),
+        };
     }
 
-    Ok(())
+    MergeCleanupResult {
+        success: true,
+        has_conflict: false,
+        error: None,
+    }
 }
 
 #[cfg(test)]
@@ -264,8 +321,8 @@ mod tests {
         std::env::set_current_dir(&original_dir)?;
         cleanup_test_repo(&repo_dir)?;
 
-        // Merge should fail due to conflict
-        assert!(result.is_err());
+        // Merge should fail (either due to conflict or non-ff situation)
+        assert!(!result.success);
         // Branch should still exist
         assert!(branch_check.status.success());
         Ok(())
@@ -314,7 +371,7 @@ mod tests {
         std::env::set_current_dir(&original_dir)?;
         cleanup_test_repo(&repo_dir)?;
 
-        assert!(result.is_ok());
+        assert!(result.success && result.error.is_none());
         // Branch should be deleted after merge
         assert!(!branch_check.status.success());
         Ok(())

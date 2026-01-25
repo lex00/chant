@@ -40,6 +40,17 @@ pub struct SpecFrontmatter {
     pub completed_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    // Conflict-specific fields
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_branch: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_branch: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub conflicting_files: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blocked_specs: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub original_spec: Option<String>,
 }
 
 fn default_type() -> String {
@@ -61,6 +72,11 @@ impl Default for SpecFrontmatter {
             pr: None,
             completed_at: None,
             model: None,
+            source_branch: None,
+            target_branch: None,
+            conflicting_files: None,
+            blocked_specs: None,
+            original_spec: None,
         }
     }
 }
