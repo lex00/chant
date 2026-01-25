@@ -10,6 +10,8 @@ mod mcp;
 mod render;
 mod templates;
 
+mod cmd;
+
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use colored::Colorize;
