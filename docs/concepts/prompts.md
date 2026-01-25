@@ -169,6 +169,66 @@ Focus on these files:
 | `research-synthesis` | Synthesize sources into findings |
 | `research-analysis` | Analyze data, generate insights |
 
+## When to Use Each Prompt
+
+### standard.md (Default)
+
+**What it does:** Instructs the agent to thoroughly read relevant code, plan an approach, implement changes carefully, verify each acceptance criterion, and commit with a proper message.
+
+**When to use:**
+- Regular feature implementation
+- Bug fixes
+- Code refactoring
+- Default choice for most work
+
+**Command:**
+```bash
+chant work 2026-01-24-001-abc     # Uses standard by default
+chant work 2026-01-24-001-abc --prompt standard  # Explicit
+```
+
+### split.md
+
+**What it does:** Analyzes a driver spec and proposes how to split it into smaller, ordered member specs. Each member spec is independently testable and valuable.
+
+**When to use:**
+- Breaking down large drivers into manageable pieces
+- Planning complex feature work before implementation
+- Ensuring specs leave code in compilable state at each step
+
+**Key characteristics:**
+- Proposes sequence of members
+- Includes detailed acceptance criteria for each member
+- Documents edge cases and test scenarios
+- Ensures minimal dependencies between members
+
+**Command:**
+```bash
+chant split 2026-01-24-001-abc    # Shorthand for split prompt
+chant work 2026-01-24-001-abc --prompt split
+```
+
+**Example output structure:**
+```
+## Member 1: Setup initial component structure
+- [ ] Create component files
+- [ ] Add basic structure
+...
+
+## Member 2: Implement core functionality
+- [ ] Add feature X
+- [ ] Add feature Y
+...
+```
+
+### Other Type-Specific Prompts
+
+**documentation.md:** Used for specs that track and document existing code. The agent reads the tracked files and writes documentation.
+
+**research-synthesis.md:** Used for research specs to synthesize findings from multiple sources into cohesive insights.
+
+**research-analysis.md:** Used for research specs to analyze data and generate insights.
+
 ## Prompt Selection
 
 ```bash
@@ -391,6 +451,57 @@ These are NOT prompts:
 | Template | Scaffolding for creating files (not executed) |
 | Notification | Output formatting (not agent instruction) |
 | Config | Settings (not behavior) |
+
+## Prompt Files in `.chant/prompts/`
+
+This directory contains all prompts for your project. Built-in prompts are in your repository, and you can view and customize them.
+
+### File Structure
+
+Each prompt file has:
+
+```markdown
+---
+name: <prompt-name>         # How to reference this prompt
+purpose: <description>      # What this prompt does
+---
+
+# Prompt Title
+
+Instructions and behavior for the agent...
+
+{{spec.title}}
+{{spec.description}}
+...
+```
+
+### Viewing Prompt Files
+
+```bash
+# View the standard execution prompt
+cat .chant/prompts/standard.md
+
+# View the split prompt
+cat .chant/prompts/split.md
+```
+
+### Creating Custom Prompts
+
+Create new files in `.chant/prompts/` for custom behaviors:
+
+```markdown
+# .chant/prompts/my-custom.md
+---
+name: my-custom
+purpose: Custom workflow
+---
+
+# Custom Prompt
+
+Your instructions here...
+```
+
+Use with: `chant work 2026-01-24-001-abc --prompt my-custom`
 
 ## Simplification
 

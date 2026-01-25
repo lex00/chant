@@ -9,11 +9,10 @@ Everything else (specs, git, daemon) is infrastructure. Prompts are the behavior
 ```
 .chant/prompts/
   standard.md     ← "How to implement a spec"
-  review.md       ← "How to review code"
   split.md        ← "How to break down work"
 ```
 
-A prompt is a markdown file that tells the agent what to do.
+A prompt is a markdown file that tells the agent what to do. It contains instructions on how to complete work, what to check, how to test, and when to commit.
 
 ## Your First 5 Minutes
 
@@ -32,6 +31,29 @@ chant work 001
 ```
 
 The agent reads `standard.md`, sees your spec, and executes.
+
+## Built-in Prompts
+
+Chant comes with ready-to-use prompts for different workflows:
+
+### standard.md
+The default prompt for implementing specs. It instructs the agent to:
+- Read relevant code first
+- Plan the approach
+- Implement changes
+- Verify the implementation works
+- Commit with a proper message
+
+**Used when:** `chant work <spec-id>` (no prompt specified)
+
+### split.md
+A specialized prompt for analyzing driver specs and proposing how to break them down into smaller member specs. It:
+- Analyzes the specification and acceptance criteria
+- Proposes a sequence of member specs
+- Ensures each member leaves code in compilable state
+- Provides detailed acceptance criteria for each member
+
+**Used when:** `chant split <spec-id>` or `chant work <spec-id> --prompt split`
 
 ## Customizing Behavior
 
