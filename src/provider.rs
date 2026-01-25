@@ -172,9 +172,10 @@ impl ModelProvider for OllamaProvider {
             ));
         }
 
-        // Stream response body
+        // Stream response body - buffer tokens until we have complete lines
         let reader = std::io::BufReader::new(response.into_reader());
         let mut captured_output = String::new();
+        let mut line_buffer = String::new();
 
         for line in reader.lines().map_while(Result::ok) {
             if let Some(json_str) = line.strip_prefix("data: ") {
@@ -188,14 +189,15 @@ impl ModelProvider for OllamaProvider {
                             if let Some(delta) = choice.get("delta") {
                                 if let Some(content) = delta.get("content").and_then(|c| c.as_str())
                                 {
-                                    for text_line in content.lines() {
-                                        callback(text_line)?;
-                                        captured_output.push_str(text_line);
+                                    line_buffer.push_str(content);
+
+                                    // Only callback when we have complete lines
+                                    while let Some(newline_pos) = line_buffer.find('\n') {
+                                        let complete_line = &line_buffer[..newline_pos];
+                                        callback(complete_line)?;
+                                        captured_output.push_str(complete_line);
                                         captured_output.push('\n');
-                                    }
-                                    // Handle inline text without newline
-                                    if !content.is_empty() && !content.ends_with('\n') {
-                                        captured_output.push_str(content);
+                                        line_buffer = line_buffer[newline_pos + 1..].to_string();
                                     }
                                 }
                             }
@@ -203,6 +205,13 @@ impl ModelProvider for OllamaProvider {
                     }
                 }
             }
+        }
+
+        // Flush any remaining buffered content
+        if !line_buffer.is_empty() {
+            callback(&line_buffer)?;
+            captured_output.push_str(&line_buffer);
+            captured_output.push('\n');
         }
 
         if captured_output.is_empty() {
@@ -282,9 +291,10 @@ impl ModelProvider for OpenaiProvider {
             ));
         }
 
-        // Stream response body
+        // Stream response body - buffer tokens until we have complete lines
         let reader = std::io::BufReader::new(response.into_reader());
         let mut captured_output = String::new();
+        let mut line_buffer = String::new();
 
         for line in reader.lines().map_while(Result::ok) {
             if let Some(json_str) = line.strip_prefix("data: ") {
@@ -298,14 +308,15 @@ impl ModelProvider for OpenaiProvider {
                             if let Some(delta) = choice.get("delta") {
                                 if let Some(content) = delta.get("content").and_then(|c| c.as_str())
                                 {
-                                    for text_line in content.lines() {
-                                        callback(text_line)?;
-                                        captured_output.push_str(text_line);
+                                    line_buffer.push_str(content);
+
+                                    // Only callback when we have complete lines
+                                    while let Some(newline_pos) = line_buffer.find('\n') {
+                                        let complete_line = &line_buffer[..newline_pos];
+                                        callback(complete_line)?;
+                                        captured_output.push_str(complete_line);
                                         captured_output.push('\n');
-                                    }
-                                    // Handle inline text without newline
-                                    if !content.is_empty() && !content.ends_with('\n') {
-                                        captured_output.push_str(content);
+                                        line_buffer = line_buffer[newline_pos + 1..].to_string();
                                     }
                                 }
                             }
@@ -313,6 +324,13 @@ impl ModelProvider for OpenaiProvider {
                     }
                 }
             }
+        }
+
+        // Flush any remaining buffered content
+        if !line_buffer.is_empty() {
+            callback(&line_buffer)?;
+            captured_output.push_str(&line_buffer);
+            captured_output.push('\n');
         }
 
         if captured_output.is_empty() {
