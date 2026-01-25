@@ -201,28 +201,65 @@ mod tests {
     /// Helper to initialize a temporary git repo for testing.
     fn setup_test_repo(repo_dir: &Path) -> Result<()> {
         fs::create_dir_all(repo_dir)?;
-        StdCommand::new("git")
+
+        let output = StdCommand::new("git")
             .arg("init")
             .current_dir(repo_dir)
-            .output()?;
-        StdCommand::new("git")
+            .output()
+            .context("Failed to run git init")?;
+        anyhow::ensure!(
+            output.status.success(),
+            "git init failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let output = StdCommand::new("git")
             .args(["config", "user.email", "test@example.com"])
             .current_dir(repo_dir)
-            .output()?;
-        StdCommand::new("git")
+            .output()
+            .context("Failed to run git config")?;
+        anyhow::ensure!(
+            output.status.success(),
+            "git config email failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let output = StdCommand::new("git")
             .args(["config", "user.name", "Test User"])
             .current_dir(repo_dir)
-            .output()?;
+            .output()
+            .context("Failed to run git config")?;
+        anyhow::ensure!(
+            output.status.success(),
+            "git config name failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
         // Create an initial commit
         fs::write(repo_dir.join("README.md"), "# Test")?;
-        StdCommand::new("git")
+
+        let output = StdCommand::new("git")
             .args(["add", "."])
             .current_dir(repo_dir)
-            .output()?;
-        StdCommand::new("git")
+            .output()
+            .context("Failed to run git add")?;
+        anyhow::ensure!(
+            output.status.success(),
+            "git add failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let output = StdCommand::new("git")
             .args(["commit", "-m", "Initial commit"])
             .current_dir(repo_dir)
-            .output()?;
+            .output()
+            .context("Failed to run git commit")?;
+        anyhow::ensure!(
+            output.status.success(),
+            "git commit failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
         Ok(())
     }
 
@@ -242,20 +279,29 @@ mod tests {
         setup_test_repo(&repo_dir)?;
 
         let original_dir = std::env::current_dir()?;
-        std::env::set_current_dir(&repo_dir)?;
 
-        let spec_id = "test-spec-branch-exists";
-        let branch = "spec/test-spec-branch-exists";
+        let result = {
+            std::env::set_current_dir(&repo_dir).context("Failed to change to repo directory")?;
 
-        // Create the branch first
-        StdCommand::new("git")
-            .args(["branch", branch])
-            .current_dir(&repo_dir)
-            .output()?;
+            let spec_id = "test-spec-branch-exists";
+            let branch = "spec/test-spec-branch-exists";
 
-        let result = create_worktree(spec_id, branch);
+            // Create the branch first
+            let output = StdCommand::new("git")
+                .args(["branch", branch])
+                .current_dir(&repo_dir)
+                .output()?;
+            anyhow::ensure!(
+                output.status.success(),
+                "git branch failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
 
-        std::env::set_current_dir(&original_dir)?;
+            create_worktree(spec_id, branch)
+        };
+
+        // Always restore original directory
+        std::env::set_current_dir(&original_dir).context("Failed to restore original directory")?;
         cleanup_test_repo(&repo_dir)?;
 
         assert!(result.is_err());
@@ -271,54 +317,101 @@ mod tests {
         setup_test_repo(&repo_dir)?;
 
         let original_dir = std::env::current_dir()?;
-        std::env::set_current_dir(&repo_dir)?;
 
-        let branch = "feature/conflict-test";
+        let result = {
+            std::env::set_current_dir(&repo_dir).context("Failed to change to repo directory")?;
 
-        // Create a feature branch that conflicts with main
-        StdCommand::new("git")
-            .args(["branch", branch])
-            .current_dir(&repo_dir)
-            .output()?;
-        StdCommand::new("git")
-            .args(["checkout", branch])
-            .current_dir(&repo_dir)
-            .output()?;
-        fs::write(repo_dir.join("README.md"), "feature version")?;
-        StdCommand::new("git")
-            .args(["add", "."])
-            .current_dir(&repo_dir)
-            .output()?;
-        StdCommand::new("git")
-            .args(["commit", "-m", "Modify README on feature"])
-            .current_dir(&repo_dir)
-            .output()?;
+            let branch = "feature/conflict-test";
 
-        // Modify README on main differently
-        StdCommand::new("git")
-            .args(["checkout", "main"])
-            .current_dir(&repo_dir)
-            .output()?;
-        fs::write(repo_dir.join("README.md"), "main version")?;
-        StdCommand::new("git")
-            .args(["add", "."])
-            .current_dir(&repo_dir)
-            .output()?;
-        StdCommand::new("git")
-            .args(["commit", "-m", "Modify README on main"])
-            .current_dir(&repo_dir)
-            .output()?;
+            // Create a feature branch that conflicts with main
+            let output = StdCommand::new("git")
+                .args(["branch", branch])
+                .current_dir(&repo_dir)
+                .output()?;
+            anyhow::ensure!(
+                output.status.success(),
+                "git branch failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
 
-        // Now call merge_and_cleanup while in the repo directory
-        let result = merge_and_cleanup(branch);
+            let output = StdCommand::new("git")
+                .args(["checkout", branch])
+                .current_dir(&repo_dir)
+                .output()?;
+            anyhow::ensure!(
+                output.status.success(),
+                "git checkout branch failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+
+            fs::write(repo_dir.join("README.md"), "feature version")?;
+
+            let output = StdCommand::new("git")
+                .args(["add", "."])
+                .current_dir(&repo_dir)
+                .output()?;
+            anyhow::ensure!(
+                output.status.success(),
+                "git add failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+
+            let output = StdCommand::new("git")
+                .args(["commit", "-m", "Modify README on feature"])
+                .current_dir(&repo_dir)
+                .output()?;
+            anyhow::ensure!(
+                output.status.success(),
+                "git commit feature failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+
+            // Modify README on main differently
+            let output = StdCommand::new("git")
+                .args(["checkout", "main"])
+                .current_dir(&repo_dir)
+                .output()?;
+            anyhow::ensure!(
+                output.status.success(),
+                "git checkout main failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+
+            fs::write(repo_dir.join("README.md"), "main version")?;
+
+            let output = StdCommand::new("git")
+                .args(["add", "."])
+                .current_dir(&repo_dir)
+                .output()?;
+            anyhow::ensure!(
+                output.status.success(),
+                "git add main failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+
+            let output = StdCommand::new("git")
+                .args(["commit", "-m", "Modify README on main"])
+                .current_dir(&repo_dir)
+                .output()?;
+            anyhow::ensure!(
+                output.status.success(),
+                "git commit main failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+
+            // Now call merge_and_cleanup while in the repo directory
+            merge_and_cleanup(branch)
+        };
+
+        // Always restore original directory
+        std::env::set_current_dir(&original_dir).context("Failed to restore original directory")?;
 
         // Check that branch still exists (wasn't deleted)
         let branch_check = StdCommand::new("git")
-            .args(["rev-parse", "--verify", branch])
+            .args(["rev-parse", "--verify", "feature/conflict-test"])
             .current_dir(&repo_dir)
             .output()?;
 
-        std::env::set_current_dir(&original_dir)?;
         cleanup_test_repo(&repo_dir)?;
 
         // Merge should fail (either due to conflict or non-ff situation)
@@ -336,42 +429,75 @@ mod tests {
         setup_test_repo(&repo_dir)?;
 
         let original_dir = std::env::current_dir()?;
-        std::env::set_current_dir(&repo_dir)?;
 
-        let branch = "feature/new-feature";
+        let result = {
+            std::env::set_current_dir(&repo_dir).context("Failed to change to repo directory")?;
 
-        // Create a fast-forwardable feature branch
-        StdCommand::new("git")
-            .args(["branch", branch])
-            .current_dir(&repo_dir)
-            .output()?;
-        StdCommand::new("git")
-            .args(["checkout", branch])
-            .current_dir(&repo_dir)
-            .output()?;
-        fs::write(repo_dir.join("feature.txt"), "feature content")?;
-        StdCommand::new("git")
-            .args(["add", "."])
-            .current_dir(&repo_dir)
-            .output()?;
-        StdCommand::new("git")
-            .args(["commit", "-m", "Add feature"])
-            .current_dir(&repo_dir)
-            .output()?;
+            let branch = "feature/new-feature";
 
-        // Merge the branch
-        let result = merge_and_cleanup(branch);
+            // Create a fast-forwardable feature branch
+            let output = StdCommand::new("git")
+                .args(["branch", branch])
+                .current_dir(&repo_dir)
+                .output()?;
+            anyhow::ensure!(
+                output.status.success(),
+                "git branch failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+
+            let output = StdCommand::new("git")
+                .args(["checkout", branch])
+                .current_dir(&repo_dir)
+                .output()?;
+            anyhow::ensure!(
+                output.status.success(),
+                "git checkout failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+
+            fs::write(repo_dir.join("feature.txt"), "feature content")?;
+
+            let output = StdCommand::new("git")
+                .args(["add", "."])
+                .current_dir(&repo_dir)
+                .output()?;
+            anyhow::ensure!(
+                output.status.success(),
+                "git add failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+
+            let output = StdCommand::new("git")
+                .args(["commit", "-m", "Add feature"])
+                .current_dir(&repo_dir)
+                .output()?;
+            anyhow::ensure!(
+                output.status.success(),
+                "git commit failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+
+            // Merge the branch
+            merge_and_cleanup(branch)
+        };
+
+        // Always restore original directory
+        std::env::set_current_dir(&original_dir).context("Failed to restore original directory")?;
 
         // Check that branch no longer exists
         let branch_check = StdCommand::new("git")
-            .args(["rev-parse", "--verify", branch])
+            .args(["rev-parse", "--verify", "feature/new-feature"])
             .current_dir(&repo_dir)
             .output()?;
 
-        std::env::set_current_dir(&original_dir)?;
         cleanup_test_repo(&repo_dir)?;
 
-        assert!(result.success && result.error.is_none());
+        assert!(
+            result.success && result.error.is_none(),
+            "Merge result: {:?}",
+            result
+        );
         // Branch should be deleted after merge
         assert!(!branch_check.status.success());
         Ok(())
