@@ -1036,9 +1036,12 @@ status: in_progress
         )
         .unwrap();
 
-        let result = auto_complete_driver_if_ready("2026-01-24-006-pqr", &[driver_spec], specs_dir)
-            .unwrap();
-        assert!(!result, "Non-member spec should not trigger auto-completion");
+        let result =
+            auto_complete_driver_if_ready("2026-01-24-006-pqr", &[driver_spec], specs_dir).unwrap();
+        assert!(
+            !result,
+            "Non-member spec should not trigger auto-completion"
+        );
     }
 
     #[test]
@@ -1070,9 +1073,12 @@ status: completed
         .unwrap();
 
         let all_specs = vec![driver_spec, member_spec];
-        let result = auto_complete_driver_if_ready("2026-01-24-007-stu.1", &all_specs, specs_dir)
-            .unwrap();
-        assert!(!result, "Driver not in progress should not be auto-completed");
+        let result =
+            auto_complete_driver_if_ready("2026-01-24-007-stu.1", &all_specs, specs_dir).unwrap();
+        assert!(
+            !result,
+            "Driver not in progress should not be auto-completed"
+        );
     }
 
     #[test]
@@ -1118,9 +1124,12 @@ status: in_progress
         .unwrap();
 
         let all_specs = vec![driver_spec, member1, member2];
-        let result = auto_complete_driver_if_ready("2026-01-24-008-vwx.1", &all_specs, specs_dir)
-            .unwrap();
-        assert!(!result, "Driver should not complete when members are incomplete");
+        let result =
+            auto_complete_driver_if_ready("2026-01-24-008-vwx.1", &all_specs, specs_dir).unwrap();
+        assert!(
+            !result,
+            "Driver should not complete when members are incomplete"
+        );
     }
 
     #[test]
@@ -1168,9 +1177,12 @@ status: completed
         let all_specs = vec![driver_spec, member1, member2];
 
         // Auto-complete should succeed
-        let result = auto_complete_driver_if_ready("2026-01-24-009-yz0.2", &all_specs, specs_dir)
-            .unwrap();
-        assert!(result, "Driver should be auto-completed when all members are completed");
+        let result =
+            auto_complete_driver_if_ready("2026-01-24-009-yz0.2", &all_specs, specs_dir).unwrap();
+        assert!(
+            result,
+            "Driver should be auto-completed when all members are completed"
+        );
 
         // Verify driver was updated
         let updated_driver = Spec::load(&driver_path).unwrap();
@@ -1191,9 +1203,12 @@ status: completed
 
         // Try to auto-complete when driver doesn't exist
         let all_specs = vec![];
-        let result = auto_complete_driver_if_ready("2026-01-24-010-abc.1", &all_specs, specs_dir)
-            .unwrap();
-        assert!(!result, "Should return false when driver spec doesn't exist");
+        let result =
+            auto_complete_driver_if_ready("2026-01-24-010-abc.1", &all_specs, specs_dir).unwrap();
+        assert!(
+            !result,
+            "Should return false when driver spec doesn't exist"
+        );
     }
 
     #[test]
@@ -1231,9 +1246,12 @@ status: completed
         let all_specs = vec![driver_spec, member];
 
         // Auto-complete should succeed
-        let result = auto_complete_driver_if_ready("2026-01-24-011-def.1", &all_specs, specs_dir)
-            .unwrap();
-        assert!(result, "Driver should be auto-completed when single member completes");
+        let result =
+            auto_complete_driver_if_ready("2026-01-24-011-def.1", &all_specs, specs_dir).unwrap();
+        assert!(
+            result,
+            "Driver should be auto-completed when single member completes"
+        );
 
         // Verify driver was updated
         let updated_driver = Spec::load(&driver_path).unwrap();
@@ -1242,5 +1260,82 @@ status: completed
             updated_driver.frontmatter.model,
             Some("auto-completed".to_string())
         );
+    }
+
+    #[test]
+    fn test_parse_spec_with_labels() {
+        let content = r#"---
+type: code
+status: pending
+labels:
+  - foo
+  - bar
+---
+
+# Test spec with labels
+"#;
+        let spec = Spec::parse("2026-01-24-012-xyz", content).unwrap();
+        assert_eq!(
+            spec.frontmatter.labels,
+            Some(vec!["foo".to_string(), "bar".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_spec_save_persistence_with_labels() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let spec_path = temp_dir.path().join("test-labels.md");
+
+        let spec = Spec {
+            id: "2026-01-24-013-abc".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                labels: Some(vec!["test".to_string(), "validation".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Test labels".to_string()),
+            body: "# Test labels\n\nBody content.".to_string(),
+        };
+
+        // Save the spec
+        spec.save(&spec_path).unwrap();
+
+        // Load it back
+        let loaded_spec = Spec::load(&spec_path).unwrap();
+
+        // Verify labels were persisted
+        assert_eq!(
+            loaded_spec.frontmatter.labels,
+            Some(vec!["test".to_string(), "validation".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_spec_save_without_labels() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let spec_path = temp_dir.path().join("test-no-labels.md");
+
+        let spec = Spec {
+            id: "2026-01-24-014-def".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                ..Default::default()
+            },
+            title: Some("Test no labels".to_string()),
+            body: "# Test no labels\n\nBody content.".to_string(),
+        };
+
+        // Save the spec
+        spec.save(&spec_path).unwrap();
+
+        // Load it back
+        let loaded_spec = Spec::load(&spec_path).unwrap();
+
+        // Verify labels are None
+        assert_eq!(loaded_spec.frontmatter.labels, None);
     }
 }
