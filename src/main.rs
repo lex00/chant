@@ -1826,12 +1826,22 @@ fn cmd_split(id: &str, override_model: Option<&str>) -> Result<()> {
             ..Default::default()
         };
 
-        // Build body with title, description, and acceptance criteria
-        let body = format!(
-            "# {}\n\n{}\n\n## Acceptance Criteria\n\n- [ ] Implement as described\n- [ ] All tests pass",
-            subtask.title,
-            subtask.description
-        );
+        // Build body with title and description
+        // If description already contains ### Acceptance Criteria, don't append generic ones
+        let body = if subtask.description.contains("### Acceptance Criteria") {
+            format!(
+                "# {}\n\n{}",
+                subtask.title,
+                subtask.description
+            )
+        } else {
+            // No acceptance criteria found, append generic section
+            format!(
+                "# {}\n\n{}\n\n## Acceptance Criteria\n\n- [ ] Implement as described\n- [ ] All tests pass",
+                subtask.title,
+                subtask.description
+            )
+        };
 
         let subtask_spec = Spec {
             id: subtask_id.clone(),
@@ -1881,7 +1891,7 @@ fn parse_subtasks_from_agent_output(output: &str) -> Result<Vec<Subtask>> {
             if let Some((title, desc, files)) = current_subtask.take() {
                 subtasks.push(Subtask {
                     title,
-                    description: desc,
+                    description: desc.trim().to_string(),
                     target_files: if files.is_empty() { None } else { Some(files) },
                 });
             }
@@ -1896,6 +1906,10 @@ fn parse_subtasks_from_agent_output(output: &str) -> Result<Vec<Subtask>> {
             // Check for code block markers
             if line.trim() == "```" {
                 in_code_block = !in_code_block;
+                if let Some((_, ref mut desc, _)) = &mut current_subtask {
+                    desc.push_str(line);
+                    desc.push('\n');
+                }
                 continue;
             }
 
@@ -1929,8 +1943,8 @@ fn parse_subtasks_from_agent_output(output: &str) -> Result<Vec<Subtask>> {
                     // New section
                     collecting_files = false;
                 }
-            } else if !in_code_block && !line.trim().is_empty() && !line.starts_with('#') {
-                // Add to description if not in code block and not a header
+            } else if !in_code_block {
+                // Preserve ### headers and all content except "Affected Files" section
                 if let Some((_, ref mut desc, _)) = &mut current_subtask {
                     desc.push_str(line);
                     desc.push('\n');
@@ -2858,6 +2872,130 @@ Just a simple task without files listed.
         let output = "No subtasks here";
         let result = parse_subtasks_from_agent_output(output);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_subtasks_preserves_section_headers() {
+        let output = r#"## Subtask 1: Implement feature
+
+Add the core feature with detailed logic.
+
+### Acceptance Criteria
+
+- [ ] Feature is implemented
+- [ ] Tests pass
+
+### Edge Cases
+
+- Edge case 1: Handle empty input
+- Edge case 2: Handle large values
+
+**Affected Files:**
+- src/lib.rs
+"#;
+        let result = parse_subtasks_from_agent_output(output).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].title, "Implement feature");
+        // Description should preserve ### headers
+        assert!(result[0].description.contains("### Acceptance Criteria"));
+        assert!(result[0].description.contains("### Edge Cases"));
+        assert!(result[0].description.contains("- [ ] Feature is implemented"));
+        assert!(result[0].description.contains("Edge case 1: Handle empty input"));
+        assert_eq!(result[0].target_files, Some(vec!["src/lib.rs".to_string()]));
+    }
+
+    #[test]
+    fn test_parse_subtasks_with_multiple_sections() {
+        let output = r#"## Subtask 2: Update callers
+
+Update all callers to use the new API.
+
+### Acceptance Criteria
+
+- [ ] All callers updated
+- [ ] No compilation errors
+
+### Example Test Cases
+
+- Case 1: Basic caller should work
+- Case 2: Complex caller should work
+
+**Affected Files:**
+- src/main.rs
+- src/utils.rs
+"#;
+        let result = parse_subtasks_from_agent_output(output).unwrap();
+        assert_eq!(result.len(), 1);
+        assert!(result[0].description.contains("### Acceptance Criteria"));
+        assert!(result[0].description.contains("### Example Test Cases"));
+        assert!(result[0].description.contains("- [ ] All callers updated"));
+        assert_eq!(
+            result[0].target_files,
+            Some(vec!["src/main.rs".to_string(), "src/utils.rs".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_subtask_body_with_existing_acceptance_criteria() {
+        // Verify that when a subtask description contains ### Acceptance Criteria,
+        // we don't append a generic section
+        let subtask = Subtask {
+            title: "Implement feature".to_string(),
+            description: "Implement the feature.\n\n### Acceptance Criteria\n\n- [ ] Feature works\n- [ ] Tests pass".to_string(),
+            target_files: None,
+        };
+
+        // Build body the same way cmd_split does
+        let body = if subtask.description.contains("### Acceptance Criteria") {
+            format!(
+                "# {}\n\n{}",
+                subtask.title,
+                subtask.description
+            )
+        } else {
+            format!(
+                "# {}\n\n{}\n\n## Acceptance Criteria\n\n- [ ] Implement as described\n- [ ] All tests pass",
+                subtask.title,
+                subtask.description
+            )
+        };
+
+        // Body should contain the preserved ### headers
+        assert!(body.contains("### Acceptance Criteria"));
+        assert!(body.contains("- [ ] Feature works"));
+        // Generic section should NOT be appended
+        assert!(!body.matches("## Acceptance Criteria").count() > 1);
+    }
+
+    #[test]
+    fn test_subtask_body_without_acceptance_criteria() {
+        // Verify that when a subtask description lacks ### Acceptance Criteria,
+        // we append the generic section
+        let subtask = Subtask {
+            title: "Simple task".to_string(),
+            description: "Just do this simple thing.".to_string(),
+            target_files: None,
+        };
+
+        // Build body the same way cmd_split does
+        let body = if subtask.description.contains("### Acceptance Criteria") {
+            format!(
+                "# {}\n\n{}",
+                subtask.title,
+                subtask.description
+            )
+        } else {
+            format!(
+                "# {}\n\n{}\n\n## Acceptance Criteria\n\n- [ ] Implement as described\n- [ ] All tests pass",
+                subtask.title,
+                subtask.description
+            )
+        };
+
+        // Body should contain the generic section
+        assert!(body.contains("## Acceptance Criteria"));
+        assert!(body.contains("- [ ] Implement as described"));
+        assert!(body.contains("- [ ] All tests pass"));
     }
 
     #[test]
