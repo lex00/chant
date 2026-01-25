@@ -5059,6 +5059,7 @@ git:
 
     /// Test 1: Re-finalize an in_progress spec - completes it
     #[test]
+    #[serial_test::serial]
     fn test_re_finalize_in_progress_spec_completes_it() {
         let temp_dir = TempDir::new().unwrap();
         let specs_dir = temp_dir.path().to_path_buf();
@@ -5116,6 +5117,7 @@ git:
 
     /// Test 2: Re-finalize a completed spec - updates timestamps
     #[test]
+    #[serial_test::serial]
     fn test_re_finalize_completed_spec_updates_timestamp() {
         let temp_dir = TempDir::new().unwrap();
         let specs_dir = temp_dir.path().to_path_buf();
@@ -5171,9 +5173,49 @@ git:
 
     /// Test 3: Re-finalize is idempotent - same result when called multiple times
     #[test]
+    #[serial_test::serial]
     fn test_re_finalize_is_idempotent() {
+        use std::process::Command;
+
         let temp_dir = TempDir::new().unwrap();
         let specs_dir = temp_dir.path().to_path_buf();
+
+        // Initialize git repo
+        Command::new("git")
+            .arg("init")
+            .current_dir(&specs_dir)
+            .output()
+            .unwrap();
+
+        // Configure git
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(&specs_dir)
+            .output()
+            .unwrap();
+
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(&specs_dir)
+            .output()
+            .unwrap();
+
+        // Create initial README commit so the main branch exists
+        std::fs::write(specs_dir.join("README.md"), "# Test").unwrap();
+        Command::new("git")
+            .args(["add", "README.md"])
+            .current_dir(&specs_dir)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "Initial commit"])
+            .current_dir(&specs_dir)
+            .output()
+            .unwrap();
+
+        // Save current directory
+        let original_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&specs_dir).unwrap();
 
         let spec_content = r#"---
 type: task
@@ -5188,8 +5230,17 @@ status: in_progress
 - [x] Item 1
 "#;
         let spec_path = specs_dir.join("2026-01-24-refinal-003.md");
-        std::fs::create_dir_all(&specs_dir).unwrap();
         std::fs::write(&spec_path, spec_content).unwrap();
+
+        // Create spec commit
+        Command::new("git")
+            .args(["add", "2026-01-24-refinal-003.md"])
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "chant(2026-01-24-refinal-003): initial spec"])
+            .output()
+            .unwrap();
 
         let config_str = r#"---
 project:
@@ -5220,6 +5271,9 @@ git:
         let timestamp2 = spec2.frontmatter.completed_at.clone();
         let commits2 = spec2.frontmatter.commits.clone();
 
+        // Restore original directory
+        std::env::set_current_dir(original_dir).unwrap();
+
         // Both should be completed
         assert_eq!(spec1.frontmatter.status, SpecStatus::Completed);
         assert_eq!(spec2.frontmatter.status, SpecStatus::Completed);
@@ -5234,6 +5288,7 @@ git:
 
     /// Test 4: Re-finalize with no new commits still updates timestamp
     #[test]
+    #[serial_test::serial]
     fn test_re_finalize_updates_timestamp_even_without_new_commits() {
         let temp_dir = TempDir::new().unwrap();
         let specs_dir = temp_dir.path().to_path_buf();
@@ -5333,9 +5388,49 @@ git:
 
     /// Test 6: Re-finalize preserves existing PR URL
     #[test]
+    #[serial_test::serial]
     fn test_re_finalize_preserves_pr_url() {
+        use std::process::Command;
+
         let temp_dir = TempDir::new().unwrap();
         let specs_dir = temp_dir.path().to_path_buf();
+
+        // Initialize git repo
+        Command::new("git")
+            .arg("init")
+            .current_dir(&specs_dir)
+            .output()
+            .unwrap();
+
+        // Configure git
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(&specs_dir)
+            .output()
+            .unwrap();
+
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(&specs_dir)
+            .output()
+            .unwrap();
+
+        // Create initial README commit so the main branch exists
+        std::fs::write(specs_dir.join("README.md"), "# Test").unwrap();
+        Command::new("git")
+            .args(["add", "README.md"])
+            .current_dir(&specs_dir)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "Initial commit"])
+            .current_dir(&specs_dir)
+            .output()
+            .unwrap();
+
+        // Save current directory
+        let original_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&specs_dir).unwrap();
 
         let spec_content = r#"---
 type: task
@@ -5352,8 +5447,17 @@ pr: https://github.com/example/repo/pull/123
 - [x] Item 1
 "#;
         let spec_path = specs_dir.join("2026-01-24-refinal-006.md");
-        std::fs::create_dir_all(&specs_dir).unwrap();
         std::fs::write(&spec_path, spec_content).unwrap();
+
+        // Create spec commit
+        Command::new("git")
+            .args(["add", "2026-01-24-refinal-006.md"])
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "chant(2026-01-24-refinal-006): initial spec"])
+            .output()
+            .unwrap();
 
         let config_str = r#"---
 project:
@@ -5373,6 +5477,9 @@ git:
         let mut spec = spec::resolve_spec(&specs_dir, "2026-01-24-refinal-006").unwrap();
 
         re_finalize_spec(&mut spec, &spec_path, &config).unwrap();
+
+        // Restore original directory
+        std::env::set_current_dir(original_dir).unwrap();
 
         // PR URL should be preserved
         assert_eq!(

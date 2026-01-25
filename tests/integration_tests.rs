@@ -7,6 +7,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+// Import serial_test for marking tests that must run serially
+use serial_test::serial;
+
 // ============================================================================
 // SETUP & HELPERS
 // ============================================================================
@@ -133,6 +136,7 @@ Test specification for integration testing.
 // ============================================================================
 
 #[test]
+#[serial]
 fn test_worktree_creation_basic() {
     let repo_dir = PathBuf::from("/tmp/test-chant-wt-basic");
     let _ = cleanup_test_repo(&repo_dir);
@@ -173,6 +177,7 @@ fn test_worktree_creation_basic() {
 }
 
 #[test]
+#[serial]
 fn test_multiple_worktrees_parallel() {
     let repo_dir = PathBuf::from("/tmp/test-chant-wt-multiple");
     let _ = cleanup_test_repo(&repo_dir);
@@ -251,6 +256,7 @@ fn test_multiple_worktrees_parallel() {
 }
 
 #[test]
+#[serial]
 fn test_direct_mode_merge_and_cleanup() {
     let repo_dir = PathBuf::from("/tmp/test-chant-direct-mode");
     let _ = cleanup_test_repo(&repo_dir);
@@ -293,6 +299,7 @@ fn test_direct_mode_merge_and_cleanup() {
 }
 
 #[test]
+#[serial]
 fn test_branch_mode_preserves_branch() {
     let repo_dir = PathBuf::from("/tmp/test-chant-branch-mode");
     let _ = cleanup_test_repo(&repo_dir);
@@ -357,6 +364,7 @@ fn test_branch_mode_preserves_branch() {
 }
 
 #[test]
+#[serial]
 fn test_merge_conflict_preserves_branch() {
     let repo_dir = PathBuf::from("/tmp/test-chant-conflict");
     let _ = cleanup_test_repo(&repo_dir);
@@ -395,6 +403,7 @@ fn test_merge_conflict_preserves_branch() {
 }
 
 #[test]
+#[serial]
 fn test_worktree_cleanup_on_failure() {
     let repo_dir = PathBuf::from("/tmp/test-chant-cleanup-failure");
     let _ = cleanup_test_repo(&repo_dir);
@@ -441,6 +450,7 @@ fn test_worktree_cleanup_on_failure() {
 }
 
 #[test]
+#[serial]
 fn test_concurrent_worktree_isolation() {
     let repo_dir = PathBuf::from("/tmp/test-chant-isolation");
     let _ = cleanup_test_repo(&repo_dir);
@@ -563,6 +573,7 @@ fn test_concurrent_worktree_isolation() {
 }
 
 #[test]
+#[serial]
 fn test_worktree_idempotent_cleanup() {
     let repo_dir = PathBuf::from("/tmp/test-chant-idempotent");
     let _ = cleanup_test_repo(&repo_dir);
@@ -623,6 +634,7 @@ fn test_worktree_idempotent_cleanup() {
 }
 
 #[test]
+#[serial]
 fn test_worktree_path_format() {
     // Test that worktree paths follow the expected format
     let spec_id = "2026-01-24-001-abc";
@@ -641,6 +653,7 @@ fn test_worktree_path_format() {
 }
 
 #[test]
+#[serial]
 fn test_spec_file_format() {
     // Test spec file creation and format
     let spec_id = "test-spec-format";

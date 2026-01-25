@@ -178,6 +178,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_create_worktree_branch_already_exists() -> Result<()> {
         let repo_dir = PathBuf::from("/tmp/test-chant-repo-branch-exists");
         cleanup_test_repo(&repo_dir)?;
@@ -206,6 +207,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_merge_and_cleanup_with_conflict_preserves_branch() -> Result<()> {
         let repo_dir = PathBuf::from("/tmp/test-chant-repo-conflict-preserve");
         cleanup_test_repo(&repo_dir)?;
@@ -270,6 +272,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_merge_and_cleanup_successful_merge() -> Result<()> {
         let repo_dir = PathBuf::from("/tmp/test-chant-repo-merge-success");
         cleanup_test_repo(&repo_dir)?;

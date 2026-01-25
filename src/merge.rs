@@ -604,6 +604,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_merge_driver_spec_all_members_completed() {
         let driver = Spec {
             id: "driver".to_string(),
@@ -700,6 +701,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_merge_driver_spec_multiple_members_in_order() {
         let driver = Spec {
             id: "2026-01-24-01y-73b".to_string(),
@@ -755,6 +757,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_merge_driver_spec_dry_run_shows_all_merges() {
         let driver = Spec {
             id: "driver".to_string(),

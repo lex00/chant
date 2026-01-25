@@ -318,8 +318,8 @@ pub fn merge_single_spec(
         }
     }
 
-    // Return to original branch
-    if let Err(e) = checkout_branch(&original_branch, dry_run) {
+    // Return to original branch (always do this, even in dry_run)
+    if let Err(e) = checkout_branch(&original_branch, false) {
         anyhow::bail!(
             "Failed to return to original branch '{}': {}",
             original_branch,
