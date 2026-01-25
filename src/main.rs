@@ -3465,7 +3465,8 @@ mod tests {
         let prompt_name = "standard";
 
         // Create log writer (this writes the header)
-        let _writer = cmd::agent::StreamingLogWriter::new_at(&base_path, spec_id, prompt_name).unwrap();
+        let _writer =
+            cmd::agent::StreamingLogWriter::new_at(&base_path, spec_id, prompt_name).unwrap();
 
         // Check that log file exists with header BEFORE any lines are written
         let log_path = base_path.join("logs").join(format!("{}.log", spec_id));
@@ -3488,7 +3489,8 @@ mod tests {
         let prompt_name = "standard";
 
         // Create log writer and write lines
-        let mut writer = cmd::agent::StreamingLogWriter::new_at(&base_path, spec_id, prompt_name).unwrap();
+        let mut writer =
+            cmd::agent::StreamingLogWriter::new_at(&base_path, spec_id, prompt_name).unwrap();
         writer.write_line("Test agent output").unwrap();
         writer.write_line("With multiple lines").unwrap();
 
@@ -3515,7 +3517,8 @@ mod tests {
         let prompt_name = "standard";
 
         // Create log writer
-        let mut writer = cmd::agent::StreamingLogWriter::new_at(&base_path, spec_id, prompt_name).unwrap();
+        let mut writer =
+            cmd::agent::StreamingLogWriter::new_at(&base_path, spec_id, prompt_name).unwrap();
         let log_path = base_path.join("logs").join(format!("{}.log", spec_id));
 
         // Write first line
@@ -3544,13 +3547,15 @@ mod tests {
 
         // First run
         {
-            let mut writer = cmd::agent::StreamingLogWriter::new_at(&base_path, spec_id, prompt_name).unwrap();
+            let mut writer =
+                cmd::agent::StreamingLogWriter::new_at(&base_path, spec_id, prompt_name).unwrap();
             writer.write_line("Content A").unwrap();
         }
 
         // Second run (simulating replay)
         {
-            let mut writer = cmd::agent::StreamingLogWriter::new_at(&base_path, spec_id, prompt_name).unwrap();
+            let mut writer =
+                cmd::agent::StreamingLogWriter::new_at(&base_path, spec_id, prompt_name).unwrap();
             writer.write_line("Content B").unwrap();
         }
 
