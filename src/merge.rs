@@ -1,5 +1,6 @@
-use crate::spec::{Spec, SpecStatus};
 use crate::config::Config;
+use crate::git::MergeResult;
+use crate::spec::{Spec, SpecStatus};
 use anyhow::Result;
 
 /// Load main_branch from config with fallback to "main"
@@ -77,6 +78,13 @@ pub fn validate_spec_can_merge(spec: &Spec, branch_exists: bool) -> Result<()> {
     Ok(())
 }
 
+/// Check if a spec is a driver spec (has member specs)
+#[allow(dead_code)]
+pub fn is_driver_spec(spec: &Spec, all_specs: &[Spec]) -> bool {
+    let members = collect_member_specs(spec, all_specs);
+    !members.is_empty()
+}
+
 /// Collect member specs of a driver spec in order (by sequence number)
 #[allow(dead_code)]
 pub fn collect_member_specs(driver_spec: &Spec, all_specs: &[Spec]) -> Vec<Spec> {
@@ -97,6 +105,115 @@ pub fn collect_member_specs(driver_spec: &Spec, all_specs: &[Spec]) -> Vec<Spec>
 
     // Return just the specs
     members.into_iter().map(|(_, spec)| spec).collect()
+}
+
+/// Merge a driver spec and all its members in order.
+///
+/// This function:
+/// 1. Collects all member specs in order
+/// 2. Validates all members are completed and branches exist
+/// 3. Merges each member spec in sequence
+/// 4. If any member merge fails, stops and reports which member failed
+/// 5. After all members succeed, merges the driver spec itself
+/// 6. Returns a list of all merge results (members + driver)
+///
+/// If any validation fails, returns an error with a clear listing of incomplete members.
+#[allow(dead_code)]
+pub fn merge_driver_spec(
+    driver_spec: &Spec,
+    all_specs: &[Spec],
+    branch_prefix: &str,
+    main_branch: &str,
+    should_delete_branch: bool,
+    dry_run: bool,
+) -> Result<Vec<MergeResult>> {
+    use crate::git;
+
+    // Collect member specs in order
+    let members = collect_member_specs(driver_spec, all_specs);
+
+    // Check preconditions for all members
+    let mut incomplete_members = Vec::new();
+    for member in &members {
+        // Check status is Completed
+        if member.frontmatter.status != SpecStatus::Completed {
+            incomplete_members.push(format!("{} (status: {:?})", member.id, member.frontmatter.status));
+        }
+    }
+
+    // Check all member branches exist (unless dry_run)
+    if !dry_run {
+        for member in &members {
+            let branch_name = format!("{}{}", branch_prefix, member.id);
+            match git::branch_exists(&branch_name) {
+                Ok(exists) => {
+                    if !exists {
+                        incomplete_members.push(format!("{} (branch not found)", member.id));
+                    }
+                }
+                Err(e) => {
+                    anyhow::bail!("Failed to check branch for {}: {}", member.id, e);
+                }
+            }
+        }
+    }
+
+    // If any preconditions failed, report them all
+    if !incomplete_members.is_empty() {
+        anyhow::bail!(
+            "Cannot merge driver spec: the following members are incomplete:\n  - {}",
+            incomplete_members.join("\n  - ")
+        );
+    }
+
+    // Merge each member spec in order
+    let mut all_results = Vec::new();
+    for member in &members {
+        let branch_name = format!("{}{}", branch_prefix, member.id);
+        match git::merge_single_spec(
+            &member.id,
+            &branch_name,
+            main_branch,
+            should_delete_branch,
+            dry_run,
+        ) {
+            Ok(result) => {
+                if !result.success {
+                    anyhow::bail!(
+                        "Member spec merge failed for {}: {}. Driver merge not attempted.",
+                        member.id,
+                        result.spec_id
+                    );
+                }
+                all_results.push(result);
+            }
+            Err(e) => {
+                anyhow::bail!(
+                    "Failed to merge member spec {}: {}. Driver merge not attempted.",
+                    member.id,
+                    e
+                );
+            }
+        }
+    }
+
+    // After all members succeed, merge the driver spec itself
+    let driver_branch = format!("{}{}", branch_prefix, driver_spec.id);
+    match git::merge_single_spec(
+        &driver_spec.id,
+        &driver_branch,
+        main_branch,
+        should_delete_branch,
+        dry_run,
+    ) {
+        Ok(result) => {
+            all_results.push(result);
+            Ok(all_results)
+        }
+        Err(e) => {
+            anyhow::bail!("Failed to merge driver spec {}: {}", driver_spec.id, e);
+        }
+    }
 }
 
 /// Check if `member_id` is a group member of `driver_id`.
@@ -227,8 +344,7 @@ mod tests {
             },
         ];
 
-        let result =
-            get_specs_to_merge(&["spec1".to_string()], false, &specs).unwrap();
+        let result = get_specs_to_merge(&["spec1".to_string()], false, &specs).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].0, "spec1");
     }
@@ -244,10 +360,7 @@ mod tests {
 
         let result = get_specs_to_merge(&["nonexistent".to_string()], false, &specs);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Spec not found"));
+        assert!(result.unwrap_err().to_string().contains("Spec not found"));
     }
 
     #[test]
@@ -340,10 +453,7 @@ mod tests {
 
         let result = validate_spec_can_merge(&spec, false);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("No branch found"));
+        assert!(result.unwrap_err().to_string().contains("No branch found"));
     }
 
     #[test]
@@ -441,5 +551,245 @@ mod tests {
 
         let result = collect_member_specs(&driver, &all_specs);
         assert_eq!(result.len(), 0);
+    }
+
+    #[test]
+    fn test_is_driver_spec_with_members() {
+        let driver = Spec {
+            id: "driver".to_string(),
+            frontmatter: crate::spec::SpecFrontmatter::default(),
+            title: Some("Driver".to_string()),
+            body: "Driver".to_string(),
+        };
+
+        let member1 = Spec {
+            id: "driver.1".to_string(),
+            frontmatter: crate::spec::SpecFrontmatter::default(),
+            title: Some("Member 1".to_string()),
+            body: "Member 1".to_string(),
+        };
+
+        let all_specs = vec![driver.clone(), member1];
+
+        let result = is_driver_spec(&driver, &all_specs);
+        assert!(result);
+    }
+
+    #[test]
+    fn test_is_driver_spec_without_members() {
+        let driver = Spec {
+            id: "driver".to_string(),
+            frontmatter: crate::spec::SpecFrontmatter::default(),
+            title: Some("Driver".to_string()),
+            body: "Driver".to_string(),
+        };
+
+        let other = Spec {
+            id: "other".to_string(),
+            frontmatter: crate::spec::SpecFrontmatter::default(),
+            title: Some("Other".to_string()),
+            body: "Other".to_string(),
+        };
+
+        let all_specs = vec![driver.clone(), other];
+
+        let result = is_driver_spec(&driver, &all_specs);
+        assert!(!result);
+    }
+
+    #[test]
+    fn test_merge_driver_spec_all_members_completed() {
+        let driver = Spec {
+            id: "driver".to_string(),
+            frontmatter: crate::spec::SpecFrontmatter {
+                status: SpecStatus::Completed,
+                ..Default::default()
+            },
+            title: Some("Driver".to_string()),
+            body: "Driver".to_string(),
+        };
+
+        let member1 = Spec {
+            id: "driver.1".to_string(),
+            frontmatter: crate::spec::SpecFrontmatter {
+                status: SpecStatus::Completed,
+                ..Default::default()
+            },
+            title: Some("Member 1".to_string()),
+            body: "Member 1".to_string(),
+        };
+
+        let member2 = Spec {
+            id: "driver.2".to_string(),
+            frontmatter: crate::spec::SpecFrontmatter {
+                status: SpecStatus::Completed,
+                ..Default::default()
+            },
+            title: Some("Member 2".to_string()),
+            body: "Member 2".to_string(),
+        };
+
+        let member3 = Spec {
+            id: "driver.3".to_string(),
+            frontmatter: crate::spec::SpecFrontmatter {
+                status: SpecStatus::Completed,
+                ..Default::default()
+            },
+            title: Some("Member 3".to_string()),
+            body: "Member 3".to_string(),
+        };
+
+        let all_specs = vec![driver.clone(), member1, member2, member3];
+
+        // In dry-run mode, this should succeed (no branch validation)
+        let result = merge_driver_spec(&driver, &all_specs, "spec-", "main", false, true);
+        assert!(result.is_ok());
+        let results = result.unwrap();
+        // Should have 4 results: 3 members + 1 driver
+        assert_eq!(results.len(), 4);
+        // All should be in dry-run mode
+        assert!(results.iter().all(|r| r.dry_run));
+    }
+
+    #[test]
+    fn test_merge_driver_spec_member_pending() {
+        let driver = Spec {
+            id: "driver".to_string(),
+            frontmatter: crate::spec::SpecFrontmatter {
+                status: SpecStatus::Completed,
+                ..Default::default()
+            },
+            title: Some("Driver".to_string()),
+            body: "Driver".to_string(),
+        };
+
+        let member1 = Spec {
+            id: "driver.1".to_string(),
+            frontmatter: crate::spec::SpecFrontmatter {
+                status: SpecStatus::Completed,
+                ..Default::default()
+            },
+            title: Some("Member 1".to_string()),
+            body: "Member 1".to_string(),
+        };
+
+        let member2 = Spec {
+            id: "driver.2".to_string(),
+            frontmatter: crate::spec::SpecFrontmatter {
+                status: SpecStatus::Pending,
+                ..Default::default()
+            },
+            title: Some("Member 2".to_string()),
+            body: "Member 2".to_string(),
+        };
+
+        let all_specs = vec![driver.clone(), member1, member2];
+
+        let result = merge_driver_spec(&driver, &all_specs, "spec-", "main", false, true);
+        assert!(result.is_err());
+        let error = result.unwrap_err().to_string();
+        assert!(error.contains("Cannot merge driver spec"));
+        assert!(error.contains("driver.2"));
+        assert!(error.contains("incomplete"));
+    }
+
+    #[test]
+    fn test_merge_driver_spec_multiple_members_in_order() {
+        let driver = Spec {
+            id: "2026-01-24-01y-73b".to_string(),
+            frontmatter: crate::spec::SpecFrontmatter {
+                status: SpecStatus::Completed,
+                ..Default::default()
+            },
+            title: Some("Driver".to_string()),
+            body: "Driver".to_string(),
+        };
+
+        let member1 = Spec {
+            id: "2026-01-24-01y-73b.1".to_string(),
+            frontmatter: crate::spec::SpecFrontmatter {
+                status: SpecStatus::Completed,
+                ..Default::default()
+            },
+            title: Some("Member 1".to_string()),
+            body: "Member 1".to_string(),
+        };
+
+        let member2 = Spec {
+            id: "2026-01-24-01y-73b.2".to_string(),
+            frontmatter: crate::spec::SpecFrontmatter {
+                status: SpecStatus::Completed,
+                ..Default::default()
+            },
+            title: Some("Member 2".to_string()),
+            body: "Member 2".to_string(),
+        };
+
+        let member3 = Spec {
+            id: "2026-01-24-01y-73b.3".to_string(),
+            frontmatter: crate::spec::SpecFrontmatter {
+                status: SpecStatus::Completed,
+                ..Default::default()
+            },
+            title: Some("Member 3".to_string()),
+            body: "Member 3".to_string(),
+        };
+
+        let all_specs = vec![driver.clone(), member3, member1, member2];
+
+        let result = merge_driver_spec(&driver, &all_specs, "spec-", "main", false, true);
+        assert!(result.is_ok());
+        let results = result.unwrap();
+        // Should have 4 results in correct order: .1, .2, .3, driver
+        assert_eq!(results.len(), 4);
+        assert_eq!(results[0].spec_id, "2026-01-24-01y-73b.1");
+        assert_eq!(results[1].spec_id, "2026-01-24-01y-73b.2");
+        assert_eq!(results[2].spec_id, "2026-01-24-01y-73b.3");
+        assert_eq!(results[3].spec_id, "2026-01-24-01y-73b");
+    }
+
+    #[test]
+    fn test_merge_driver_spec_dry_run_shows_all_merges() {
+        let driver = Spec {
+            id: "driver".to_string(),
+            frontmatter: crate::spec::SpecFrontmatter {
+                status: SpecStatus::Completed,
+                ..Default::default()
+            },
+            title: Some("Driver".to_string()),
+            body: "Driver".to_string(),
+        };
+
+        let member1 = Spec {
+            id: "driver.1".to_string(),
+            frontmatter: crate::spec::SpecFrontmatter {
+                status: SpecStatus::Completed,
+                ..Default::default()
+            },
+            title: Some("Member 1".to_string()),
+            body: "Member 1".to_string(),
+        };
+
+        let member2 = Spec {
+            id: "driver.2".to_string(),
+            frontmatter: crate::spec::SpecFrontmatter {
+                status: SpecStatus::Completed,
+                ..Default::default()
+            },
+            title: Some("Member 2".to_string()),
+            body: "Member 2".to_string(),
+        };
+
+        let all_specs = vec![driver.clone(), member1, member2];
+
+        let result = merge_driver_spec(&driver, &all_specs, "spec-", "main", false, true);
+        assert!(result.is_ok());
+        let results = result.unwrap();
+        // 3 merges: member1, member2, driver
+        assert_eq!(results.len(), 3);
+        // All should be in dry-run mode
+        assert!(results.iter().all(|r| r.dry_run));
+        // All should be marked as success in dry-run
+        assert!(results.iter().all(|r| r.success));
     }
 }
