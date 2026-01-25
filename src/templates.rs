@@ -52,17 +52,18 @@ const GENERIC_TEMPLATE: &str = include_str!("../templates/agent-generic.md");
 
 /// Get a template by provider name (case-insensitive)
 pub fn get_template(provider_str: &str) -> Result<AgentTemplate> {
-    let provider =
-        match provider_str.to_lowercase().as_str() {
-            "claude" => AgentProvider::Claude,
-            "cursor" => AgentProvider::Cursor,
-            "amazonq" => AgentProvider::AmazonQ,
-            "generic" => AgentProvider::Generic,
-            _ => return Err(anyhow!(
+    let provider = match provider_str.to_lowercase().as_str() {
+        "claude" => AgentProvider::Claude,
+        "cursor" => AgentProvider::Cursor,
+        "amazonq" => AgentProvider::AmazonQ,
+        "generic" => AgentProvider::Generic,
+        _ => {
+            return Err(anyhow!(
                 "Unknown agent provider '{}'. Valid providers: claude, cursor, amazonq, generic",
                 provider_str
-            )),
-        };
+            ))
+        }
+    };
     Ok(get_template_for_provider(provider))
 }
 

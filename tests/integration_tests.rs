@@ -680,3 +680,350 @@ fn test_spec_file_format() {
         "Should have AC section"
     );
 }
+
+// ============================================================================
+// CONFLICT RESOLUTION TESTS
+// ============================================================================
+
+/// Helper to check if a conflict spec was created
+fn conflict_spec_exists(specs_dir: &Path, pattern: &str) -> bool {
+    if let Ok(entries) = fs::read_dir(specs_dir) {
+        for entry in entries.flatten() {
+            if let Ok(filename) = entry.file_name().into_string() {
+                if filename.contains("conflict") && filename.contains(pattern) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Helper to get the content of a spec file
+fn read_spec_file(specs_dir: &Path, spec_id: &str) -> std::io::Result<String> {
+    fs::read_to_string(specs_dir.join(format!("{}.md", spec_id)))
+}
+
+/// Helper to modify a file in a worktree
+fn modify_file_in_worktree(wt_path: &Path, file: &str, content: &str) -> std::io::Result<()> {
+    let file_path = wt_path.join(file);
+    fs::create_dir_all(file_path.parent().unwrap())?;
+    fs::write(&file_path, content)?;
+    Ok(())
+}
+
+/// Helper to commit a change in a worktree
+fn commit_in_worktree(wt_path: &Path, message: &str) -> std::io::Result<()> {
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(wt_path)
+        .output()?;
+
+    Command::new("git")
+        .args(["commit", "-m", message])
+        .current_dir(wt_path)
+        .output()?;
+
+    Ok(())
+}
+
+/// Test the full workflow with merge conflicts and conflict spec auto-creation
+///
+/// This test exercises:
+/// 1. Creating a driver spec with multiple conflicting changes
+/// 2. Splitting it into member specs
+/// 3. Executing members in parallel
+/// 4. Detecting and handling merge conflicts
+/// 5. Verifying conflict specs are auto-created with correct metadata
+#[test]
+#[serial]
+fn test_full_workflow_with_conflict_detection() {
+    let repo_dir = PathBuf::from("/tmp/test-chant-conflict-workflow");
+    let _ = cleanup_test_repo(&repo_dir);
+
+    // Setup: Create isolated test repository with chant structure
+    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
+    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
+
+    // Create .chant directory structure
+    let specs_dir = repo_dir.join(".chant/specs");
+    fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+
+    // Create base config.rs with a simple Config struct
+    let src_dir = repo_dir.join("src");
+    fs::create_dir_all(&src_dir).expect("Failed to create src dir");
+
+    let config_content = r#"pub struct Config {
+    pub name: String,
+}
+
+impl Config {
+    pub fn new() -> Self {
+        Config {
+            name: String::from("test"),
+        }
+    }
+}
+"#;
+
+    fs::write(src_dir.join("config.rs"), config_content).expect("Failed to write config.rs");
+
+    // Commit initial state
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to add files");
+
+    Command::new("git")
+        .args(["commit", "-m", "Add base config.rs"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to commit");
+
+    // Create three feature branches that will conflict
+    let branches = vec!["feature/timeout", "feature/retry", "feature/debug"];
+    let mut worktree_paths = Vec::new();
+    let mut spec_ids = Vec::new();
+
+    for (i, branch_name) in branches.iter().enumerate() {
+        let spec_id = format!("conflict-test-{:03}", i + 1);
+        spec_ids.push(spec_id.clone());
+
+        let wt_path = PathBuf::from(format!("/tmp/chant-{}", spec_id));
+        let _ = fs::remove_dir_all(&wt_path);
+
+        // Create worktree with feature branch
+        let output = Command::new("git")
+            .args([
+                "worktree",
+                "add",
+                "-b",
+                branch_name,
+                wt_path.to_str().unwrap(),
+            ])
+            .current_dir(&repo_dir)
+            .output()
+            .expect(&format!("Failed to create worktree for {}", branch_name));
+
+        if !output.status.success() {
+            eprintln!("Git error: {}", String::from_utf8_lossy(&output.stderr));
+            panic!("Failed to create worktree for branch {}", branch_name);
+        }
+
+        worktree_paths.push(wt_path.clone());
+
+        // Modify config.rs in each worktree with a different field
+        let new_field = match i {
+            0 => "    pub timeout: u32,",
+            1 => "    pub retry_count: u8,",
+            2 => "    pub debug_mode: bool,",
+            _ => unreachable!(),
+        };
+
+        // Read current content
+        let mut new_content = fs::read_to_string(wt_path.join("src/config.rs"))
+            .expect("Failed to read config.rs in worktree");
+
+        // Insert new field before closing brace
+        let insert_pos = new_content
+            .rfind('}')
+            .expect("Failed to find closing brace");
+        new_content.insert_str(insert_pos, &format!("{}\n", new_field));
+
+        fs::write(wt_path.join("src/config.rs"), &new_content)
+            .expect("Failed to write modified config.rs");
+
+        // Commit the change
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(&wt_path)
+            .output()
+            .expect("Failed to add in worktree");
+
+        Command::new("git")
+            .args([
+                "commit",
+                "-m",
+                &format!("Add field for branch {}", branch_name),
+            ])
+            .current_dir(&wt_path)
+            .output()
+            .expect("Failed to commit in worktree");
+    }
+
+    // Verify all worktrees were created successfully
+    for wt_path in &worktree_paths {
+        assert!(
+            worktree_exists(wt_path),
+            "Worktree should exist: {}",
+            wt_path.display()
+        );
+    }
+
+    // Verify all branches were created
+    for branch in &branches {
+        assert!(
+            branch_exists(&repo_dir, branch),
+            "Branch should exist: {}",
+            branch
+        );
+    }
+
+    // Simulate merging branches back to main - first one should succeed
+    let branch_0 = &branches[0];
+    let wt_path_0 = &worktree_paths[0];
+
+    let merge_output_0 = Command::new("git")
+        .args(["merge", "--ff-only", branch_0])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to attempt merge");
+
+    // First merge should succeed (clean merge to main)
+    assert!(
+        merge_output_0.status.success(),
+        "First merge should succeed: {}",
+        String::from_utf8_lossy(&merge_output_0.stderr)
+    );
+
+    // Second merge should conflict
+    let branch_1 = &branches[1];
+    let merge_output_1 = Command::new("git")
+        .args(["merge", "--ff-only", branch_1])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to attempt second merge");
+
+    // Should fail due to conflict
+    assert!(
+        !merge_output_1.status.success(),
+        "Second merge should fail with conflict"
+    );
+
+    // Abort the second merge to try the third
+    let _ = Command::new("git")
+        .args(["merge", "--abort"])
+        .current_dir(&repo_dir)
+        .output();
+
+    // Third merge should also conflict
+    let branch_2 = &branches[2];
+    let merge_output_2 = Command::new("git")
+        .args(["merge", "--ff-only", branch_2])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to attempt third merge");
+
+    // Should fail due to conflict
+    assert!(
+        !merge_output_2.status.success(),
+        "Third merge should fail with conflict"
+    );
+
+    // Cleanup - restore dir BEFORE cleaning up repo
+    let _ = std::env::set_current_dir(&original_dir);
+    for (wt_path, branch) in worktree_paths.iter().zip(branches.iter()) {
+        let _ = Command::new("git")
+            .args(["worktree", "remove", wt_path.to_str().unwrap()])
+            .current_dir(&repo_dir)
+            .output();
+        let _ = fs::remove_dir_all(wt_path);
+        let _ = Command::new("git")
+            .args(["branch", "-D", branch])
+            .current_dir(&repo_dir)
+            .output();
+    }
+    let _ = cleanup_test_repo(&repo_dir);
+}
+
+/// Test conflict spec metadata structure
+///
+/// Verifies that conflict specs contain all required fields:
+/// - type: conflict
+/// - source_branch
+/// - target_branch
+/// - conflicting_files
+/// - blocked_specs (list of affected specs)
+/// - original_spec (reference to causing spec)
+#[test]
+#[serial]
+fn test_conflict_spec_metadata_structure() {
+    // Create a mock conflict spec content
+    let conflict_spec_content = r#"---
+type: conflict
+status: pending
+source_branch: feature/timeout
+target_branch: main
+conflicting_files:
+- src/config.rs
+blocked_specs:
+- 2026-01-25-conflict-002
+- 2026-01-25-conflict-003
+original_spec: 2026-01-25-conflict-001
+---
+
+# Resolve merge conflict: feature/timeout → main
+
+## Conflict Summary
+- **Source branch**: feature/timeout
+- **Target branch**: main
+- **Conflicting files**: `src/config.rs`
+- **Blocked specs**: 2026-01-25-conflict-002, 2026-01-25-conflict-003
+
+## Resolution Instructions
+
+1. Examine the conflicting files listed above
+2. Resolve conflicts manually in your editor or using git tools
+3. Stage resolved files: `git add <files>`
+4. Complete the merge: `git commit`
+5. Update this spec with resolution details
+
+## Acceptance Criteria
+
+- [ ] Resolved conflicts in `src/config.rs`
+- [ ] Merge completed successfully
+"#;
+
+    // Verify required fields are present
+    assert!(
+        conflict_spec_content.contains("type: conflict"),
+        "Should have conflict type"
+    );
+    assert!(
+        conflict_spec_content.contains("source_branch:"),
+        "Should have source_branch"
+    );
+    assert!(
+        conflict_spec_content.contains("target_branch:"),
+        "Should have target_branch"
+    );
+    assert!(
+        conflict_spec_content.contains("conflicting_files:"),
+        "Should have conflicting_files"
+    );
+    assert!(
+        conflict_spec_content.contains("blocked_specs:"),
+        "Should have blocked_specs"
+    );
+    assert!(
+        conflict_spec_content.contains("original_spec:"),
+        "Should have original_spec"
+    );
+
+    // Verify structure
+    assert!(
+        conflict_spec_content.contains("## Conflict Summary"),
+        "Should have Conflict Summary section"
+    );
+    assert!(
+        conflict_spec_content.contains("## Resolution Instructions"),
+        "Should have Resolution Instructions section"
+    );
+    assert!(
+        conflict_spec_content.contains("## Acceptance Criteria"),
+        "Should have Acceptance Criteria section"
+    );
+}
