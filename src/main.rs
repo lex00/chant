@@ -4356,6 +4356,7 @@ status: pending
     }
 
     #[test]
+    #[serial]
     fn test_get_model_for_invocation_from_chant_model() {
         // Save original env vars
         let orig_chant = std::env::var("CHANT_MODEL").ok();
@@ -4380,6 +4381,7 @@ status: pending
     }
 
     #[test]
+    #[serial]
     fn test_get_model_for_invocation_from_anthropic_model() {
         // Save original env vars
         let orig_chant = std::env::var("CHANT_MODEL").ok();
@@ -4404,6 +4406,7 @@ status: pending
     }
 
     #[test]
+    #[serial]
     fn test_get_model_for_invocation_chant_takes_precedence() {
         // Save original env vars
         let orig_chant = std::env::var("CHANT_MODEL").ok();
@@ -4431,6 +4434,7 @@ status: pending
     }
 
     #[test]
+    #[serial]
     fn test_get_model_for_invocation_from_config() {
         // Save original env vars
         let orig_chant = std::env::var("CHANT_MODEL").ok();
@@ -4453,6 +4457,7 @@ status: pending
     }
 
     #[test]
+    #[serial]
     fn test_get_model_for_invocation_defaults_to_haiku() {
         // Save original env vars
         let orig_chant = std::env::var("CHANT_MODEL").ok();
@@ -4475,6 +4480,7 @@ status: pending
     }
 
     #[test]
+    #[serial]
     fn test_get_model_for_invocation_empty_env_falls_through() {
         // Save original env vars
         let orig_chant = std::env::var("CHANT_MODEL").ok();
@@ -4502,6 +4508,7 @@ status: pending
     }
 
     #[test]
+    #[serial]
     fn test_get_model_for_invocation_empty_config_falls_to_haiku() {
         // Save original env vars
         let orig_chant = std::env::var("CHANT_MODEL").ok();
@@ -5040,6 +5047,7 @@ git:
     }
 
     #[test]
+    #[serial]
     fn test_get_model_for_split_flag_override() {
         // Clear env vars for clean test
         std::env::remove_var("CHANT_SPLIT_MODEL");
@@ -5051,6 +5059,7 @@ git:
     }
 
     #[test]
+    #[serial]
     fn test_get_model_for_split_env_var_split_model() {
         std::env::remove_var("CHANT_SPLIT_MODEL");
         std::env::remove_var("CHANT_MODEL");
@@ -5062,6 +5071,7 @@ git:
     }
 
     #[test]
+    #[serial]
     fn test_get_model_for_split_config_split_model() {
         std::env::remove_var("CHANT_SPLIT_MODEL");
         std::env::remove_var("CHANT_MODEL");
@@ -5072,6 +5082,7 @@ git:
     }
 
     #[test]
+    #[serial]
     fn test_get_model_for_split_fallback_chant_model() {
         std::env::remove_var("CHANT_SPLIT_MODEL");
         std::env::remove_var("CHANT_MODEL");
@@ -5083,6 +5094,7 @@ git:
     }
 
     #[test]
+    #[serial]
     fn test_get_model_for_split_fallback_config_model() {
         std::env::remove_var("CHANT_SPLIT_MODEL");
         std::env::remove_var("CHANT_MODEL");
@@ -5093,6 +5105,7 @@ git:
     }
 
     #[test]
+    #[serial]
     fn test_get_model_for_split_default_sonnet() {
         std::env::remove_var("CHANT_SPLIT_MODEL");
         std::env::remove_var("CHANT_MODEL");
@@ -5103,6 +5116,7 @@ git:
     }
 
     #[test]
+    #[serial]
     fn test_get_model_for_split_resolution_order() {
         // Set up all levels
         std::env::set_var("CHANT_SPLIT_MODEL", "sonnet-split");
