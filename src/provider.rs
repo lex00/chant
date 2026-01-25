@@ -1,3 +1,12 @@
+//! Model provider abstraction for invoking AI agents.
+//!
+//! Supports multiple providers (Claude, Ollama, OpenAI).
+//!
+//! # Doc Audit
+//! - audited: (pending)
+//! - docs: architecture/invoke.md
+//! - ignore: false
+
 use anyhow::{anyhow, Context, Result};
 use serde::Deserialize;
 use std::io::BufRead;

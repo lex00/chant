@@ -1,3 +1,10 @@
+//! Spec ID generation with date-based sequencing.
+//!
+//! # Doc Audit
+//! - audited: (pending)
+//! - docs: reference/schema.md
+//! - ignore: false
+
 use anyhow::Result;
 use chrono::Local;
 use rand::Rng;

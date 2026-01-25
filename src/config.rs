@@ -1,3 +1,10 @@
+//! Configuration management for chant projects.
+//!
+//! # Doc Audit
+//! - audited: (pending)
+//! - docs: reference/config.md
+//! - ignore: false
+
 use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::fmt;

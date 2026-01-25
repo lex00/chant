@@ -1,3 +1,8 @@
+//! Agent configuration templates for AI providers.
+//!
+//! # Doc Audit
+//! - ignore: internal implementation detail
+
 use anyhow::{anyhow, Result};
 use std::fmt;
 

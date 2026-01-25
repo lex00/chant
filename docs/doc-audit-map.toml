@@ -1,0 +1,80 @@
+# Documentation Audit Map
+# Maps Rust source files to mdbook pages with audit timestamps
+#
+# Staleness is determined by comparing:
+# - Git modification date of source file
+# - last_audit timestamp in this file
+# If source changed after last_audit, the mapping is stale.
+#
+# Run `just doc-audit-status` to check for stale mappings.
+# Run `just doc-audit <module>` to create an audit spec.
+
+[mappings."src/main.rs"]
+docs = ["reference/cli.md"]
+# last_audit = "2026-01-25"  # Uncomment after first audit
+
+[mappings."src/spec.rs"]
+docs = ["concepts/specs.md", "reference/schema.md"]
+# last_audit = "2026-01-25"
+
+[mappings."src/config.rs"]
+docs = ["reference/config.md"]
+# last_audit = "2026-01-25"
+
+[mappings."src/prompt.rs"]
+docs = ["concepts/prompts.md"]
+# last_audit = "2026-01-25"
+
+[mappings."src/git.rs"]
+docs = ["reference/git.md"]
+# last_audit = "2026-01-25"
+
+[mappings."src/provider.rs"]
+docs = ["architecture/invoke.md"]
+# last_audit = "2026-01-25"
+
+[mappings."src/worktree.rs"]
+docs = ["scale/isolation.md"]
+# last_audit = "2026-01-25"
+
+[mappings."src/conflict.rs"]
+docs = ["guides/recovery.md"]
+# last_audit = "2026-01-25"
+
+[mappings."src/merge.rs"]
+docs = ["guides/recovery.md"]
+# last_audit = "2026-01-25"
+
+[mappings."src/mcp.rs"]
+docs = ["reference/mcp.md"]
+# last_audit = "2026-01-25"
+
+[mappings."src/id.rs"]
+docs = ["reference/schema.md"]
+# last_audit = "2026-01-25"
+
+[mappings."src/diagnose.rs"]
+docs = ["guides/recovery.md"]
+# last_audit = "2026-01-25"
+
+# Modules without dedicated docs - internal implementation
+[mappings."src/render.rs"]
+docs = []
+ignore = true
+reason = "Internal terminal rendering, no user-facing docs needed"
+
+[mappings."src/templates.rs"]
+docs = []
+ignore = true
+reason = "Internal template handling, covered by init command docs"
+
+# Ignore patterns for items that don't need doc tracking
+[ignore]
+patterns = [
+    "*::tests::*",
+    "src/*/tests.rs",
+    "tests/**",
+]
+reasons = [
+    "Test code doesn't need doc audit",
+]

@@ -1,3 +1,10 @@
+//! Spec parsing, frontmatter handling, and spec lifecycle management.
+//!
+//! # Doc Audit
+//! - audited: (pending)
+//! - docs: concepts/specs.md, reference/schema.md
+//! - ignore: false
+
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;

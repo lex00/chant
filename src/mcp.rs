@@ -1,3 +1,10 @@
+//! Model Context Protocol (MCP) server implementation.
+//!
+//! # Doc Audit
+//! - audited: (pending)
+//! - docs: reference/mcp.md
+//! - ignore: false
+
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};

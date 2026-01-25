@@ -77,3 +77,25 @@ install:
 chant *ARGS:
     ~/.cargo/bin/cargo build
     ./target/debug/chant {{ARGS}}
+
+# --- Documentation Audit ---
+
+# Show doc audit status for all modules
+doc-audit-status:
+    ./scripts/doc-audit.sh status
+
+# Show only stale modules
+doc-audit-stale:
+    ./scripts/doc-audit.sh stale
+
+# Check for orphaned mappings (useful after refactors)
+doc-audit-orphans:
+    ./scripts/doc-audit.sh orphans
+
+# Mark a module as audited
+doc-audit-mark MODULE:
+    ./scripts/doc-audit.sh mark {{MODULE}}
+
+# Create a spec to audit docs for a module
+doc-audit MODULE:
+    just chant add "Audit docs for {{MODULE}}" --prompt doc-audit

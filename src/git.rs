@@ -1,6 +1,11 @@
 //! Git provider abstraction for PR creation.
 //!
 //! Supports multiple git hosting providers (GitHub, GitLab, Bitbucket).
+//!
+//! # Doc Audit
+//! - audited: (pending)
+//! - docs: reference/git.md
+//! - ignore: false
 
 use anyhow::{Context, Result};
 use std::process::Command;

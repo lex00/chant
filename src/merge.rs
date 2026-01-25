@@ -1,3 +1,10 @@
+//! Spec merge logic and utilities.
+//!
+//! # Doc Audit
+//! - audited: (pending)
+//! - docs: guides/recovery.md
+//! - ignore: false
+
 use crate::config::Config;
 use crate::git::MergeResult;
 use crate::spec::{Spec, SpecStatus};

@@ -1,3 +1,8 @@
+//! Terminal markdown rendering utilities.
+//!
+//! # Doc Audit
+//! - ignore: internal implementation detail
+
 use colored::Colorize;
 use pulldown_cmark::{Event, Parser, Tag, TagEnd};
 

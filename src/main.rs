@@ -1,3 +1,10 @@
+//! CLI entry point and command handlers for chant.
+//!
+//! # Doc Audit
+//! - audited: (pending)
+//! - docs: reference/cli.md
+//! - ignore: false
+
 mod config;
 mod conflict;
 mod diagnose;

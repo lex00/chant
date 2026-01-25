@@ -1,3 +1,10 @@
+//! Prompt template management and variable substitution.
+//!
+//! # Doc Audit
+//! - audited: (pending)
+//! - docs: concepts/prompts.md
+//! - ignore: false
+
 use anyhow::{Context, Result};
 use std::fs;
 use std::io::{self, Write};

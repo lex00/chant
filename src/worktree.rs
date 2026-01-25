@@ -2,6 +2,11 @@
 //!
 //! Provides utilities for creating, managing, and removing git worktrees.
 //! These functions handle the mechanics of worktree lifecycle management.
+//!
+//! # Doc Audit
+//! - audited: (pending)
+//! - docs: scale/isolation.md
+//! - ignore: false
 
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};

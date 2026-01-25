@@ -1,4 +1,9 @@
 //! Diagnostic utilities for checking spec execution status.
+//!
+//! # Doc Audit
+//! - audited: (pending)
+//! - docs: guides/recovery.md
+//! - ignore: false
 
 use anyhow::{Context, Result};
 use std::fs;

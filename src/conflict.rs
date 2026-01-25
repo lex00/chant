@@ -2,6 +2,11 @@
 //!
 //! This module handles detection of merge conflicts and automatic creation
 //! of conflict resolution specs with context about the conflicting branches.
+//!
+//! # Doc Audit
+//! - audited: (pending)
+//! - docs: guides/recovery.md
+//! - ignore: false
 
 use anyhow::{Context, Result};
 use std::path::Path;
