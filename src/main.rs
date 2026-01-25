@@ -5,27 +5,27 @@
 //! - docs: reference/cli.md
 //! - ignore: false
 
-mod config;
-mod conflict;
-mod diagnose;
-mod git;
-mod id;
+// Internal modules not exposed via library
 mod mcp;
-mod merge;
-mod prompt;
-mod provider;
 mod render;
-mod spec;
 mod templates;
-mod worktree;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 use std::path::{Path, PathBuf};
 
-use config::Config;
-use spec::{Spec, SpecFrontmatter, SpecStatus};
+// Use types from the library crate
+use chant::config::Config;
+use chant::conflict;
+use chant::diagnose;
+use chant::git;
+use chant::id;
+use chant::merge;
+use chant::prompt;
+use chant::provider;
+use chant::spec::{self, Spec, SpecFrontmatter, SpecStatus};
+use chant::worktree;
 
 #[derive(Parser)]
 #[command(name = "chant")]

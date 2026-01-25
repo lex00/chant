@@ -6,9 +6,17 @@ description = "Intent Driven Development"
 license = "MIT"
 repository = "https://github.com/chant-dev/chant"
 
+[lib]
+name = "chant"
+path = "src/lib.rs"
+
 [[bin]]
 name = "chant"
 path = "src/main.rs"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 # CLI

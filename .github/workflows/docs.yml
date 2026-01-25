@@ -27,8 +27,22 @@ jobs:
         with:
           mdbook-version: 'latest'
 
-      - name: Build documentation
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build mdbook documentation
         run: mdbook build docs
+
+      - name: Build rustdoc
+        run: cargo doc --no-deps --all-features
+        env:
+          RUSTDOCFLAGS: "--cfg docsrs"
+
+      - name: Copy rustdoc to docs/book/api
+        run: |
+          mkdir -p docs/book/api
+          cp -r target/doc/* docs/book/api/
+          echo '<meta http-equiv="refresh" content="0; url=chant/index.html">' > docs/book/api/index.html
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
