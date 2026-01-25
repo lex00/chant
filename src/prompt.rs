@@ -1,9 +1,32 @@
 use anyhow::{Context, Result};
 use std::fs;
+use std::io::{self, Write};
 use std::path::Path;
 
 use crate::config::Config;
 use crate::spec::Spec;
+
+/// Ask user for confirmation with a yes/no prompt.
+/// Returns true if user confirms (y/yes), false if user declines (n/no).
+/// Repeats until user provides valid input.
+pub fn confirm(message: &str) -> Result<bool> {
+    loop {
+        print!("{} (y/n): ", message);
+        io::stdout().flush()?;
+
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        let input = input.trim().to_lowercase();
+
+        match input.as_str() {
+            "y" | "yes" => return Ok(true),
+            "n" | "no" => return Ok(false),
+            _ => {
+                println!("Please enter 'y' or 'n'.");
+            }
+        }
+    }
+}
 
 /// Assemble a prompt by substituting template variables.
 pub fn assemble(spec: &Spec, prompt_path: &Path, config: &Config) -> Result<String> {

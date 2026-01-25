@@ -130,6 +130,12 @@ enum Commands {
         /// Delete branch after successful merge
         #[arg(long)]
         delete_branch: bool,
+        /// Continue even if a single spec merge fails
+        #[arg(long)]
+        continue_on_error: bool,
+        /// Skip confirmation prompt and proceed with merges
+        #[arg(long)]
+        yes: bool,
     },
 }
 
@@ -177,7 +183,9 @@ fn main() -> Result<()> {
             all,
             dry_run,
             delete_branch,
-        } => cmd_merge(&ids, all, dry_run, delete_branch),
+            continue_on_error,
+            yes,
+        } => cmd_merge(&ids, all, dry_run, delete_branch, continue_on_error, yes),
     }
 }
 
@@ -2316,7 +2324,14 @@ fn cmd_archive(
     Ok(())
 }
 
-fn cmd_merge(ids: &[String], all: bool, dry_run: bool, _delete_branch: bool) -> Result<()> {
+fn cmd_merge(
+    ids: &[String],
+    all: bool,
+    dry_run: bool,
+    delete_branch: bool,
+    continue_on_error: bool,
+    yes: bool,
+) -> Result<()> {
     let specs_dir = PathBuf::from(".chant/specs");
 
     if !specs_dir.exists() {
@@ -2326,6 +2341,7 @@ fn cmd_merge(ids: &[String], all: bool, dry_run: bool, _delete_branch: bool) -> 
     // Load config
     let config = Config::load()?;
     let branch_prefix = &config.defaults.branch_prefix;
+    let main_branch = merge::load_main_branch(&config);
 
     // Validate arguments
     if !all && ids.is_empty() {
@@ -2337,96 +2353,148 @@ fn cmd_merge(ids: &[String], all: bool, dry_run: bool, _delete_branch: bool) -> 
     // Load all specs
     let specs = spec::load_all_specs(&specs_dir)?;
 
-    // Determine which specs to merge
-    let mut to_merge: Vec<&Spec> = Vec::new();
+    // Get specs to merge using the merge module function
+    let mut specs_to_merge = merge::get_specs_to_merge(ids, all, &specs)?;
 
-    if all {
-        // Merge all completed specs
-        for spec in specs.iter() {
-            if spec.frontmatter.status == SpecStatus::Completed {
-                to_merge.push(spec);
+    // Filter to only those with branches that exist (unless dry-run)
+    if !dry_run {
+        specs_to_merge.retain(|(spec_id, _spec)| {
+            match git::branch_exists(&format!("{}{}", branch_prefix, spec_id)) {
+                Ok(exists) => exists,
+                Err(_) => false,
             }
-        }
+        });
+    }
 
-        if to_merge.is_empty() {
-            println!("No completed specs with branches to merge.");
+    if specs_to_merge.is_empty() {
+        println!("No completed specs with branches to merge.");
+        return Ok(());
+    }
+
+    // Display what would be merged
+    println!(
+        "{} {} merge {} spec(s){}:",
+        "→".cyan(),
+        if dry_run { "Would" } else { "Will" },
+        specs_to_merge.len(),
+        if all { " (all completed)" } else { "" }
+    );
+    for (spec_id, spec) in &specs_to_merge {
+        let title = spec.title.as_deref().unwrap_or("(no title)");
+        let branch_name = format!("{}{}", branch_prefix, spec_id);
+        println!(
+            "  {} {} → {} {}",
+            "·".cyan(),
+            branch_name,
+            main_branch,
+            title.dimmed()
+        );
+    }
+    println!();
+
+    // If dry-run, show what would happen and exit
+    if dry_run {
+        println!("{} Dry-run mode: no changes made.", "ℹ".blue());
+        return Ok(());
+    }
+
+    // Show confirmation prompt unless --yes or --dry-run
+    if !yes {
+        let confirmed = prompt::confirm(&format!(
+            "Proceed with merging {} spec(s)?",
+            specs_to_merge.len()
+        ))?;
+        if !confirmed {
+            println!("{} Merge cancelled.", "✗".yellow());
             return Ok(());
         }
-    } else {
-        // Merge specified specs
-        for id in ids {
-            if let Some(spec) = specs.iter().find(|s| s.id.starts_with(id)) {
-                to_merge.push(spec);
-            } else {
-                anyhow::bail!("Spec {} not found", id);
-            }
-        }
     }
 
-    // Find branches for all specs
-    let mut branches_to_merge: Vec<(String, String)> = Vec::new(); // (spec_id, branch_name)
+    // Sort specs to merge members before drivers
+    // This ensures driver specs are merged after all their members
+    let mut sorted_specs: Vec<(String, Spec)> = specs_to_merge.clone();
+    sorted_specs.sort_by(|(id_a, _), (id_b, _)| {
+        // Count dots in IDs - members have more dots, sort them first
+        let dots_a = id_a.matches('.').count();
+        let dots_b = id_b.matches('.').count();
+        dots_b.cmp(&dots_a) // Reverse order: members (more dots) before drivers (fewer dots)
+    });
 
-    for spec in &to_merge {
-        match git::find_spec_branch(&spec.id, branch_prefix) {
-            Ok(branch_name) => {
-                branches_to_merge.push((spec.id.clone(), branch_name));
+    // Execute merges
+    let mut merge_results: Vec<git::MergeResult> = Vec::new();
+    let mut errors: Vec<(String, String)> = Vec::new();
+
+    println!("{} Executing merges...", "→".cyan());
+
+    for (spec_id, spec) in &sorted_specs {
+        let branch_name = format!("{}{}", branch_prefix, spec_id);
+
+        // Check if this is a driver spec
+        let is_driver = merge::is_driver_spec(spec, &specs);
+
+        let merge_op_result = if is_driver {
+            // Merge driver and its members
+            merge::merge_driver_spec(spec, &specs, branch_prefix, &main_branch, delete_branch, false)
+        } else {
+            // Merge single spec
+            match git::merge_single_spec(spec_id, &branch_name, &main_branch, delete_branch, false)
+            {
+                Ok(result) => Ok(vec![result]),
+                Err(e) => Err(e),
+            }
+        };
+
+        match merge_op_result {
+            Ok(results) => {
+                merge_results.extend(results);
             }
             Err(e) => {
-                anyhow::bail!("Error finding branch for spec {}: {}", spec.id, e);
+                let error_msg = e.to_string();
+                errors.push((spec_id.clone(), error_msg.clone()));
+                println!("  {} {} failed: {}", "✗".red(), spec_id, error_msg);
+
+                if !continue_on_error {
+                    anyhow::bail!(
+                        "Merge stopped at spec {}. Use --continue-on-error to continue.",
+                        spec_id
+                    );
+                }
             }
         }
     }
 
-    if branches_to_merge.is_empty() {
-        println!("No branches found to merge.");
-        return Ok(());
+    // Display results
+    println!("\n{} Merge Results", "→".cyan());
+    println!("{}", "─".repeat(60));
+
+    for result in &merge_results {
+        println!("{}", git::format_merge_summary(result));
     }
 
-    if dry_run {
-        println!(
-            "{} Would merge {} branch(es):",
-            "→".cyan(),
-            branches_to_merge.len()
-        );
-        for (spec_id, branch_name) in &branches_to_merge {
-            println!(
-                "  {} → {}",
-                branch_name,
-                specs
-                    .iter()
-                    .find(|s| &s.id == spec_id)
-                    .and_then(|s| s.title.as_deref())
-                    .unwrap_or("(no title)")
-            );
+    // Display summary
+    println!("\n{} Summary", "→".cyan());
+    println!("{}", "─".repeat(60));
+    println!("  {} Specs merged: {}", "✓".green(), merge_results.len());
+    if !errors.is_empty() {
+        println!("  {} Specs failed: {}", "✗".red(), errors.len());
+        for (spec_id, error_msg) in &errors {
+            println!("    - {}: {}", spec_id, error_msg);
         }
+    }
+    if delete_branch {
+        let deleted_count = merge_results.iter().filter(|r| r.branch_deleted).count();
+        println!("  {} Branches deleted: {}", "✓".green(), deleted_count);
+    }
+
+    if !errors.is_empty() {
+        println!("\n{}", "Some merges failed.".yellow());
         return Ok(());
     }
 
-    // Get current branch to return to later
-    let original_branch = git::get_current_branch().ok();
-
     println!(
-        "{} Merging {} branch(es)...",
-        "→".cyan(),
-        branches_to_merge.len()
-    );
-
-    for (_spec_id, _branch_name) in &branches_to_merge {
-        // TODO: Implement actual merge logic in next spec
-        // For now, just show what would be merged
-    }
-
-    // Return to original branch if we had one
-    if let Some(branch) = original_branch {
-        // TODO: Implement branch switching in next spec
-        println!("{} Would return to branch: {}", "→".cyan(), branch);
-    }
-
-    println!(
-        "{} Merge command framework ready for implementation",
+        "\n{} All specs merged successfully.",
         "✓".green()
     );
-
     Ok(())
 }
 
