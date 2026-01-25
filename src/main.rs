@@ -216,7 +216,7 @@ fn main() -> Result<()> {
             parallel,
             label,
             finalize,
-        } => cmd::spec::cmd_work(
+        } => cmd::work::cmd_work(
             id.as_deref(),
             prompt.as_deref(),
             branch,
