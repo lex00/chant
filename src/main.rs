@@ -2239,6 +2239,7 @@ fn parse_subtasks_from_agent_output(output: &str) -> Result<Vec<Subtask>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use tempfile::TempDir;
 
     #[test]
@@ -2558,6 +2559,7 @@ status: pending
     }
 
     #[test]
+    #[serial]
     fn test_get_model_name_from_chant_model() {
         // Save original env vars
         let orig_chant = std::env::var("CHANT_MODEL").ok();
@@ -2582,6 +2584,7 @@ status: pending
     }
 
     #[test]
+    #[serial]
     fn test_get_model_name_from_anthropic_model() {
         // Save original env vars
         let orig_chant = std::env::var("CHANT_MODEL").ok();
@@ -2606,6 +2609,7 @@ status: pending
     }
 
     #[test]
+    #[serial]
     fn test_get_model_name_chant_takes_precedence() {
         // Save original env vars
         let orig_chant = std::env::var("CHANT_MODEL").ok();
@@ -2633,6 +2637,7 @@ status: pending
     }
 
     #[test]
+    #[serial]
     fn test_get_model_name_from_config_default() {
         // Save original env vars
         let orig_chant = std::env::var("CHANT_MODEL").ok();
@@ -2655,6 +2660,7 @@ status: pending
     }
 
     #[test]
+    #[serial]
     fn test_get_model_name_env_takes_precedence_over_config() {
         // Save original env vars
         let orig_chant = std::env::var("CHANT_MODEL").ok();
@@ -2680,6 +2686,7 @@ status: pending
     }
 
     #[test]
+    #[serial]
     fn test_get_model_name_none_when_unset() {
         // Save original env vars
         let orig_chant = std::env::var("CHANT_MODEL").ok();
@@ -2706,6 +2713,7 @@ status: pending
     }
 
     #[test]
+    #[serial]
     fn test_get_model_name_empty_string_returns_none() {
         // Save original env vars
         let orig_chant = std::env::var("CHANT_MODEL").ok();
@@ -2732,6 +2740,7 @@ status: pending
     }
 
     #[test]
+    #[serial]
     fn test_get_model_name_empty_config_model_skipped() {
         // Save original env vars
         let orig_chant = std::env::var("CHANT_MODEL").ok();
