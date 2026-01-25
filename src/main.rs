@@ -91,9 +91,9 @@ enum Commands {
         /// Number of lines to show (default: 50)
         #[arg(long, short = 'n', default_value = "50")]
         lines: usize,
-        /// Follow the log in real-time
-        #[arg(long, short = 'f')]
-        follow: bool,
+        /// Do not follow the log in real-time (show static output)
+        #[arg(long)]
+        no_follow: bool,
     },
     /// Split a spec into member specs
     Split {
@@ -174,7 +174,7 @@ fn main() -> Result<()> {
         Commands::Status => cmd_status(),
         Commands::Ready => cmd_list(true, &[]),
         Commands::Lint => cmd_lint(),
-        Commands::Log { id, lines, follow } => cmd_log(&id, lines, follow),
+        Commands::Log { id, lines, no_follow } => cmd_log(&id, lines, !no_follow),
         Commands::Split { id, model, force } => cmd_split(&id, model.as_deref(), force),
         Commands::Archive {
             id,
