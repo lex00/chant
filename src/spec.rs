@@ -11,6 +11,7 @@ pub enum SpecStatus {
     InProgress,
     Completed,
     Failed,
+    NeedsAttention,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

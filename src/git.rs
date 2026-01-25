@@ -131,6 +131,7 @@ pub fn create_pull_request(provider: GitProvider, title: &str, body: &str) -> Re
 
 /// Find a spec branch by constructing the full branch name from spec ID and prefix.
 /// Verifies the branch exists using `git branch --list`.
+#[allow(dead_code)]
 pub fn find_spec_branch(spec_id: &str, branch_prefix: &str) -> Result<String> {
     let branch_name = format!("{}{}", branch_prefix, spec_id);
 

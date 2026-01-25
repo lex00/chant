@@ -63,6 +63,9 @@ pub fn validate_spec_can_merge(spec: &Spec, branch_exists: bool) -> Result<()> {
             SpecStatus::Failed => {
                 anyhow::bail!("Cannot merge failed spec");
             }
+            SpecStatus::NeedsAttention => {
+                anyhow::bail!("Spec needs attention before merging");
+            }
             SpecStatus::Completed => {
                 // This shouldn't be reached, but included for completeness
                 anyhow::bail!("Spec must be completed before merging");
