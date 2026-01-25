@@ -63,19 +63,11 @@ jobs:
       - name: Prepare artifact
         shell: bash
         run: |
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            cp target/${{ matrix.target }}/release/chant.exe ${{ matrix.asset_name }}.exe
-          else
-            cp target/${{ matrix.target }}/release/chant ${{ matrix.asset_name }}
-          fi
+          cp target/${{ matrix.target }}/release/${{ matrix.bin_name }} ${{ matrix.asset_name }}
 
       - name: Upload Release Asset
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            gh release upload ${{ github.ref_name }} ${{ matrix.asset_name }}.exe
-          else
-            gh release upload ${{ github.ref_name }} ${{ matrix.asset_name }}
-          fi
+          gh release upload ${{ github.ref_name }} ${{ matrix.asset_name }}
