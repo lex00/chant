@@ -98,6 +98,20 @@ enum Commands {
         #[arg(long)]
         model: Option<String>,
     },
+    /// Archive completed specs
+    Archive {
+        /// Spec ID (full or partial). If omitted, archives all completed specs.
+        id: Option<String>,
+        /// Dry run - show what would be archived without moving
+        #[arg(long)]
+        dry_run: bool,
+        /// Archive specs older than N days
+        #[arg(long)]
+        older_than: Option<u64>,
+        /// Force archive of non-completed specs
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -131,6 +145,12 @@ fn main() -> Result<()> {
         Commands::Lint => cmd_lint(),
         Commands::Log { id, lines, follow } => cmd_log(&id, lines, follow),
         Commands::Split { id, model } => cmd_split(&id, model.as_deref()),
+        Commands::Archive {
+            id,
+            dry_run,
+            older_than,
+            force,
+        } => cmd_archive(id.as_deref(), dry_run, older_than, force),
     }
 }
 
@@ -1909,6 +1929,103 @@ fn cmd_split(id: &str, override_model: Option<&str>) -> Result<()> {
     Ok(())
 }
 
+fn cmd_archive(
+    spec_id: Option<&str>,
+    dry_run: bool,
+    older_than: Option<u64>,
+    force: bool,
+) -> Result<()> {
+    let specs_dir = PathBuf::from(".chant/specs");
+    let archive_dir = PathBuf::from(".chant/archive");
+
+    if !specs_dir.exists() {
+        anyhow::bail!("Chant not initialized. Run `chant init` first.");
+    }
+
+    // Load all specs
+    let specs = spec::load_all_specs(&specs_dir)?;
+
+    // Filter specs to archive
+    let mut to_archive = Vec::new();
+
+    if let Some(id) = spec_id {
+        // Archive specific spec
+        if let Some(spec) = specs.iter().find(|s| s.id.starts_with(id)) {
+            to_archive.push(spec.clone());
+        } else {
+            anyhow::bail!("Spec {} not found", id);
+        }
+    } else {
+        // Archive by criteria
+        let now = chrono::Local::now();
+
+        for spec in specs {
+            // Skip if not completed (unless force)
+            if spec.frontmatter.status != SpecStatus::Completed && !force {
+                continue;
+            }
+
+            // Check older_than filter
+            if let Some(days) = older_than {
+                if let Some(completed_at_str) = &spec.frontmatter.completed_at {
+                    if let Ok(completed_at) =
+                        chrono::DateTime::parse_from_rfc3339(completed_at_str)
+                    {
+                        let completed_at_local =
+                            chrono::DateTime::<chrono::Local>::from(completed_at);
+                        let age = now.signed_duration_since(completed_at_local);
+                        if age.num_days() < days as i64 {
+                            continue;
+                        }
+                    }
+                } else {
+                    // No completion date, skip
+                    continue;
+                }
+            }
+
+            to_archive.push(spec);
+        }
+    }
+
+    if to_archive.is_empty() {
+        println!("No specs to archive.");
+        return Ok(());
+    }
+
+    if dry_run {
+        println!("{} Would archive {} spec(s):", "→".cyan(), to_archive.len());
+        for spec in &to_archive {
+            println!("  {} {}", spec.id, spec.title.as_deref().unwrap_or("(no title)"));
+        }
+        return Ok(());
+    }
+
+    // Create archive directory if it doesn't exist
+    if !archive_dir.exists() {
+        std::fs::create_dir_all(&archive_dir)?;
+        println!("{} Created archive directory", "✓".green());
+    }
+
+    // Move specs to archive
+    let count = to_archive.len();
+    for spec in to_archive {
+        let src = specs_dir.join(format!("{}.md", spec.id));
+        let dst = archive_dir.join(format!("{}.md", spec.id));
+
+        std::fs::rename(&src, &dst)?;
+        println!("{} {} → archive/", "→".cyan(), spec.id);
+    }
+
+    println!(
+        "{} Archived {} spec(s)",
+        "✓".green(),
+        count
+    );
+
+    Ok(())
+}
+
 #[derive(Debug, Clone)]
 struct Subtask {
     title: String,
@@ -3236,5 +3353,106 @@ git:
 
         let err2 = CommitError::NoMatchingCommits;
         assert_eq!(err2.to_string(), "No matching commits found");
+    }
+
+    #[test]
+    fn test_archive_spec_loading() {
+        // Test that archive can load specs correctly from directory
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path().join("specs");
+
+        // Create specs directory
+        std::fs::create_dir_all(&specs_dir).unwrap();
+
+        // Create a completed spec
+        let spec_id = "2026-01-24-001-abc";
+        let spec_content = format!(
+            r#"---
+type: code
+status: completed
+completed_at: {}
+---
+
+# Test Spec
+"#,
+            chrono::Local::now().to_rfc3339()
+        );
+
+        let spec_path = specs_dir.join(format!("{}.md", spec_id));
+        std::fs::write(&spec_path, &spec_content).unwrap();
+
+        // Load specs to verify they can be parsed
+        let specs = spec::load_all_specs(&specs_dir).unwrap();
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].id, spec_id);
+        assert_eq!(specs[0].frontmatter.status, SpecStatus::Completed);
+    }
+
+    #[test]
+    fn test_archive_filtering_completed() {
+        // Test that archive correctly filters completed specs
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path().join("specs");
+        std::fs::create_dir_all(&specs_dir).unwrap();
+
+        // Create specs with different statuses
+        let specs_data = vec![
+            ("2026-01-24-001-abc", "completed"),
+            ("2026-01-24-002-def", "pending"),
+            ("2026-01-24-003-ghi", "completed"),
+        ];
+
+        for (id, status) in specs_data {
+            let content = format!(
+                r#"---
+type: code
+status: {}
+---
+
+# Test
+"#,
+                status
+            );
+            let path = specs_dir.join(format!("{}.md", id));
+            std::fs::write(path, content).unwrap();
+        }
+
+        // Load all specs
+        let all_specs = spec::load_all_specs(&specs_dir).unwrap();
+        assert_eq!(all_specs.len(), 3);
+
+        // Filter completed specs (simulating what cmd_archive does)
+        let completed: Vec<_> = all_specs
+            .iter()
+            .filter(|s| s.frontmatter.status == SpecStatus::Completed)
+            .collect();
+        assert_eq!(completed.len(), 2);
+    }
+
+    #[test]
+    fn test_archive_move_file() {
+        // Test that files can be moved to archive
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path().join("specs");
+        let archive_dir = temp_dir.path().join("archive");
+
+        std::fs::create_dir_all(&specs_dir).unwrap();
+        std::fs::create_dir_all(&archive_dir).unwrap();
+
+        // Create a spec file
+        let spec_id = "2026-01-24-001-abc";
+        let spec_path = specs_dir.join(format!("{}.md", spec_id));
+        std::fs::write(&spec_path, "test content").unwrap();
+        assert!(spec_path.exists());
+
+        // Move it to archive
+        let archived_path = archive_dir.join(format!("{}.md", spec_id));
+        std::fs::rename(&spec_path, &archived_path).unwrap();
+
+        // Verify move succeeded
+        assert!(!spec_path.exists());
+        assert!(archived_path.exists());
+        let content = std::fs::read_to_string(&archived_path).unwrap();
+        assert_eq!(content, "test content");
     }
 }
