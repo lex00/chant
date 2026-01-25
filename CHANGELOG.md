@@ -5,6 +5,58 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-01-25
+
+### Added
+
+- **Native Ollama/OpenAI provider support**: Use local or cloud LLMs directly
+  - `OllamaProvider` for local models via OpenAI-compatible API
+  - `OpenaiProvider` for OpenAI API with authentication
+  - Provider abstraction via `ModelProvider` trait
+  - Configurable via `defaults.provider` and `providers` section in config
+  - Streaming output for all providers
+  - Clear error messages for connection, auth, and model issues
+
+- **`chant init --agent`**: Generate AI assistant configuration files
+  - `--agent claude` creates CLAUDE.md for Claude Code
+  - `--agent cursor` creates .cursorrules for Cursor IDE
+  - `--agent amazonq` creates .amazonq/rules.md for Amazon Q
+  - `--agent generic` creates .ai-instructions for any assistant
+  - `--agent all` creates all configuration files
+  - Templates embedded in binary (no network required)
+
+- **Silent mode for private usage**: Keep chant local-only
+  - `chant init --silent` adds `.chant/` to `.git/info/exclude`
+  - `--pr` blocked in silent mode (prevents revealing usage)
+  - `--branch` warns in silent mode (branch names visible)
+  - `chant status` shows "(silent mode)" indicator
+  - `--force` flag for reinitializing
+  - `--minimal` flag for config-only initialization
+
+- **`chant version` command**: Display version and build info
+  - `chant --version` and `chant version` both work
+  - `--verbose` flag shows commit hash and build date
+
+- **Homebrew tap**: Install via `brew install lex00/tap/chant`
+
+### Fixed
+
+- **Cross-platform CI compatibility**:
+  - Use `git init -b main` for consistent branch naming
+  - PathBuf comparison for Windows path separators
+  - Skip Unix-specific tests on Windows
+  - Replace curl subprocess with ureq HTTP library
+
+- **Standard prompt ordering**: Format/lint now runs before commit
+  - Prevents uncommitted changes from `cargo fmt` after commit
+  - Added "verify git status is clean" step
+
+- **Windows binary extension**: Fixed double `.exe.exe` in release artifacts
+
+### Changed
+
+- mdBook tagline updated to "Idempotent Intention"
+
 ## [0.1.1] - 2026-01-25
 
 ### Added
