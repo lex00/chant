@@ -265,6 +265,7 @@ mod tests {
             },
             defaults: DefaultsConfig::default(),
             git: crate::config::GitConfig::default(),
+            providers: crate::provider::ProviderConfig::default(),
         };
 
         let branch = load_main_branch(&config);
@@ -283,6 +284,7 @@ mod tests {
                 ..Default::default()
             },
             git: crate::config::GitConfig::default(),
+            providers: crate::provider::ProviderConfig::default(),
         };
 
         let branch = load_main_branch(&config);

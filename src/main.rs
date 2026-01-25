@@ -6,6 +6,7 @@ mod id;
 mod mcp;
 mod merge;
 mod prompt;
+mod provider;
 mod render;
 mod spec;
 mod templates;
@@ -2216,6 +2217,34 @@ fn invoke_agent(message: &str, spec: &Spec, prompt_name: &str, config: &Config) 
     invoke_agent_with_model(message, spec, prompt_name, config, None, None)
 }
 
+fn get_model_provider(
+    provider_type: provider::ProviderType,
+    config: &Config,
+) -> Result<Box<dyn provider::ModelProvider>> {
+    match provider_type {
+        provider::ProviderType::Claude => Ok(Box::new(provider::ClaudeCliProvider)),
+        provider::ProviderType::Ollama => {
+            let endpoint = config
+                .providers
+                .ollama
+                .as_ref()
+                .map(|c| c.endpoint.clone())
+                .unwrap_or_else(|| "http://localhost:11434/v1".to_string());
+            Ok(Box::new(provider::OllamaProvider { endpoint }))
+        }
+        provider::ProviderType::Openai => {
+            let endpoint = config
+                .providers
+                .openai
+                .as_ref()
+                .map(|c| c.endpoint.clone())
+                .unwrap_or_else(|| "https://api.openai.com/v1".to_string());
+            let api_key = std::env::var("OPENAI_API_KEY").ok();
+            Ok(Box::new(provider::OpenaiProvider { endpoint, api_key }))
+        }
+    }
+}
+
 fn invoke_agent_with_model(
     message: &str,
     spec: &Spec,
@@ -2224,9 +2253,6 @@ fn invoke_agent_with_model(
     override_model: Option<&str>,
     cwd: Option<&Path>,
 ) -> Result<String> {
-    use std::io::{BufRead, BufReader};
-    use std::process::{Command, Stdio};
-
     // Create streaming log writer before spawning agent (writes header immediately)
     let mut log_writer = match StreamingLogWriter::new(&spec.id, prompt_name) {
         Ok(writer) => Some(writer),
@@ -2246,53 +2272,34 @@ fn invoke_agent_with_model(
         get_model_for_invocation(config.defaults.model.as_deref())
     };
 
-    let mut cmd = Command::new("claude");
-    cmd.arg("--print")
-        .arg("--output-format")
-        .arg("stream-json")
-        .arg("--verbose")
-        .arg("--model")
-        .arg(&model)
-        .arg("--dangerously-skip-permissions")
-        .arg(message)
-        .env("CHANT_SPEC_ID", &spec.id)
-        .env("CHANT_SPEC_FILE", &spec_file)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+    // Get the appropriate provider
+    let provider_type = config.defaults.provider;
+    let model_provider = get_model_provider(provider_type, config)?;
 
-    // Set working directory if provided
+    // Set CHANT_SPEC_ID and CHANT_SPEC_FILE env vars
+    std::env::set_var("CHANT_SPEC_ID", &spec.id);
+    std::env::set_var("CHANT_SPEC_FILE", &spec_file);
+
+    // Change to working directory if provided
+    let original_cwd = std::env::current_dir().ok();
     if let Some(path) = cwd {
-        cmd.current_dir(path);
+        std::env::set_current_dir(path)?;
     }
 
-    let mut child = cmd
-        .spawn()
-        .context("Failed to invoke claude CLI. Is it installed and in PATH?")?;
-
-    // Stream stdout to both terminal and log file
-    let mut captured_output = String::new();
-    if let Some(stdout) = child.stdout.take() {
-        let reader = BufReader::new(stdout);
-        for line in reader.lines().map_while(Result::ok) {
-            for text in extract_text_from_stream_json(&line) {
-                for text_line in text.lines() {
-                    println!("{}", text_line);
-                    captured_output.push_str(text_line);
-                    captured_output.push('\n');
-                    if let Some(ref mut writer) = log_writer {
-                        if let Err(e) = writer.write_line(text_line) {
-                            eprintln!("{} Failed to write to agent log: {}", "⚠".yellow(), e);
-                        }
-                    }
-                }
+    // Invoke the model provider with streaming callback
+    let captured_output = model_provider.invoke(message, &model, &mut |text_line: &str| {
+        println!("{}", text_line);
+        if let Some(ref mut writer) = log_writer {
+            if let Err(e) = writer.write_line(text_line) {
+                eprintln!("{} Failed to write to agent log: {}", "⚠".yellow(), e);
             }
         }
-    }
+        Ok(())
+    })?;
 
-    let status = child.wait()?;
-
-    if !status.success() {
-        anyhow::bail!("Agent exited with status: {}", status);
+    // Restore original working directory
+    if let Some(original_cwd) = original_cwd {
+        std::env::set_current_dir(original_cwd)?;
     }
 
     Ok(captured_output)

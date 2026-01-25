@@ -4,6 +4,8 @@ use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::provider::{ProviderConfig, ProviderType};
+
 /// Git hosting provider for PR creation
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -31,6 +33,8 @@ pub struct Config {
     pub defaults: DefaultsConfig,
     #[serde(default)]
     pub git: GitConfig,
+    #[serde(default)]
+    pub providers: ProviderConfig,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -66,6 +70,9 @@ pub struct DefaultsConfig {
     #[allow(dead_code)]
     #[serde(default = "default_main_branch")]
     pub main_branch: String,
+    /// Default provider (claude, ollama, openai)
+    #[serde(default)]
+    pub provider: ProviderType,
 }
 
 fn default_prompt() -> String {
@@ -90,6 +97,7 @@ impl Default for DefaultsConfig {
             model: None,
             split_model: None,
             main_branch: default_main_branch(),
+            provider: ProviderType::Claude,
         }
     }
 }
@@ -185,6 +193,7 @@ struct PartialDefaultsConfig {
     pub model: Option<String>,
     pub split_model: Option<String>,
     pub main_branch: Option<String>,
+    pub provider: Option<ProviderType>,
 }
 
 #[allow(dead_code)]
@@ -241,6 +250,10 @@ impl PartialConfig {
                     .main_branch
                     .or(global_defaults.main_branch)
                     .unwrap_or_else(default_main_branch),
+                provider: project_defaults
+                    .provider
+                    .or(global_defaults.provider)
+                    .unwrap_or_default(),
             },
             git: GitConfig {
                 provider: project_git
@@ -248,6 +261,7 @@ impl PartialConfig {
                     .or(global_git.provider)
                     .unwrap_or_default(),
             },
+            providers: Default::default(),
         }
     }
 }

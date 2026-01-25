@@ -130,6 +130,7 @@ mod tests {
             },
             defaults: crate::config::DefaultsConfig::default(),
             git: crate::config::GitConfig::default(),
+            providers: crate::provider::ProviderConfig::default(),
         }
     }
 
