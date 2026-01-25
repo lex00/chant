@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-01-25
+
+### Added
+
+- **`chant delete` command**: Safely remove specs with comprehensive cleanup
+  - `--force` for in-progress/completed specs
+  - `--cascade` to delete driver and all members
+  - `--delete-branch` to remove associated git branches
+  - `--dry-run` to preview deletions
+  - Automatic cleanup of log files and worktrees
+  - Safety checks for dependencies and member specs
+
+- **Markdown rendering for `chant show`**: Rich terminal output using pulldown-cmark
+  - Formatted headings, bold, italic, code blocks
+  - Syntax highlighting for code
+  - `--no-render` flag for raw output
+  - Respects `NO_COLOR` environment variable
+  - Auto-detects TTY for smart rendering
+
+- **Conflict auto-spawn**: Automatic conflict resolution spec creation
+  - Detects merge conflicts during parallel execution
+  - Creates detailed conflict specs with context
+  - Tracks blocked specs and conflicting files
+  - New `type: conflict` spec type with ⚡ indicator
+
+- **Archive folder organization**: Date-based archive structure
+  - Specs archived to `.chant/archive/YYYY-MM-DD/` folders
+  - Automatic migration of flat archive files
+  - `chant show` finds archived specs in subfolders
+
+- **README badges**: CI status, license, and release badges
+- **Installation documentation**: Comprehensive install guide with curl, cargo, and build instructions
+- **Enhanced standard prompt**: Guidance for out-of-scope issues and duplicate prevention
+
+### Fixed
+
+- Release workflow now properly triggers on version tags
+- `chant show` now finds archived specs
+- Test failures from parallel execution interference
+- Formatting issues in generated code
+
+### Changed
+
+- Log command now auto-follows by default (`--no-follow` to disable)
+- Archive command automatically includes all group members
+
 ## [0.1.0] - 2026-01-25
 
 ### Added
