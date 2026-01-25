@@ -5,6 +5,7 @@ mod mcp;
 mod merge;
 mod prompt;
 mod spec;
+mod worktree;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};

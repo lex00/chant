@@ -31,4 +31,4 @@ You are implementing a spec for {{project.name}}.
 - Only modify files related to this spec
 - Do not refactor unrelated code
 - Always add model: {{spec.model}} to frontmatter after all acc criteria met
-- Always  ensure chant binary builds
+- Always ensure chant binary builds

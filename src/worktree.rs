@@ -1,0 +1,371 @@
+//! Low-level git worktree operations.
+//!
+//! Provides utilities for creating, managing, and removing git worktrees.
+//! These functions handle the mechanics of worktree lifecycle management.
+
+use anyhow::{Context, Result};
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+/// Creates a new git worktree for the given spec.
+///
+/// # Arguments
+///
+/// * `spec_id` - The specification ID (used to create unique worktree paths)
+/// * `branch` - The branch name to create in the worktree
+///
+/// # Returns
+///
+/// The absolute path to the created worktree directory.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The branch already exists
+/// - Git worktree creation fails (e.g., corrupted repo)
+/// - Directory creation fails
+pub fn create_worktree(spec_id: &str, branch: &str) -> Result<PathBuf> {
+    let worktree_path = PathBuf::from(format!("/tmp/chant-{}", spec_id));
+
+    // Check if branch already exists
+    let output = Command::new("git")
+        .args(["rev-parse", "--verify", branch])
+        .output()
+        .context("Failed to check if branch exists")?;
+
+    if output.status.success() {
+        anyhow::bail!("Branch '{}' already exists", branch);
+    }
+
+    // Create the worktree with the new branch
+    let output = Command::new("git")
+        .args(["worktree", "add", "-b", branch, worktree_path.to_str().unwrap()])
+        .output()
+        .context("Failed to create git worktree")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Failed to create worktree: {}", stderr);
+    }
+
+    Ok(worktree_path)
+}
+
+/// Removes a git worktree and cleans up its directory.
+///
+/// This function is idempotent - it does not error if the worktree is already gone.
+///
+/// # Arguments
+///
+/// * `path` - The path to the worktree to remove
+///
+/// # Returns
+///
+/// Ok(()) if the worktree was successfully removed or didn't exist.
+pub fn remove_worktree(path: &Path) -> Result<()> {
+    // Try to remove the git worktree entry
+    let _output = Command::new("git")
+        .args(["worktree", "remove", path.to_str().unwrap()])
+        .output()
+        .context("Failed to run git worktree remove")?;
+
+    // Even if git worktree remove fails, try to clean up the directory
+    if path.exists() {
+        std::fs::remove_dir_all(path)
+            .context(format!("Failed to remove worktree directory at {:?}", path))?;
+    }
+
+    Ok(())
+}
+
+/// Merges a branch to main and cleans up.
+///
+/// # Arguments
+///
+/// * `branch` - The branch name to merge
+///
+/// # Returns
+///
+/// Ok(()) if the merge was successful. If there are merge conflicts, returns an error
+/// and leaves the branch intact for manual resolution.
+pub fn merge_and_cleanup(branch: &str) -> Result<()> {
+    // Checkout main branch
+    let output = Command::new("git")
+        .args(["checkout", "main"])
+        .output()
+        .context("Failed to checkout main branch")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Failed to checkout main: {}", stderr);
+    }
+
+    // Perform fast-forward merge
+    let output = Command::new("git")
+        .args(["merge", "--ff-only", branch])
+        .output()
+        .context("Failed to perform merge")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Merge failed (branch '{}' is preserved): {}", branch, stderr);
+    }
+
+    // Delete the branch after successful merge
+    let output = Command::new("git")
+        .args(["branch", "-d", branch])
+        .output()
+        .context("Failed to delete branch")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Failed to delete branch '{}': {}", branch, stderr);
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::process::Command as StdCommand;
+
+    /// Helper to initialize a temporary git repo for testing.
+    fn setup_test_repo(repo_dir: &Path) -> Result<()> {
+        fs::create_dir_all(repo_dir)?;
+        StdCommand::new("git")
+            .arg("init")
+            .current_dir(repo_dir)
+            .output()?;
+        StdCommand::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo_dir)
+            .output()?;
+        StdCommand::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo_dir)
+            .output()?;
+        // Create an initial commit
+        fs::write(repo_dir.join("README.md"), "# Test")?;
+        StdCommand::new("git")
+            .args(["add", "."])
+            .current_dir(repo_dir)
+            .output()?;
+        StdCommand::new("git")
+            .args(["commit", "-m", "Initial commit"])
+            .current_dir(repo_dir)
+            .output()?;
+        Ok(())
+    }
+
+    /// Helper to clean up test repos.
+    fn cleanup_test_repo(repo_dir: &Path) -> Result<()> {
+        if repo_dir.exists() {
+            fs::remove_dir_all(repo_dir)?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_create_worktree_success() -> Result<()> {
+        let repo_dir = PathBuf::from("/tmp/test-chant-repo-create");
+        cleanup_test_repo(&repo_dir)?;
+        setup_test_repo(&repo_dir)?;
+
+        // Change to repo directory for this test
+        let original_dir = std::env::current_dir()?;
+        std::env::set_current_dir(&repo_dir)?;
+
+        let spec_id = "test-spec-001";
+        let branch = "spec/test-spec-001";
+
+        let result = create_worktree(spec_id, branch);
+
+        // Restore original directory
+        std::env::set_current_dir(&original_dir)?;
+
+        // Clean up
+        let worktree_path = PathBuf::from(format!("/tmp/chant-{}", spec_id));
+        let _ = remove_worktree(&worktree_path);
+        cleanup_test_repo(&repo_dir)?;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), worktree_path);
+        Ok(())
+    }
+
+    #[test]
+    fn test_create_worktree_branch_exists() -> Result<()> {
+        let repo_dir = PathBuf::from("/tmp/test-chant-repo-exists");
+        cleanup_test_repo(&repo_dir)?;
+        setup_test_repo(&repo_dir)?;
+
+        let original_dir = std::env::current_dir()?;
+        std::env::set_current_dir(&repo_dir)?;
+
+        let spec_id = "test-spec-002";
+        let branch = "spec/test-spec-002";
+
+        // Create the branch first
+        StdCommand::new("git")
+            .args(["branch", branch])
+            .output()?;
+
+        let result = create_worktree(spec_id, branch);
+
+        std::env::set_current_dir(&original_dir)?;
+        cleanup_test_repo(&repo_dir)?;
+
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("already exists"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_remove_worktree_idempotent() -> Result<()> {
+        let repo_dir = PathBuf::from("/tmp/test-chant-repo-remove");
+        cleanup_test_repo(&repo_dir)?;
+        setup_test_repo(&repo_dir)?;
+
+        let original_dir = std::env::current_dir()?;
+        std::env::set_current_dir(&repo_dir)?;
+
+        let spec_id = "test-spec-003";
+        let branch = "spec/test-spec-003";
+
+        // Create a worktree
+        let worktree_path = create_worktree(spec_id, branch)?;
+
+        // Remove it once
+        let result1 = remove_worktree(&worktree_path);
+
+        // Remove it again (should not error)
+        let result2 = remove_worktree(&worktree_path);
+
+        std::env::set_current_dir(&original_dir)?;
+        cleanup_test_repo(&repo_dir)?;
+
+        assert!(result1.is_ok());
+        assert!(result2.is_ok());
+        Ok(())
+    }
+
+    #[test]
+    fn test_merge_and_cleanup_success() -> Result<()> {
+        let repo_dir = PathBuf::from("/tmp/test-chant-repo-merge");
+        cleanup_test_repo(&repo_dir)?;
+        setup_test_repo(&repo_dir)?;
+
+        let original_dir = std::env::current_dir()?;
+        std::env::set_current_dir(&repo_dir)?;
+
+        let branch = "feature/test-merge";
+
+        // Create a feature branch with a commit
+        StdCommand::new("git")
+            .args(["branch", branch])
+            .output()?;
+        StdCommand::new("git")
+            .args(["checkout", branch])
+            .output()?;
+        fs::write(repo_dir.join("feature.txt"), "feature content")?;
+        StdCommand::new("git")
+            .args(["add", "."])
+            .output()?;
+        StdCommand::new("git")
+            .args(["commit", "-m", "Add feature"])
+            .output()?;
+
+        let result = merge_and_cleanup(branch);
+
+        std::env::set_current_dir(&original_dir)?;
+        cleanup_test_repo(&repo_dir)?;
+
+        assert!(result.is_ok());
+        Ok(())
+    }
+
+    #[test]
+    fn test_merge_and_cleanup_conflict() -> Result<()> {
+        let repo_dir = PathBuf::from("/tmp/test-chant-repo-conflict");
+        cleanup_test_repo(&repo_dir)?;
+        setup_test_repo(&repo_dir)?;
+
+        let original_dir = std::env::current_dir()?;
+        std::env::set_current_dir(&repo_dir)?;
+
+        let branch = "feature/conflict";
+
+        // Create a feature branch that conflicts with main
+        StdCommand::new("git")
+            .args(["branch", branch])
+            .output()?;
+        StdCommand::new("git")
+            .args(["checkout", branch])
+            .output()?;
+        fs::write(repo_dir.join("README.md"), "feature version")?;
+        StdCommand::new("git")
+            .args(["add", "."])
+            .output()?;
+        StdCommand::new("git")
+            .args(["commit", "-m", "Modify README on feature"])
+            .output()?;
+
+        // Modify README on main differently
+        StdCommand::new("git")
+            .args(["checkout", "main"])
+            .output()?;
+        fs::write(repo_dir.join("README.md"), "main version")?;
+        StdCommand::new("git")
+            .args(["add", "."])
+            .output()?;
+        StdCommand::new("git")
+            .args(["commit", "-m", "Modify README on main"])
+            .output()?;
+
+        let result = merge_and_cleanup(branch);
+
+        std::env::set_current_dir(&original_dir)?;
+        cleanup_test_repo(&repo_dir)?;
+
+        // Merge should fail due to conflict
+        assert!(result.is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn test_concurrent_worktrees() -> Result<()> {
+        let repo_dir = PathBuf::from("/tmp/test-chant-repo-concurrent");
+        cleanup_test_repo(&repo_dir)?;
+        setup_test_repo(&repo_dir)?;
+
+        let original_dir = std::env::current_dir()?;
+        std::env::set_current_dir(&repo_dir)?;
+
+        let spec_id_1 = "concurrent-001";
+        let branch_1 = "spec/concurrent-001";
+        let spec_id_2 = "concurrent-002";
+        let branch_2 = "spec/concurrent-002";
+
+        // Create two worktrees sequentially (concurrent operations are harder to test)
+        let result1 = create_worktree(spec_id_1, branch_1);
+        let result2 = create_worktree(spec_id_2, branch_2);
+
+        let worktree_path_1 = PathBuf::from(format!("/tmp/chant-{}", spec_id_1));
+        let worktree_path_2 = PathBuf::from(format!("/tmp/chant-{}", spec_id_2));
+
+        let _ = remove_worktree(&worktree_path_1);
+        let _ = remove_worktree(&worktree_path_2);
+
+        std::env::set_current_dir(&original_dir)?;
+        cleanup_test_repo(&repo_dir)?;
+
+        assert!(result1.is_ok());
+        assert!(result2.is_ok());
+        Ok(())
+    }
+}
