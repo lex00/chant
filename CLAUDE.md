@@ -8,13 +8,30 @@ Chant is an Intent Driven Development tool that enables specification-driven dev
 
 ### 1. Always Use `just chant` for CLI Operations
 
-Use the `just chant` command to interact with the chant binary, not `./target/debug/chant` or `cargo run`.
+Use **ONLY** the `just chant` command to interact with the chant binary. Never use direct binary paths like `./target/debug/chant` or `cargo run`.
+
+**Why?** The `just` wrapper ensures:
+- The binary is automatically rebuilt if source code changed
+- You always run the most recent version
+- Consistent interface and behavior across all operations
+- Avoids stale binary issues from previous builds
 
 ```bash
 just chant add "description of work"
 just chant work <spec-id>
 just chant list
 just chant show <spec-id>
+```
+
+**What NOT to do:**
+```bash
+# ❌ WRONG - Don't use direct binary paths
+./target/debug/chant add "description"
+./target/release/chant work <spec-id>
+
+# ❌ WRONG - Don't use cargo run
+cargo run -- add "description"
+cargo run --release -- work <spec-id>
 ```
 
 ### 2. Never Touch the Disk Directly
@@ -143,6 +160,19 @@ Use checkboxes to track completion:
 5. **Build must succeed** - Always ensure `cargo build` completes successfully
 6. **Minimal changes** - Only modify files related to the spec; don't refactor unrelated code
 7. **Add model to frontmatter** - After all acceptance criteria are met, add `model: claude-haiku-4-5-20251001` (or appropriate model) to the spec frontmatter
+
+### What NOT to do
+
+**Binary/Build Execution:**
+- ❌ **Never** run `./target/debug/chant` or `./target/release/chant` directly
+- ❌ **Never** run `cargo run -- ` to invoke chant
+- ❌ **Never** run `cargo build` or `cargo test` directly (use `just build`, `just test` instead)
+
+These bypass the `justfile` wrapper, which means:
+- You may run stale binaries from previous builds
+- Source changes won't trigger automatic rebuilds
+- You lose consistency across the development team
+- Build environment assumptions aren't validated
 
 ### On Unexpected Errors
 
