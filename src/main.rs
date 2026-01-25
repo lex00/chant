@@ -2596,6 +2596,63 @@ fn cmd_split(id: &str, override_model: Option<&str>, force: bool) -> Result<()> 
     Ok(())
 }
 
+/// Migrate existing flat archive files to date-based subfolders.
+/// This handles the transition from `.chant/archive/*.md` to `.chant/archive/YYYY-MM-DD/*.md`
+fn migrate_flat_archive(archive_dir: &std::path::PathBuf) -> anyhow::Result<()> {
+    use std::fs;
+
+    if !archive_dir.exists() {
+        return Ok(());
+    }
+
+    let mut flat_files = Vec::new();
+
+    // Find all flat .md files in the archive directory (not in subdirectories)
+    for entry in fs::read_dir(archive_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        let metadata = entry.metadata()?;
+
+        // Only process .md files directly in archive_dir, not subdirectories
+        if !metadata.is_dir() && path.extension().map(|e| e == "md").unwrap_or(false) {
+            flat_files.push(path);
+        }
+    }
+
+    // Migrate each flat file to its date subfolder
+    for file_path in flat_files {
+        if let Some(file_name) = file_path.file_name() {
+            if let Some(file_name_str) = file_name.to_str() {
+                // Extract spec ID from filename (e.g., "2026-01-24-001-abc.md" -> "2026-01-24-001-abc")
+                if let Some(spec_id) = file_name_str.strip_suffix(".md") {
+                    // Extract date from spec ID (format: YYYY-MM-DD-XXX-abc)
+                    if spec_id.len() >= 10 {
+                        let date_part = &spec_id[..10]; // First 10 chars: YYYY-MM-DD
+                        let date_dir = archive_dir.join(date_part);
+
+                        // Create date-based subdirectory if it doesn't exist
+                        if !date_dir.exists() {
+                            fs::create_dir_all(&date_dir)?;
+                        }
+
+                        let dst = date_dir.join(file_name);
+
+                        // Move the file to the date subdirectory
+                        if let Err(e) = fs::rename(&file_path, &dst) {
+                            eprintln!(
+                                "Warning: Failed to migrate archive file {:?}: {}",
+                                file_path, e
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 fn cmd_archive(
     spec_id: Option<&str>,
     dry_run: bool,
@@ -2756,11 +2813,24 @@ fn cmd_archive(
         println!("{} Created archive directory", "✓".green());
     }
 
+    // Migrate existing flat archive files to date subfolders (if any)
+    migrate_flat_archive(&archive_dir)?;
+
     // Move specs to archive
     let count = to_archive.len();
     for spec in to_archive {
         let src = specs_dir.join(format!("{}.md", spec.id));
-        let dst = archive_dir.join(format!("{}.md", spec.id));
+
+        // Extract date from spec ID (format: YYYY-MM-DD-XXX-abc)
+        let date_part = &spec.id[..10]; // First 10 chars: YYYY-MM-DD
+        let date_dir = archive_dir.join(date_part);
+
+        // Create date-based subdirectory if it doesn't exist
+        if !date_dir.exists() {
+            std::fs::create_dir_all(&date_dir)?;
+        }
+
+        let dst = date_dir.join(format!("{}.md", spec.id));
 
         std::fs::rename(&src, &dst)?;
         if spec::extract_driver_id(&spec.id).is_some() {
@@ -4861,6 +4931,89 @@ completed_at: 2026-01-24T10:00:00+00:00
                 i + 1
             );
         }
+    }
+
+    #[test]
+    fn test_archive_nested_folder_structure() {
+        // Test that specs are archived into date-based subfolders
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path().join("specs");
+        let archive_dir = temp_dir.path().join("archive");
+
+        std::fs::create_dir_all(&specs_dir).unwrap();
+        std::fs::create_dir_all(&archive_dir).unwrap();
+
+        // Create a spec with a specific date
+        let spec_id = "2026-01-25-001-xyz";
+        let spec_content = r#"---
+type: code
+status: completed
+completed_at: 2026-01-25T10:00:00+00:00
+---
+
+# Test Spec
+
+Body content.
+"#;
+        let spec_path = specs_dir.join(format!("{}.md", spec_id));
+        std::fs::write(&spec_path, spec_content).unwrap();
+
+        // Simulate archiving: extract date and create subfolder
+        let date_part = &spec_id[..10]; // "2026-01-25"
+        let date_dir = archive_dir.join(date_part);
+        std::fs::create_dir_all(&date_dir).unwrap();
+
+        let archived_path = date_dir.join(format!("{}.md", spec_id));
+        std::fs::rename(&spec_path, &archived_path).unwrap();
+
+        // Verify the nested structure exists
+        assert!(date_dir.exists());
+        assert!(archived_path.exists());
+
+        // Verify the spec can be loaded from the nested archive
+        let loaded_spec = spec::load_all_specs(&archive_dir).unwrap();
+        assert_eq!(loaded_spec.len(), 1);
+        assert_eq!(loaded_spec[0].id, spec_id);
+        assert_eq!(loaded_spec[0].frontmatter.status, SpecStatus::Completed);
+    }
+
+    #[test]
+    fn test_archive_migration_flat_to_nested() {
+        // Test that flat archive files can be migrated to nested structure
+        let temp_dir = TempDir::new().unwrap();
+        let archive_dir = temp_dir.path().join("archive");
+
+        std::fs::create_dir_all(&archive_dir).unwrap();
+
+        // Create a flat spec file (old format)
+        let spec_id = "2026-01-24-001-abc";
+        let spec_content = r#"---
+type: code
+status: completed
+---
+
+# Test Spec
+"#;
+        let flat_path = archive_dir.join(format!("{}.md", spec_id));
+        std::fs::write(&flat_path, spec_content).unwrap();
+        assert!(flat_path.exists());
+
+        // Simulate migration logic
+        let date_part = &spec_id[..10]; // "2026-01-24"
+        let date_dir = archive_dir.join(date_part);
+        std::fs::create_dir_all(&date_dir).unwrap();
+
+        let nested_path = date_dir.join(format!("{}.md", spec_id));
+        std::fs::rename(&flat_path, &nested_path).unwrap();
+
+        // Verify migration succeeded
+        assert!(!flat_path.exists());
+        assert!(nested_path.exists());
+
+        // Verify the spec can be loaded from nested location
+        let loaded_spec = spec::load_all_specs(&archive_dir).unwrap();
+        assert_eq!(loaded_spec.len(), 1);
+        assert_eq!(loaded_spec[0].id, spec_id);
     }
 
     #[test]

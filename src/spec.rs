@@ -417,11 +417,25 @@ pub fn load_all_specs(specs_dir: &Path) -> Result<Vec<Spec>> {
         return Ok(specs);
     }
 
-    for entry in fs::read_dir(specs_dir)? {
+    load_specs_recursive(specs_dir, &mut specs)?;
+    Ok(specs)
+}
+
+/// Recursively load specs from a directory and its subdirectories.
+fn load_specs_recursive(dir: &Path, specs: &mut Vec<Spec>) -> Result<()> {
+    if !dir.exists() {
+        return Ok(());
+    }
+
+    for entry in fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
+        let metadata = entry.metadata()?;
 
-        if path.extension().map(|e| e == "md").unwrap_or(false) {
+        if metadata.is_dir() {
+            // Recursively load from subdirectories
+            load_specs_recursive(&path, specs)?;
+        } else if path.extension().map(|e| e == "md").unwrap_or(false) {
             match Spec::load(&path) {
                 Ok(spec) => specs.push(spec),
                 Err(e) => {
@@ -431,7 +445,7 @@ pub fn load_all_specs(specs_dir: &Path) -> Result<Vec<Spec>> {
         }
     }
 
-    Ok(specs)
+    Ok(())
 }
 
 /// Resolve a partial spec ID to a full spec.
