@@ -2,7 +2,7 @@
 
 # Chant
 
-**Intent driven development**
+**Idempotent Intention**
 
 Chant is a spec execution platform for AI-assisted development. Specs are markdown files that agents execute.
 
