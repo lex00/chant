@@ -22,6 +22,7 @@ use spec::{Spec, SpecFrontmatter, SpecStatus};
 
 #[derive(Parser)]
 #[command(name = "chant")]
+#[command(version)]
 #[command(about = "Intent Driven Development", long_about = None)]
 struct Cli {
     #[command(subcommand)]
@@ -187,6 +188,8 @@ enum Commands {
         #[arg(long)]
         yes: bool,
     },
+    /// Show version information
+    Version,
 }
 
 fn main() -> Result<()> {
@@ -255,6 +258,7 @@ fn main() -> Result<()> {
             dry_run,
             yes,
         } => cmd_delete(&id, force, cascade, delete_branch, dry_run, yes),
+        Commands::Version => cmd_version(),
     }
 }
 
@@ -900,6 +904,12 @@ fn cmd_status() -> Result<()> {
         );
     }
 
+    Ok(())
+}
+
+fn cmd_version() -> Result<()> {
+    const VERSION: &str = env!("CARGO_PKG_VERSION");
+    println!("chant {}", VERSION);
     Ok(())
 }
 
