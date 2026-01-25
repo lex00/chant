@@ -2,6 +2,7 @@ use anyhow::{anyhow, Context, Result};
 use serde::Deserialize;
 use std::io::BufRead;
 use std::process::{Command, Stdio};
+use ureq::Agent;
 
 /// Model provider type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
@@ -122,6 +123,11 @@ impl ModelProvider for OllamaProvider {
     ) -> Result<String> {
         let url = format!("{}/chat/completions", self.endpoint);
 
+        // Validate endpoint URL
+        if !self.endpoint.starts_with("http://") && !self.endpoint.starts_with("https://") {
+            return Err(anyhow!("Invalid endpoint URL: {}", self.endpoint));
+        }
+
         let request_body = serde_json::json!({
             "model": model,
             "messages": [
@@ -133,72 +139,60 @@ impl ModelProvider for OllamaProvider {
             "stream": true,
         });
 
-        let request_body_str = serde_json::to_string(&request_body)?;
+        // Create HTTP agent and send request
+        let agent = Agent::new();
+        let response = agent
+            .post(&url)
+            .set("Content-Type", "application/json")
+            .send_json(&request_body)
+            .map_err(|e| {
+                let err_str = e.to_string();
+                if err_str.contains("Connection") || err_str.contains("connect") {
+                    anyhow!("Failed to connect to Ollama at {}\n\nOllama does not appear to be running. To fix:\n\n  1. Install Ollama: https://ollama.ai/download\n  2. Start Ollama: ollama serve\n  3. Pull a model: ollama pull {}\n\nOr switch to Claude CLI by removing 'provider: ollama' from .chant/config.md", self.endpoint, model)
+                } else {
+                    anyhow!("HTTP request failed: {}", e)
+                }
+            })?;
 
-        // Validate endpoint URL
-        if !self.endpoint.starts_with("http://") && !self.endpoint.starts_with("https://") {
-            return Err(anyhow!("Invalid endpoint URL: {}", self.endpoint));
+        // Check response status
+        if response.status() != 200 {
+            return Err(anyhow!(
+                "HTTP {}: {}",
+                response.status(),
+                response.status_text()
+            ));
         }
 
-        // Use curl command to make the request
-        let mut cmd = Command::new("curl");
-        cmd.arg("-s")
-            .arg("-X")
-            .arg("POST")
-            .arg(&url)
-            .arg("-H")
-            .arg("Content-Type: application/json")
-            .arg("-d")
-            .arg(&request_body_str)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-
-        let mut child = cmd
-            .spawn()
-            .map_err(|e| anyhow!("Failed to execute curl. Is it installed and in PATH? {}", e))?;
-
+        // Stream response body
+        let reader = std::io::BufReader::new(response.into_reader());
         let mut captured_output = String::new();
 
-        if let Some(stdout) = child.stdout.take() {
-            let reader = std::io::BufReader::new(stdout);
+        for line in reader.lines().map_while(Result::ok) {
+            if let Some(json_str) = line.strip_prefix("data: ") {
+                if json_str == "[DONE]" {
+                    break;
+                }
 
-            for line in reader.lines().map_while(Result::ok) {
-                if let Some(json_str) = line.strip_prefix("data: ") {
-                    if json_str == "[DONE]" {
-                        break;
-                    }
-
-                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(json_str) {
-                        if let Some(choices) = json.get("choices").and_then(|c| c.as_array()) {
-                            for choice in choices {
-                                if let Some(delta) = choice.get("delta") {
-                                    if let Some(content) =
-                                        delta.get("content").and_then(|c| c.as_str())
-                                    {
-                                        for text_line in content.lines() {
-                                            callback(text_line)?;
-                                            captured_output.push_str(text_line);
-                                            captured_output.push('\n');
-                                        }
-                                        // Handle inline text without newline
-                                        if !content.is_empty() && !content.ends_with('\n') {
-                                            captured_output.push_str(content);
-                                        }
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(json_str) {
+                    if let Some(choices) = json.get("choices").and_then(|c| c.as_array()) {
+                        for choice in choices {
+                            if let Some(delta) = choice.get("delta") {
+                                if let Some(content) = delta.get("content").and_then(|c| c.as_str())
+                                {
+                                    for text_line in content.lines() {
+                                        callback(text_line)?;
+                                        captured_output.push_str(text_line);
+                                        captured_output.push('\n');
+                                    }
+                                    // Handle inline text without newline
+                                    if !content.is_empty() && !content.ends_with('\n') {
+                                        captured_output.push_str(content);
                                     }
                                 }
                             }
                         }
                     }
                 }
-            }
-        }
-
-        let status = child.wait()?;
-
-        if !status.success() {
-            // Check if it's a connection error
-            if captured_output.is_empty() {
-                return Err(anyhow!("Failed to connect to Ollama at {}\n\nOllama does not appear to be running. To fix:\n\n  1. Install Ollama: https://ollama.ai/download\n  2. Start Ollama: ollama serve\n  3. Pull a model: ollama pull {}\n\nOr switch to Claude CLI by removing 'provider: ollama' from .chant/config.md", self.endpoint, model));
             }
         }
 
@@ -239,6 +233,11 @@ impl ModelProvider for OpenaiProvider {
 
         let url = format!("{}/chat/completions", self.endpoint);
 
+        // Validate endpoint URL
+        if !self.endpoint.starts_with("http://") && !self.endpoint.starts_with("https://") {
+            return Err(anyhow!("Invalid endpoint URL: {}", self.endpoint));
+        }
+
         let request_body = serde_json::json!({
             "model": model,
             "messages": [
@@ -250,76 +249,60 @@ impl ModelProvider for OpenaiProvider {
             "stream": true,
         });
 
-        let request_body_str = serde_json::to_string(&request_body)?;
+        // Create HTTP agent and send request
+        let agent = Agent::new();
+        let response = agent
+            .post(&url)
+            .set("Content-Type", "application/json")
+            .set("Authorization", &format!("Bearer {}", api_key))
+            .send_json(&request_body)
+            .map_err(|e| anyhow!("HTTP request failed: {}", e))?;
 
-        // Validate endpoint URL
-        if !self.endpoint.starts_with("http://") && !self.endpoint.starts_with("https://") {
-            return Err(anyhow!("Invalid endpoint URL: {}", self.endpoint));
+        // Check response status
+        if response.status() == 401 {
+            return Err(anyhow!(
+                "Authentication failed. Check OPENAI_API_KEY env var"
+            ));
         }
 
-        // Use curl command to make the request
-        let mut cmd = Command::new("curl");
-        cmd.arg("-s")
-            .arg("-X")
-            .arg("POST")
-            .arg(&url)
-            .arg("-H")
-            .arg("Content-Type: application/json")
-            .arg("-H")
-            .arg(format!("Authorization: Bearer {}", api_key))
-            .arg("-d")
-            .arg(&request_body_str)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+        if response.status() != 200 {
+            return Err(anyhow!(
+                "HTTP {}: {}",
+                response.status(),
+                response.status_text()
+            ));
+        }
 
-        let mut child = cmd
-            .spawn()
-            .map_err(|e| anyhow!("Failed to execute curl. Is it installed and in PATH? {}", e))?;
-
+        // Stream response body
+        let reader = std::io::BufReader::new(response.into_reader());
         let mut captured_output = String::new();
 
-        if let Some(stdout) = child.stdout.take() {
-            let reader = std::io::BufReader::new(stdout);
+        for line in reader.lines().map_while(Result::ok) {
+            if let Some(json_str) = line.strip_prefix("data: ") {
+                if json_str == "[DONE]" {
+                    break;
+                }
 
-            for line in reader.lines().map_while(Result::ok) {
-                if let Some(json_str) = line.strip_prefix("data: ") {
-                    if json_str == "[DONE]" {
-                        break;
-                    }
-
-                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(json_str) {
-                        if let Some(choices) = json.get("choices").and_then(|c| c.as_array()) {
-                            for choice in choices {
-                                if let Some(delta) = choice.get("delta") {
-                                    if let Some(content) =
-                                        delta.get("content").and_then(|c| c.as_str())
-                                    {
-                                        for text_line in content.lines() {
-                                            callback(text_line)?;
-                                            captured_output.push_str(text_line);
-                                            captured_output.push('\n');
-                                        }
-                                        // Handle inline text without newline
-                                        if !content.is_empty() && !content.ends_with('\n') {
-                                            captured_output.push_str(content);
-                                        }
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(json_str) {
+                    if let Some(choices) = json.get("choices").and_then(|c| c.as_array()) {
+                        for choice in choices {
+                            if let Some(delta) = choice.get("delta") {
+                                if let Some(content) = delta.get("content").and_then(|c| c.as_str())
+                                {
+                                    for text_line in content.lines() {
+                                        callback(text_line)?;
+                                        captured_output.push_str(text_line);
+                                        captured_output.push('\n');
+                                    }
+                                    // Handle inline text without newline
+                                    if !content.is_empty() && !content.ends_with('\n') {
+                                        captured_output.push_str(content);
                                     }
                                 }
                             }
                         }
                     }
                 }
-            }
-        }
-
-        let status = child.wait()?;
-
-        if !status.success() {
-            // Check output for auth error
-            if captured_output.contains("401") || captured_output.contains("Unauthorized") {
-                return Err(anyhow!(
-                    "Authentication failed. Check OPENAI_API_KEY env var"
-                ));
             }
         }
 
