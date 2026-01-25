@@ -14,11 +14,13 @@ path = "src/main.rs"
 # CLI
 clap = { version = "4.0", features = ["derive"] }
 colored = "2.0"
+atty = "0.2"
 
 # Parsing
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
 serde_json = "1.0"
+pulldown-cmark = "0.10"
 
 # Utilities
 anyhow = "1.0"

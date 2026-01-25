@@ -5,6 +5,7 @@ mod id;
 mod mcp;
 mod merge;
 mod prompt;
+mod render;
 mod spec;
 mod worktree;
 
@@ -50,6 +51,9 @@ enum Commands {
     Show {
         /// Spec ID (full or partial)
         id: String,
+        /// Disable markdown rendering
+        #[arg(long)]
+        no_render: bool,
     },
     /// Execute a spec
     Work {
@@ -156,7 +160,7 @@ fn main() -> Result<()> {
         Commands::Init { name } => cmd_init(name),
         Commands::Add { description } => cmd_add(&description),
         Commands::List { ready, label } => cmd_list(ready, &label),
-        Commands::Show { id } => cmd_show(&id),
+        Commands::Show { id, no_render } => cmd_show(&id, no_render),
         Commands::Work {
             id,
             prompt,
@@ -581,7 +585,7 @@ fn key_to_title_case(key: &str) -> String {
         .join(" ")
 }
 
-fn cmd_show(id: &str) -> Result<()> {
+fn cmd_show(id: &str, no_render: bool) -> Result<()> {
     let specs_dir = PathBuf::from(".chant/specs");
 
     if !specs_dir.exists() {
@@ -620,7 +624,16 @@ fn cmd_show(id: &str) -> Result<()> {
     }
 
     println!("\n{}", "--- Body ---".dimmed());
-    println!("{}", spec.body);
+
+    // Check if we should render markdown
+    let should_render =
+        !no_render && atty::is(atty::Stream::Stdout) && std::env::var("NO_COLOR").is_err();
+
+    if should_render {
+        render::render_markdown(&spec.body);
+    } else {
+        println!("{}", spec.body);
+    }
 
     Ok(())
 }
