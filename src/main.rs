@@ -1,4 +1,5 @@
 mod config;
+mod diagnose;
 mod git;
 mod id;
 mod mcp;
@@ -141,6 +142,11 @@ enum Commands {
         #[arg(long)]
         yes: bool,
     },
+    /// Diagnose spec execution issues
+    Diagnose {
+        /// Spec ID (full or partial)
+        id: String,
+    },
 }
 
 fn main() -> Result<()> {
@@ -174,7 +180,11 @@ fn main() -> Result<()> {
         Commands::Status => cmd_status(),
         Commands::Ready => cmd_list(true, &[]),
         Commands::Lint => cmd_lint(),
-        Commands::Log { id, lines, no_follow } => cmd_log(&id, lines, !no_follow),
+        Commands::Log {
+            id,
+            lines,
+            no_follow,
+        } => cmd_log(&id, lines, !no_follow),
         Commands::Split { id, model, force } => cmd_split(&id, model.as_deref(), force),
         Commands::Archive {
             id,
@@ -190,6 +200,7 @@ fn main() -> Result<()> {
             continue_on_error,
             yes,
         } => cmd_merge(&ids, all, dry_run, delete_branch, continue_on_error, yes),
+        Commands::Diagnose { id } => cmd_diagnose(&id),
     }
 }
 
@@ -741,6 +752,56 @@ fn cmd_log(id: &str, lines: usize, follow: bool) -> Result<()> {
     cmd_log_at(&PathBuf::from(".chant"), id, lines, follow)
 }
 
+fn cmd_diagnose(id: &str) -> Result<()> {
+    let specs_dir = PathBuf::from(".chant/specs");
+
+    if !specs_dir.exists() {
+        anyhow::bail!("Chant not initialized. Run `chant init` first.");
+    }
+
+    // Resolve spec ID
+    let spec = spec::resolve_spec(&specs_dir, id)?;
+
+    // Run diagnostics
+    let report = diagnose::diagnose_spec(&spec.id)?;
+
+    // Display report
+    println!("\n{}", format!("Spec: {}", report.spec_id).cyan().bold());
+    let status_str = match report.status {
+        SpecStatus::Pending => "pending".white(),
+        SpecStatus::InProgress => "in_progress".yellow(),
+        SpecStatus::Completed => "completed".green(),
+        SpecStatus::Failed => "failed".red(),
+        SpecStatus::NeedsAttention => "needs_attention".yellow(),
+    };
+    println!("Status: {}", status_str);
+
+    println!("\n{}:", "Checks".bold());
+    for check in &report.checks {
+        let icon = if check.passed {
+            "✓".green()
+        } else {
+            "✗".red()
+        };
+        print!("  {} {}", icon, check.name);
+        if let Some(details) = &check.details {
+            println!(" ({})", details.bright_black());
+        } else {
+            println!();
+        }
+    }
+
+    println!("\n{}:", "Diagnosis".bold());
+    println!("  {}", report.diagnosis);
+
+    if let Some(suggestion) = &report.suggestion {
+        println!("\n{}:", "Suggestion".bold());
+        println!("  {}", suggestion);
+    }
+
+    Ok(())
+}
+
 /// Result of log file lookup (used in tests)
 #[cfg(test)]
 #[derive(Debug)]
@@ -1035,8 +1096,11 @@ fn cmd_work(
 
             // If this is a member spec, check if driver should be auto-completed
             if spec::auto_complete_driver_if_ready(&spec.id, &all_specs, &specs_dir)? {
-                println!("\n{} Auto-completed driver spec: {}", "✓".green(),
-                    spec::extract_driver_id(&spec.id).unwrap());
+                println!(
+                    "\n{} Auto-completed driver spec: {}",
+                    "✓".green(),
+                    spec::extract_driver_id(&spec.id).unwrap()
+                );
             }
 
             println!("\n{} Spec completed!", "✓".green());
@@ -1500,9 +1564,16 @@ fn cmd_work_parallel(
     for result in &all_results {
         if result.success {
             // Check if this completed spec triggers driver auto-completion
-            if let Ok(true) = spec::auto_complete_driver_if_ready(&result.spec_id, &all_specs, specs_dir) {
+            if let Ok(true) =
+                spec::auto_complete_driver_if_ready(&result.spec_id, &all_specs, specs_dir)
+            {
                 if let Some(driver_id) = spec::extract_driver_id(&result.spec_id) {
-                    println!("[{}] {} Auto-completed driver spec: {}", result.spec_id.cyan(), "✓".green(), driver_id);
+                    println!(
+                        "[{}] {} Auto-completed driver spec: {}",
+                        result.spec_id.cyan(),
+                        "✓".green(),
+                        driver_id
+                    );
                 }
             }
         }
@@ -5238,7 +5309,11 @@ status: in_progress
             .output()
             .unwrap();
         Command::new("git")
-            .args(["commit", "-m", "chant(2026-01-24-refinal-003): initial spec"])
+            .args([
+                "commit",
+                "-m",
+                "chant(2026-01-24-refinal-003): initial spec",
+            ])
             .output()
             .unwrap();
 
@@ -5455,7 +5530,11 @@ pr: https://github.com/example/repo/pull/123
             .output()
             .unwrap();
         Command::new("git")
-            .args(["commit", "-m", "chant(2026-01-24-refinal-006): initial spec"])
+            .args([
+                "commit",
+                "-m",
+                "chant(2026-01-24-refinal-006): initial spec",
+            ])
             .output()
             .unwrap();
 
