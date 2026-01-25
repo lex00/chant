@@ -73,10 +73,45 @@ pub struct Spec {
 }
 
 impl Spec {
-    /// Count unchecked checkboxes (`- [ ]`) in the spec body.
-    /// Returns the count of unchecked items.
+    /// Count unchecked checkboxes (`- [ ]`) in the Acceptance Criteria section only.
+    /// Returns the count of unchecked items in that section, skipping code fences.
     pub fn count_unchecked_checkboxes(&self) -> usize {
-        self.body.matches("- [ ]").count()
+        // Find the "## Acceptance Criteria" section
+        let acceptance_criteria_marker = "## Acceptance Criteria";
+
+        let Some(ac_start) = self.body.find(acceptance_criteria_marker) else {
+            return 0;
+        };
+
+        // Find the next "##" heading after the Acceptance Criteria section
+        let section_start = ac_start + acceptance_criteria_marker.len();
+        let section_content = &self.body[section_start..];
+
+        let section_end = section_content
+            .find("\n##")
+            .map(|pos| section_start + pos)
+            .unwrap_or(self.body.len());
+
+        let ac_section = &self.body[section_start..section_end];
+
+        // Count checkboxes while skipping code fences
+        let mut count = 0;
+        let mut in_code_fence = false;
+
+        for line in ac_section.lines() {
+            // Check if line starts or ends a code fence
+            if line.trim_start().starts_with("```") {
+                in_code_fence = !in_code_fence;
+                continue;
+            }
+
+            // Only count checkboxes outside of code fences
+            if !in_code_fence && line.contains("- [ ]") {
+                count += line.matches("- [ ]").count();
+            }
+        }
+
+        count
     }
 
     /// Parse a spec from file content.
@@ -371,6 +406,36 @@ status: pending
         .unwrap();
 
         assert_eq!(spec.count_unchecked_checkboxes(), 0);
+    }
+
+    #[test]
+    fn test_count_unchecked_checkboxes_skip_code_blocks() {
+        let spec = Spec::parse(
+            "001",
+            r#"---
+status: pending
+---
+# Test
+
+## Expected Format
+
+```markdown
+## Acceptance Criteria
+
+- [ ] Example checkbox in code block
+```
+
+## Acceptance Criteria
+
+- [x] Real checkbox
+- [ ] Another real unchecked
+"#,
+        )
+        .unwrap();
+
+        // Should only count the 1 unchecked in the real Acceptance Criteria section
+        // The one in the code block should be ignored
+        assert_eq!(spec.count_unchecked_checkboxes(), 1);
     }
 
     #[test]
