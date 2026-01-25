@@ -8,6 +8,7 @@ mod merge;
 mod prompt;
 mod render;
 mod spec;
+mod templates;
 mod worktree;
 
 use anyhow::{Context, Result};
@@ -42,6 +43,10 @@ enum Commands {
         /// Only create config.md, no prompt templates
         #[arg(long)]
         minimal: bool,
+        /// Initialize agent configuration files (claude, cursor, amazonq, generic, or all)
+        /// Can be specified multiple times
+        #[arg(long, value_name = "PROVIDER")]
+        agent: Vec<String>,
     },
     /// Add a new spec
     Add {
@@ -192,7 +197,8 @@ fn main() -> Result<()> {
             silent,
             force,
             minimal,
-        } => cmd_init(name, silent, force, minimal),
+            agent,
+        } => cmd_init(name, silent, force, minimal, agent),
         Commands::Add { description } => cmd_add(&description),
         Commands::List { ready, label } => cmd_list(ready, &label),
         Commands::Show { id, no_render } => cmd_show(&id, no_render),
@@ -251,7 +257,13 @@ fn main() -> Result<()> {
     }
 }
 
-fn cmd_init(name: Option<String>, silent: bool, force: bool, minimal: bool) -> Result<()> {
+fn cmd_init(
+    name: Option<String>,
+    silent: bool,
+    force: bool,
+    minimal: bool,
+    agents: Vec<String>,
+) -> Result<()> {
     let chant_dir = PathBuf::from(".chant");
 
     // For silent mode: validate that .chant/ is not already tracked in git
@@ -460,12 +472,58 @@ Create as many members as needed (typically 3-5 for a medium spec).
         }
     }
 
+    // Handle agent configuration if specified
+    let parsed_agents = templates::parse_agent_providers(&agents)?;
+    if !parsed_agents.is_empty() {
+        // Create agents directory
+        std::fs::create_dir_all(chant_dir.join("agents"))?;
+
+        // Create agent configuration files for each provider
+        for provider in &parsed_agents {
+            let template = templates::get_template(provider.as_str())?;
+
+            // Determine the target path based on provider
+            let target_path = match provider.config_filename() {
+                ".amazonq/rules.md" => {
+                    // Create .amazonq directory in root
+                    std::fs::create_dir_all(".amazonq")?;
+                    PathBuf::from(".amazonq/rules.md")
+                }
+                filename => {
+                    // Other providers: write to root
+                    PathBuf::from(filename)
+                }
+            };
+
+            // Write the template
+            if let Some(parent) = target_path.parent() {
+                if !parent.as_os_str().is_empty() {
+                    std::fs::create_dir_all(parent)?;
+                }
+            }
+            std::fs::write(&target_path, template.content)?;
+        }
+    }
+
     println!("{} .chant/config.md", "Created".green());
     if !minimal {
         println!("{} .chant/prompts/standard.md", "Created".green());
         println!("{} .chant/prompts/split.md", "Created".green());
     }
     println!("{} .chant/specs/", "Created".green());
+
+    // Print agent files created
+    for provider in &parsed_agents {
+        match provider.config_filename() {
+            ".amazonq/rules.md" => {
+                println!("{} .amazonq/rules.md", "Created".green());
+            }
+            filename => {
+                println!("{} {}", "Created".green(), filename);
+            }
+        }
+    }
+
     println!("\nChant initialized for project: {}", project_name.cyan());
 
     if silent {
@@ -487,6 +545,19 @@ Create as many members as needed (typically 3-5 for a medium spec).
         println!(
             "{} Minimal mode enabled - only config.md created",
             "ℹ".cyan()
+        );
+    }
+
+    if !parsed_agents.is_empty() {
+        let agent_names = parsed_agents
+            .iter()
+            .map(|p| p.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        println!(
+            "{} Agent configuration created for: {}",
+            "ℹ".cyan(),
+            agent_names.cyan()
         );
     }
 
