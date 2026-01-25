@@ -6,9 +6,8 @@ defaults:
   prompt: standard
   branch: false
   pr: false
-  model: qwen2.5-coder:7b
-  provider: ollama
-  split_model: qwen2.5-coder:14b
+  model: haiku
+  split_model: sonnet
 ---
 
 # Chant Configuration
