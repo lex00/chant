@@ -152,7 +152,7 @@ pub fn find_spec_branch(spec_id: &str, branch_prefix: &str) -> Result<String> {
 }
 
 /// Get the current branch name.
-/// Returns the branch name for the current HEAD, or an error if on detached HEAD.
+/// Returns the branch name for the current HEAD, including "HEAD" for detached HEAD state.
 pub fn get_current_branch() -> Result<String> {
     let output = Command::new("git")
         .args(["rev-parse", "--abbrev-ref", "HEAD"])
@@ -167,9 +167,227 @@ pub fn get_current_branch() -> Result<String> {
     Ok(branch)
 }
 
+/// Check if a branch exists in the repository.
+#[allow(dead_code)]
+pub fn branch_exists(branch_name: &str) -> Result<bool> {
+    let output = Command::new("git")
+        .args(["branch", "--list", branch_name])
+        .output()
+        .context("Failed to check if branch exists")?;
+
+    if !output.status.success() {
+        anyhow::bail!("Failed to check if branch exists");
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(!stdout.trim().is_empty())
+}
+
+/// Checkout a specific branch or commit.
+/// If branch is "HEAD", it's a detached HEAD checkout.
+#[allow(dead_code)]
+pub fn checkout_branch(branch: &str, dry_run: bool) -> Result<()> {
+    if dry_run {
+        return Ok(());
+    }
+
+    let output = Command::new("git")
+        .args(["checkout", branch])
+        .output()
+        .context("Failed to run git checkout")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Failed to checkout {}: {}", branch, stderr);
+    }
+
+    Ok(())
+}
+
+/// Merge a branch using fast-forward only.
+/// Returns true if successful, false if there are conflicts.
+#[allow(dead_code)]
+pub fn merge_branch_ff_only(spec_branch: &str, dry_run: bool) -> Result<bool> {
+    if dry_run {
+        return Ok(true);
+    }
+
+    let output = Command::new("git")
+        .args(["merge", "--ff-only", spec_branch])
+        .output()
+        .context("Failed to run git merge")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        // Check if this was a conflict (CONFLICT) or a non-ff situation
+        if stderr.contains("CONFLICT") || stderr.contains("merge conflict") {
+            // Abort the merge
+            let _ = Command::new("git").args(["merge", "--abort"]).output();
+            return Ok(false);
+        }
+
+        anyhow::bail!("Merge failed: {}", stderr);
+    }
+
+    Ok(true)
+}
+
+/// Delete a branch.
+/// Returns Ok(()) on success, or an error if deletion fails.
+#[allow(dead_code)]
+pub fn delete_branch(branch_name: &str, dry_run: bool) -> Result<()> {
+    if dry_run {
+        return Ok(());
+    }
+
+    let output = Command::new("git")
+        .args(["branch", "-d", branch_name])
+        .output()
+        .context("Failed to run git branch -d")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Failed to delete branch {}: {}", branch_name, stderr);
+    }
+
+    Ok(())
+}
+
+/// Merge a single spec's branch into the main branch.
+///
+/// This function:
+/// 1. Saves the current branch
+/// 2. Checks if main branch exists
+/// 3. Checks out main branch
+/// 4. Merges spec branch with fast-forward only
+/// 5. Optionally deletes spec branch if requested
+/// 6. Returns to original branch
+///
+/// In dry-run mode, no actual git commands are executed.
+#[allow(dead_code)]
+pub fn merge_single_spec(
+    spec_id: &str,
+    spec_branch: &str,
+    main_branch: &str,
+    should_delete_branch: bool,
+    dry_run: bool,
+) -> Result<MergeResult> {
+    // Save current branch
+    let original_branch = get_current_branch()?;
+
+    // Check if main branch exists
+    if !dry_run && !branch_exists(main_branch)? {
+        anyhow::bail!("Main branch '{}' does not exist", main_branch);
+    }
+
+    // Check if spec branch exists
+    if !dry_run && !branch_exists(spec_branch)? {
+        anyhow::bail!("Spec branch '{}' not found", spec_branch);
+    }
+
+    // Checkout main branch
+    if let Err(e) = checkout_branch(main_branch, dry_run) {
+        // Try to return to original branch before failing
+        let _ = checkout_branch(&original_branch, false);
+        return Err(e);
+    }
+
+    // Perform merge
+    let merge_success = match merge_branch_ff_only(spec_branch, dry_run) {
+        Ok(success) => success,
+        Err(e) => {
+            // Try to return to original branch before failing
+            let _ = checkout_branch(&original_branch, false);
+            return Err(e);
+        }
+    };
+
+    if !merge_success && !dry_run {
+        // Merge had conflicts - return to original branch
+        let _ = checkout_branch(&original_branch, false);
+        anyhow::bail!("Merge conflicts detected. Aborted merge and returned to original branch.");
+    }
+
+    // Delete branch if requested and merge was successful
+    let mut branch_delete_warning: Option<String> = None;
+    if should_delete_branch && merge_success {
+        if let Err(e) = delete_branch(spec_branch, dry_run) {
+            // Log warning but don't fail overall
+            branch_delete_warning = Some(format!("Warning: Failed to delete branch: {}", e));
+        }
+    }
+
+    // Return to original branch
+    if let Err(e) = checkout_branch(&original_branch, dry_run) {
+        anyhow::bail!(
+            "Failed to return to original branch '{}': {}",
+            original_branch,
+            e
+        );
+    }
+
+    Ok(MergeResult {
+        spec_id: spec_id.to_string(),
+        success: merge_success,
+        original_branch,
+        merged_to: main_branch.to_string(),
+        branch_deleted: should_delete_branch && merge_success,
+        branch_delete_warning,
+        dry_run,
+    })
+}
+
+/// Result of a merge operation.
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct MergeResult {
+    pub spec_id: String,
+    pub success: bool,
+    pub original_branch: String,
+    pub merged_to: String,
+    pub branch_deleted: bool,
+    pub branch_delete_warning: Option<String>,
+    pub dry_run: bool,
+}
+
+/// Format the merge result as a human-readable summary.
+#[allow(dead_code)]
+pub fn format_merge_summary(result: &MergeResult) -> String {
+    let mut output = String::new();
+
+    if result.dry_run {
+        output.push_str("[DRY RUN] ");
+    }
+
+    if result.success {
+        output.push_str(&format!(
+            "✓ Successfully merged {} to {}",
+            result.spec_id, result.merged_to
+        ));
+        if result.branch_deleted {
+            output.push_str(&format!(" and deleted branch {}", result.spec_id));
+        }
+    } else {
+        output.push_str(&format!(
+            "✗ Failed to merge {} to {}",
+            result.spec_id, result.merged_to
+        ));
+    }
+
+    if let Some(warning) = &result.branch_delete_warning {
+        output.push_str(&format!("\n  {}", warning));
+    }
+
+    output.push_str(&format!("\nReturned to branch: {}", result.original_branch));
+
+    output
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use tempfile::TempDir;
 
     #[test]
     fn test_provider_names() {
@@ -218,5 +436,291 @@ mod tests {
             // Should have a branch name (not empty)
             assert!(!branch.is_empty());
         }
+    }
+
+    // Helper function to initialize a mock git repo for testing
+    fn setup_test_repo() -> Result<TempDir> {
+        let temp_dir = TempDir::new()?;
+        let repo_path = temp_dir.path();
+
+        // Initialize git repo
+        Command::new("git")
+            .arg("init")
+            .current_dir(repo_path)
+            .output()?;
+
+        // Configure git
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo_path)
+            .output()?;
+
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo_path)
+            .output()?;
+
+        // Create initial commit
+        let file_path = repo_path.join("test.txt");
+        fs::write(&file_path, "test content")?;
+        Command::new("git")
+            .args(["add", "test.txt"])
+            .current_dir(repo_path)
+            .output()?;
+
+        Command::new("git")
+            .args(["commit", "-m", "Initial commit"])
+            .current_dir(repo_path)
+            .output()?;
+
+        // Create and checkout main branch
+        Command::new("git")
+            .args(["branch", "main"])
+            .current_dir(repo_path)
+            .output()?;
+
+        Command::new("git")
+            .args(["checkout", "main"])
+            .current_dir(repo_path)
+            .output()?;
+
+        Ok(temp_dir)
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_merge_single_spec_successful_dry_run() -> Result<()> {
+        let temp_dir = setup_test_repo()?;
+        let repo_path = temp_dir.path();
+        let original_dir = std::env::current_dir()?;
+
+        std::env::set_current_dir(repo_path)?;
+
+        // Create a spec branch
+        Command::new("git")
+            .args(["checkout", "-b", "spec-001"])
+            .output()?;
+
+        // Make a change on spec branch
+        let file_path = repo_path.join("spec-file.txt");
+        fs::write(&file_path, "spec content")?;
+        Command::new("git")
+            .args(["add", "spec-file.txt"])
+            .output()?;
+        Command::new("git")
+            .args(["commit", "-m", "Add spec-file"])
+            .output()?;
+
+        // Go back to main
+        Command::new("git").args(["checkout", "main"]).output()?;
+
+        // Test merge with dry-run
+        let result = merge_single_spec("spec-001", "spec-001", "main", false, true)?;
+
+        assert!(result.success);
+        assert!(result.dry_run);
+        assert_eq!(result.spec_id, "spec-001");
+        assert_eq!(result.merged_to, "main");
+        assert_eq!(result.original_branch, "main");
+
+        // Verify we're still on main
+        let current = get_current_branch()?;
+        assert_eq!(current, "main");
+
+        // Verify spec branch still exists (because of dry-run)
+        assert!(branch_exists("spec-001")?);
+
+        std::env::set_current_dir(original_dir)?;
+        Ok(())
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_merge_single_spec_successful_with_delete() -> Result<()> {
+        let temp_dir = setup_test_repo()?;
+        let repo_path = temp_dir.path();
+        let original_dir = std::env::current_dir()?;
+
+        std::env::set_current_dir(repo_path)?;
+
+        // Create a spec branch
+        Command::new("git")
+            .args(["checkout", "-b", "spec-002"])
+            .output()?;
+
+        // Make a change on spec branch
+        let file_path = repo_path.join("spec-file2.txt");
+        fs::write(&file_path, "spec content 2")?;
+        Command::new("git")
+            .args(["add", "spec-file2.txt"])
+            .output()?;
+        Command::new("git")
+            .args(["commit", "-m", "Add spec-file2"])
+            .output()?;
+
+        // Go back to main
+        Command::new("git").args(["checkout", "main"]).output()?;
+
+        // Test merge with delete
+        let result = merge_single_spec("spec-002", "spec-002", "main", true, false)?;
+
+        assert!(result.success);
+        assert!(!result.dry_run);
+        assert!(result.branch_deleted);
+
+        // Verify branch was deleted
+        assert!(!branch_exists("spec-002")?);
+
+        // Verify we're back on main
+        let current = get_current_branch()?;
+        assert_eq!(current, "main");
+
+        std::env::set_current_dir(original_dir)?;
+        Ok(())
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_merge_single_spec_nonexistent_main_branch() -> Result<()> {
+        let temp_dir = setup_test_repo()?;
+        let repo_path = temp_dir.path();
+        let original_dir = std::env::current_dir()?;
+
+        std::env::set_current_dir(repo_path)?;
+
+        // Create a spec branch
+        Command::new("git")
+            .args(["checkout", "-b", "spec-003"])
+            .output()?;
+
+        // Make a change on spec branch
+        let file_path = repo_path.join("spec-file3.txt");
+        fs::write(&file_path, "spec content 3")?;
+        Command::new("git")
+            .args(["add", "spec-file3.txt"])
+            .output()?;
+        Command::new("git")
+            .args(["commit", "-m", "Add spec-file3"])
+            .output()?;
+
+        // Test merge with nonexistent main branch
+        let result = merge_single_spec("spec-003", "spec-003", "nonexistent", false, false);
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("does not exist"));
+
+        // Verify we're still on spec-003
+        let current = get_current_branch()?;
+        assert_eq!(current, "spec-003");
+
+        std::env::set_current_dir(original_dir)?;
+        Ok(())
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_merge_single_spec_nonexistent_spec_branch() -> Result<()> {
+        let temp_dir = setup_test_repo()?;
+        let repo_path = temp_dir.path();
+        let original_dir = std::env::current_dir()?;
+
+        std::env::set_current_dir(repo_path)?;
+
+        // Test merge with nonexistent spec branch
+        let result = merge_single_spec("nonexistent", "nonexistent", "main", false, false);
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not found"));
+
+        // Verify we're still on main
+        let current = get_current_branch()?;
+        assert_eq!(current, "main");
+
+        std::env::set_current_dir(original_dir)?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_format_merge_summary_success() {
+        let result = MergeResult {
+            spec_id: "spec-001".to_string(),
+            success: true,
+            original_branch: "main".to_string(),
+            merged_to: "main".to_string(),
+            branch_deleted: false,
+            branch_delete_warning: None,
+            dry_run: false,
+        };
+
+        let summary = format_merge_summary(&result);
+        assert!(summary.contains("✓"));
+        assert!(summary.contains("spec-001"));
+        assert!(summary.contains("Returned to branch: main"));
+    }
+
+    #[test]
+    fn test_format_merge_summary_with_delete() {
+        let result = MergeResult {
+            spec_id: "spec-002".to_string(),
+            success: true,
+            original_branch: "main".to_string(),
+            merged_to: "main".to_string(),
+            branch_deleted: true,
+            branch_delete_warning: None,
+            dry_run: false,
+        };
+
+        let summary = format_merge_summary(&result);
+        assert!(summary.contains("✓"));
+        assert!(summary.contains("deleted branch spec-002"));
+    }
+
+    #[test]
+    fn test_format_merge_summary_dry_run() {
+        let result = MergeResult {
+            spec_id: "spec-003".to_string(),
+            success: true,
+            original_branch: "main".to_string(),
+            merged_to: "main".to_string(),
+            branch_deleted: false,
+            branch_delete_warning: None,
+            dry_run: true,
+        };
+
+        let summary = format_merge_summary(&result);
+        assert!(summary.contains("[DRY RUN]"));
+    }
+
+    #[test]
+    fn test_format_merge_summary_with_warning() {
+        let result = MergeResult {
+            spec_id: "spec-004".to_string(),
+            success: true,
+            original_branch: "main".to_string(),
+            merged_to: "main".to_string(),
+            branch_deleted: false,
+            branch_delete_warning: Some("Warning: Could not delete branch".to_string()),
+            dry_run: false,
+        };
+
+        let summary = format_merge_summary(&result);
+        assert!(summary.contains("Warning"));
+    }
+
+    #[test]
+    fn test_format_merge_summary_failure() {
+        let result = MergeResult {
+            spec_id: "spec-005".to_string(),
+            success: false,
+            original_branch: "main".to_string(),
+            merged_to: "main".to_string(),
+            branch_deleted: false,
+            branch_delete_warning: None,
+            dry_run: false,
+        };
+
+        let summary = format_merge_summary(&result);
+        assert!(summary.contains("✗"));
+        assert!(summary.contains("Failed to merge"));
     }
 }
