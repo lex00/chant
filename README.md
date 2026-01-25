@@ -22,8 +22,17 @@ chmod +x chant
 sudo mv chant /usr/local/bin/
 ```
 
+### Homebrew
+
+Install chant using Homebrew on macOS or Linux:
+
+```bash
+brew tap lex00/tap
+brew install chant
+```
+
 **Other methods:**
-- [Homebrew](#): `brew install lex00/tap/chant`
+- [Homebrew](#homebrew): `brew tap lex00/tap && brew install chant`
 - [Cargo](#): `cargo install --git https://github.com/lex00/chant`
 - [Download binaries](#): Visit the [Releases page](https://github.com/lex00/chant/releases/latest)
 - [Build from source](#): Clone and run `cargo build --release`
