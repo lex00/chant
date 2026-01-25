@@ -59,6 +59,9 @@ pub struct DefaultsConfig {
     /// Default model name to use when env vars are not set
     #[serde(default)]
     pub model: Option<String>,
+    /// Default model name for split operations (defaults to sonnet)
+    #[serde(default)]
+    pub split_model: Option<String>,
 }
 
 fn default_prompt() -> String {
@@ -77,6 +80,7 @@ impl Default for DefaultsConfig {
             pr: false,
             branch_prefix: default_branch_prefix(),
             model: None,
+            split_model: None,
         }
     }
 }
@@ -170,6 +174,7 @@ struct PartialDefaultsConfig {
     pub pr: Option<bool>,
     pub branch_prefix: Option<String>,
     pub model: Option<String>,
+    pub split_model: Option<String>,
 }
 
 #[allow(dead_code)]
@@ -221,6 +226,7 @@ impl PartialConfig {
                     .or(global_defaults.branch_prefix)
                     .unwrap_or_else(default_branch_prefix),
                 model: project_defaults.model.or(global_defaults.model),
+                split_model: project_defaults.split_model.or(global_defaults.split_model),
             },
             git: GitConfig {
                 provider: project_git

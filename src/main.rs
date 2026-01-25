@@ -94,6 +94,9 @@ enum Commands {
     Split {
         /// Spec ID to split (full or partial)
         id: String,
+        /// Model to use for split analysis (overrides config)
+        #[arg(long)]
+        model: Option<String>,
     },
 }
 
@@ -127,7 +130,7 @@ fn main() -> Result<()> {
         Commands::Ready => cmd_list(true, &[]),
         Commands::Lint => cmd_lint(),
         Commands::Log { id, lines, follow } => cmd_log(&id, lines, follow),
-        Commands::Split { id } => cmd_split(&id),
+        Commands::Split { id, model } => cmd_split(&id, model.as_deref()),
     }
 }
 
@@ -1255,6 +1258,16 @@ fn invoke_agent_with_prefix(
 }
 
 fn invoke_agent(message: &str, spec: &Spec, prompt_name: &str, config: &Config) -> Result<String> {
+    invoke_agent_with_model(message, spec, prompt_name, config, None)
+}
+
+fn invoke_agent_with_model(
+    message: &str,
+    spec: &Spec,
+    prompt_name: &str,
+    config: &Config,
+    override_model: Option<&str>,
+) -> Result<String> {
     use std::io::{BufRead, BufReader};
     use std::process::{Command, Stdio};
 
@@ -1270,8 +1283,12 @@ fn invoke_agent(message: &str, spec: &Spec, prompt_name: &str, config: &Config) 
     // Set environment variables
     let spec_file = std::fs::canonicalize(format!(".chant/specs/{}.md", spec.id))?;
 
-    // Get the model to use
-    let model = get_model_for_invocation(config.defaults.model.as_deref());
+    // Get the model to use - allow override
+    let model = if let Some(override_m) = override_model {
+        override_m.to_string()
+    } else {
+        get_model_for_invocation(config.defaults.model.as_deref())
+    };
 
     let mut child = Command::new("claude")
         .arg("--print")
@@ -1654,6 +1671,58 @@ fn parse_model_from_claude_version() -> Option<String> {
     None
 }
 
+/// Get the model to use for split operations.
+/// Resolution order:
+/// 1. --model flag (if provided)
+/// 2. CHANT_SPLIT_MODEL env var
+/// 3. defaults.split_model from config
+/// 4. CHANT_MODEL env var (fallback to general model)
+/// 5. defaults.model from config
+/// 6. Hardcoded default: "sonnet"
+fn get_model_for_split(
+    flag_model: Option<&str>,
+    config_model: Option<&str>,
+    config_split_model: Option<&str>,
+) -> String {
+    // 1. --model flag
+    if let Some(model) = flag_model {
+        if !model.is_empty() {
+            return model.to_string();
+        }
+    }
+
+    // 2. CHANT_SPLIT_MODEL env var
+    if let Ok(model) = std::env::var("CHANT_SPLIT_MODEL") {
+        if !model.is_empty() {
+            return model;
+        }
+    }
+
+    // 3. defaults.split_model from config
+    if let Some(model) = config_split_model {
+        if !model.is_empty() {
+            return model.to_string();
+        }
+    }
+
+    // 4. CHANT_MODEL env var (fallback to general model)
+    if let Ok(model) = std::env::var("CHANT_MODEL") {
+        if !model.is_empty() {
+            return model;
+        }
+    }
+
+    // 5. defaults.model from config
+    if let Some(model) = config_model {
+        if !model.is_empty() {
+            return model.to_string();
+        }
+    }
+
+    // 6. Hardcoded default
+    "sonnet".to_string()
+}
+
 fn append_agent_output(spec: &mut Spec, output: &str) {
     let timestamp = chrono::Local::now()
         .format("%Y-%m-%dT%H:%M:%SZ")
@@ -1679,7 +1748,7 @@ fn append_agent_output(spec: &mut Spec, output: &str) {
     spec.body.push_str(&agent_section);
 }
 
-fn cmd_split(id: &str) -> Result<()> {
+fn cmd_split(id: &str, override_model: Option<&str>) -> Result<()> {
     let specs_dir = PathBuf::from(".chant/specs");
     let prompts_dir = PathBuf::from(".chant/prompts");
     let config = Config::load()?;
@@ -1709,8 +1778,16 @@ fn cmd_split(id: &str) -> Result<()> {
     // Assemble prompt for split analysis
     let split_prompt = prompt::assemble(&spec, &split_prompt_path, &config)?;
 
+    // Get the model to use for split
+    let model = get_model_for_split(
+        override_model,
+        config.defaults.model.as_deref(),
+        config.defaults.split_model.as_deref(),
+    );
+
     // Invoke agent to propose split
-    let agent_output = invoke_agent(&split_prompt, &spec, "split", &config)?;
+    let agent_output =
+        invoke_agent_with_model(&split_prompt, &spec, "split", &config, Some(&model))?;
 
     // Parse subtasks from agent output
     let subtasks = parse_subtasks_from_agent_output(&agent_output)?;
@@ -2842,5 +2919,91 @@ git:
         let saved_spec = spec::resolve_spec(&specs_dir, "2026-01-24-test-xyz").unwrap();
         assert_eq!(saved_spec.frontmatter.status, SpecStatus::Completed);
         assert!(saved_spec.frontmatter.completed_at.is_some());
+    }
+
+    #[test]
+    fn test_get_model_for_split_flag_override() {
+        // Clear env vars for clean test
+        std::env::remove_var("CHANT_SPLIT_MODEL");
+        std::env::remove_var("CHANT_MODEL");
+        std::env::remove_var("ANTHROPIC_MODEL");
+
+        let model = get_model_for_split(Some("claude-opus-4"), None, None);
+        assert_eq!(model, "claude-opus-4");
+    }
+
+    #[test]
+    fn test_get_model_for_split_env_var_split_model() {
+        std::env::remove_var("CHANT_SPLIT_MODEL");
+        std::env::remove_var("CHANT_MODEL");
+        std::env::remove_var("ANTHROPIC_MODEL");
+        std::env::set_var("CHANT_SPLIT_MODEL", "claude-sonnet-4");
+
+        let model = get_model_for_split(None, None, None);
+        assert_eq!(model, "claude-sonnet-4");
+    }
+
+    #[test]
+    fn test_get_model_for_split_config_split_model() {
+        std::env::remove_var("CHANT_SPLIT_MODEL");
+        std::env::remove_var("CHANT_MODEL");
+        std::env::remove_var("ANTHROPIC_MODEL");
+
+        let model = get_model_for_split(None, None, Some("claude-sonnet-4"));
+        assert_eq!(model, "claude-sonnet-4");
+    }
+
+    #[test]
+    fn test_get_model_for_split_fallback_chant_model() {
+        std::env::remove_var("CHANT_SPLIT_MODEL");
+        std::env::remove_var("CHANT_MODEL");
+        std::env::remove_var("ANTHROPIC_MODEL");
+        std::env::set_var("CHANT_MODEL", "haiku");
+
+        let model = get_model_for_split(None, None, None);
+        assert_eq!(model, "haiku");
+    }
+
+    #[test]
+    fn test_get_model_for_split_fallback_config_model() {
+        std::env::remove_var("CHANT_SPLIT_MODEL");
+        std::env::remove_var("CHANT_MODEL");
+        std::env::remove_var("ANTHROPIC_MODEL");
+
+        let model = get_model_for_split(None, Some("haiku"), None);
+        assert_eq!(model, "haiku");
+    }
+
+    #[test]
+    fn test_get_model_for_split_default_sonnet() {
+        std::env::remove_var("CHANT_SPLIT_MODEL");
+        std::env::remove_var("CHANT_MODEL");
+        std::env::remove_var("ANTHROPIC_MODEL");
+
+        let model = get_model_for_split(None, None, None);
+        assert_eq!(model, "sonnet");
+    }
+
+    #[test]
+    fn test_get_model_for_split_resolution_order() {
+        // Set up all levels
+        std::env::set_var("CHANT_SPLIT_MODEL", "sonnet-split");
+        std::env::set_var("CHANT_MODEL", "haiku-general");
+
+        // Flag should win
+        let model = get_model_for_split(
+            Some("opus-flag"),
+            Some("haiku-general"),
+            Some("sonnet-split"),
+        );
+        assert_eq!(model, "opus-flag");
+
+        // Without flag, split_model env should win
+        let model = get_model_for_split(None, Some("haiku-general"), Some("sonnet-split"));
+        assert_eq!(model, "sonnet-split");
+
+        // Cleanup
+        std::env::remove_var("CHANT_SPLIT_MODEL");
+        std::env::remove_var("CHANT_MODEL");
     }
 }
