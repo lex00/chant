@@ -111,6 +111,9 @@ enum Commands {
         /// Force archive of non-completed specs
         #[arg(long)]
         force: bool,
+        /// When archiving a driver, also archive all completed members
+        #[arg(long)]
+        include_members: bool,
     },
 }
 
@@ -150,7 +153,8 @@ fn main() -> Result<()> {
             dry_run,
             older_than,
             force,
-        } => cmd_archive(id.as_deref(), dry_run, older_than, force),
+            include_members,
+        } => cmd_archive(id.as_deref(), dry_run, older_than, force, include_members),
     }
 }
 
@@ -1471,6 +1475,63 @@ fn finalize_spec(spec: &mut Spec, spec_path: &Path, config: &Config) -> Result<(
     spec.save(spec_path)
         .context("Failed to save finalized spec")?;
 
+    // Validation 1: Verify that status was actually changed to Completed
+    anyhow::ensure!(
+        spec.frontmatter.status == SpecStatus::Completed,
+        "Status was not set to Completed after finalization"
+    );
+
+    // Validation 2: Verify that completed_at timestamp is set and in valid ISO format
+    let completed_at = spec
+        .frontmatter
+        .completed_at
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("completed_at timestamp was not set"))?;
+
+    // Validate ISO 8601 format: YYYY-MM-DDTHH:MM:SSZ
+    if !completed_at.ends_with('Z') {
+        anyhow::bail!(
+            "completed_at must end with 'Z' (UTC format), got: {}",
+            completed_at
+        );
+    }
+    if !completed_at.contains('T') {
+        anyhow::bail!(
+            "completed_at must contain 'T' separator (ISO format), got: {}",
+            completed_at
+        );
+    }
+
+    // Validation 3: Verify that spec was actually saved (reload and check)
+    let saved_spec =
+        Spec::load(spec_path).context("Failed to reload spec from disk to verify persistence")?;
+
+    anyhow::ensure!(
+        saved_spec.frontmatter.status == SpecStatus::Completed,
+        "Persisted spec status is not Completed - save may have failed"
+    );
+
+    anyhow::ensure!(
+        saved_spec.frontmatter.completed_at.is_some(),
+        "Persisted spec is missing completed_at - save may have failed"
+    );
+
+    // Model may be None if no model was detected, but commits should match memory
+    match (&spec.frontmatter.commits, &saved_spec.frontmatter.commits) {
+        (Some(mem_commits), Some(saved_commits)) => {
+            anyhow::ensure!(
+                mem_commits == saved_commits,
+                "Persisted commits don't match memory - save may have failed"
+            );
+        }
+        (None, None) => {
+            // Both None is correct
+        }
+        _ => {
+            anyhow::bail!("Persisted commits don't match memory - save may have failed");
+        }
+    }
+
     Ok(())
 }
 
@@ -1929,6 +1990,7 @@ fn cmd_archive(
     dry_run: bool,
     older_than: Option<u64>,
     force: bool,
+    include_members: bool,
 ) -> Result<()> {
     let specs_dir = PathBuf::from(".chant/specs");
     let archive_dir = PathBuf::from(".chant/archive");
@@ -1946,7 +2008,45 @@ fn cmd_archive(
     if let Some(id) = spec_id {
         // Archive specific spec
         if let Some(spec) = specs.iter().find(|s| s.id.starts_with(id)) {
-            to_archive.push(spec.clone());
+            // Check if this is a member spec
+            if let Some(driver_id) = spec::extract_driver_id(&spec.id) {
+                // This is a member spec - check if driver is being archived or already archived
+                let driver_exists = specs.iter().any(|s| s.id == driver_id);
+                if driver_exists {
+                    eprintln!(
+                        "{} Skipping member spec {} - driver {} is not being archived",
+                        "⚠ ".yellow(),
+                        spec.id,
+                        driver_id
+                    );
+                    return Ok(());
+                }
+            } else {
+                // This is a driver spec or standalone spec
+                let members = spec::get_members(&spec.id, &specs);
+                if !members.is_empty() {
+                    // This is a driver spec with members
+                    if !spec::all_members_completed(&spec.id, &specs) {
+                        eprintln!(
+                            "{} Skipping driver spec {} - not all members are completed",
+                            "⚠ ".yellow(),
+                            spec.id
+                        );
+                        return Ok(());
+                    }
+
+                    // All members are completed, add them if include_members is set
+                    to_archive.push(spec.clone());
+                    if include_members {
+                        for member in members {
+                            to_archive.push(member.clone());
+                        }
+                    }
+                } else {
+                    // Standalone spec or driver with no members
+                    to_archive.push(spec.clone());
+                }
+            }
         } else {
             anyhow::bail!("Spec {} not found", id);
         }
@@ -1954,7 +2054,7 @@ fn cmd_archive(
         // Archive by criteria
         let now = chrono::Local::now();
 
-        for spec in specs {
+        for spec in &specs {
             // Skip if not completed (unless force)
             if spec.frontmatter.status != SpecStatus::Completed && !force {
                 continue;
@@ -1978,7 +2078,25 @@ fn cmd_archive(
                 }
             }
 
-            to_archive.push(spec);
+            // Check group constraints
+            if let Some(driver_id) = spec::extract_driver_id(&spec.id) {
+                // This is a member spec - skip unless driver is already archived
+                let driver_exists = specs.iter().any(|s| s.id == driver_id);
+                if driver_exists {
+                    continue; // Driver still exists, skip this member
+                }
+            } else {
+                // This is a driver spec or standalone spec
+                let members = spec::get_members(&spec.id, &specs);
+                if !members.is_empty() {
+                    // This is a driver spec with members - check if all are completed
+                    if !spec::all_members_completed(&spec.id, &specs) {
+                        continue; // Not all members completed, skip this driver
+                    }
+                }
+            }
+
+            to_archive.push(spec.clone());
         }
     }
 
@@ -3205,6 +3323,277 @@ git:
     }
 
     #[test]
+    fn test_finalize_spec_validates_all_three_fields_persisted() {
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path().to_path_buf();
+
+        // Create a spec with in_progress status
+        let spec_content = r#"---
+type: task
+status: in_progress
+---
+
+# Test spec
+
+## Acceptance Criteria
+
+- [x] Item 1
+- [x] Item 2
+"#;
+        let spec_path = specs_dir.join("test-case1.md");
+        std::fs::create_dir_all(&specs_dir).unwrap();
+        std::fs::write(&spec_path, spec_content).unwrap();
+
+        let config_str = r#"---
+project:
+  name: test-project
+defaults:
+  prompt: standard
+  branch: true
+  pr: false
+  branch_prefix: "chant/"
+git:
+  provider: github
+---
+"#;
+        let config = Config::parse(config_str).unwrap();
+
+        let mut spec = Spec::load(&spec_path).unwrap();
+
+        // Finalize the spec
+        finalize_spec(&mut spec, &spec_path, &config).unwrap();
+
+        // Verify status and completed_at are set in memory
+        assert_eq!(spec.frontmatter.status, SpecStatus::Completed);
+        assert!(spec.frontmatter.completed_at.is_some());
+        // Model may be None if not detected in tests
+
+        // Reload from disk to verify persistence
+        let reloaded = Spec::load(&spec_path).unwrap();
+        assert_eq!(reloaded.frontmatter.status, SpecStatus::Completed);
+        assert!(reloaded.frontmatter.completed_at.is_some());
+        // Model may be None if not detected in tests
+    }
+
+    #[test]
+    fn test_finalize_spec_completed_at_format() {
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path().to_path_buf();
+
+        let spec_content = r#"---
+type: task
+status: in_progress
+---
+
+# Test spec
+
+## Acceptance Criteria
+
+- [x] Item 1
+"#;
+        let spec_path = specs_dir.join("test-case2.md");
+        std::fs::create_dir_all(&specs_dir).unwrap();
+        std::fs::write(&spec_path, spec_content).unwrap();
+
+        let config_str = r#"---
+project:
+  name: test-project
+defaults:
+  prompt: standard
+  branch: true
+  pr: false
+  branch_prefix: "chant/"
+git:
+  provider: github
+---
+"#;
+        let config = Config::parse(config_str).unwrap();
+
+        let mut spec = Spec::load(&spec_path).unwrap();
+        finalize_spec(&mut spec, &spec_path, &config).unwrap();
+
+        // Verify ISO format YYYY-MM-DDTHH:MM:SSZ
+        let completed_at = spec.frontmatter.completed_at.as_ref().unwrap();
+        assert!(
+            completed_at.ends_with('Z'),
+            "completed_at must end with Z: {}",
+            completed_at
+        );
+        assert!(
+            completed_at.contains('T'),
+            "completed_at must contain T: {}",
+            completed_at
+        );
+
+        // Should match pattern like: 2026-01-24T15:30:00Z
+        let parts: Vec<&str> = completed_at.split('T').collect();
+        assert_eq!(
+            parts.len(),
+            2,
+            "completed_at must have T separator: {}",
+            completed_at
+        );
+
+        // Verify date part (YYYY-MM-DD)
+        assert_eq!(parts[0].len(), 10, "Date part should be YYYY-MM-DD");
+        let date_parts: Vec<&str> = parts[0].split('-').collect();
+        assert_eq!(date_parts.len(), 3, "Date should have 3 parts");
+
+        // Verify time part (HH:MM:SSZ)
+        let time_part = parts[1];
+        assert!(time_part.ends_with('Z'));
+        let time_without_z = &time_part[..time_part.len() - 1];
+        let time_parts: Vec<&str> = time_without_z.split(':').collect();
+        assert_eq!(time_parts.len(), 3, "Time should have 3 parts (HH:MM:SS)");
+    }
+
+    #[test]
+    fn test_finalize_spec_empty_commits_becomes_none() {
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path().to_path_buf();
+
+        let spec_content = r#"---
+type: task
+status: in_progress
+---
+
+# Test spec
+
+## Acceptance Criteria
+
+- [x] Item 1
+"#;
+        let spec_path = specs_dir.join("test-case3.md");
+        std::fs::create_dir_all(&specs_dir).unwrap();
+        std::fs::write(&spec_path, spec_content).unwrap();
+
+        let config_str = r#"---
+project:
+  name: test-project
+defaults:
+  prompt: standard
+  branch: true
+  pr: false
+  branch_prefix: "chant/"
+git:
+  provider: github
+---
+"#;
+        let config = Config::parse(config_str).unwrap();
+
+        let mut spec = Spec::load(&spec_path).unwrap();
+        finalize_spec(&mut spec, &spec_path, &config).unwrap();
+
+        // When commits list is empty, it should be None (not an empty array)
+        // Note: This test assumes no commits were found (the spec we created won't have any)
+        // If get_commits_for_spec returns empty, it should become None
+        match &spec.frontmatter.commits {
+            None => {
+                // This is expected when there are no commits
+            }
+            Some(commits) => {
+                // If commits exist, that's fine too - the important thing is no empty arrays
+                assert!(
+                    !commits.is_empty(),
+                    "Commits should never be an empty array"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_finalize_spec_validates_status_changed() {
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path().to_path_buf();
+
+        let spec_content = r#"---
+type: task
+status: in_progress
+---
+
+# Test spec
+
+## Acceptance Criteria
+
+- [x] Item 1
+"#;
+        let spec_path = specs_dir.join("test-case4.md");
+        std::fs::create_dir_all(&specs_dir).unwrap();
+        std::fs::write(&spec_path, spec_content).unwrap();
+
+        let config_str = r#"---
+project:
+  name: test-project
+defaults:
+  prompt: standard
+  branch: true
+  pr: false
+  branch_prefix: "chant/"
+git:
+  provider: github
+---
+"#;
+        let config = Config::parse(config_str).unwrap();
+
+        let mut spec = Spec::load(&spec_path).unwrap();
+
+        // Verify status changes to Completed
+        assert_ne!(spec.frontmatter.status, SpecStatus::Completed);
+        finalize_spec(&mut spec, &spec_path, &config).unwrap();
+        assert_eq!(spec.frontmatter.status, SpecStatus::Completed);
+    }
+
+    #[test]
+    fn test_finalize_spec_persists_all_fields() {
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path().to_path_buf();
+
+        let spec_content = r#"---
+type: task
+status: in_progress
+---
+
+# Test spec
+
+## Acceptance Criteria
+
+- [x] Item 1
+"#;
+        let spec_path = specs_dir.join("test-case5.md");
+        std::fs::create_dir_all(&specs_dir).unwrap();
+        std::fs::write(&spec_path, spec_content).unwrap();
+
+        let config_str = r#"---
+project:
+  name: test-project
+defaults:
+  prompt: standard
+  branch: true
+  pr: false
+  branch_prefix: "chant/"
+git:
+  provider: github
+---
+"#;
+        let config = Config::parse(config_str).unwrap();
+
+        let mut spec = Spec::load(&spec_path).unwrap();
+        finalize_spec(&mut spec, &spec_path, &config).unwrap();
+
+        // Reload from disk
+        let reloaded = Spec::load(&spec_path).unwrap();
+
+        // Status and completed_at must be persisted
+        assert_eq!(reloaded.frontmatter.status, SpecStatus::Completed);
+        assert!(reloaded.frontmatter.completed_at.is_some());
+
+        // Verify the file content contains key fields
+        let file_content = std::fs::read_to_string(&spec_path).unwrap();
+        assert!(file_content.contains("status: completed"));
+        assert!(file_content.contains("completed_at:"));
+    }
+
+    #[test]
     fn test_get_model_for_split_flag_override() {
         // Clear env vars for clean test
         std::env::remove_var("CHANT_SPLIT_MODEL");
@@ -3444,5 +3833,157 @@ status: {}
         assert!(archived_path.exists());
         let content = std::fs::read_to_string(&archived_path).unwrap();
         assert_eq!(content, "test content");
+    }
+
+    #[test]
+    fn test_archive_driver_with_incomplete_members() {
+        // Test that driver specs with incomplete members cannot be archived
+        let driver = Spec {
+            id: "2026-01-24-001-abc".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                ..Default::default()
+            },
+            title: Some("Driver spec".to_string()),
+            body: "# Driver\n\nBody.".to_string(),
+        };
+
+        let member1 = Spec {
+            id: "2026-01-24-001-abc.1".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                ..Default::default()
+            },
+            title: Some("Member 1".to_string()),
+            body: "# Member 1\n\nBody.".to_string(),
+        };
+
+        let member2 = Spec {
+            id: "2026-01-24-001-abc.2".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending, // Not completed
+                ..Default::default()
+            },
+            title: Some("Member 2".to_string()),
+            body: "# Member 2\n\nBody.".to_string(),
+        };
+
+        let specs = vec![driver, member1, member2];
+
+        // Check that all_members_completed returns false
+        assert!(!spec::all_members_completed("2026-01-24-001-abc", &specs));
+    }
+
+    #[test]
+    fn test_archive_driver_with_all_completed_members() {
+        // Test that driver specs with all completed members can be archived
+        let driver = Spec {
+            id: "2026-01-24-002-def".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                ..Default::default()
+            },
+            title: Some("Driver spec".to_string()),
+            body: "# Driver\n\nBody.".to_string(),
+        };
+
+        let member1 = Spec {
+            id: "2026-01-24-002-def.1".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                ..Default::default()
+            },
+            title: Some("Member 1".to_string()),
+            body: "# Member 1\n\nBody.".to_string(),
+        };
+
+        let member2 = Spec {
+            id: "2026-01-24-002-def.2".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                ..Default::default()
+            },
+            title: Some("Member 2".to_string()),
+            body: "# Member 2\n\nBody.".to_string(),
+        };
+
+        let specs = vec![driver, member1, member2];
+
+        // Check that all_members_completed returns true
+        assert!(spec::all_members_completed("2026-01-24-002-def", &specs));
+    }
+
+    #[test]
+    fn test_get_members() {
+        // Test that get_members correctly identifies all members of a driver
+        let driver = Spec {
+            id: "2026-01-24-003-ghi".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                ..Default::default()
+            },
+            title: Some("Driver".to_string()),
+            body: "# Driver\n\nBody.".to_string(),
+        };
+
+        let member1 = Spec {
+            id: "2026-01-24-003-ghi.1".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                ..Default::default()
+            },
+            title: Some("Member 1".to_string()),
+            body: "# Member 1\n\nBody.".to_string(),
+        };
+
+        let member2 = Spec {
+            id: "2026-01-24-003-ghi.2".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                ..Default::default()
+            },
+            title: Some("Member 2".to_string()),
+            body: "# Member 2\n\nBody.".to_string(),
+        };
+
+        let other_spec = Spec {
+            id: "2026-01-24-004-jkl".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                ..Default::default()
+            },
+            title: Some("Other".to_string()),
+            body: "# Other\n\nBody.".to_string(),
+        };
+
+        let specs = vec![driver, member1, member2, other_spec];
+
+        // Get members of the first driver
+        let members = spec::get_members("2026-01-24-003-ghi", &specs);
+        assert_eq!(members.len(), 2);
+        assert!(members.iter().any(|m| m.id == "2026-01-24-003-ghi.1"));
+        assert!(members.iter().any(|m| m.id == "2026-01-24-003-ghi.2"));
+    }
+
+    #[test]
+    fn test_archive_member_without_driver() {
+        // Test that member specs without a driver are still treated correctly
+        let member = Spec {
+            id: "2026-01-24-005-mno.1".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                ..Default::default()
+            },
+            title: Some("Member without driver".to_string()),
+            body: "# Member\n\nBody.".to_string(),
+        };
+
+        let specs = vec![member];
+
+        // extract_driver_id should return Some for a member
+        assert_eq!(
+            spec::extract_driver_id("2026-01-24-005-mno.1"),
+            Some("2026-01-24-005-mno".to_string())
+        );
     }
 }

@@ -225,6 +225,25 @@ fn is_member_of(member_id: &str, driver_id: &str) -> bool {
     suffix.starts_with('.') && suffix.len() > 1
 }
 
+/// Get all member specs of a driver spec.
+pub fn get_members<'a>(driver_id: &str, specs: &'a [Spec]) -> Vec<&'a Spec> {
+    specs
+        .iter()
+        .filter(|s| is_member_of(&s.id, driver_id))
+        .collect()
+}
+
+/// Check if all members of a driver spec are completed or archived.
+pub fn all_members_completed(driver_id: &str, specs: &[Spec]) -> bool {
+    let members = get_members(driver_id, specs);
+    if members.is_empty() {
+        return true; // No members, so all are "completed"
+    }
+    members
+        .iter()
+        .all(|m| m.frontmatter.status == SpecStatus::Completed)
+}
+
 /// Extract the driver ID from a member ID.
 /// For example: "2026-01-24-01e-o0l.1" -> "2026-01-24-01e-o0l"
 /// Returns Some(driver_id) if this is a member spec, None otherwise.
