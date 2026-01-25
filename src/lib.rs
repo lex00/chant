@@ -18,6 +18,7 @@
 //! ## Modules
 //!
 //! - [`spec`] - Spec parsing, frontmatter handling, and lifecycle management
+//! - [`spec_group`] - Spec group/driver orchestration logic
 //! - [`config`] - Configuration management for chant projects
 //! - [`git`] - Git provider abstraction for PR creation
 //! - [`provider`] - AI model provider abstraction
@@ -58,4 +59,5 @@ pub mod merge;
 pub mod prompt;
 pub mod provider;
 pub mod spec;
+pub mod spec_group;
 pub mod worktree;
