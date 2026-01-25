@@ -189,7 +189,11 @@ enum Commands {
         yes: bool,
     },
     /// Show version information
-    Version,
+    Version {
+        /// Show additional build information
+        #[arg(long, short)]
+        verbose: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -258,7 +262,7 @@ fn main() -> Result<()> {
             dry_run,
             yes,
         } => cmd_delete(&id, force, cascade, delete_branch, dry_run, yes),
-        Commands::Version => cmd_version(),
+        Commands::Version { verbose } => cmd_version(verbose),
     }
 }
 
@@ -907,9 +911,17 @@ fn cmd_status() -> Result<()> {
     Ok(())
 }
 
-fn cmd_version() -> Result<()> {
+fn cmd_version(verbose: bool) -> Result<()> {
     const VERSION: &str = env!("CARGO_PKG_VERSION");
     println!("chant {}", VERSION);
+
+    if verbose {
+        const GIT_SHA: &str = env!("GIT_SHA");
+        const BUILD_DATE: &str = env!("BUILD_DATE");
+        println!("commit: {}", GIT_SHA);
+        println!("built: {}", BUILD_DATE);
+    }
+
     Ok(())
 }
 
