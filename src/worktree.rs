@@ -108,8 +108,18 @@ pub struct MergeCleanupResult {
 ///
 /// If there are merge conflicts, the branch is preserved for manual resolution.
 pub fn merge_and_cleanup(branch: &str) -> MergeCleanupResult {
+    merge_and_cleanup_in_dir(branch, None)
+}
+
+/// Internal function that merges a branch to main with optional working directory.
+fn merge_and_cleanup_in_dir(branch: &str, work_dir: Option<&Path>) -> MergeCleanupResult {
     // Checkout main branch
-    let output = match Command::new("git").args(["checkout", "main"]).output() {
+    let mut cmd = Command::new("git");
+    cmd.args(["checkout", "main"]);
+    if let Some(dir) = work_dir {
+        cmd.current_dir(dir);
+    }
+    let output = match cmd.output() {
         Ok(o) => o,
         Err(e) => {
             return MergeCleanupResult {
@@ -130,10 +140,12 @@ pub fn merge_and_cleanup(branch: &str) -> MergeCleanupResult {
     }
 
     // Perform fast-forward merge
-    let output = match Command::new("git")
-        .args(["merge", "--ff-only", branch])
-        .output()
-    {
+    let mut cmd = Command::new("git");
+    cmd.args(["merge", "--ff-only", branch]);
+    if let Some(dir) = work_dir {
+        cmd.current_dir(dir);
+    }
+    let output = match cmd.output() {
         Ok(o) => o,
         Err(e) => {
             return MergeCleanupResult {
@@ -151,7 +163,12 @@ pub fn merge_and_cleanup(branch: &str) -> MergeCleanupResult {
 
         // Abort merge if there was a conflict to preserve the branch
         if has_conflict {
-            let _ = Command::new("git").args(["merge", "--abort"]).output();
+            let mut cmd = Command::new("git");
+            cmd.args(["merge", "--abort"]);
+            if let Some(dir) = work_dir {
+                cmd.current_dir(dir);
+            }
+            let _ = cmd.output();
         }
 
         return MergeCleanupResult {
@@ -165,7 +182,12 @@ pub fn merge_and_cleanup(branch: &str) -> MergeCleanupResult {
     }
 
     // Delete the branch after successful merge
-    let output = match Command::new("git").args(["branch", "-d", branch]).output() {
+    let mut cmd = Command::new("git");
+    cmd.args(["branch", "-d", branch]);
+    if let Some(dir) = work_dir {
+        cmd.current_dir(dir);
+    }
+    let output = match cmd.output() {
         Ok(o) => o,
         Err(e) => {
             return MergeCleanupResult {
@@ -203,7 +225,7 @@ mod tests {
         fs::create_dir_all(repo_dir)?;
 
         let output = StdCommand::new("git")
-            .arg("init")
+            .args(["init", "-b", "main"])
             .current_dir(repo_dir)
             .output()
             .context("Failed to run git init")?;
@@ -399,8 +421,8 @@ mod tests {
                 String::from_utf8_lossy(&output.stderr)
             );
 
-            // Now call merge_and_cleanup while in the repo directory
-            merge_and_cleanup(branch)
+            // Now call merge_and_cleanup with explicit repo directory
+            merge_and_cleanup_in_dir(branch, Some(&repo_dir))
         };
 
         // Always restore original directory
@@ -478,8 +500,8 @@ mod tests {
                 String::from_utf8_lossy(&output.stderr)
             );
 
-            // Merge the branch
-            merge_and_cleanup(branch)
+            // Merge the branch with explicit repo directory
+            merge_and_cleanup_in_dir(branch, Some(&repo_dir))
         };
 
         // Always restore original directory
