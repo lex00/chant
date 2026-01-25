@@ -11,7 +11,7 @@ use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 
-use crate::spec::{load_all_specs, resolve_spec, SpecStatus};
+use chant::spec::{load_all_specs, resolve_spec, SpecStatus};
 
 /// JSON-RPC 2.0 Request
 #[derive(Debug, Deserialize)]
