@@ -337,6 +337,51 @@ pub fn mark_driver_in_progress(specs_dir: &Path, member_id: &str) -> Result<()> 
     Ok(())
 }
 
+/// Auto-complete a driver spec if all its members are now completed.
+/// Returns Ok(true) if the driver was auto-completed, Ok(false) if it wasn't ready.
+/// This function should be called after a member spec completes.
+pub fn auto_complete_driver_if_ready(
+    member_id: &str,
+    all_specs: &[Spec],
+    specs_dir: &Path,
+) -> Result<bool> {
+    // Only member specs can trigger driver auto-completion
+    let Some(driver_id) = extract_driver_id(member_id) else {
+        return Ok(false);
+    };
+
+    // Find the driver spec
+    let Some(driver_spec) = all_specs.iter().find(|s| s.id == driver_id) else {
+        return Ok(false);
+    };
+
+    // Only auto-complete if driver is in_progress
+    if driver_spec.frontmatter.status != SpecStatus::InProgress {
+        return Ok(false);
+    }
+
+    // Check if all members are completed
+    if !all_members_completed(&driver_id, all_specs) {
+        return Ok(false);
+    }
+
+    // All members are completed, so auto-complete the driver
+    let driver_path = specs_dir.join(format!("{}.md", driver_id));
+    let mut driver = Spec::load(&driver_path)?;
+
+    driver.frontmatter.status = SpecStatus::Completed;
+    driver.frontmatter.completed_at = Some(
+        chrono::Local::now()
+            .format("%Y-%m-%dT%H:%M:%SZ")
+            .to_string(),
+    );
+    driver.frontmatter.model = Some("auto-completed".to_string());
+
+    driver.save(&driver_path)?;
+
+    Ok(true)
+}
+
 fn split_frontmatter(content: &str) -> (Option<String>, &str) {
     let content = content.trim();
 
@@ -971,5 +1016,231 @@ status: in_progress
         assert_eq!(incomplete.len(), 2);
         assert!(incomplete.contains(&"2026-01-24-005-mno.2".to_string()));
         assert!(incomplete.contains(&"2026-01-24-005-mno.3".to_string()));
+    }
+
+    #[test]
+    fn test_auto_complete_driver_not_member_spec() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        // A non-member spec should not trigger auto-completion
+        let driver_spec = Spec::parse(
+            "2026-01-24-006-pqr",
+            r#"---
+status: in_progress
+---
+# Driver spec
+"#,
+        )
+        .unwrap();
+
+        let result = auto_complete_driver_if_ready("2026-01-24-006-pqr", &[driver_spec], specs_dir)
+            .unwrap();
+        assert!(!result, "Non-member spec should not trigger auto-completion");
+    }
+
+    #[test]
+    fn test_auto_complete_driver_driver_not_in_progress() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        // Create a driver spec that is pending (not in_progress)
+        let driver_spec = Spec::parse(
+            "2026-01-24-007-stu",
+            r#"---
+status: pending
+---
+# Driver spec
+"#,
+        )
+        .unwrap();
+
+        let member_spec = Spec::parse(
+            "2026-01-24-007-stu.1",
+            r#"---
+status: completed
+---
+# Member 1
+"#,
+        )
+        .unwrap();
+
+        let all_specs = vec![driver_spec, member_spec];
+        let result = auto_complete_driver_if_ready("2026-01-24-007-stu.1", &all_specs, specs_dir)
+            .unwrap();
+        assert!(!result, "Driver not in progress should not be auto-completed");
+    }
+
+    #[test]
+    fn test_auto_complete_driver_incomplete_members() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        // Create a driver spec that is in_progress
+        let driver_spec = Spec {
+            id: "2026-01-24-008-vwx".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::InProgress,
+                ..Default::default()
+            },
+            title: Some("Driver".to_string()),
+            body: "# Driver\n\nBody.".to_string(),
+        };
+
+        let driver_path = specs_dir.join("2026-01-24-008-vwx.md");
+        driver_spec.save(&driver_path).unwrap();
+
+        // Create member specs where not all are completed
+        let member1 = Spec::parse(
+            "2026-01-24-008-vwx.1",
+            r#"---
+status: completed
+---
+# Member 1
+"#,
+        )
+        .unwrap();
+
+        let member2 = Spec::parse(
+            "2026-01-24-008-vwx.2",
+            r#"---
+status: in_progress
+---
+# Member 2
+"#,
+        )
+        .unwrap();
+
+        let all_specs = vec![driver_spec, member1, member2];
+        let result = auto_complete_driver_if_ready("2026-01-24-008-vwx.1", &all_specs, specs_dir)
+            .unwrap();
+        assert!(!result, "Driver should not complete when members are incomplete");
+    }
+
+    #[test]
+    fn test_auto_complete_driver_success() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        // Create a driver spec that is in_progress
+        let driver_spec = Spec {
+            id: "2026-01-24-009-yz0".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::InProgress,
+                ..Default::default()
+            },
+            title: Some("Driver".to_string()),
+            body: "# Driver\n\nBody.".to_string(),
+        };
+
+        let driver_path = specs_dir.join("2026-01-24-009-yz0.md");
+        driver_spec.save(&driver_path).unwrap();
+
+        // Create member specs where all are completed
+        let member1 = Spec::parse(
+            "2026-01-24-009-yz0.1",
+            r#"---
+status: completed
+---
+# Member 1
+"#,
+        )
+        .unwrap();
+
+        let member2 = Spec::parse(
+            "2026-01-24-009-yz0.2",
+            r#"---
+status: completed
+---
+# Member 2
+"#,
+        )
+        .unwrap();
+
+        let all_specs = vec![driver_spec, member1, member2];
+
+        // Auto-complete should succeed
+        let result = auto_complete_driver_if_ready("2026-01-24-009-yz0.2", &all_specs, specs_dir)
+            .unwrap();
+        assert!(result, "Driver should be auto-completed when all members are completed");
+
+        // Verify driver was updated
+        let updated_driver = Spec::load(&driver_path).unwrap();
+        assert_eq!(updated_driver.frontmatter.status, SpecStatus::Completed);
+        assert_eq!(
+            updated_driver.frontmatter.model,
+            Some("auto-completed".to_string())
+        );
+        assert!(updated_driver.frontmatter.completed_at.is_some());
+    }
+
+    #[test]
+    fn test_auto_complete_driver_nonexistent_driver() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        // Try to auto-complete when driver doesn't exist
+        let all_specs = vec![];
+        let result = auto_complete_driver_if_ready("2026-01-24-010-abc.1", &all_specs, specs_dir)
+            .unwrap();
+        assert!(!result, "Should return false when driver spec doesn't exist");
+    }
+
+    #[test]
+    fn test_auto_complete_driver_single_member() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        // Driver with single member
+        let driver_spec = Spec {
+            id: "2026-01-24-011-def".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::InProgress,
+                ..Default::default()
+            },
+            title: Some("Driver".to_string()),
+            body: "# Driver\n\nBody.".to_string(),
+        };
+
+        let driver_path = specs_dir.join("2026-01-24-011-def.md");
+        driver_spec.save(&driver_path).unwrap();
+
+        // Single member
+        let member = Spec::parse(
+            "2026-01-24-011-def.1",
+            r#"---
+status: completed
+---
+# Member 1
+"#,
+        )
+        .unwrap();
+
+        let all_specs = vec![driver_spec, member];
+
+        // Auto-complete should succeed
+        let result = auto_complete_driver_if_ready("2026-01-24-011-def.1", &all_specs, specs_dir)
+            .unwrap();
+        assert!(result, "Driver should be auto-completed when single member completes");
+
+        // Verify driver was updated
+        let updated_driver = Spec::load(&driver_path).unwrap();
+        assert_eq!(updated_driver.frontmatter.status, SpecStatus::Completed);
+        assert_eq!(
+            updated_driver.frontmatter.model,
+            Some("auto-completed".to_string())
+        );
     }
 }

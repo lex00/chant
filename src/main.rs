@@ -1033,6 +1033,12 @@ fn cmd_work(
             let all_specs = spec::load_all_specs(&specs_dir)?;
             finalize_spec(&mut spec, &spec_path, &config, &all_specs)?;
 
+            // If this is a member spec, check if driver should be auto-completed
+            if spec::auto_complete_driver_if_ready(&spec.id, &all_specs, &specs_dir)? {
+                println!("\n{} Auto-completed driver spec: {}", "✓".green(),
+                    spec::extract_driver_id(&spec.id).unwrap());
+            }
+
             println!("\n{} Spec completed!", "✓".green());
             if let Some(commits) = &spec.frontmatter.commits {
                 for commit in commits {
@@ -1486,6 +1492,20 @@ fn cmd_work_parallel(
     // Wait for all threads to finish
     for handle in handles {
         let _ = handle.join();
+    }
+
+    // Auto-complete drivers if all their members completed
+    let all_specs = spec::load_all_specs(specs_dir).unwrap_or_default();
+
+    for result in &all_results {
+        if result.success {
+            // Check if this completed spec triggers driver auto-completion
+            if let Ok(true) = spec::auto_complete_driver_if_ready(&result.spec_id, &all_specs, specs_dir) {
+                if let Some(driver_id) = spec::extract_driver_id(&result.spec_id) {
+                    println!("[{}] {} Auto-completed driver spec: {}", result.spec_id.cyan(), "✓".green(), driver_id);
+                }
+            }
+        }
     }
 
     // Print summary
