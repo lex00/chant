@@ -32,3 +32,4 @@ You are implementing a spec for {{project.name}}.
 - Do not refactor unrelated code
 - Always add model: {{spec.model}} to frontmatter after all acc criteria met
 - Always ensure chant binary builds
+- After encountering an unexpected error, chant add new spec to fix it
