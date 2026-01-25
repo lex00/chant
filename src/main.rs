@@ -1305,7 +1305,7 @@ fn cmd_work_parallel(
                     };
 
                     // Update spec status based on cleanup result
-                    let mut success_final = !matches!(&cleanup_error, Some(_));
+                    let mut success_final = cleanup_error.is_none();
                     let mut status_final = if cleanup_error.is_some() {
                         SpecStatus::NeedsAttention
                     } else {
@@ -1329,7 +1329,8 @@ fn cmd_work_parallel(
                                     vec![]
                                 }
                             };
-                            let incomplete_members = spec::get_incomplete_members(&spec_id, &all_specs);
+                            let incomplete_members =
+                                spec::get_incomplete_members(&spec_id, &all_specs);
                             if !incomplete_members.is_empty() {
                                 eprintln!(
                                     "{} [{}] Cannot complete driver spec with {} incomplete member(s): {}",
@@ -1344,7 +1345,8 @@ fn cmd_work_parallel(
                                 status_final = SpecStatus::NeedsAttention;
                             } else {
                                 spec.frontmatter.status = status_final.clone();
-                                spec.frontmatter.commits = commits.clone().filter(|c| !c.is_empty());
+                                spec.frontmatter.commits =
+                                    commits.clone().filter(|c| !c.is_empty());
                                 spec.frontmatter.completed_at = Some(
                                     chrono::Local::now()
                                         .format("%Y-%m-%dT%H:%M:%SZ")
@@ -1781,7 +1783,12 @@ fn get_commits_for_spec(spec_id: &str) -> Result<Vec<String>> {
 /// Finalize a spec after successful completion
 /// Sets status, commits, completed_at, and model
 /// This function is idempotent and can be called multiple times safely
-fn finalize_spec(spec: &mut Spec, spec_path: &Path, config: &Config, all_specs: &[Spec]) -> Result<()> {
+fn finalize_spec(
+    spec: &mut Spec,
+    spec_path: &Path,
+    config: &Config,
+    all_specs: &[Spec],
+) -> Result<()> {
     // Check if this is a driver spec with incomplete members
     let incomplete_members = spec::get_incomplete_members(&spec.id, all_specs);
     if !incomplete_members.is_empty() {
@@ -2501,9 +2508,8 @@ fn cmd_archive(
 
                     // All members are completed, automatically add them first (sorted by member number)
                     let mut sorted_members = members.clone();
-                    sorted_members.sort_by_key(|m| {
-                        spec::extract_member_number(&m.id).unwrap_or(u32::MAX)
-                    });
+                    sorted_members
+                        .sort_by_key(|m| spec::extract_member_number(&m.id).unwrap_or(u32::MAX));
                     for member in sorted_members {
                         to_archive.push(member.clone());
                     }
@@ -2562,9 +2568,8 @@ fn cmd_archive(
                     }
                     // Add members first (sorted by member number)
                     let mut sorted_members = members.clone();
-                    sorted_members.sort_by_key(|m| {
-                        spec::extract_member_number(&m.id).unwrap_or(u32::MAX)
-                    });
+                    sorted_members
+                        .sort_by_key(|m| spec::extract_member_number(&m.id).unwrap_or(u32::MAX));
                     for member in sorted_members {
                         to_archive.push(member.clone());
                     }
@@ -2592,11 +2597,7 @@ fn cmd_archive(
     }
 
     if dry_run {
-        println!(
-            "{} Would archive {} spec(s):",
-            "→".cyan(),
-            to_archive.len()
-        );
+        println!("{} Would archive {} spec(s):", "→".cyan(), to_archive.len());
         for spec in &to_archive {
             if spec::extract_driver_id(&spec.id).is_some() {
                 println!("  {} {} (member)", "→".cyan(), spec.id);
@@ -4695,11 +4696,7 @@ completed_at: 2026-01-24T10:00:00+00:00
 ---
 # Driver Spec
 "#;
-        std::fs::write(
-            specs_dir.join(format!("{}.md", driver_id)),
-            driver_content,
-        )
-        .unwrap();
+        std::fs::write(specs_dir.join(format!("{}.md", driver_id)), driver_content).unwrap();
 
         // Create 5 member specs
         for i in 1..=5 {
@@ -4714,11 +4711,7 @@ completed_at: 2026-01-24T10:00:00+00:00
 "#,
                 i
             );
-            std::fs::write(
-                specs_dir.join(format!("{}.md", member_id)),
-                member_content,
-            )
-            .unwrap();
+            std::fs::write(specs_dir.join(format!("{}.md", member_id)), member_content).unwrap();
         }
 
         // Load specs
@@ -4731,9 +4724,7 @@ completed_at: 2026-01-24T10:00:00+00:00
 
         // Verify members are sorted by number
         let mut sorted_members = members.clone();
-        sorted_members.sort_by_key(|m| {
-            spec::extract_member_number(&m.id).unwrap_or(u32::MAX)
-        });
+        sorted_members.sort_by_key(|m| spec::extract_member_number(&m.id).unwrap_or(u32::MAX));
         for (i, member) in sorted_members.iter().enumerate() {
             assert_eq!(
                 spec::extract_member_number(&member.id).unwrap_or(0) as usize,
@@ -4773,9 +4764,7 @@ completed_at: 2026-01-24T10:00:00+00:00
         // Simulate the archive logic: add members first (sorted), then driver
         let mut to_archive = vec![];
         let mut sorted_members = members.clone();
-        sorted_members.sort_by_key(|m| {
-            spec::extract_member_number(&m.id).unwrap_or(u32::MAX)
-        });
+        sorted_members.sort_by_key(|m| spec::extract_member_number(&m.id).unwrap_or(u32::MAX));
         for member in sorted_members {
             to_archive.push(member);
         }
