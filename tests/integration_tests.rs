@@ -1089,9 +1089,7 @@ fn test_new_developer_experience() {
 
     for line in build_stderr.lines() {
         if line.contains("warning:") {
-            let is_known = known_warnings
-                .iter()
-                .any(|w| line.contains(w));
+            let is_known = known_warnings.iter().any(|w| line.contains(w));
 
             if !is_known {
                 eprintln!("Unexpected warning detected: {}", line);
@@ -1122,9 +1120,11 @@ fn test_new_developer_experience() {
         .expect("Failed to run cargo fmt --check");
 
     if !fmt_check_output.status.success() {
+        let stdout = String::from_utf8_lossy(&fmt_check_output.stdout);
+        let stderr = String::from_utf8_lossy(&fmt_check_output.stderr);
         panic!(
-            "Format check failed: {}",
-            String::from_utf8_lossy(&fmt_check_output.stderr)
+            "Format check failed. stdout: {}\nstderr: {}",
+            stdout, stderr
         );
     }
 
@@ -1142,17 +1142,17 @@ fn test_new_developer_experience() {
         );
     }
 
-    // Verify the binary works
-    let version_output = Command::new("./target/debug/chant")
-        .args(["--version"])
+    // Verify the binary works - check that it recognizes a command
+    let list_output = Command::new("./target/debug/chant")
+        .args(["list"])
         .current_dir(&test_dir)
         .output()
-        .expect("Failed to run chant --version");
+        .expect("Failed to run chant list");
 
-    if !version_output.status.success() {
+    if !list_output.status.success() {
         panic!(
-            "chant --version failed: {}",
-            String::from_utf8_lossy(&version_output.stderr)
+            "chant list failed: {}",
+            String::from_utf8_lossy(&list_output.stderr)
         );
     }
 
