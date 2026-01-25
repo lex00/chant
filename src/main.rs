@@ -808,22 +808,8 @@ fn cmd_work(
                 );
             }
 
-            // Get the commits
-            let commits = get_commits_for_spec(&spec.id)?;
-
-            // Update spec to completed
-            spec.frontmatter.status = SpecStatus::Completed;
-            spec.frontmatter.commits = if commits.is_empty() {
-                None
-            } else {
-                Some(commits.clone())
-            };
-            spec.frontmatter.completed_at = Some(
-                chrono::Local::now()
-                    .format("%Y-%m-%dT%H:%M:%SZ")
-                    .to_string(),
-            );
-            spec.frontmatter.model = get_model_name(Some(&config));
+            // Finalize the spec (set status, commits, completed_at, model)
+            finalize_spec(&mut spec, &spec_path, &config)?;
 
             println!("\n{} Spec completed!", "✓".green());
             if let Some(commits) = &spec.frontmatter.commits {
@@ -1010,7 +996,14 @@ fn cmd_work_parallel(
                         );
                         spec.frontmatter.model =
                             get_model_name_with_default(config_model.as_deref());
-                        let _ = spec.save(&spec_path);
+                        if let Err(e) = spec.save(&spec_path) {
+                            eprintln!(
+                                "{} [{}] Warning: Failed to finalize spec: {}",
+                                "⚠".yellow(),
+                                spec_id,
+                                e
+                            );
+                        }
                     }
 
                     (true, commits, None)
@@ -1020,7 +1013,14 @@ fn cmd_work_parallel(
                     let spec_path = specs_dir_clone.join(format!("{}.md", spec_id));
                     if let Ok(mut spec) = spec::resolve_spec(&specs_dir_clone, &spec_id) {
                         spec.frontmatter.status = SpecStatus::Failed;
-                        let _ = spec.save(&spec_path);
+                        if let Err(save_err) = spec.save(&spec_path) {
+                            eprintln!(
+                                "{} [{}] Warning: Failed to mark spec as failed: {}",
+                                "⚠".yellow(),
+                                spec_id,
+                                save_err
+                            );
+                        }
                     }
 
                     (false, None, Some(e.to_string()))
@@ -1287,6 +1287,38 @@ fn get_commits_for_spec(spec_id: &str) -> Result<Vec<String>> {
     }
 
     Ok(commits)
+}
+
+/// Finalize a spec after successful completion
+/// Sets status, commits, completed_at, and model
+/// This function is idempotent and can be called multiple times safely
+fn finalize_spec(
+    spec: &mut Spec,
+    spec_path: &Path,
+    config: &Config,
+) -> Result<()> {
+    // Get the commits for this spec
+    let commits = get_commits_for_spec(&spec.id)?;
+
+    // Update spec to completed
+    spec.frontmatter.status = SpecStatus::Completed;
+    spec.frontmatter.commits = if commits.is_empty() {
+        None
+    } else {
+        Some(commits)
+    };
+    spec.frontmatter.completed_at = Some(
+        chrono::Local::now()
+            .format("%Y-%m-%dT%H:%M:%SZ")
+            .to_string(),
+    );
+    spec.frontmatter.model = get_model_name(Some(config));
+
+    // Save the spec - this must not fail silently
+    spec.save(spec_path)
+        .context("Failed to save finalized spec")?;
+
+    Ok(())
 }
 
 fn create_or_switch_branch(branch_name: &str) -> Result<()> {
@@ -2714,5 +2746,63 @@ Just a simple task without files listed.
         let output = "No subtasks here";
         let result = parse_subtasks_from_agent_output(output);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_finalize_spec_sets_status_and_timestamps() {
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path().to_path_buf();
+
+        // Create a spec with pending status
+        let spec_content = r#"---
+type: task
+id: 2026-01-24-test-xyz
+status: in_progress
+---
+
+# Test spec
+
+## Acceptance Criteria
+
+- [x] Item 1
+- [x] Item 2
+"#;
+        specs_dir.join("2026-01-24-test-xyz.md").parent().and_then(|p| Some(std::fs::create_dir_all(p).ok()));
+        std::fs::write(specs_dir.join("2026-01-24-test-xyz.md"), spec_content).unwrap();
+
+        // Create a minimal config from string
+        let config_str = r#"---
+project:
+  name: test-project
+defaults:
+  prompt: standard
+  branch: true
+  pr: false
+  branch_prefix: "chant/"
+git:
+  provider: github
+---
+"#;
+        let config = Config::parse(config_str).unwrap();
+
+        // Load and finalize the spec
+        let mut spec = spec::resolve_spec(&specs_dir, "2026-01-24-test-xyz").unwrap();
+        let spec_path = specs_dir.join("2026-01-24-test-xyz.md");
+
+        // Before finalization, status should be in_progress
+        assert_eq!(spec.frontmatter.status, SpecStatus::InProgress);
+        assert!(spec.frontmatter.completed_at.is_none());
+
+        // Finalize the spec
+        finalize_spec(&mut spec, &spec_path, &config).unwrap();
+
+        // After finalization, status should be completed
+        assert_eq!(spec.frontmatter.status, SpecStatus::Completed);
+        assert!(spec.frontmatter.completed_at.is_some());
+
+        // Read back the spec from file to verify it was saved
+        let saved_spec = spec::resolve_spec(&specs_dir, "2026-01-24-test-xyz").unwrap();
+        assert_eq!(saved_spec.frontmatter.status, SpecStatus::Completed);
+        assert!(saved_spec.frontmatter.completed_at.is_some());
     }
 }
