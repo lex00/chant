@@ -234,14 +234,16 @@ fn main() -> Result<()> {
             id,
             lines,
             no_follow,
-        } => cmd::spec::cmd_log(&id, lines, !no_follow),
-        Commands::Split { id, model, force } => cmd::spec::cmd_split(&id, model.as_deref(), force),
+        } => cmd::lifecycle::cmd_log(&id, lines, !no_follow),
+        Commands::Split { id, model, force } => {
+            cmd::lifecycle::cmd_split(&id, model.as_deref(), force)
+        }
         Commands::Archive {
             id,
             dry_run,
             older_than,
             force,
-        } => cmd::spec::cmd_archive(id.as_deref(), dry_run, older_than, force),
+        } => cmd::lifecycle::cmd_archive(id.as_deref(), dry_run, older_than, force),
         Commands::Merge {
             ids,
             all,
@@ -249,8 +251,8 @@ fn main() -> Result<()> {
             delete_branch,
             continue_on_error,
             yes,
-        } => cmd::spec::cmd_merge(&ids, all, dry_run, delete_branch, continue_on_error, yes),
-        Commands::Diagnose { id } => cmd::spec::cmd_diagnose(&id),
+        } => cmd::lifecycle::cmd_merge(&ids, all, dry_run, delete_branch, continue_on_error, yes),
+        Commands::Diagnose { id } => cmd::lifecycle::cmd_diagnose(&id),
         Commands::Delete {
             id,
             force,

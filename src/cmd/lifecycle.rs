@@ -1,1 +1,920 @@
-// Module stub
+//! Lifecycle command handlers for chant CLI
+//!
+//! Handles lower-volume but logically related lifecycle operations:
+//! - Spec merging and archiving
+//! - Spec splitting into member specs
+//! - Diagnostic information for spec execution issues
+//! - Log file retrieval and display
+//!
+//! Note: Core spec operations (add, list, show) are in cmd::spec module
+
+use anyhow::{Context, Result};
+use colored::Colorize;
+use std::path::PathBuf;
+
+use chant::config::Config;
+use chant::diagnose;
+use chant::git;
+use chant::merge;
+use chant::prompt;
+use chant::spec::{self, Spec, SpecFrontmatter, SpecStatus};
+
+use crate::cmd;
+
+// ============================================================================
+// DIAGNOSTICS
+// ============================================================================
+
+/// Display detailed diagnostic information for a spec
+pub fn cmd_diagnose(id: &str) -> Result<()> {
+    let specs_dir = PathBuf::from(".chant/specs");
+
+    if !specs_dir.exists() {
+        anyhow::bail!("Chant not initialized. Run `chant init` first.");
+    }
+
+    // Resolve spec ID
+    let spec = spec::resolve_spec(&specs_dir, id)?;
+
+    // Run diagnostics
+    let report = diagnose::diagnose_spec(&spec.id)?;
+
+    // Display report
+    println!("\n{}", format!("Spec: {}", report.spec_id).cyan().bold());
+    let status_str = match report.status {
+        SpecStatus::Pending => "pending".white(),
+        SpecStatus::InProgress => "in_progress".yellow(),
+        SpecStatus::Completed => "completed".green(),
+        SpecStatus::Failed => "failed".red(),
+        SpecStatus::NeedsAttention => "needs_attention".yellow(),
+    };
+    println!("Status: {}", status_str);
+
+    println!("\n{}:", "Checks".bold());
+    for check in &report.checks {
+        let icon = if check.passed {
+            "✓".green()
+        } else {
+            "✗".red()
+        };
+        print!("  {} {}", icon, check.name);
+        if let Some(details) = &check.details {
+            println!(" ({})", details.bright_black());
+        } else {
+            println!();
+        }
+    }
+
+    println!("\n{}:", "Diagnosis".bold());
+    println!("  {}", report.diagnosis);
+
+    if let Some(suggestion) = &report.suggestion {
+        println!("\n{}:", "Suggestion".bold());
+        println!("  {}", suggestion);
+    }
+
+    Ok(())
+}
+
+// ============================================================================
+// LOGGING
+// ============================================================================
+
+/// Show log for a spec (uses default .chant directory)
+pub fn cmd_log(id: &str, lines: usize, follow: bool) -> Result<()> {
+    cmd_log_at(&PathBuf::from(".chant"), id, lines, follow)
+}
+
+/// Show log for a spec with custom base path (useful for testing)
+pub fn cmd_log_at(base_path: &std::path::Path, id: &str, lines: usize, follow: bool) -> Result<()> {
+    let specs_dir = base_path.join("specs");
+    let logs_dir = base_path.join("logs");
+
+    if !specs_dir.exists() {
+        anyhow::bail!("Chant not initialized. Run `chant init` first.");
+    }
+
+    // Resolve spec ID to get the full ID
+    let spec = spec::resolve_spec(&specs_dir, id)?;
+    let log_path = logs_dir.join(format!("{}.log", spec.id));
+
+    if !log_path.exists() {
+        println!(
+            "{} No log file found for spec '{}'.",
+            "⚠".yellow(),
+            spec.id.cyan()
+        );
+        println!("\nLogs are created when a spec is executed with `chant work`.");
+        println!("Log path: {}", log_path.display());
+        return Ok(());
+    }
+
+    // Use tail command to show/follow the log
+    let mut args = vec!["-n".to_string(), lines.to_string()];
+
+    if follow {
+        args.push("-f".to_string());
+    }
+
+    args.push(log_path.to_string_lossy().to_string());
+
+    let status = std::process::Command::new("tail")
+        .args(&args)
+        .status()
+        .context("Failed to run tail command")?;
+
+    if !status.success() {
+        anyhow::bail!("tail command exited with status: {}", status);
+    }
+
+    Ok(())
+}
+
+// ============================================================================
+// SPLITTING
+// ============================================================================
+
+/// Member spec extracted from split analysis
+#[derive(Debug, Clone)]
+struct MemberSpec {
+    title: String,
+    description: String,
+    target_files: Option<Vec<String>>,
+}
+
+/// Split a pending spec into member specs
+pub fn cmd_split(id: &str, override_model: Option<&str>, force: bool) -> Result<()> {
+    let specs_dir = PathBuf::from(".chant/specs");
+    let prompts_dir = PathBuf::from(".chant/prompts");
+    let config = Config::load()?;
+
+    if !specs_dir.exists() {
+        anyhow::bail!("Chant not initialized. Run `chant init` first.");
+    }
+
+    // Resolve the spec to split
+    let mut spec = spec::resolve_spec(&specs_dir, id)?;
+    let spec_path = specs_dir.join(format!("{}.md", spec.id));
+
+    // Check spec status before splitting
+    if !force {
+        match spec.frontmatter.status {
+            SpecStatus::InProgress => {
+                anyhow::bail!("Cannot split spec that is in progress");
+            }
+            SpecStatus::Completed => {
+                anyhow::bail!("Cannot split completed spec");
+            }
+            SpecStatus::Failed => {
+                anyhow::bail!("Cannot split failed spec");
+            }
+            SpecStatus::NeedsAttention => {
+                anyhow::bail!("Cannot split spec that needs attention");
+            }
+            SpecStatus::Pending => {
+                // Allowed to split
+            }
+        }
+    }
+
+    // Check if already a group
+    if spec.frontmatter.r#type == "group" {
+        anyhow::bail!("Spec is already split");
+    }
+
+    println!("{} Analyzing spec {} for splitting...", "→".cyan(), spec.id);
+
+    // Load prompt from file
+    let split_prompt_path = prompts_dir.join("split.md");
+    if !split_prompt_path.exists() {
+        anyhow::bail!("Split prompt not found: split.md");
+    }
+
+    // Assemble prompt for split analysis
+    let split_prompt = prompt::assemble(&spec, &split_prompt_path, &config)?;
+
+    // Get the model to use for split
+    let model = get_model_for_split(
+        override_model,
+        config.defaults.model.as_deref(),
+        config.defaults.split_model.as_deref(),
+    );
+
+    // Invoke agent to propose split
+    let agent_output = cmd::agent::invoke_agent_with_model(
+        &split_prompt,
+        &spec,
+        "split",
+        &config,
+        Some(&model),
+        None,
+    )?;
+
+    // Parse member specs from agent output
+    let members = parse_member_specs_from_output(&agent_output)?;
+
+    if members.is_empty() {
+        anyhow::bail!("Agent did not propose any member specs. Check the agent output in the log.");
+    }
+
+    println!(
+        "{} Creating {} member specs for spec {}",
+        "→".cyan(),
+        members.len(),
+        spec.id
+    );
+
+    // Create member spec files
+    let driver_id = spec.id.clone();
+    for (index, member) in members.iter().enumerate() {
+        let member_number = index + 1;
+        let member_id = format!("{}.{}", driver_id, member_number);
+        let member_filename = format!("{}.md", member_id);
+        let member_path = specs_dir.join(&member_filename);
+
+        // Create frontmatter with dependencies
+        let depends_on = if index > 0 {
+            Some(vec![format!("{}.{}", driver_id, index)])
+        } else {
+            None
+        };
+
+        let member_frontmatter = SpecFrontmatter {
+            r#type: "code".to_string(),
+            status: SpecStatus::Pending,
+            depends_on,
+            target_files: member.target_files.clone(),
+            ..Default::default()
+        };
+
+        // Build body with title and description
+        // If description already contains ### Acceptance Criteria, don't append generic ones
+        let body = if member.description.contains("### Acceptance Criteria") {
+            format!("# {}\n\n{}", member.title, member.description)
+        } else {
+            // No acceptance criteria found, append generic section
+            format!(
+                "# {}\n\n{}\n\n## Acceptance Criteria\n\n- [ ] Implement as described\n- [ ] All tests pass",
+                member.title,
+                member.description
+            )
+        };
+
+        let member_spec = Spec {
+            id: member_id.clone(),
+            frontmatter: member_frontmatter,
+            title: Some(member.title.clone()),
+            body,
+        };
+
+        member_spec.save(&member_path)?;
+        println!("  {} {}", "✓".green(), member_id);
+    }
+
+    // Update driver spec to type: group
+    spec.frontmatter.r#type = "group".to_string();
+    spec.save(&spec_path)?;
+
+    println!(
+        "\n{} Split complete! Driver spec {} is now type: group",
+        "✓".green(),
+        spec.id
+    );
+    println!("Members:");
+    for i in 1..=members.len() {
+        println!("  • {}.{}", spec.id, i);
+    }
+
+    Ok(())
+}
+
+/// Get the model to use for split operations.
+/// Resolution order:
+/// 1. --model flag (if provided)
+/// 2. CHANT_SPLIT_MODEL env var
+/// 3. defaults.split_model from config
+/// 4. CHANT_MODEL env var (fallback to general model)
+/// 5. defaults.model from config
+/// 6. Hardcoded default: "sonnet"
+fn get_model_for_split(
+    flag_model: Option<&str>,
+    config_model: Option<&str>,
+    config_split_model: Option<&str>,
+) -> String {
+    // 1. --model flag
+    if let Some(model) = flag_model {
+        if !model.is_empty() {
+            return model.to_string();
+        }
+    }
+
+    // 2. CHANT_SPLIT_MODEL env var
+    if let Ok(model) = std::env::var("CHANT_SPLIT_MODEL") {
+        if !model.is_empty() {
+            return model;
+        }
+    }
+
+    // 3. defaults.split_model from config
+    if let Some(model) = config_split_model {
+        if !model.is_empty() {
+            return model.to_string();
+        }
+    }
+
+    // 4. CHANT_MODEL env var (fallback to general model)
+    if let Ok(model) = std::env::var("CHANT_MODEL") {
+        if !model.is_empty() {
+            return model;
+        }
+    }
+
+    // 5. defaults.model from config
+    if let Some(model) = config_model {
+        if !model.is_empty() {
+            return model.to_string();
+        }
+    }
+
+    // 6. Hardcoded default
+    "sonnet".to_string()
+}
+
+/// Parse member specs from agent output (split analysis)
+fn parse_member_specs_from_output(output: &str) -> Result<Vec<MemberSpec>> {
+    let mut members = Vec::new();
+    let mut current_member: Option<(String, String, Vec<String>)> = None;
+    let mut collecting_files = false;
+    let mut in_code_block = false;
+
+    for line in output.lines() {
+        // Check for member headers (## Member N: ...)
+        if line.starts_with("## Member ") && line.contains(':') {
+            // Save previous member if any
+            if let Some((title, desc, files)) = current_member.take() {
+                members.push(MemberSpec {
+                    title,
+                    description: desc.trim().to_string(),
+                    target_files: if files.is_empty() { None } else { Some(files) },
+                });
+            }
+
+            // Extract title from "## Member N: Title Here"
+            if let Some(title_part) = line.split(':').nth(1) {
+                let title = title_part.trim().to_string();
+                current_member = Some((title, String::new(), Vec::new()));
+                collecting_files = false;
+            }
+        } else if current_member.is_some() {
+            // Check for code block markers
+            if line.trim() == "```" {
+                in_code_block = !in_code_block;
+                if let Some((_, ref mut desc, _)) = &mut current_member {
+                    desc.push_str(line);
+                    desc.push('\n');
+                }
+                continue;
+            }
+
+            // Check for "Affected Files:" header
+            if line.contains("**Affected Files:**") || line.contains("Affected Files:") {
+                collecting_files = true;
+                continue;
+            }
+
+            // If collecting files, parse them (format: "- filename")
+            if collecting_files {
+                if let Some(stripped) = line.strip_prefix("- ") {
+                    let file = stripped.trim().to_string();
+                    if !file.is_empty() {
+                        // Strip annotations like "(test module)" from filename
+                        let cleaned_file = if let Some(paren_pos) = file.find('(') {
+                            file[..paren_pos].trim().to_string()
+                        } else {
+                            file
+                        };
+                        if let Some((_, _, ref mut files)) = current_member {
+                            files.push(cleaned_file);
+                        }
+                    }
+                } else if line.starts_with('-') && !line.starts_with("- ") {
+                    // Not a bullet list, stop collecting
+                    collecting_files = false;
+                } else if line.trim().is_empty() {
+                    // Empty line might end the files section, depending on context
+                } else if line.starts_with("##") {
+                    // New section
+                    collecting_files = false;
+                }
+            } else if !in_code_block {
+                // Preserve ### headers and all content except "Affected Files" section
+                if let Some((_, ref mut desc, _)) = &mut current_member {
+                    desc.push_str(line);
+                    desc.push('\n');
+                }
+            }
+        }
+    }
+
+    // Save last member
+    if let Some((title, desc, files)) = current_member {
+        members.push(MemberSpec {
+            title,
+            description: desc.trim().to_string(),
+            target_files: if files.is_empty() { None } else { Some(files) },
+        });
+    }
+
+    if members.is_empty() {
+        anyhow::bail!("No member specs found in agent output");
+    }
+
+    Ok(members)
+}
+
+// ============================================================================
+// ARCHIVING
+// ============================================================================
+
+/// Archive completed specs (move from specs to archive directory)
+pub fn cmd_archive(
+    spec_id: Option<&str>,
+    dry_run: bool,
+    older_than: Option<u64>,
+    force: bool,
+) -> Result<()> {
+    let specs_dir = PathBuf::from(".chant/specs");
+    let archive_dir = PathBuf::from(".chant/archive");
+
+    if !specs_dir.exists() {
+        anyhow::bail!("Chant not initialized. Run `chant init` first.");
+    }
+
+    // Load all specs
+    let specs = spec::load_all_specs(&specs_dir)?;
+
+    // Filter specs to archive
+    let mut to_archive = Vec::new();
+
+    if let Some(id) = spec_id {
+        // Archive specific spec
+        if let Some(spec) = specs.iter().find(|s| s.id.starts_with(id)) {
+            // Check if this is a member spec
+            if spec::extract_driver_id(&spec.id).is_some() {
+                // This is a member spec - always allow archiving members directly
+                to_archive.push(spec.clone());
+            } else {
+                // This is a driver spec or standalone spec
+                let members = spec::get_members(&spec.id, &specs);
+                if !members.is_empty() {
+                    // This is a driver spec with members
+                    if !spec::all_members_completed(&spec.id, &specs) {
+                        eprintln!(
+                            "{} Skipping driver spec {} - not all members are completed",
+                            "⚠ ".yellow(),
+                            spec.id
+                        );
+                        return Ok(());
+                    }
+
+                    // All members are completed, automatically add them first (sorted by member number)
+                    let mut sorted_members = members.clone();
+                    sorted_members
+                        .sort_by_key(|m| spec::extract_member_number(&m.id).unwrap_or(u32::MAX));
+                    for member in sorted_members {
+                        to_archive.push(member.clone());
+                    }
+                    // Then add the driver
+                    to_archive.push(spec.clone());
+                } else {
+                    // Standalone spec or driver with no members
+                    to_archive.push(spec.clone());
+                }
+            }
+        } else {
+            anyhow::bail!("Spec {} not found", id);
+        }
+    } else {
+        // Archive by criteria
+        let now = chrono::Local::now();
+
+        for spec in &specs {
+            // Skip if not completed (unless force)
+            if spec.frontmatter.status != SpecStatus::Completed && !force {
+                continue;
+            }
+
+            // Check older_than filter
+            if let Some(days) = older_than {
+                if let Some(completed_at_str) = &spec.frontmatter.completed_at {
+                    if let Ok(completed_at) = chrono::DateTime::parse_from_rfc3339(completed_at_str)
+                    {
+                        let completed_at_local =
+                            chrono::DateTime::<chrono::Local>::from(completed_at);
+                        let age = now.signed_duration_since(completed_at_local);
+                        if age.num_days() < days as i64 {
+                            continue;
+                        }
+                    }
+                } else {
+                    // No completion date, skip
+                    continue;
+                }
+            }
+
+            // Check group constraints
+            if let Some(driver_id) = spec::extract_driver_id(&spec.id) {
+                // This is a member spec - skip unless driver is already archived
+                let driver_exists = specs.iter().any(|s| s.id == driver_id);
+                if driver_exists {
+                    continue; // Driver still exists, skip this member
+                }
+            } else {
+                // This is a driver spec or standalone spec
+                let members = spec::get_members(&spec.id, &specs);
+                if !members.is_empty() {
+                    // This is a driver spec with members - check if all are completed
+                    if !spec::all_members_completed(&spec.id, &specs) {
+                        continue; // Not all members completed, skip this driver
+                    }
+                    // Add members first (sorted by member number)
+                    let mut sorted_members = members.clone();
+                    sorted_members
+                        .sort_by_key(|m| spec::extract_member_number(&m.id).unwrap_or(u32::MAX));
+                    for member in sorted_members {
+                        to_archive.push(member.clone());
+                    }
+                }
+            }
+
+            to_archive.push(spec.clone());
+        }
+    }
+
+    if to_archive.is_empty() {
+        println!("No specs to archive.");
+        return Ok(());
+    }
+
+    // Count drivers and members for summary
+    let mut driver_count = 0;
+    let mut member_count = 0;
+    for spec in &to_archive {
+        if spec::extract_driver_id(&spec.id).is_some() {
+            member_count += 1;
+        } else {
+            driver_count += 1;
+        }
+    }
+
+    if dry_run {
+        println!("{} Would archive {} spec(s):", "→".cyan(), to_archive.len());
+        for spec in &to_archive {
+            if spec::extract_driver_id(&spec.id).is_some() {
+                println!("  {} {} (member)", "→".cyan(), spec.id);
+            } else {
+                println!("  {} {} (driver)", "→".cyan(), spec.id);
+            }
+        }
+        let summary = if driver_count > 0 && member_count > 0 {
+            format!(
+                "Archived {} spec(s) ({} driver + {} member{})",
+                to_archive.len(),
+                driver_count,
+                member_count,
+                if member_count == 1 { "" } else { "s" }
+            )
+        } else {
+            format!("Archived {} spec(s)", to_archive.len())
+        };
+        println!("{} {}", "→".cyan(), summary);
+        return Ok(());
+    }
+
+    // Create archive directory if it doesn't exist
+    if !archive_dir.exists() {
+        std::fs::create_dir_all(&archive_dir)?;
+        println!("{} Created archive directory", "✓".green());
+    }
+
+    // Migrate existing flat archive files to date subfolders (if any)
+    migrate_flat_archive(&archive_dir)?;
+
+    // Move specs to archive
+    let count = to_archive.len();
+    for spec in to_archive {
+        let src = specs_dir.join(format!("{}.md", spec.id));
+
+        // Extract date from spec ID (format: YYYY-MM-DD-XXX-abc)
+        let date_part = &spec.id[..10]; // First 10 chars: YYYY-MM-DD
+        let date_dir = archive_dir.join(date_part);
+
+        // Create date-based subdirectory if it doesn't exist
+        if !date_dir.exists() {
+            std::fs::create_dir_all(&date_dir)?;
+        }
+
+        let dst = date_dir.join(format!("{}.md", spec.id));
+
+        std::fs::rename(&src, &dst)?;
+        if spec::extract_driver_id(&spec.id).is_some() {
+            println!("  {} {} (archived)", "→".cyan(), spec.id);
+        } else {
+            println!("  {} {} (driver, archived)", "→".cyan(), spec.id);
+        }
+    }
+
+    // Print summary
+    let summary = if driver_count > 0 && member_count > 0 {
+        format!(
+            "Archived {} spec(s) ({} driver + {} member{})",
+            count,
+            driver_count,
+            member_count,
+            if member_count == 1 { "" } else { "s" }
+        )
+    } else {
+        format!("Archived {} spec(s)", count)
+    };
+    println!("{} {}", "✓".green(), summary);
+
+    Ok(())
+}
+
+/// Migrate existing flat archive files to date-based subfolders.
+/// This handles the transition from `.chant/archive/*.md` to `.chant/archive/YYYY-MM-DD/*.md`
+fn migrate_flat_archive(archive_dir: &std::path::PathBuf) -> anyhow::Result<()> {
+    use std::fs;
+
+    if !archive_dir.exists() {
+        return Ok(());
+    }
+
+    let mut flat_files = Vec::new();
+
+    // Find all flat .md files in the archive directory (not in subdirectories)
+    for entry in fs::read_dir(archive_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        let metadata = entry.metadata()?;
+
+        // Only process .md files directly in archive_dir, not subdirectories
+        if !metadata.is_dir() && path.extension().map(|e| e == "md").unwrap_or(false) {
+            flat_files.push(path);
+        }
+    }
+
+    // Migrate each flat file to its date subfolder
+    for file_path in flat_files {
+        if let Some(file_name) = file_path.file_name() {
+            if let Some(file_name_str) = file_name.to_str() {
+                // Extract spec ID from filename (e.g., "2026-01-24-001-abc.md" -> "2026-01-24-001-abc")
+                if let Some(spec_id) = file_name_str.strip_suffix(".md") {
+                    // Extract date from spec ID (format: YYYY-MM-DD-XXX-abc)
+                    if spec_id.len() >= 10 {
+                        let date_part = &spec_id[..10]; // First 10 chars: YYYY-MM-DD
+                        let date_dir = archive_dir.join(date_part);
+
+                        // Create date-based subdirectory if it doesn't exist
+                        if !date_dir.exists() {
+                            fs::create_dir_all(&date_dir)?;
+                        }
+
+                        let dst = date_dir.join(file_name);
+
+                        // Move the file to the date subdirectory
+                        if let Err(e) = fs::rename(&file_path, &dst) {
+                            eprintln!(
+                                "Warning: Failed to migrate archive file {:?}: {}",
+                                file_path, e
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+// ============================================================================
+// MERGING
+// ============================================================================
+
+/// Merge completed spec branches back to main
+pub fn cmd_merge(
+    ids: &[String],
+    all: bool,
+    dry_run: bool,
+    delete_branch: bool,
+    continue_on_error: bool,
+    yes: bool,
+) -> Result<()> {
+    let specs_dir = PathBuf::from(".chant/specs");
+
+    if !specs_dir.exists() {
+        anyhow::bail!("Chant not initialized. Run `chant init` first.");
+    }
+
+    // Load config
+    let config = Config::load()?;
+    let branch_prefix = &config.defaults.branch_prefix;
+    let main_branch = merge::load_main_branch(&config);
+
+    // Validate arguments
+    if !all && ids.is_empty() {
+        anyhow::bail!(
+            "Please specify one or more spec IDs, or use --all to merge all completed specs"
+        );
+    }
+
+    // Load all specs
+    let specs = spec::load_all_specs(&specs_dir)?;
+
+    // Get specs to merge using the merge module function
+    let mut specs_to_merge = merge::get_specs_to_merge(ids, all, &specs)?;
+
+    // Filter to only those with branches that exist (unless dry-run)
+    if !dry_run {
+        specs_to_merge.retain(|(spec_id, _spec)| {
+            git::branch_exists(&format!("{}{}", branch_prefix, spec_id)).unwrap_or_default()
+        });
+    }
+
+    if specs_to_merge.is_empty() {
+        println!("No completed specs with branches to merge.");
+        return Ok(());
+    }
+
+    // Display what would be merged
+    println!(
+        "{} {} merge {} spec(s){}:",
+        "→".cyan(),
+        if dry_run { "Would" } else { "Will" },
+        specs_to_merge.len(),
+        if all { " (all completed)" } else { "" }
+    );
+    for (spec_id, spec) in &specs_to_merge {
+        let title = spec.title.as_deref().unwrap_or("(no title)");
+        let branch_name = format!("{}{}", branch_prefix, spec_id);
+        println!(
+            "  {} {} → {} {}",
+            "·".cyan(),
+            branch_name,
+            main_branch,
+            title.dimmed()
+        );
+    }
+    println!();
+
+    // If dry-run, show what would happen and exit
+    if dry_run {
+        println!("{} Dry-run mode: no changes made.", "ℹ".blue());
+        return Ok(());
+    }
+
+    // Show confirmation prompt unless --yes or --dry-run
+    if !yes {
+        let confirmed = prompt::confirm(&format!(
+            "Proceed with merging {} spec(s)?",
+            specs_to_merge.len()
+        ))?;
+        if !confirmed {
+            println!("{} Merge cancelled.", "✗".yellow());
+            return Ok(());
+        }
+    }
+
+    // Sort specs to merge members before drivers
+    // This ensures driver specs are merged after all their members
+    let mut sorted_specs: Vec<(String, Spec)> = specs_to_merge.clone();
+    sorted_specs.sort_by(|(id_a, _), (id_b, _)| {
+        // Count dots in IDs - members have more dots, sort them first
+        let dots_a = id_a.matches('.').count();
+        let dots_b = id_b.matches('.').count();
+        dots_b.cmp(&dots_a) // Reverse order: members (more dots) before drivers (fewer dots)
+    });
+
+    // Execute merges
+    let mut merge_results: Vec<git::MergeResult> = Vec::new();
+    let mut errors: Vec<(String, String)> = Vec::new();
+
+    println!("{} Executing merges...", "→".cyan());
+
+    for (spec_id, spec) in &sorted_specs {
+        let branch_name = format!("{}{}", branch_prefix, spec_id);
+
+        // Check if this is a driver spec
+        let is_driver = merge::is_driver_spec(spec, &specs);
+
+        let merge_op_result = if is_driver {
+            // Merge driver and its members
+            merge::merge_driver_spec(
+                spec,
+                &specs,
+                branch_prefix,
+                &main_branch,
+                delete_branch,
+                false,
+            )
+        } else {
+            // Merge single spec
+            match git::merge_single_spec(spec_id, &branch_name, &main_branch, delete_branch, false)
+            {
+                Ok(result) => Ok(vec![result]),
+                Err(e) => Err(e),
+            }
+        };
+
+        match merge_op_result {
+            Ok(results) => {
+                merge_results.extend(results);
+            }
+            Err(e) => {
+                let error_msg = e.to_string();
+                errors.push((spec_id.clone(), error_msg.clone()));
+                println!("  {} {} failed: {}", "✗".red(), spec_id, error_msg);
+
+                if !continue_on_error {
+                    anyhow::bail!(
+                        "Merge stopped at spec {}. Use --continue-on-error to continue.",
+                        spec_id
+                    );
+                }
+            }
+        }
+    }
+
+    // Display results
+    println!("\n{} Merge Results", "→".cyan());
+    println!("{}", "─".repeat(60));
+
+    for result in &merge_results {
+        println!("{}", git::format_merge_summary(result));
+    }
+
+    // Display summary
+    println!("\n{} Summary", "→".cyan());
+    println!("{}", "─".repeat(60));
+    println!("  {} Specs merged: {}", "✓".green(), merge_results.len());
+    if !errors.is_empty() {
+        println!("  {} Specs failed: {}", "✗".red(), errors.len());
+        for (spec_id, error_msg) in &errors {
+            println!("    - {}: {}", spec_id, error_msg);
+        }
+    }
+    if delete_branch {
+        let deleted_count = merge_results.iter().filter(|r| r.branch_deleted).count();
+        println!("  {} Branches deleted: {}", "✓".green(), deleted_count);
+    }
+
+    if !errors.is_empty() {
+        println!("\n{}", "Some merges failed.".yellow());
+        return Ok(());
+    }
+
+    println!("\n{} All specs merged successfully.", "✓".green());
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_ensure_logs_dir_creates_directory() {
+        let temp_dir = TempDir::new().unwrap();
+        let base_path = temp_dir.path().to_path_buf();
+
+        // Logs dir shouldn't exist yet
+        assert!(!base_path.join("logs").exists());
+
+        // Call ensure_logs_dir_at
+        cmd::agent::ensure_logs_dir_at(&base_path).unwrap();
+
+        // Logs dir should now exist
+        assert!(base_path.join("logs").exists());
+        assert!(base_path.join("logs").is_dir());
+    }
+
+    #[test]
+    fn test_ensure_logs_dir_updates_gitignore() {
+        let temp_dir = TempDir::new().unwrap();
+        let base_path = temp_dir.path().to_path_buf();
+
+        // Create base dir without .gitignore
+        // (tempdir already exists, no need to create)
+
+        // Call ensure_logs_dir_at
+        cmd::agent::ensure_logs_dir_at(&base_path).unwrap();
+
+        // .gitignore should now exist and contain "logs/"
+        let gitignore_path = base_path.join(".gitignore");
+        assert!(gitignore_path.exists());
+
+        let content = std::fs::read_to_string(&gitignore_path).unwrap();
+        assert!(content.contains("logs/"));
+    }
+}
