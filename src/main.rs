@@ -1631,11 +1631,18 @@ fn cmd_split(id: &str) -> Result<()> {
             ..Default::default()
         };
 
+        // Build body with title, description, and acceptance criteria
+        let body = format!(
+            "# {}\n\n{}\n\n## Acceptance Criteria\n\n- [ ] Implement as described\n- [ ] All tests pass",
+            subtask.title,
+            subtask.description
+        );
+
         let subtask_spec = Spec {
             id: subtask_id.clone(),
             frontmatter: subtask_frontmatter,
             title: Some(subtask.title.clone()),
-            body: subtask.description.clone(),
+            body,
         };
 
         subtask_spec.save(&subtask_path)?;
@@ -1759,8 +1766,14 @@ fn parse_subtasks_from_agent_output(output: &str) -> Result<Vec<Subtask>> {
                 if let Some(stripped) = line.strip_prefix("- ") {
                     let file = stripped.trim().to_string();
                     if !file.is_empty() {
+                        // Strip annotations like "(test module)" from filename
+                        let cleaned_file = if let Some(paren_pos) = file.find('(') {
+                            file[..paren_pos].trim().to_string()
+                        } else {
+                            file
+                        };
                         if let Some((_, _, ref mut files)) = current_subtask {
-                            files.push(file);
+                            files.push(cleaned_file);
                         }
                     }
                 } else if line.starts_with('-') && !line.starts_with("- ") {
