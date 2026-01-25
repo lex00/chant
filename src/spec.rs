@@ -225,6 +225,42 @@ fn is_member_of(member_id: &str, driver_id: &str) -> bool {
     suffix.starts_with('.') && suffix.len() > 1
 }
 
+/// Extract the driver ID from a member ID.
+/// For example: "2026-01-24-01e-o0l.1" -> "2026-01-24-01e-o0l"
+/// Returns Some(driver_id) if this is a member spec, None otherwise.
+pub fn extract_driver_id(member_id: &str) -> Option<String> {
+    // Member IDs have format: DRIVER_ID.N or DRIVER_ID.N.M
+    if let Some(pos) = member_id.find('.') {
+        let (prefix, suffix) = member_id.split_at(pos);
+        // Check that what follows the dot is numeric (at least up to the first non-digit)
+        if suffix.len() > 1
+            && suffix[1..]
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_digit())
+        {
+            return Some(prefix.to_string());
+        }
+    }
+    None
+}
+
+/// Mark the driver spec as in_progress if the current spec is a member and driver exists and is pending.
+pub fn mark_driver_in_progress(specs_dir: &Path, member_id: &str) -> Result<()> {
+    if let Some(driver_id) = extract_driver_id(member_id) {
+        // Try to load the driver spec
+        let driver_path = specs_dir.join(format!("{}.md", driver_id));
+        if driver_path.exists() {
+            let mut driver = Spec::load(&driver_path)?;
+            if driver.frontmatter.status == SpecStatus::Pending {
+                driver.frontmatter.status = SpecStatus::InProgress;
+                driver.save(&driver_path)?;
+            }
+        }
+    }
+    Ok(())
+}
+
 fn split_frontmatter(content: &str) -> (Option<String>, &str) {
     let content = content.trim();
 
@@ -356,6 +392,20 @@ Description here.
         assert!(is_member_of("2026-01-22-001-x7m.2.1", "2026-01-22-001-x7m"));
         assert!(!is_member_of("2026-01-22-001-x7m", "2026-01-22-001-x7m"));
         assert!(!is_member_of("2026-01-22-002-y8n", "2026-01-22-001-x7m"));
+    }
+
+    #[test]
+    fn test_extract_driver_id() {
+        assert_eq!(
+            extract_driver_id("2026-01-22-001-x7m.1"),
+            Some("2026-01-22-001-x7m".to_string())
+        );
+        assert_eq!(
+            extract_driver_id("2026-01-22-001-x7m.2.1"),
+            Some("2026-01-22-001-x7m".to_string())
+        );
+        assert_eq!(extract_driver_id("2026-01-22-001-x7m"), None);
+        assert_eq!(extract_driver_id("2026-01-22-001-x7m.abc"), None);
     }
 
     #[test]
@@ -558,5 +608,75 @@ status: pending
         let saved_content = std::fs::read_to_string(&spec_path).unwrap();
         assert!(saved_content.contains("model: claude-opus-4-5"));
         assert!(saved_content.contains("commits:"));
+    }
+
+    #[test]
+    fn test_mark_driver_in_progress_when_member_starts() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        // Create a driver spec that is pending
+        let driver_spec = Spec {
+            id: "2026-01-24-001-abc".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                ..Default::default()
+            },
+            title: Some("Driver spec".to_string()),
+            body: "# Driver spec\n\nBody content.".to_string(),
+        };
+
+        let driver_path = specs_dir.join("2026-01-24-001-abc.md");
+        driver_spec.save(&driver_path).unwrap();
+
+        // Mark driver as in_progress when member starts
+        mark_driver_in_progress(specs_dir, "2026-01-24-001-abc.1").unwrap();
+
+        // Verify driver status was updated to in_progress
+        let updated_driver = Spec::load(&driver_path).unwrap();
+        assert_eq!(updated_driver.frontmatter.status, SpecStatus::InProgress);
+    }
+
+    #[test]
+    fn test_mark_driver_in_progress_skips_if_already_in_progress() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        // Create a driver spec that is already in_progress
+        let driver_spec = Spec {
+            id: "2026-01-24-002-def".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::InProgress,
+                ..Default::default()
+            },
+            title: Some("Driver spec".to_string()),
+            body: "# Driver spec\n\nBody content.".to_string(),
+        };
+
+        let driver_path = specs_dir.join("2026-01-24-002-def.md");
+        driver_spec.save(&driver_path).unwrap();
+
+        // Try to mark driver as in_progress
+        mark_driver_in_progress(specs_dir, "2026-01-24-002-def.1").unwrap();
+
+        // Verify driver status is still in_progress (not changed)
+        let updated_driver = Spec::load(&driver_path).unwrap();
+        assert_eq!(updated_driver.frontmatter.status, SpecStatus::InProgress);
+    }
+
+    #[test]
+    fn test_mark_driver_in_progress_nonexistent_driver() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        // Try to mark driver as in_progress when driver doesn't exist
+        // Should not error, just skip
+        mark_driver_in_progress(specs_dir, "2026-01-24-003-ghi.1").unwrap();
     }
 }

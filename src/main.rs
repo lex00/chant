@@ -873,6 +873,9 @@ fn cmd_work(
     spec.frontmatter.status = SpecStatus::InProgress;
     spec.save(&spec_path)?;
 
+    // If this is a member spec, mark the driver spec as in_progress if it's pending
+    spec::mark_driver_in_progress(&specs_dir, &spec.id)?;
+
     println!(
         "{} {} with prompt '{}'",
         "Working".cyan(),
@@ -1426,11 +1429,7 @@ fn get_commits_for_spec(spec_id: &str) -> Result<Vec<String>> {
                 .trim()
                 .to_string();
             if !head_hash.is_empty() {
-                eprintln!(
-                    "{} Using HEAD commit: {}",
-                    "⚠".yellow(),
-                    head_hash
-                );
+                eprintln!("{} Using HEAD commit: {}", "⚠".yellow(), head_hash);
                 commits.push(head_hash);
             }
         } else {
@@ -1887,11 +1886,7 @@ fn cmd_split(id: &str, override_model: Option<&str>) -> Result<()> {
         // Build body with title and description
         // If description already contains ### Acceptance Criteria, don't append generic ones
         let body = if subtask.description.contains("### Acceptance Criteria") {
-            format!(
-                "# {}\n\n{}",
-                subtask.title,
-                subtask.description
-            )
+            format!("# {}\n\n{}", subtask.title, subtask.description)
         } else {
             // No acceptance criteria found, append generic section
             format!(
@@ -1968,8 +1963,7 @@ fn cmd_archive(
             // Check older_than filter
             if let Some(days) = older_than {
                 if let Some(completed_at_str) = &spec.frontmatter.completed_at {
-                    if let Ok(completed_at) =
-                        chrono::DateTime::parse_from_rfc3339(completed_at_str)
+                    if let Ok(completed_at) = chrono::DateTime::parse_from_rfc3339(completed_at_str)
                     {
                         let completed_at_local =
                             chrono::DateTime::<chrono::Local>::from(completed_at);
@@ -1996,7 +1990,11 @@ fn cmd_archive(
     if dry_run {
         println!("{} Would archive {} spec(s):", "→".cyan(), to_archive.len());
         for spec in &to_archive {
-            println!("  {} {}", spec.id, spec.title.as_deref().unwrap_or("(no title)"));
+            println!(
+                "  {} {}",
+                spec.id,
+                spec.title.as_deref().unwrap_or("(no title)")
+            );
         }
         return Ok(());
     }
@@ -2017,11 +2015,7 @@ fn cmd_archive(
         println!("{} {} → archive/", "→".cyan(), spec.id);
     }
 
-    println!(
-        "{} Archived {} spec(s)",
-        "✓".green(),
-        count
-    );
+    println!("{} Archived {} spec(s)", "✓".green(), count);
 
     Ok(())
 }
@@ -3054,8 +3048,12 @@ Add the core feature with detailed logic.
         // Description should preserve ### headers
         assert!(result[0].description.contains("### Acceptance Criteria"));
         assert!(result[0].description.contains("### Edge Cases"));
-        assert!(result[0].description.contains("- [ ] Feature is implemented"));
-        assert!(result[0].description.contains("Edge case 1: Handle empty input"));
+        assert!(result[0]
+            .description
+            .contains("- [ ] Feature is implemented"));
+        assert!(result[0]
+            .description
+            .contains("Edge case 1: Handle empty input"));
         assert_eq!(result[0].target_files, Some(vec!["src/lib.rs".to_string()]));
     }
 
@@ -3102,11 +3100,7 @@ Update all callers to use the new API.
 
         // Build body the same way cmd_split does
         let body = if subtask.description.contains("### Acceptance Criteria") {
-            format!(
-                "# {}\n\n{}",
-                subtask.title,
-                subtask.description
-            )
+            format!("# {}\n\n{}", subtask.title, subtask.description)
         } else {
             format!(
                 "# {}\n\n{}\n\n## Acceptance Criteria\n\n- [ ] Implement as described\n- [ ] All tests pass",
@@ -3134,11 +3128,7 @@ Update all callers to use the new API.
 
         // Build body the same way cmd_split does
         let body = if subtask.description.contains("### Acceptance Criteria") {
-            format!(
-                "# {}\n\n{}",
-                subtask.title,
-                subtask.description
-            )
+            format!("# {}\n\n{}", subtask.title, subtask.description)
         } else {
             format!(
                 "# {}\n\n{}\n\n## Acceptance Criteria\n\n- [ ] Implement as described\n- [ ] All tests pass",
@@ -3334,8 +3324,8 @@ git:
         // This test verifies that spec IDs with special characters don't crash pattern matching
         // Pattern format is "chant(spec_id)" so we test with various special chars
         let test_ids = vec![
-            "2026-01-24-01p-cmz", // Normal
-            "test-with-dash",      // Dashes
+            "2026-01-24-01p-cmz",   // Normal
+            "test-with-dash",       // Dashes
             "test_with_underscore", // Underscores
         ];
 
