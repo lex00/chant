@@ -1,6 +1,6 @@
 [book]
 title = "Chant"
-description = "Intent Driven Development"
+description = "Idempotent Intention"
 authors = ["Chant Contributors"]
 language = "en"
 src = "."
