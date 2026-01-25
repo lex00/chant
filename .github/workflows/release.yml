@@ -8,28 +8,11 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+permissions:
+  contents: write
+
 jobs:
-  create-release:
-    runs-on: ubuntu-latest
-    outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: ${{ github.ref }}
-          draft: false
-          prerelease: false
-
   build-release:
-    needs: create-release
     strategy:
       matrix:
         include:
@@ -53,6 +36,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Create Release (Linux only)
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create ${{ github.ref_name }} --title "${{ github.ref_name }}" --generate-notes 2>/dev/null || true
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -78,24 +69,13 @@ jobs:
             cp target/${{ matrix.target }}/release/chant ${{ matrix.asset_name }}
           fi
 
-      - name: Upload Release Asset (Unix)
-        if: matrix.os != 'windows-latest'
-        uses: actions/upload-release-asset@v1
+      - name: Upload Release Asset
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./${{ matrix.asset_name }}
-          asset_name: ${{ matrix.asset_name }}
-          asset_content_type: application/octet-stream
-
-      - name: Upload Release Asset (Windows)
-        if: matrix.os == 'windows-latest'
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./${{ matrix.asset_name }}.exe
-          asset_name: ${{ matrix.asset_name }}.exe
-          asset_content_type: application/octet-stream
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            gh release upload ${{ github.ref_name }} ${{ matrix.asset_name }}.exe
+          else
+            gh release upload ${{ github.ref_name }} ${{ matrix.asset_name }}
+          fi
