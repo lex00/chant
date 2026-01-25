@@ -4,16 +4,16 @@
 
 Chant supports enterprise environments through:
 
-1. **Stealth mode** - Personal use on shared repos
+1. **Silent mode** - Personal use on shared repos
 2. **Derived frontmatter** - Auto-populate fields from conventions
 3. **Schema enforcement** - Required fields, validation
 
-## Stealth Mode
+## Silent Mode
 
 For developers on projects that don't officially use Chant:
 
 ```bash
-chant init --stealth
+chant init --silent
 ```
 
 - `.chant/` added to `.git/info/exclude` (local only)
@@ -192,7 +192,7 @@ enterprise:
 
 | Feature | Personal | Enterprise |
 |---------|----------|------------|
-| Stealth mode | ✓ | - |
+| Silent mode | ✓ | - |
 | Derived fields | - | ✓ |
 | Required fields | - | ✓ |
 | Audit trail | - | ✓ |

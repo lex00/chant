@@ -119,15 +119,15 @@ Skipped .chant/specs/ (exists)
 chant init --force      # Overwrite existing files
 chant init --minimal    # Only config.md, no prompts
 chant init --name foo   # Override detected name
-chant init --stealth    # Local only, not committed
+chant init --silent     # Local only, not committed
 ```
 
-## Stealth Mode
+## Silent Mode
 
 For enterprise users on shared repos they don't control:
 
 ```bash
-chant init --stealth
+chant init --silent
 ```
 
 Creates `.chant/` but keeps it local:
@@ -138,10 +138,10 @@ Creates `.chant/` but keeps it local:
 4. Personal AI workflow within rigid enterprise environment
 
 ```bash
-$ chant init --stealth
+$ chant init --silent
 Created .chant/config.md
 Created .chant/prompts/standard.md
-Added .chant/ to .git/info/exclude (stealth mode)
+Added .chant/ to .git/info/exclude (silent mode)
 
 Note: Specs will not be committed. Local use only.
 ```

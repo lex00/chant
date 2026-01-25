@@ -146,12 +146,12 @@ target_files: [findings/analysis.md]
 ---
 ```
 
-### Enterprise Developers (Stealth Mode)
+### Enterprise Developers (Silent Mode)
 
 Working in rigid environments:
 
 - Personal AI workflow without changing shared repo
-- `chant init --stealth` keeps `.chant/` local only
+- `chant init --silent` keeps `.chant/` local only
 - No trace in official codebase
 
 ### Enterprise Teams

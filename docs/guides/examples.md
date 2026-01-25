@@ -176,7 +176,7 @@ chant work 2026-01-22-001-x7m
 
 ---
 
-## Enterprise Stealth
+## Enterprise Silent
 
 Personal chant on corporate repo with derived fields.
 
@@ -200,7 +200,7 @@ corporate-monorepo/
 # .chant-local/config.md
 ---
 project:
-  name: corporate-stealth
+  name: corporate-silent
 
 defaults:
   prompt: standard
@@ -220,15 +220,15 @@ enterprise:
 
 # Personal Chant Setup
 
-Stealth mode - not visible to team.
+Silent mode - not visible to team.
 Branch naming extracts Jira keys automatically.
 ```
 
 ### Workflow
 
 ```bash
-# Initialize in stealth mode
-chant init --stealth
+# Initialize in silent mode
+chant init --silent
 
 # Work normally
 chant add "AUTH-123: Fix token refresh"

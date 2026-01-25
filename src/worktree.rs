@@ -39,7 +39,13 @@ pub fn create_worktree(spec_id: &str, branch: &str) -> Result<PathBuf> {
 
     // Create the worktree with the new branch
     let output = Command::new("git")
-        .args(["worktree", "add", "-b", branch, worktree_path.to_str().unwrap()])
+        .args([
+            "worktree",
+            "add",
+            "-b",
+            branch,
+            worktree_path.to_str().unwrap(),
+        ])
         .output()
         .context("Failed to create git worktree")?;
 
@@ -108,7 +114,11 @@ pub fn merge_and_cleanup(branch: &str) -> Result<()> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("Merge failed (branch '{}' is preserved): {}", branch, stderr);
+        anyhow::bail!(
+            "Merge failed (branch '{}' is preserved): {}",
+            branch,
+            stderr
+        );
     }
 
     // Delete the branch after successful merge
@@ -191,10 +201,7 @@ mod tests {
         cleanup_test_repo(&repo_dir)?;
 
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("already exists"));
+        assert!(result.unwrap_err().to_string().contains("already exists"));
         Ok(())
     }
 

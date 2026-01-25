@@ -140,7 +140,10 @@ pub fn merge_driver_spec(
     for member in &members {
         // Check status is Completed
         if member.frontmatter.status != SpecStatus::Completed {
-            incomplete_members.push(format!("{} (status: {:?})", member.id, member.frontmatter.status));
+            incomplete_members.push(format!(
+                "{} (status: {:?})",
+                member.id, member.frontmatter.status
+            ));
         }
     }
 

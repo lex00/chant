@@ -250,6 +250,16 @@ pub fn all_members_completed(driver_id: &str, specs: &[Spec]) -> bool {
         .all(|m| m.frontmatter.status == SpecStatus::Completed)
 }
 
+/// Get list of incomplete member spec IDs for a driver spec.
+/// Returns an empty vector if the spec is not a driver or has no incomplete members.
+pub fn get_incomplete_members(driver_id: &str, all_specs: &[Spec]) -> Vec<String> {
+    get_members(driver_id, all_specs)
+        .into_iter()
+        .filter(|m| m.frontmatter.status != SpecStatus::Completed)
+        .map(|m| m.id.clone())
+        .collect()
+}
+
 /// Extract the driver ID from a member ID.
 /// For example: "2026-01-24-01e-o0l.1" -> "2026-01-24-01e-o0l"
 /// Returns Some(driver_id) if this is a member spec, None otherwise.
@@ -911,5 +921,55 @@ status: pending
 
         let all_specs = vec![spec1_incomplete];
         assert!(!spec2_not_ready.is_ready(&all_specs));
+    }
+
+    #[test]
+    fn test_get_incomplete_members() {
+        // Driver with multiple incomplete members
+        let driver = Spec::parse(
+            "2026-01-24-005-mno",
+            r#"---
+status: in_progress
+---
+# Driver
+"#,
+        )
+        .unwrap();
+
+        let member1 = Spec::parse(
+            "2026-01-24-005-mno.1",
+            r#"---
+status: completed
+---
+# Member 1
+"#,
+        )
+        .unwrap();
+
+        let member2 = Spec::parse(
+            "2026-01-24-005-mno.2",
+            r#"---
+status: pending
+---
+# Member 2
+"#,
+        )
+        .unwrap();
+
+        let member3 = Spec::parse(
+            "2026-01-24-005-mno.3",
+            r#"---
+status: in_progress
+---
+# Member 3
+"#,
+        )
+        .unwrap();
+
+        let all_specs = vec![driver.clone(), member1, member2, member3];
+        let incomplete = get_incomplete_members(&driver.id, &all_specs);
+        assert_eq!(incomplete.len(), 2);
+        assert!(incomplete.contains(&"2026-01-24-005-mno.2".to_string()));
+        assert!(incomplete.contains(&"2026-01-24-005-mno.3".to_string()));
     }
 }
