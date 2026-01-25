@@ -839,7 +839,14 @@ fn cmd_work(
 
     // Handle parallel execution mode
     if parallel && id.is_none() {
-        return cmd_work_parallel(&specs_dir, &prompts_dir, &config, prompt_name, labels, cli_branch.as_deref());
+        return cmd_work_parallel(
+            &specs_dir,
+            &prompts_dir,
+            &config,
+            prompt_name,
+            labels,
+            cli_branch.as_deref(),
+        );
     }
 
     // If no ID and not parallel, require an ID
@@ -902,7 +909,7 @@ fn cmd_work(
 
     // Check if dependencies are satisfied
     let all_specs = spec::load_all_specs(&specs_dir)?;
-    if !spec.is_ready(&all_specs) {
+    if !spec.is_ready(&all_specs) && !force {
         // Find which dependencies are blocking
         let mut blocking: Vec<String> = Vec::new();
 
@@ -918,16 +925,39 @@ fn cmd_work(
             }
         }
 
+        // Check for prior siblings
+        if let Some(driver_id) = spec::extract_driver_id(&spec.id) {
+            if let Some(member_num) = spec::extract_member_number(&spec.id) {
+                for i in 1..member_num {
+                    let sibling_id = format!("{}.{}", driver_id, i);
+                    let sibling = all_specs.iter().find(|s| s.id == sibling_id);
+                    if let Some(s) = sibling {
+                        if s.frontmatter.status != SpecStatus::Completed {
+                            blocking.push(
+                                format!("{} ({:?})", sibling_id, s.frontmatter.status)
+                                    .to_lowercase(),
+                            );
+                        }
+                    } else {
+                        blocking.push(format!("{} (not found)", sibling_id));
+                    }
+                }
+            }
+        }
+
         if !blocking.is_empty() {
             println!("{} Spec has unsatisfied dependencies.", "✗".red());
             println!("Blocked by: {}", blocking.join(", "));
+            println!("Use {} to bypass dependency checks.", "--force".cyan());
             anyhow::bail!("Cannot execute spec with unsatisfied dependencies");
         }
     }
 
     // CLI flags override config defaults
     let create_pr = cli_pr || config.defaults.pr;
-    let use_branch_prefix = cli_branch.as_deref().unwrap_or(&config.defaults.branch_prefix);
+    let use_branch_prefix = cli_branch
+        .as_deref()
+        .unwrap_or(&config.defaults.branch_prefix);
     let create_branch = cli_branch.is_some() || config.defaults.branch || create_pr;
 
     // Handle branch creation/switching if requested
@@ -1309,7 +1339,9 @@ fn cmd_work_parallel(
                     let _cleanup_error = if is_direct_mode_clone {
                         // Direct mode: try to merge and cleanup anyway
                         if let Some(ref branch) = branch_for_cleanup_clone {
-                            worktree::merge_and_cleanup(branch).err().map(|e| e.to_string())
+                            worktree::merge_and_cleanup(branch)
+                                .err()
+                                .map(|e| e.to_string())
                         } else {
                             Some(e.to_string())
                         }
@@ -1414,16 +1446,19 @@ fn cmd_work_parallel(
 
     // Show branch mode information
     if !branch_mode_branches.is_empty() {
-        println!("\n{} Branch mode branches created for reconciliation:",
-            "→".cyan());
+        println!(
+            "\n{} Branch mode branches created for reconciliation:",
+            "→".cyan()
+        );
         for (_spec_id, branch) in branch_mode_branches {
             println!("  {} {}", "•".yellow(), branch);
         }
-        println!("\nUse {} to reconcile branches later.",
-            "chant reconcile".bold());
+        println!(
+            "\nUse {} to reconcile branches later.",
+            "chant reconcile".bold()
+        );
     } else if cli_branch_prefix.is_some() || config.defaults.branch {
-        println!("\n{} Direct mode: All changes merged to main.",
-            "→".cyan());
+        println!("\n{} Direct mode: All changes merged to main.", "→".cyan());
     }
 
     if failed > 0 {
@@ -1483,7 +1518,8 @@ fn invoke_agent_with_prefix(
         cmd.current_dir(path);
     }
 
-    let mut child = cmd.spawn()
+    let mut child = cmd
+        .spawn()
         .context("Failed to invoke claude CLI. Is it installed and in PATH?")?;
 
     // Stream stdout with prefix to both terminal and log file
@@ -1571,7 +1607,8 @@ fn invoke_agent_with_model(
         cmd.current_dir(path);
     }
 
-    let mut child = cmd.spawn()
+    let mut child = cmd
+        .spawn()
         .context("Failed to invoke claude CLI. Is it installed and in PATH?")?;
 
     // Stream stdout to both terminal and log file
@@ -2609,7 +2646,14 @@ fn cmd_merge(
 
         let merge_op_result = if is_driver {
             // Merge driver and its members
-            merge::merge_driver_spec(spec, &specs, branch_prefix, &main_branch, delete_branch, false)
+            merge::merge_driver_spec(
+                spec,
+                &specs,
+                branch_prefix,
+                &main_branch,
+                delete_branch,
+                false,
+            )
         } else {
             // Merge single spec
             match git::merge_single_spec(spec_id, &branch_name, &main_branch, delete_branch, false)
@@ -2666,10 +2710,7 @@ fn cmd_merge(
         return Ok(());
     }
 
-    println!(
-        "\n{} All specs merged successfully.",
-        "✓".green()
-    );
+    println!("\n{} All specs merged successfully.", "✓".green());
     Ok(())
 }
 

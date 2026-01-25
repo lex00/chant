@@ -205,7 +205,11 @@ fn test_multiple_worktrees_parallel() {
             panic!("Worktree creation failed for iteration {}", i);
         }
         assert!(worktree_exists(&wt_path), "Worktree {} not created", i);
-        assert!(branch_exists(&repo_dir, &branch), "Branch {} not created", i);
+        assert!(
+            branch_exists(&repo_dir, &branch),
+            "Branch {} not created",
+            i
+        );
 
         worktree_paths.push(wt_path);
         branches.push(branch);
@@ -281,10 +285,7 @@ fn test_direct_mode_merge_and_cleanup() {
     }
 
     // The test verifies the worktree was created
-    assert!(
-        worktree_exists(&wt_path),
-        "Worktree should be created"
-    );
+    assert!(worktree_exists(&wt_path), "Worktree should be created");
 
     // Clean up for next test
     let _ = fs::remove_dir_all(&wt_path);
@@ -343,10 +344,7 @@ fn test_branch_mode_preserves_branch() {
     );
 
     // Verify worktree is removed
-    assert!(
-        !worktree_exists(&wt_path),
-        "Worktree should be removed"
-    );
+    assert!(!worktree_exists(&wt_path), "Worktree should be removed");
 
     // Cleanup - restore dir BEFORE cleaning up repo
     let _ = std::env::set_current_dir(&original_dir);
@@ -431,10 +429,7 @@ fn test_worktree_cleanup_on_failure() {
     }
 
     // Verify cleanup succeeded
-    assert!(
-        !worktree_exists(&wt_path),
-        "Worktree should be cleaned up"
-    );
+    assert!(!worktree_exists(&wt_path), "Worktree should be cleaned up");
 
     // Cleanup
     std::env::set_current_dir(&original_dir).expect("Failed to restore dir");
@@ -470,13 +465,25 @@ fn test_concurrent_worktree_isolation() {
 
     // Create both worktrees
     Command::new("git")
-        .args(["worktree", "add", "-b", &branch_1, wt_path_1.to_str().unwrap()])
+        .args([
+            "worktree",
+            "add",
+            "-b",
+            &branch_1,
+            wt_path_1.to_str().unwrap(),
+        ])
         .current_dir(&repo_dir)
         .output()
         .expect("Failed to create worktree 1");
 
     Command::new("git")
-        .args(["worktree", "add", "-b", &branch_2, wt_path_2.to_str().unwrap()])
+        .args([
+            "worktree",
+            "add",
+            "-b",
+            &branch_2,
+            wt_path_2.to_str().unwrap(),
+        ])
         .current_dir(&repo_dir)
         .output()
         .expect("Failed to create worktree 2");
@@ -641,7 +648,10 @@ fn test_spec_file_format() {
 
     // Verify frontmatter
     assert!(spec_content.contains("---"), "Should have YAML frontmatter");
-    assert!(spec_content.contains("type: code"), "Should have type field");
+    assert!(
+        spec_content.contains("type: code"),
+        "Should have type field"
+    );
     assert!(
         spec_content.contains("status: pending"),
         "Should have pending status"

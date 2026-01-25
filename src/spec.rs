@@ -197,6 +197,11 @@ impl Spec {
             }
         }
 
+        // Check that all prior siblings are completed (if this is a member spec)
+        if !all_prior_siblings_completed(&self.id, all_specs) {
+            return false;
+        }
+
         // Check group members are completed (if this is a driver)
         let members: Vec<_> = all_specs
             .iter()
@@ -263,6 +268,47 @@ pub fn extract_driver_id(member_id: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// Extract the member number from a member ID.
+/// For example: "2026-01-24-01e-o0l.3" -> Some(3)
+/// For example: "2026-01-24-01e-o0l.3.2" -> Some(3)
+/// Returns None if this is not a valid member spec.
+pub fn extract_member_number(member_id: &str) -> Option<u32> {
+    if let Some(pos) = member_id.find('.') {
+        let suffix = &member_id[pos + 1..];
+        // Extract just the first numeric part after the dot
+        let num_str: String = suffix.chars().take_while(|c| c.is_ascii_digit()).collect();
+        if !num_str.is_empty() {
+            return num_str.parse::<u32>().ok();
+        }
+    }
+    None
+}
+
+/// Check if all prior siblings of a member spec are completed.
+/// For example, for "2026-01-24-01x-v06.3", checks that .1 and .2 are completed.
+pub fn all_prior_siblings_completed(member_id: &str, all_specs: &[Spec]) -> bool {
+    if let Some(driver_id) = extract_driver_id(member_id) {
+        if let Some(member_num) = extract_member_number(member_id) {
+            // Check all specs with numbers less than member_num
+            for i in 1..member_num {
+                let sibling_id = format!("{}.{}", driver_id, i);
+                let sibling = all_specs.iter().find(|s| s.id == sibling_id);
+                if let Some(s) = sibling {
+                    if s.frontmatter.status != SpecStatus::Completed {
+                        return false;
+                    }
+                } else {
+                    // Sibling doesn't exist, so it's not completed
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+    // Not a member spec, so this check doesn't apply
+    true
 }
 
 /// Mark the driver spec as in_progress if the current spec is a member and driver exists and is pending.
@@ -698,5 +744,172 @@ status: pending
         // Try to mark driver as in_progress when driver doesn't exist
         // Should not error, just skip
         mark_driver_in_progress(specs_dir, "2026-01-24-003-ghi.1").unwrap();
+    }
+
+    #[test]
+    fn test_extract_member_number() {
+        assert_eq!(extract_member_number("2026-01-24-001-abc.1"), Some(1));
+        assert_eq!(extract_member_number("2026-01-24-001-abc.3"), Some(3));
+        assert_eq!(extract_member_number("2026-01-24-001-abc.10"), Some(10));
+        assert_eq!(extract_member_number("2026-01-24-001-abc.3.2"), Some(3));
+        assert_eq!(extract_member_number("2026-01-24-001-abc"), None);
+        assert_eq!(extract_member_number("2026-01-24-001-abc.abc"), None);
+    }
+
+    #[test]
+    fn test_all_prior_siblings_completed() {
+        // Test spec for member .1 with no prior siblings
+        let spec1 = Spec::parse(
+            "2026-01-24-001-abc.1",
+            r#"---
+status: pending
+---
+# Test
+"#,
+        )
+        .unwrap();
+
+        // Should be ready since it has no prior siblings
+        assert!(all_prior_siblings_completed(&spec1.id, &[]));
+
+        // Test spec for member .3 with completed prior siblings
+        let spec_prior_1 = Spec::parse(
+            "2026-01-24-001-abc.1",
+            r#"---
+status: completed
+---
+# Test
+"#,
+        )
+        .unwrap();
+
+        let spec_prior_2 = Spec::parse(
+            "2026-01-24-001-abc.2",
+            r#"---
+status: completed
+---
+# Test
+"#,
+        )
+        .unwrap();
+
+        let spec3 = Spec::parse(
+            "2026-01-24-001-abc.3",
+            r#"---
+status: pending
+---
+# Test
+"#,
+        )
+        .unwrap();
+
+        let all_specs = vec![spec_prior_1, spec_prior_2, spec3.clone()];
+        assert!(all_prior_siblings_completed(&spec3.id, &all_specs));
+    }
+
+    #[test]
+    fn test_all_prior_siblings_completed_missing() {
+        // Test spec for member .3 with missing prior sibling
+        let spec_prior_1 = Spec::parse(
+            "2026-01-24-001-abc.1",
+            r#"---
+status: completed
+---
+# Test
+"#,
+        )
+        .unwrap();
+
+        let spec3 = Spec::parse(
+            "2026-01-24-001-abc.3",
+            r#"---
+status: pending
+---
+# Test
+"#,
+        )
+        .unwrap();
+
+        // Only spec .1 exists, .2 is missing
+        let all_specs = vec![spec_prior_1, spec3.clone()];
+        assert!(!all_prior_siblings_completed(&spec3.id, &all_specs));
+    }
+
+    #[test]
+    fn test_all_prior_siblings_completed_not_completed() {
+        // Test spec for member .2 with incomplete prior sibling
+        let spec_prior_1 = Spec::parse(
+            "2026-01-24-001-abc.1",
+            r#"---
+status: pending
+---
+# Test
+"#,
+        )
+        .unwrap();
+
+        let spec2 = Spec::parse(
+            "2026-01-24-001-abc.2",
+            r#"---
+status: pending
+---
+# Test
+"#,
+        )
+        .unwrap();
+
+        let all_specs = vec![spec_prior_1, spec2.clone()];
+        assert!(!all_prior_siblings_completed(&spec2.id, &all_specs));
+    }
+
+    #[test]
+    fn test_is_ready_checks_prior_siblings() {
+        // Create a sequence where .2 depends on .1 being completed
+        let spec1 = Spec::parse(
+            "2026-01-24-001-abc.1",
+            r#"---
+status: completed
+---
+# Test
+"#,
+        )
+        .unwrap();
+
+        let spec2_ready = Spec::parse(
+            "2026-01-24-001-abc.2",
+            r#"---
+status: pending
+---
+# Test
+"#,
+        )
+        .unwrap();
+
+        let all_specs = vec![spec1];
+        assert!(spec2_ready.is_ready(&all_specs));
+
+        // Now make spec1 not completed
+        let spec1_incomplete = Spec::parse(
+            "2026-01-24-001-abc.1",
+            r#"---
+status: pending
+---
+# Test
+"#,
+        )
+        .unwrap();
+
+        let spec2_not_ready = Spec::parse(
+            "2026-01-24-001-abc.2",
+            r#"---
+status: pending
+---
+# Test
+"#,
+        )
+        .unwrap();
+
+        let all_specs = vec![spec1_incomplete];
+        assert!(!spec2_not_ready.is_ready(&all_specs));
     }
 }
