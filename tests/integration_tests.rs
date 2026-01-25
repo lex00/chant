@@ -1281,6 +1281,7 @@ fn get_git_status(repo_dir: &Path) -> std::io::Result<String> {
 
 #[test]
 #[serial]
+#[cfg(unix)] // Uses Unix-specific /tmp paths
 fn test_silent_mode_isolation() {
     let normal_repo = PathBuf::from("/tmp/test-chant-silent-normal");
     let silent_repo = PathBuf::from("/tmp/test-chant-silent-private");
@@ -1395,6 +1396,7 @@ fn test_silent_mode_isolation() {
 
 #[test]
 #[serial]
+#[cfg(unix)] // Uses Unix-specific /tmp paths
 fn test_silent_mode_pr_fails() {
     let silent_repo = PathBuf::from("/tmp/test-chant-silent-pr-fail");
 
@@ -1468,6 +1470,7 @@ fn test_silent_mode_pr_fails() {
 
 #[test]
 #[serial]
+#[cfg(unix)] // Uses Unix-specific /tmp paths
 fn test_silent_mode_branch_warning() {
     let silent_repo = PathBuf::from("/tmp/test-chant-silent-branch-warn");
 
@@ -1538,6 +1541,7 @@ fn test_silent_mode_branch_warning() {
 
 #[test]
 #[serial]
+#[cfg(unix)] // Uses Unix-specific /tmp paths
 fn test_silent_mode_init_on_tracked_fails() {
     let repo = PathBuf::from("/tmp/test-chant-silent-tracked");
 
@@ -1596,6 +1600,7 @@ fn test_silent_mode_init_on_tracked_fails() {
 
 #[test]
 #[serial]
+#[cfg(unix)] // Uses Unix-specific /tmp paths
 fn test_silent_mode_exclude_file_structure() {
     let silent_repo = PathBuf::from("/tmp/test-chant-silent-exclude-struct");
 
