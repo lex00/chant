@@ -75,38 +75,60 @@ pub struct Spec {
 impl Spec {
     /// Count unchecked checkboxes (`- [ ]`) in the Acceptance Criteria section only.
     /// Returns the count of unchecked items in that section, skipping code fences.
+    /// Uses the LAST `## Acceptance Criteria` heading outside code fences.
     pub fn count_unchecked_checkboxes(&self) -> usize {
-        // Find the "## Acceptance Criteria" section
         let acceptance_criteria_marker = "## Acceptance Criteria";
 
-        let Some(ac_start) = self.body.find(acceptance_criteria_marker) else {
-            return 0;
-        };
-
-        // Find the next "##" heading after the Acceptance Criteria section
-        let section_start = ac_start + acceptance_criteria_marker.len();
-        let section_content = &self.body[section_start..];
-
-        let section_end = section_content
-            .find("\n##")
-            .map(|pos| section_start + pos)
-            .unwrap_or(self.body.len());
-
-        let ac_section = &self.body[section_start..section_end];
-
-        // Count checkboxes while skipping code fences
-        let mut count = 0;
+        // First pass: find the line number of the LAST AC heading outside code fences
         let mut in_code_fence = false;
+        let mut last_ac_line: Option<usize> = None;
 
-        for line in ac_section.lines() {
-            // Check if line starts or ends a code fence
-            if line.trim_start().starts_with("```") {
+        for (line_num, line) in self.body.lines().enumerate() {
+            let trimmed = line.trim_start();
+
+            if trimmed.starts_with("```") {
                 in_code_fence = !in_code_fence;
                 continue;
             }
 
-            // Only count checkboxes outside of code fences
-            if !in_code_fence && line.contains("- [ ]") {
+            if !in_code_fence && trimmed.starts_with(acceptance_criteria_marker) {
+                last_ac_line = Some(line_num);
+            }
+        }
+
+        let Some(ac_start) = last_ac_line else {
+            return 0;
+        };
+
+        // Second pass: count checkboxes from the AC section until next ## heading
+        let mut in_code_fence = false;
+        let mut in_ac_section = false;
+        let mut count = 0;
+
+        for (line_num, line) in self.body.lines().enumerate() {
+            let trimmed = line.trim_start();
+
+            if trimmed.starts_with("```") {
+                in_code_fence = !in_code_fence;
+                continue;
+            }
+
+            if in_code_fence {
+                continue;
+            }
+
+            // Start counting at the last AC heading we found
+            if line_num == ac_start {
+                in_ac_section = true;
+                continue;
+            }
+
+            // Stop at the next ## heading after our AC section
+            if in_ac_section && trimmed.starts_with("## ") {
+                break;
+            }
+
+            if in_ac_section && line.contains("- [ ]") {
                 count += line.matches("- [ ]").count();
             }
         }
@@ -435,6 +457,46 @@ status: pending
 
         // Should only count the 1 unchecked in the real Acceptance Criteria section
         // The one in the code block should be ignored
+        assert_eq!(spec.count_unchecked_checkboxes(), 1);
+    }
+
+    #[test]
+    fn test_count_unchecked_checkboxes_nested_code_blocks() {
+        // This tests the pattern from spec 01j where there are multiple code fences
+        // and the first ## Acceptance Criteria appears inside a code block example
+        let spec = Spec::parse(
+            "001",
+            r#"---
+status: pending
+---
+# Test
+
+## Example
+
+```markdown
+## Expected Format
+
+```markdown
+## Acceptance Criteria
+
+- [ ] Example checkbox in code block
+```
+
+## Acceptance Criteria
+
+- [x] Real checkbox
+```
+
+## Acceptance Criteria
+
+- [x] First real checked
+- [ ] Second real unchecked
+"#,
+        )
+        .unwrap();
+
+        // The real Acceptance Criteria section at the end has 1 unchecked checkbox
+        // The ones inside the code block examples should all be ignored
         assert_eq!(spec.count_unchecked_checkboxes(), 1);
     }
 
