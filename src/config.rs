@@ -62,6 +62,10 @@ pub struct DefaultsConfig {
     /// Default model name for split operations (defaults to sonnet)
     #[serde(default)]
     pub split_model: Option<String>,
+    /// Default main branch name for merges (defaults to "main")
+    #[allow(dead_code)]
+    #[serde(default = "default_main_branch")]
+    pub main_branch: String,
 }
 
 fn default_prompt() -> String {
@@ -70,6 +74,10 @@ fn default_prompt() -> String {
 
 fn default_branch_prefix() -> String {
     "chant/".to_string()
+}
+
+fn default_main_branch() -> String {
+    "main".to_string()
 }
 
 impl Default for DefaultsConfig {
@@ -81,6 +89,7 @@ impl Default for DefaultsConfig {
             branch_prefix: default_branch_prefix(),
             model: None,
             split_model: None,
+            main_branch: default_main_branch(),
         }
     }
 }
@@ -175,6 +184,7 @@ struct PartialDefaultsConfig {
     pub branch_prefix: Option<String>,
     pub model: Option<String>,
     pub split_model: Option<String>,
+    pub main_branch: Option<String>,
 }
 
 #[allow(dead_code)]
@@ -227,6 +237,10 @@ impl PartialConfig {
                     .unwrap_or_else(default_branch_prefix),
                 model: project_defaults.model.or(global_defaults.model),
                 split_model: project_defaults.split_model.or(global_defaults.split_model),
+                main_branch: project_defaults
+                    .main_branch
+                    .or(global_defaults.main_branch)
+                    .unwrap_or_else(default_main_branch),
             },
             git: GitConfig {
                 provider: project_git

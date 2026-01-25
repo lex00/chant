@@ -2,6 +2,7 @@ mod config;
 mod git;
 mod id;
 mod mcp;
+mod merge;
 mod prompt;
 mod spec;
 
@@ -803,6 +804,7 @@ fn lookup_log_file(base_path: &std::path::Path, id: &str) -> Result<LogLookupRes
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn cmd_work(
     id: Option<&str>,
     prompt_name: Option<&str>,
