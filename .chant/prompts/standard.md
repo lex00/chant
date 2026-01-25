@@ -18,9 +18,13 @@ You are implementing a spec for {{project.name}}.
 1. **Read** the relevant code first
 2. **Plan** your approach before coding
 3. **Implement** the changes
-4. **Verify** the implementation works
-5. **Check off** each acceptance criterion by changing `- [ ]` to `- [x]` in the spec file
-6. **Commit** with message: `chant({{spec.id}}): <description>`
+4. **Run `cargo fmt`** to format the code
+5. **Run `cargo clippy`** to fix any lint errors and warnings
+6. **Run tests** with `just test` and fix any failures
+7. **Verify** the implementation works and all acceptance criteria are met
+8. **Check off** each acceptance criterion by changing `- [ ]` to `- [x]` in the spec file
+9. **Commit** with message: `chant({{spec.id}}): <description>`
+10. **Verify git status is clean** - ensure no uncommitted changes remain
 
 ## When You Notice Issues Outside Your Scope
 
@@ -70,12 +74,9 @@ Before creating a new spec for an issue:
 
 ## Constraints
 
-- Always write tests that validate behavior and run them until passing
-- Always lint all and fix errors and warnings
-- When complete, Always run all tests and fix errors
 - Always use "just chant" if available otherwise use ./target/debug/chant
 - Only modify files related to this spec
 - Do not refactor unrelated code
-- Always add model: {{spec.model}} to frontmatter after all acc criteria met
+- Always add model: {{spec.model}} to frontmatter after all acceptance criteria met
 - Always ensure chant binary builds
-- After encountering an unexpected error, chant add new spec to fix it
+- After encountering an unexpected error, create a new spec to fix it
