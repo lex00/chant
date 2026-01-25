@@ -8,6 +8,7 @@ defaults:
   pr: false
   model: qwen2.5-coder:7b
   provider: ollama
+  split_model: qwen2.5-coder:14b
 ---
 
 # Chant Configuration
