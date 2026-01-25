@@ -1,11 +1,11 @@
 ---
 name: split
-purpose: Split a driver spec into subtasks with detailed acceptance criteria
+purpose: Split a driver spec into members with detailed acceptance criteria
 ---
 
-# Split Driver Specification into Subtasks
+# Split Driver Specification into Member Specs
 
-You are analyzing a driver specification for the {{project.name}} project and proposing how to split it into smaller, ordered subtasks.
+You are analyzing a driver specification for the {{project.name}} project and proposing how to split it into smaller, ordered member specs.
 
 ## Driver Specification to Split
 
@@ -17,12 +17,12 @@ You are analyzing a driver specification for the {{project.name}} project and pr
 ## Your Task
 
 1. Analyze the specification and its acceptance criteria
-2. Propose a sequence of subtasks where:
-   - Each subtask leaves code in a compilable state
-   - Each subtask is independently testable and valuable
+2. Propose a sequence of member specs where:
+   - Each member leaves code in a compilable state
+   - Each member is independently testable and valuable
    - Dependencies are minimized (parallelize where possible)
    - Common patterns are respected (add new alongside old → update callers → remove old)
-3. For each subtask, provide:
+3. For each member, provide:
    - A clear, concise title
    - Description of what should be implemented
    - Explicit acceptance criteria with checkboxes for verification
@@ -33,7 +33,7 @@ You are analyzing a driver specification for the {{project.name}} project and pr
 
 ## Why Thorough Acceptance Criteria?
 
-These subtasks will be executed by Claude Haiku, a capable but smaller model. A strong model (Opus/Sonnet) doing the split should think through edge cases and requirements thoroughly. Each subtask must have:
+These member specs will be executed by Claude Haiku, a capable but smaller model. A strong model (Opus/Sonnet) doing the split should think through edge cases and requirements thoroughly. Each member must have:
 
 - **Specific checkboxes** for each piece of work (not just "implement it")
 - **Edge case callouts** to prevent oversights
@@ -44,12 +44,12 @@ This way, Haiku has a detailed specification to follow and won't miss important 
 
 ## Output Format
 
-For each subtask, output exactly this format:
+For each member, output exactly this format:
 
 ```
-## Subtask N: <title>
+## Member N: <title>
 
-<description of what this subtask accomplishes>
+<description of what this member accomplishes>
 
 ### Acceptance Criteria
 
@@ -75,4 +75,4 @@ For this feature, verify:
 
 If no files are identified, you can omit the Affected Files section.
 
-Create as many subtasks as needed (typically 3-5 for a medium spec).
+Create as many members as needed (typically 3-5 for a medium spec).

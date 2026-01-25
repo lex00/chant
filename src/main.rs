@@ -95,7 +95,7 @@ enum Commands {
         #[arg(long, short = 'f')]
         follow: bool,
     },
-    /// Split a spec into subtasks
+    /// Split a spec into member specs
     Split {
         /// Spec ID to split (full or partial)
         id: String,
@@ -267,12 +267,12 @@ You are implementing a spec for {{project.name}}.
     // Create split prompt
     let split_prompt_content = r#"---
 name: split
-purpose: Split a driver spec into subtasks with detailed acceptance criteria
+purpose: Split a driver spec into members with detailed acceptance criteria
 ---
 
-# Split Driver Specification into Subtasks
+# Split Driver Specification into Member Specs
 
-You are analyzing a driver specification for the {{project.name}} project and proposing how to split it into smaller, ordered subtasks.
+You are analyzing a driver specification for the {{project.name}} project and proposing how to split it into smaller, ordered member specs.
 
 ## Driver Specification to Split
 
@@ -284,12 +284,12 @@ You are analyzing a driver specification for the {{project.name}} project and pr
 ## Your Task
 
 1. Analyze the specification and its acceptance criteria
-2. Propose a sequence of subtasks where:
-   - Each subtask leaves code in a compilable state
-   - Each subtask is independently testable and valuable
+2. Propose a sequence of member specs where:
+   - Each member leaves code in a compilable state
+   - Each member is independently testable and valuable
    - Dependencies are minimized (parallelize where possible)
    - Common patterns are respected (add new alongside old → update callers → remove old)
-3. For each subtask, provide:
+3. For each member, provide:
    - A clear, concise title
    - Description of what should be implemented
    - Explicit acceptance criteria with checkboxes for verification
@@ -300,7 +300,7 @@ You are analyzing a driver specification for the {{project.name}} project and pr
 
 ## Why Thorough Acceptance Criteria?
 
-These subtasks will be executed by Claude Haiku, a capable but smaller model. A strong model (Opus/Sonnet) doing the split should think through edge cases and requirements thoroughly. Each subtask must have:
+These member specs will be executed by Claude Haiku, a capable but smaller model. A strong model (Opus/Sonnet) doing the split should think through edge cases and requirements thoroughly. Each member must have:
 
 - **Specific checkboxes** for each piece of work (not just "implement it")
 - **Edge case callouts** to prevent oversights
@@ -311,12 +311,12 @@ This way, Haiku has a detailed specification to follow and won't miss important 
 
 ## Output Format
 
-For each subtask, output exactly this format:
+For each member, output exactly this format:
 
 ```
-## Subtask N: <title>
+## Member N: <title>
 
-<description of what this subtask accomplishes>
+<description of what this member accomplishes>
 
 ### Acceptance Criteria
 
@@ -342,7 +342,7 @@ For this feature, verify:
 
 If no files are identified, you can omit the Affected Files section.
 
-Create as many subtasks as needed (typically 3-5 for a medium spec).
+Create as many members as needed (typically 3-5 for a medium spec).
 "#;
     std::fs::write(chant_dir.join("prompts/split.md"), split_prompt_content)?;
 
@@ -2381,27 +2381,27 @@ fn cmd_split(id: &str, override_model: Option<&str>, force: bool) -> Result<()> 
     let agent_output =
         invoke_agent_with_model(&split_prompt, &spec, "split", &config, Some(&model), None)?;
 
-    // Parse subtasks from agent output
-    let subtasks = parse_subtasks_from_agent_output(&agent_output)?;
+    // Parse member specs from agent output
+    let members = parse_member_specs_from_output(&agent_output)?;
 
-    if subtasks.is_empty() {
-        anyhow::bail!("Agent did not propose any subtasks. Check the agent output in the log.");
+    if members.is_empty() {
+        anyhow::bail!("Agent did not propose any member specs. Check the agent output in the log.");
     }
 
     println!(
-        "{} Creating {} subtasks for spec {}",
+        "{} Creating {} member specs for spec {}",
         "→".cyan(),
-        subtasks.len(),
+        members.len(),
         spec.id
     );
 
-    // Create subtask spec files
+    // Create member spec files
     let driver_id = spec.id.clone();
-    for (index, subtask) in subtasks.iter().enumerate() {
-        let subtask_number = index + 1;
-        let subtask_id = format!("{}.{}", driver_id, subtask_number);
-        let subtask_filename = format!("{}.md", subtask_id);
-        let subtask_path = specs_dir.join(&subtask_filename);
+    for (index, member) in members.iter().enumerate() {
+        let member_number = index + 1;
+        let member_id = format!("{}.{}", driver_id, member_number);
+        let member_filename = format!("{}.md", member_id);
+        let member_path = specs_dir.join(&member_filename);
 
         // Create frontmatter with dependencies
         let depends_on = if index > 0 {
@@ -2410,36 +2410,36 @@ fn cmd_split(id: &str, override_model: Option<&str>, force: bool) -> Result<()> 
             None
         };
 
-        let subtask_frontmatter = SpecFrontmatter {
+        let member_frontmatter = SpecFrontmatter {
             r#type: "code".to_string(),
             status: SpecStatus::Pending,
             depends_on,
-            target_files: subtask.target_files.clone(),
+            target_files: member.target_files.clone(),
             ..Default::default()
         };
 
         // Build body with title and description
         // If description already contains ### Acceptance Criteria, don't append generic ones
-        let body = if subtask.description.contains("### Acceptance Criteria") {
-            format!("# {}\n\n{}", subtask.title, subtask.description)
+        let body = if member.description.contains("### Acceptance Criteria") {
+            format!("# {}\n\n{}", member.title, member.description)
         } else {
             // No acceptance criteria found, append generic section
             format!(
                 "# {}\n\n{}\n\n## Acceptance Criteria\n\n- [ ] Implement as described\n- [ ] All tests pass",
-                subtask.title,
-                subtask.description
+                member.title,
+                member.description
             )
         };
 
-        let subtask_spec = Spec {
-            id: subtask_id.clone(),
-            frontmatter: subtask_frontmatter,
-            title: Some(subtask.title.clone()),
+        let member_spec = Spec {
+            id: member_id.clone(),
+            frontmatter: member_frontmatter,
+            title: Some(member.title.clone()),
             body,
         };
 
-        subtask_spec.save(&subtask_path)?;
-        println!("  {} {}", "✓".green(), subtask_id);
+        member_spec.save(&member_path)?;
+        println!("  {} {}", "✓".green(), member_id);
     }
 
     // Update driver spec to type: group
@@ -2451,8 +2451,8 @@ fn cmd_split(id: &str, override_model: Option<&str>, force: bool) -> Result<()> 
         "✓".green(),
         spec.id
     );
-    println!("Subtasks:");
-    for i in 1..=subtasks.len() {
+    println!("Members:");
+    for i in 1..=members.len() {
         println!("  • {}.{}", spec.id, i);
     }
 
@@ -2832,41 +2832,41 @@ fn cmd_merge(
 }
 
 #[derive(Debug, Clone)]
-struct Subtask {
+struct MemberSpec {
     title: String,
     description: String,
     target_files: Option<Vec<String>>,
 }
 
-fn parse_subtasks_from_agent_output(output: &str) -> Result<Vec<Subtask>> {
-    let mut subtasks = Vec::new();
-    let mut current_subtask: Option<(String, String, Vec<String>)> = None;
+fn parse_member_specs_from_output(output: &str) -> Result<Vec<MemberSpec>> {
+    let mut members = Vec::new();
+    let mut current_member: Option<(String, String, Vec<String>)> = None;
     let mut collecting_files = false;
     let mut in_code_block = false;
 
     for line in output.lines() {
-        // Check for subtask headers (## Subtask N: ...)
-        if line.starts_with("## Subtask ") && line.contains(':') {
-            // Save previous subtask if any
-            if let Some((title, desc, files)) = current_subtask.take() {
-                subtasks.push(Subtask {
+        // Check for member headers (## Member N: ...)
+        if line.starts_with("## Member ") && line.contains(':') {
+            // Save previous member if any
+            if let Some((title, desc, files)) = current_member.take() {
+                members.push(MemberSpec {
                     title,
                     description: desc.trim().to_string(),
                     target_files: if files.is_empty() { None } else { Some(files) },
                 });
             }
 
-            // Extract title from "## Subtask N: Title Here"
+            // Extract title from "## Member N: Title Here"
             if let Some(title_part) = line.split(':').nth(1) {
                 let title = title_part.trim().to_string();
-                current_subtask = Some((title, String::new(), Vec::new()));
+                current_member = Some((title, String::new(), Vec::new()));
                 collecting_files = false;
             }
-        } else if current_subtask.is_some() {
+        } else if current_member.is_some() {
             // Check for code block markers
             if line.trim() == "```" {
                 in_code_block = !in_code_block;
-                if let Some((_, ref mut desc, _)) = &mut current_subtask {
+                if let Some((_, ref mut desc, _)) = &mut current_member {
                     desc.push_str(line);
                     desc.push('\n');
                 }
@@ -2890,7 +2890,7 @@ fn parse_subtasks_from_agent_output(output: &str) -> Result<Vec<Subtask>> {
                         } else {
                             file
                         };
-                        if let Some((_, _, ref mut files)) = current_subtask {
+                        if let Some((_, _, ref mut files)) = current_member {
                             files.push(cleaned_file);
                         }
                     }
@@ -2905,7 +2905,7 @@ fn parse_subtasks_from_agent_output(output: &str) -> Result<Vec<Subtask>> {
                 }
             } else if !in_code_block {
                 // Preserve ### headers and all content except "Affected Files" section
-                if let Some((_, ref mut desc, _)) = &mut current_subtask {
+                if let Some((_, ref mut desc, _)) = &mut current_member {
                     desc.push_str(line);
                     desc.push('\n');
                 }
@@ -2913,20 +2913,20 @@ fn parse_subtasks_from_agent_output(output: &str) -> Result<Vec<Subtask>> {
         }
     }
 
-    // Save last subtask
-    if let Some((title, desc, files)) = current_subtask {
-        subtasks.push(Subtask {
+    // Save last member
+    if let Some((title, desc, files)) = current_member {
+        members.push(MemberSpec {
             title,
             description: desc.trim().to_string(),
             target_files: if files.is_empty() { None } else { Some(files) },
         });
     }
 
-    if subtasks.is_empty() {
-        anyhow::bail!("No subtasks found in agent output");
+    if members.is_empty() {
+        anyhow::bail!("No member specs found in agent output");
     }
 
-    Ok(subtasks)
+    Ok(members)
 }
 
 #[cfg(test)]
@@ -3783,8 +3783,8 @@ status: pending
     }
 
     #[test]
-    fn test_parse_subtasks_from_agent_output_single() {
-        let output = r#"## Subtask 1: Add new field
+    fn test_parse_member_specs_from_output_single() {
+        let output = r#"## Member 1: Add new field
 
 Add a new field to the struct alongside the old one.
 
@@ -3792,7 +3792,7 @@ Add a new field to the struct alongside the old one.
 - src/lib.rs
 - src/main.rs
 "#;
-        let result = parse_subtasks_from_agent_output(output).unwrap();
+        let result = parse_member_specs_from_output(output).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].title, "Add new field");
         assert!(result[0].description.contains("Add a new field"));
@@ -3803,49 +3803,49 @@ Add a new field to the struct alongside the old one.
     }
 
     #[test]
-    fn test_parse_subtasks_from_agent_output_multiple() {
-        let output = r#"## Subtask 1: First task
+    fn test_parse_member_specs_from_output_multiple() {
+        let output = r#"## Member 1: First task
 
 Description of first task.
 
 **Affected Files:**
 - file1.rs
 
-## Subtask 2: Second task
+## Member 2: Second task
 
 Description of second task.
 
 **Affected Files:**
 - file2.rs
 "#;
-        let result = parse_subtasks_from_agent_output(output).unwrap();
+        let result = parse_member_specs_from_output(output).unwrap();
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].title, "First task");
         assert_eq!(result[1].title, "Second task");
     }
 
     #[test]
-    fn test_parse_subtasks_without_files() {
-        let output = r#"## Subtask 1: Simple task
+    fn test_parse_member_specs_without_files() {
+        let output = r#"## Member 1: Simple task
 
 Just a simple task without files listed.
 "#;
-        let result = parse_subtasks_from_agent_output(output).unwrap();
+        let result = parse_member_specs_from_output(output).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].title, "Simple task");
         assert!(result[0].target_files.is_none());
     }
 
     #[test]
-    fn test_parse_subtasks_empty_output() {
-        let output = "No subtasks here";
-        let result = parse_subtasks_from_agent_output(output);
+    fn test_parse_member_specs_empty_output() {
+        let output = "No member specs here";
+        let result = parse_member_specs_from_output(output);
         assert!(result.is_err());
     }
 
     #[test]
-    fn test_parse_subtasks_preserves_section_headers() {
-        let output = r#"## Subtask 1: Implement feature
+    fn test_parse_member_specs_preserves_section_headers() {
+        let output = r#"## Member 1: Implement feature
 
 Add the core feature with detailed logic.
 
@@ -3862,7 +3862,7 @@ Add the core feature with detailed logic.
 **Affected Files:**
 - src/lib.rs
 "#;
-        let result = parse_subtasks_from_agent_output(output).unwrap();
+        let result = parse_member_specs_from_output(output).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].title, "Implement feature");
         // Description should preserve ### headers
@@ -3878,8 +3878,8 @@ Add the core feature with detailed logic.
     }
 
     #[test]
-    fn test_parse_subtasks_with_multiple_sections() {
-        let output = r#"## Subtask 2: Update callers
+    fn test_parse_member_specs_with_multiple_sections() {
+        let output = r#"## Member 2: Update callers
 
 Update all callers to use the new API.
 
@@ -3897,7 +3897,7 @@ Update all callers to use the new API.
 - src/main.rs
 - src/utils.rs
 "#;
-        let result = parse_subtasks_from_agent_output(output).unwrap();
+        let result = parse_member_specs_from_output(output).unwrap();
         assert_eq!(result.len(), 1);
         assert!(result[0].description.contains("### Acceptance Criteria"));
         assert!(result[0].description.contains("### Example Test Cases"));
@@ -3909,23 +3909,23 @@ Update all callers to use the new API.
     }
 
     #[test]
-    fn test_subtask_body_with_existing_acceptance_criteria() {
-        // Verify that when a subtask description contains ### Acceptance Criteria,
+    fn test_member_spec_body_with_existing_acceptance_criteria() {
+        // Verify that when a member spec description contains ### Acceptance Criteria,
         // we don't append a generic section
-        let subtask = Subtask {
+        let member = MemberSpec {
             title: "Implement feature".to_string(),
             description: "Implement the feature.\n\n### Acceptance Criteria\n\n- [ ] Feature works\n- [ ] Tests pass".to_string(),
             target_files: None,
         };
 
         // Build body the same way cmd_split does
-        let body = if subtask.description.contains("### Acceptance Criteria") {
-            format!("# {}\n\n{}", subtask.title, subtask.description)
+        let body = if member.description.contains("### Acceptance Criteria") {
+            format!("# {}\n\n{}", member.title, member.description)
         } else {
             format!(
                 "# {}\n\n{}\n\n## Acceptance Criteria\n\n- [ ] Implement as described\n- [ ] All tests pass",
-                subtask.title,
-                subtask.description
+                member.title,
+                member.description
             )
         };
 
@@ -3937,23 +3937,23 @@ Update all callers to use the new API.
     }
 
     #[test]
-    fn test_subtask_body_without_acceptance_criteria() {
-        // Verify that when a subtask description lacks ### Acceptance Criteria,
+    fn test_member_spec_body_without_acceptance_criteria() {
+        // Verify that when a member spec description lacks ### Acceptance Criteria,
         // we append the generic section
-        let subtask = Subtask {
+        let member = MemberSpec {
             title: "Simple task".to_string(),
             description: "Just do this simple thing.".to_string(),
             target_files: None,
         };
 
         // Build body the same way cmd_split does
-        let body = if subtask.description.contains("### Acceptance Criteria") {
-            format!("# {}\n\n{}", subtask.title, subtask.description)
+        let body = if member.description.contains("### Acceptance Criteria") {
+            format!("# {}\n\n{}", member.title, member.description)
         } else {
             format!(
                 "# {}\n\n{}\n\n## Acceptance Criteria\n\n- [ ] Implement as described\n- [ ] All tests pass",
-                subtask.title,
-                subtask.description
+                member.title,
+                member.description
             )
         };
 
