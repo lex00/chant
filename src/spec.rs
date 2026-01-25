@@ -454,7 +454,8 @@ pub fn resolve_spec(specs_dir: &Path, partial_id: &str) -> Result<Spec> {
     let mut specs = load_all_specs(specs_dir)?;
 
     // Also load archived specs
-    let archive_dir = specs_dir.parent()
+    let archive_dir = specs_dir
+        .parent()
         .ok_or_else(|| anyhow::anyhow!("Cannot determine archive directory"))?
         .join("archive");
     if archive_dir.exists() {
