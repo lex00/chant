@@ -111,9 +111,6 @@ enum Commands {
         /// Force archive of non-completed specs
         #[arg(long)]
         force: bool,
-        /// When archiving a driver, also archive all completed members
-        #[arg(long)]
-        include_members: bool,
     },
 }
 
@@ -153,8 +150,7 @@ fn main() -> Result<()> {
             dry_run,
             older_than,
             force,
-            include_members,
-        } => cmd_archive(id.as_deref(), dry_run, older_than, force, include_members),
+        } => cmd_archive(id.as_deref(), dry_run, older_than, force),
     }
 }
 
@@ -1990,7 +1986,6 @@ fn cmd_archive(
     dry_run: bool,
     older_than: Option<u64>,
     force: bool,
-    include_members: bool,
 ) -> Result<()> {
     let specs_dir = PathBuf::from(".chant/specs");
     let archive_dir = PathBuf::from(".chant/archive");
@@ -2009,18 +2004,9 @@ fn cmd_archive(
         // Archive specific spec
         if let Some(spec) = specs.iter().find(|s| s.id.starts_with(id)) {
             // Check if this is a member spec
-            if let Some(driver_id) = spec::extract_driver_id(&spec.id) {
-                // This is a member spec - check if driver is being archived or already archived
-                let driver_exists = specs.iter().any(|s| s.id == driver_id);
-                if driver_exists {
-                    eprintln!(
-                        "{} Skipping member spec {} - driver {} is not being archived",
-                        "⚠ ".yellow(),
-                        spec.id,
-                        driver_id
-                    );
-                    return Ok(());
-                }
+            if spec::extract_driver_id(&spec.id).is_some() {
+                // This is a member spec - always allow archiving members directly
+                to_archive.push(spec.clone());
             } else {
                 // This is a driver spec or standalone spec
                 let members = spec::get_members(&spec.id, &specs);
@@ -2035,12 +2021,10 @@ fn cmd_archive(
                         return Ok(());
                     }
 
-                    // All members are completed, add them if include_members is set
+                    // All members are completed, automatically add them
                     to_archive.push(spec.clone());
-                    if include_members {
-                        for member in members {
-                            to_archive.push(member.clone());
-                        }
+                    for member in members {
+                        to_archive.push(member.clone());
                     }
                 } else {
                     // Standalone spec or driver with no members
@@ -3977,18 +3961,6 @@ status: {}
     #[test]
     fn test_archive_member_without_driver() {
         // Test that member specs without a driver are still treated correctly
-        let member = Spec {
-            id: "2026-01-24-005-mno.1".to_string(),
-            frontmatter: SpecFrontmatter {
-                status: SpecStatus::Completed,
-                ..Default::default()
-            },
-            title: Some("Member without driver".to_string()),
-            body: "# Member\n\nBody.".to_string(),
-        };
-
-        let specs = vec![member];
-
         // extract_driver_id should return Some for a member
         assert_eq!(
             spec::extract_driver_id("2026-01-24-005-mno.1"),
