@@ -33,6 +33,15 @@ enum Commands {
         /// Override detected project name
         #[arg(long)]
         name: Option<String>,
+        /// Keep .chant/ local only (not tracked in git)
+        #[arg(long)]
+        silent: bool,
+        /// Overwrite existing .chant/ directory
+        #[arg(long)]
+        force: bool,
+        /// Only create config.md, no prompt templates
+        #[arg(long)]
+        minimal: bool,
     },
     /// Add a new spec
     Add {
@@ -178,7 +187,12 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Init { name } => cmd_init(name),
+        Commands::Init {
+            name,
+            silent,
+            force,
+            minimal,
+        } => cmd_init(name, silent, force, minimal),
         Commands::Add { description } => cmd_add(&description),
         Commands::List { ready, label } => cmd_list(ready, &label),
         Commands::Show { id, no_render } => cmd_show(&id, no_render),
@@ -237,12 +251,34 @@ fn main() -> Result<()> {
     }
 }
 
-fn cmd_init(name: Option<String>) -> Result<()> {
+fn cmd_init(name: Option<String>, silent: bool, force: bool, minimal: bool) -> Result<()> {
     let chant_dir = PathBuf::from(".chant");
 
+    // For silent mode: validate that .chant/ is not already tracked in git
+    // Do this check BEFORE the exists check so we catch tracking issues even if dir exists
+    if silent {
+        let ls_output = std::process::Command::new("git")
+            .args(["ls-files", "--error-unmatch", ".chant/config.md"])
+            .output();
+
+        if let Ok(output) = ls_output {
+            if output.status.success() {
+                anyhow::bail!(
+                    "Cannot enable silent mode: .chant/ is already tracked in git. \
+                     Silent mode requires .chant/ to be local-only. \
+                     Either remove .chant/ from git tracking or initialize without --silent."
+                );
+            }
+        }
+    }
+
     if chant_dir.exists() {
-        println!("{}", "Chant already initialized.".yellow());
-        return Ok(());
+        if !force {
+            println!("{}", "Chant already initialized.".yellow());
+            return Ok(());
+        }
+        // force flag: remove existing .chant directory
+        std::fs::remove_dir_all(&chant_dir)?;
     }
 
     // Detect project name
@@ -276,8 +312,9 @@ Project initialized on {}.
     );
     std::fs::write(chant_dir.join("config.md"), config_content)?;
 
-    // Create standard prompt
-    let prompt_content = r#"---
+    if !minimal {
+        // Create standard prompt
+        let prompt_content = r#"---
 name: standard
 purpose: Default execution prompt
 ---
@@ -306,10 +343,10 @@ You are implementing a spec for {{project.name}}.
 - Follow existing code patterns
 - Do not refactor unrelated code
 "#;
-    std::fs::write(chant_dir.join("prompts/standard.md"), prompt_content)?;
+        std::fs::write(chant_dir.join("prompts/standard.md"), prompt_content)?;
 
-    // Create split prompt
-    let split_prompt_content = r#"---
+        // Create split prompt
+        let split_prompt_content = r#"---
 name: split
 purpose: Split a driver spec into members with detailed acceptance criteria
 ---
@@ -388,19 +425,95 @@ If no files are identified, you can omit the Affected Files section.
 
 Create as many members as needed (typically 3-5 for a medium spec).
 "#;
-    std::fs::write(chant_dir.join("prompts/split.md"), split_prompt_content)?;
+        std::fs::write(chant_dir.join("prompts/split.md"), split_prompt_content)?;
+    }
 
     // Create .gitignore
     let gitignore_content = "# Local state (not shared)\n.locks/\n.store/\n";
     std::fs::write(chant_dir.join(".gitignore"), gitignore_content)?;
 
+    // Handle silent mode: add .chant/ to .git/info/exclude
+    if silent {
+        // Get git common dir (supports worktrees)
+        let output = std::process::Command::new("git")
+            .args(["rev-parse", "--git-common-dir"])
+            .output()?;
+
+        if output.status.success() {
+            let git_dir = String::from_utf8(output.stdout)?.trim().to_string();
+            let exclude_path = PathBuf::from(&git_dir).join("info/exclude");
+
+            // Create info directory if it doesn't exist
+            std::fs::create_dir_all(exclude_path.parent().unwrap())?;
+
+            // Read existing exclude file
+            let mut exclude_content = std::fs::read_to_string(&exclude_path).unwrap_or_default();
+
+            // Add .chant/ if not already present
+            if !exclude_content.contains(".chant/") && !exclude_content.contains(".chant") {
+                if !exclude_content.ends_with('\n') && !exclude_content.is_empty() {
+                    exclude_content.push('\n');
+                }
+                exclude_content.push_str(".chant/\n");
+                std::fs::write(&exclude_path, exclude_content)?;
+            }
+        }
+    }
+
     println!("{} .chant/config.md", "Created".green());
-    println!("{} .chant/prompts/standard.md", "Created".green());
-    println!("{} .chant/prompts/split.md", "Created".green());
+    if !minimal {
+        println!("{} .chant/prompts/standard.md", "Created".green());
+        println!("{} .chant/prompts/split.md", "Created".green());
+    }
     println!("{} .chant/specs/", "Created".green());
     println!("\nChant initialized for project: {}", project_name.cyan());
 
+    if silent {
+        println!(
+            "{} Silent mode enabled - .chant/ is local-only (not tracked in git)",
+            "ℹ".cyan()
+        );
+        println!(
+            "  {} Specs won't be committed to the repository",
+            "•".cyan()
+        );
+        println!(
+            "  {} Use {} to convert to shared mode",
+            "•".cyan(),
+            "--force".cyan()
+        );
+    }
+    if minimal {
+        println!(
+            "{} Minimal mode enabled - only config.md created",
+            "ℹ".cyan()
+        );
+    }
+
     Ok(())
+}
+
+/// Check if the repository is in silent mode
+/// Silent mode is indicated by .chant/ being in .git/info/exclude
+fn is_silent_mode() -> bool {
+    let output = std::process::Command::new("git")
+        .args(["rev-parse", "--git-common-dir"])
+        .output();
+
+    if let Ok(output) = output {
+        if output.status.success() {
+            if let Ok(git_dir) = String::from_utf8(output.stdout) {
+                let exclude_path = PathBuf::from(git_dir.trim()).join("info/exclude");
+                if let Ok(content) = std::fs::read_to_string(&exclude_path) {
+                    return content.lines().any(|l| {
+                        let trimmed = l.trim();
+                        trimmed == ".chant/" || trimmed == ".chant"
+                    });
+                }
+            }
+        }
+    }
+    false
 }
 
 fn detect_project_name() -> Option<String> {
@@ -706,6 +819,14 @@ fn cmd_status() -> Result<()> {
     println!("  {:<12} {}", "Failed:", failed);
     println!("  ─────────────");
     println!("  {:<12} {}", "Total:", total);
+
+    // Show silent mode indicator if enabled
+    if is_silent_mode() {
+        println!(
+            "\n{} Silent mode enabled - specs are local-only",
+            "ℹ".cyan()
+        );
+    }
 
     Ok(())
 }
@@ -1155,6 +1276,21 @@ fn cmd_work(
 
     if !specs_dir.exists() {
         anyhow::bail!("Chant not initialized. Run `chant init` first.");
+    }
+
+    // Check for silent mode conflicts
+    let in_silent_mode = is_silent_mode();
+    if in_silent_mode && cli_pr {
+        anyhow::bail!(
+            "Cannot create pull request in silent mode - would reveal chant usage to the team. \
+             Remove --pr or disable silent mode with `chant init --force` (non-silent)."
+        );
+    }
+    if in_silent_mode && cli_branch.is_some() {
+        println!(
+            "{} Warning: Creating branches in silent mode will still be visible to the team",
+            "⚠".yellow()
+        );
     }
 
     // Handle parallel execution mode
