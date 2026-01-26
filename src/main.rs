@@ -94,6 +94,9 @@ enum Commands {
         /// Re-finalize an existing spec (update commits and timestamp)
         #[arg(long)]
         finalize: bool,
+        /// Allow spec to complete without matching commits (uses HEAD as fallback). Use only in special cases.
+        #[arg(long)]
+        allow_no_commits: bool,
     },
     /// Start MCP server (Model Context Protocol)
     Mcp,
@@ -216,6 +219,7 @@ fn main() -> Result<()> {
             parallel,
             label,
             finalize,
+            allow_no_commits,
         } => cmd::work::cmd_work(
             id.as_deref(),
             prompt.as_deref(),
@@ -225,6 +229,7 @@ fn main() -> Result<()> {
             parallel,
             &label,
             finalize,
+            allow_no_commits,
         ),
         Commands::Mcp => mcp::run_server(),
         Commands::Status => cmd::spec::cmd_status(),

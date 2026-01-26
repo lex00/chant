@@ -40,6 +40,7 @@ pub fn cmd_work(
     parallel: bool,
     labels: &[String],
     finalize: bool,
+    allow_no_commits: bool,
 ) -> Result<()> {
     let specs_dir = PathBuf::from(".chant/specs");
     let prompts_dir = PathBuf::from(".chant/prompts");
@@ -103,7 +104,7 @@ pub fn cmd_work(
         }
 
         println!("{} Re-finalizing spec {}...", "→".cyan(), spec.id);
-        re_finalize_spec(&mut spec, &spec_path, &config)?;
+        re_finalize_spec(&mut spec, &spec_path, &config, allow_no_commits)?;
         println!("{} Spec re-finalized!", "✓".green());
 
         if let Some(commits) = &spec.frontmatter.commits {
@@ -258,7 +259,7 @@ pub fn cmd_work(
 
             // Finalize the spec (set status, commits, completed_at, model)
             let all_specs = spec::load_all_specs(&specs_dir)?;
-            finalize_spec(&mut spec, &spec_path, &config, &all_specs)?;
+            finalize_spec(&mut spec, &spec_path, &config, &all_specs, allow_no_commits)?;
 
             // If this is a member spec, check if driver should be auto-completed
             if spec::auto_complete_driver_if_ready(&spec.id, &all_specs, &specs_dir)? {
@@ -851,6 +852,14 @@ impl std::fmt::Display for CommitError {
 impl std::error::Error for CommitError {}
 
 pub(crate) fn get_commits_for_spec(spec_id: &str) -> Result<Vec<String>> {
+    get_commits_for_spec_internal(spec_id, false)
+}
+
+pub(crate) fn get_commits_for_spec_allow_no_commits(spec_id: &str) -> Result<Vec<String>> {
+    get_commits_for_spec_internal(spec_id, true)
+}
+
+fn get_commits_for_spec_internal(spec_id: &str, allow_no_commits: bool) -> Result<Vec<String>> {
     use std::process::Command;
 
     // Look for all commits with the chant(spec_id) pattern
@@ -883,32 +892,45 @@ pub(crate) fn get_commits_for_spec(spec_id: &str) -> Result<Vec<String>> {
         }
     }
 
-    // If no matching commits found, use HEAD as fallback with warning
+    // If no matching commits found, decide what to do based on flag
     if commits.is_empty() {
-        eprintln!(
-            "{} No commits found with pattern 'chant({})'. Attempting to use HEAD as fallback.",
-            "⚠".yellow(),
-            spec_id
-        );
+        if allow_no_commits {
+            // Fallback behavior: use HEAD with warning
+            eprintln!(
+                "{} No commits found with pattern 'chant({})'. Attempting to use HEAD as fallback.",
+                "⚠".yellow(),
+                spec_id
+            );
 
-        let head_output = Command::new("git")
-            .args(["rev-parse", "--short=7", "HEAD"])
-            .output()
-            .context("Failed to execute git rev-parse command")?;
+            let head_output = Command::new("git")
+                .args(["rev-parse", "--short=7", "HEAD"])
+                .output()
+                .context("Failed to execute git rev-parse command")?;
 
-        if head_output.status.success() {
-            let head_hash = String::from_utf8_lossy(&head_output.stdout)
-                .trim()
-                .to_string();
-            if !head_hash.is_empty() {
-                eprintln!("{} Using HEAD commit: {}", "⚠".yellow(), head_hash);
-                commits.push(head_hash);
+            if head_output.status.success() {
+                let head_hash = String::from_utf8_lossy(&head_output.stdout)
+                    .trim()
+                    .to_string();
+                if !head_hash.is_empty() {
+                    eprintln!("{} Using HEAD commit: {}", "⚠".yellow(), head_hash);
+                    commits.push(head_hash);
+                }
+            } else {
+                let stderr = String::from_utf8_lossy(&head_output.stderr);
+                let error_msg = format!(
+                    "Could not find any commit for spec '{}' and HEAD fallback failed: {}",
+                    spec_id, stderr
+                );
+                eprintln!("{} {}", "✗".red(), error_msg);
+                return Err(anyhow::anyhow!(CommitError::NoMatchingCommits));
             }
         } else {
-            let stderr = String::from_utf8_lossy(&head_output.stderr);
+            // Default behavior: fail loudly
             let error_msg = format!(
-                "Could not find any commit for spec '{}' and HEAD fallback failed: {}",
-                spec_id, stderr
+                "No commits found matching 'chant({})' pattern. Did the agent forget to commit?\n\
+                 Commits must follow the pattern: 'chant({}): <description>'\n\
+                 Use --allow-no-commits to use HEAD as fallback (for special cases only).",
+                spec_id, spec_id
             );
             eprintln!("{} {}", "✗".red(), error_msg);
             return Err(anyhow::anyhow!(CommitError::NoMatchingCommits));
@@ -926,6 +948,7 @@ pub fn finalize_spec(
     spec_path: &Path,
     config: &Config,
     all_specs: &[Spec],
+    allow_no_commits: bool,
 ) -> Result<()> {
     // Check if this is a driver spec with incomplete members
     let incomplete_members = spec::get_incomplete_members(&spec.id, all_specs);
@@ -939,7 +962,11 @@ pub fn finalize_spec(
     }
 
     // Get the commits for this spec
-    let commits = get_commits_for_spec(&spec.id)?;
+    let commits = if allow_no_commits {
+        get_commits_for_spec_allow_no_commits(&spec.id)?
+    } else {
+        get_commits_for_spec(&spec.id)?
+    };
 
     // Update spec to completed
     spec.frontmatter.status = SpecStatus::Completed;
@@ -1022,7 +1049,12 @@ pub fn finalize_spec(
 /// Re-finalize a spec that was left in an incomplete state
 /// This can be called on in_progress or completed specs to update commits and timestamp
 /// Idempotent: safe to call multiple times
-pub(crate) fn re_finalize_spec(spec: &mut Spec, spec_path: &Path, config: &Config) -> Result<()> {
+pub(crate) fn re_finalize_spec(
+    spec: &mut Spec,
+    spec_path: &Path,
+    config: &Config,
+    allow_no_commits: bool,
+) -> Result<()> {
     // Re-finalization only works on specs that have been started (in_progress or completed)
     // A pending spec has never been started and should use normal work flow
     match spec.frontmatter.status {
@@ -1039,7 +1071,11 @@ pub(crate) fn re_finalize_spec(spec: &mut Spec, spec_path: &Path, config: &Confi
     }
 
     // Get the commits for this spec (may have new ones since last finalization)
-    let commits = get_commits_for_spec(&spec.id)?;
+    let commits = if allow_no_commits {
+        get_commits_for_spec_allow_no_commits(&spec.id)?
+    } else {
+        get_commits_for_spec(&spec.id)?
+    };
 
     // Update spec with new commit info
     spec.frontmatter.commits = if commits.is_empty() {
@@ -1333,4 +1369,83 @@ fn is_silent_mode() -> bool {
     std::env::var("CHANT_SILENT_MODE")
         .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
         .unwrap_or_default()
+}
+
+// ============================================================================
+// TESTS
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_commit_error_display() {
+        // Test GitCommandFailed variant
+        let err = CommitError::GitCommandFailed("test error".to_string());
+        assert_eq!(
+            err.to_string(),
+            "Git command failed: test error",
+            "GitCommandFailed should format correctly"
+        );
+
+        // Test NoMatchingCommits variant
+        let err = CommitError::NoMatchingCommits;
+        assert_eq!(
+            err.to_string(),
+            "No matching commits found",
+            "NoMatchingCommits should format correctly"
+        );
+    }
+
+    #[test]
+    fn test_get_commits_for_spec_error_behavior() {
+        // This test verifies that when the spec ID doesn't have matching commits,
+        // get_commits_for_spec returns an error (default behavior)
+        // Note: This test assumes we're in a git repo with no commits matching "chant(nonexistent-spec-xyz-abc)"
+
+        let spec_id = "nonexistent-spec-xyz-abc-999";
+        let result = get_commits_for_spec(spec_id);
+
+        // Should return an error since there are no matching commits
+        assert!(
+            result.is_err(),
+            "get_commits_for_spec should fail when no commits match the pattern"
+        );
+
+        // Check that the error is about missing commits
+        if let Err(e) = result {
+            let error_msg = e.to_string();
+            assert!(
+                error_msg.contains("No matching commits found")
+                    || error_msg.contains("Did the agent forget to commit"),
+                "Error message should mention missing commits or agent error. Got: {}",
+                error_msg
+            );
+        }
+    }
+
+    #[test]
+    fn test_get_commits_for_spec_allow_no_commits_behavior() {
+        // This test verifies that when allow_no_commits is true,
+        // the function returns HEAD as a fallback
+
+        let spec_id = "nonexistent-spec-fallback-test";
+        let result = get_commits_for_spec_allow_no_commits(spec_id);
+
+        // Should succeed and return at least one commit (HEAD)
+        assert!(
+            result.is_ok(),
+            "get_commits_for_spec_allow_no_commits should succeed with HEAD fallback"
+        );
+
+        if let Ok(commits) = result {
+            assert!(
+                !commits.is_empty(),
+                "Should have at least one commit (HEAD)"
+            );
+            // HEAD should be a short hash (7 chars)
+            assert!(commits[0].len() >= 7, "First commit should be HEAD hash");
+        }
+    }
 }
