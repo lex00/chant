@@ -102,7 +102,8 @@ doc-audit-mark MODULE:
 
 # Create a spec to audit docs for a module
 doc-audit MODULE:
-    just chant add "Audit docs for {{MODULE}}" --prompt doc-audit
+    ~/.cargo/bin/cargo build
+    ./target/debug/chant add "Audit docs for {{MODULE}}" --prompt doc-audit
 
 # --- Release ---
 
