@@ -83,10 +83,21 @@ defaults:
   branch: false             # Create branches?
   pr: false                 # Create PRs?
   branch_prefix: "chant/"   # Branch name prefix
+  provider: claude          # Model provider: claude, ollama, openai
+  model: string             # Model name (depends on provider)
+  split_model: string       # Model for split operations (defaults to sonnet)
+  main_branch: main         # Default main branch for merges
 
 # Optional - git provider settings
 git:
   provider: github          # PR provider: github, gitlab, bitbucket
+
+# Optional - model provider settings
+providers:
+  ollama:
+    endpoint: http://localhost:11434/v1    # Ollama API endpoint
+  openai:
+    endpoint: https://api.openai.com/v1    # OpenAI API endpoint
 
 # Optional - schema validation (Planned)
 # Note: Schema validation is on the roadmap but not yet implemented
@@ -175,6 +186,179 @@ defaults:
 ```
 
 In this example, the global config sets `branch: true` and `pr: true`, but the project config overrides both to `false`. The `git.provider: github` from global config is still applied since the project doesn't override it.
+
+## Model Providers
+
+Chant supports multiple AI model providers. Choose the provider that works best for your workflow.
+
+### Provider Types
+
+**Claude** (Default)
+- Uses the Anthropic Claude CLI (`claude` command)
+- Best for: Full feature support, Claude-specific capabilities
+- Requires: `claude` command installed and available in PATH
+
+**Ollama**
+- OpenAI-compatible API
+- Best for: Local models, offline execution, cost control
+- Requires: Ollama running locally (or accessible via network)
+- Models: Llama, Mistral, and other open-source models
+
+**OpenAI**
+- OpenAI API (GPT-4, GPT-3.5, etc.)
+- Best for: Production deployments, advanced reasoning
+- Requires: OpenAI API key (`OPENAI_API_KEY` environment variable)
+
+### Configuration
+
+Set the default provider in `defaults.provider`:
+
+```markdown
+# .chant/config.md
+---
+project:
+  name: my-project
+
+defaults:
+  provider: ollama
+---
+```
+
+Configure provider endpoints in the `providers` section:
+
+```markdown
+---
+project:
+  name: my-project
+
+defaults:
+  provider: ollama
+
+providers:
+  ollama:
+    endpoint: http://localhost:11434/v1
+  openai:
+    endpoint: https://api.openai.com/v1
+---
+```
+
+### Provider Configuration Details
+
+#### Claude Provider
+
+No additional configuration needed. Ensure `claude` CLI is installed:
+
+```bash
+pip install anthropic-cli
+```
+
+#### Ollama Provider
+
+Default endpoint: `http://localhost:11434/v1`
+
+To use a remote Ollama instance:
+
+```markdown
+---
+defaults:
+  provider: ollama
+
+providers:
+  ollama:
+    endpoint: http://ollama-server.example.com:11434/v1
+---
+```
+
+Start Ollama:
+
+```bash
+ollama serve
+```
+
+Pull a model:
+
+```bash
+ollama pull llama2
+```
+
+#### OpenAI Provider
+
+Default endpoint: `https://api.openai.com/v1`
+
+Requires `OPENAI_API_KEY` environment variable:
+
+```bash
+export OPENAI_API_KEY=sk-...
+```
+
+To use a custom OpenAI-compatible endpoint (e.g., Azure OpenAI):
+
+```markdown
+---
+defaults:
+  provider: openai
+
+providers:
+  openai:
+    endpoint: https://your-instance.openai.azure.com/openai
+---
+```
+
+### Provider-Specific Models
+
+After choosing a provider, specify the model name:
+
+**Claude:**
+```markdown
+defaults:
+  provider: claude
+  model: claude-opus-4-5
+```
+
+**Ollama:**
+```markdown
+defaults:
+  provider: ollama
+  model: llama2
+```
+
+**OpenAI:**
+```markdown
+defaults:
+  provider: openai
+  model: gpt-4
+```
+
+### Split Operations
+
+For the `chant split` command, specify a separate model:
+
+```markdown
+defaults:
+  provider: ollama
+  model: llama2
+  split_model: mistral
+```
+
+If `split_model` is not specified, it defaults to `sonnet` (for Claude).
+
+### Override Per Spec
+
+You can override the default provider in individual specs using frontmatter:
+
+```markdown
+---
+type: code
+status: pending
+target_files: [src/main.rs]
+---
+
+# Implementation task
+
+This spec will use OpenAI instead of the default provider.
+```
+
+(Note: Spec-level provider override is a planned feature)
 
 ## Environment Overrides (Planned)
 
