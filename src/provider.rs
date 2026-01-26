@@ -3,7 +3,7 @@
 //! Supports multiple providers (Claude, Ollama, OpenAI).
 //!
 //! # Doc Audit
-//! - audited: (pending)
+//! - audited: 2026-01-25
 //! - docs: architecture/invoke.md
 //! - ignore: false
 

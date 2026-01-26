@@ -31,6 +31,7 @@ last_audit = "2026-01-25"
 
 [mappings."src/provider.rs"]
 docs = ["architecture/invoke.md"]
+last_audit = "2026-01-25"
 
 [mappings."src/worktree.rs"]
 docs = ["scale/isolation.md"]
