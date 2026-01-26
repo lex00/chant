@@ -70,6 +70,12 @@ chant work 001
 - **Verification** - Continuous checking that work meets intent
 - **Drift Detection** - Know when reality diverges from specs
 
+## Examples
+
+See the [examples/](./examples/) folder for real-world workflows:
+
+- **[SwiftyJSON Swift 6 Upgrade](./examples/swiftyjson/)** - Upgrade a 23k-star library to Swift 6 with Sendable support in ~15 minutes
+
 ## Development
 
 ```bash
