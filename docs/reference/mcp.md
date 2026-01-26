@@ -320,6 +320,193 @@ Response:
 }
 ```
 
+## Error Codes and Response Structures
+
+### JSON-RPC 2.0 Error Codes
+
+The chant MCP server uses standard JSON-RPC 2.0 error codes for protocol-level errors:
+
+| Code | Message | Description | When It Occurs |
+|------|---------|-------------|----------------|
+| `-32700` | Parse error | Request JSON is malformed or not valid JSON | Invalid JSON sent to stdin |
+| `-32600` | Invalid JSON-RPC version | Request has `jsonrpc` field != "2.0" | Version mismatch in request |
+| `-32603` | Server error | Internal server error during tool execution | Tool function throws an exception or returns `Err` |
+
+### Error Response Structure
+
+All error responses follow the JSON-RPC 2.0 error format:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "error": {
+    "code": -32603,
+    "message": "Error description",
+    "data": null
+  },
+  "id": <request-id>
+}
+```
+
+**Fields:**
+- `jsonrpc`: Always `"2.0"`
+- `error.code`: Integer error code
+- `error.message`: Human-readable error message
+- `error.data`: Optional additional error context (currently unused)
+- `id`: Echo of the request ID
+
+### Tool-Level Error Responses
+
+Tools return structured error responses as MCP tool results (not JSON-RPC errors). Tool errors are wrapped in content objects:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Error description"
+      }
+    ],
+    "isError": true
+  },
+  "id": <request-id>
+}
+```
+
+**Common Tool-Level Errors:**
+
+| Error | Condition | Tool(s) |
+|-------|-----------|---------|
+| "Chant not initialized" | `.chant/specs` directory doesn't exist | All tools |
+| "Missing required parameter: id" | `id` parameter not provided | `chant_spec_get`, `chant_spec_update` |
+| "Missing required parameter: name" | `name` parameter not provided | `tools/call` |
+| "Missing tool name" | Tool `name` is not a string or missing | `tools/call` |
+| "Missing arguments" | `arguments` not provided to `tools/call` | `tools/call` |
+| "Method not found" | Unknown method requested | Protocol level |
+| "Unknown tool" | Tool name doesn't match available tools | `tools/call` |
+| "Invalid status" | Status string not in `[pending, in_progress, completed, failed]` | `chant_spec_update` |
+| "No updates specified" | Neither `status` nor `output` parameter provided | `chant_spec_update` |
+
+### Success Response Structure
+
+Successful tool results use this format:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Success message or data"
+      }
+    ]
+  },
+  "id": <request-id>
+}
+```
+
+**Fields:**
+- `jsonrpc`: Always `"2.0"`
+- `result.content`: Array of content objects
+- `content[].type`: Currently always `"text"`
+- `content[].text`: The response data as formatted text
+- `id`: Echo of the request ID
+
+### Notifications (No Response)
+
+Requests without an `id` field are notifications and receive no response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "notifications/initialized"
+}
+```
+
+Currently supported notifications:
+- `notifications/initialized`: Client notifies server it's ready (no action taken)
+
+### Response Content Types
+
+The `content[].type` field in responses can be:
+- `"text"`: Plain text or JSON-formatted data (current implementation)
+- Future: `"tool_result"`, `"resource"` (per MCP spec)
+
+### Error Handling Best Practices
+
+1. **Check `jsonrpc` and `error` fields**: Distinguish between protocol errors and tool errors
+   - If `error` is present, it's a protocol-level error
+   - If `result` contains `isError: true`, it's a tool-level error
+
+2. **Handle missing initialization**: Always check for "Chant not initialized" before using tools
+
+3. **Validate parameters**: Tools will return descriptive errors for missing/invalid parameters
+
+4. **Parse tool output**: Tool responses have JSON in the `text` field - parse it accordingly
+
+### Example Error Scenarios
+
+**Scenario 1: Parse Error**
+```bash
+echo 'invalid json' | chant mcp
+```
+Response:
+```json
+{
+  "jsonrpc": "2.0",
+  "error": {
+    "code": -32700,
+    "message": "Parse error: expected value at line 1 column 1"
+  },
+  "id": null
+}
+```
+
+**Scenario 2: Missing Required Parameter**
+```bash
+echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"chant_spec_get","arguments":{}},"id":1}' | chant mcp
+```
+Response:
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Missing required parameter: id"
+      }
+    ],
+    "isError": true
+  },
+  "id": 1
+}
+```
+
+**Scenario 3: Chant Not Initialized**
+```bash
+echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"chant_spec_list","arguments":{}},"id":1}' | chant mcp
+```
+Response (when `.chant/specs` doesn't exist):
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Chant not initialized. Run `chant init` first."
+      }
+    ],
+    "isError": true
+  },
+  "id": 1
+}
+```
+
 ## Provider Integration
 
 Chant generates provider-specific MCP config files before invocation.
