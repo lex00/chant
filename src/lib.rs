@@ -50,6 +50,7 @@
 //! ```
 
 // Re-export all public modules
+pub mod agent;
 pub mod config;
 pub mod conflict;
 pub mod diagnose;
@@ -60,4 +61,5 @@ pub mod prompt;
 pub mod provider;
 pub mod spec;
 pub mod spec_group;
+pub mod tools;
 pub mod worktree;

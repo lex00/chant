@@ -109,9 +109,11 @@ fn substitute(template: &str, spec: &Spec, config: &Config) -> String {
              git commit -m \"chant(";
         result.push_str(commit_instruction);
         result.push_str(&spec.id);
-        result.push_str("): <brief description of changes>\"\n\
+        result.push_str(
+            "): <brief description of changes>\"\n\
              ```\n\n\
-             This commit message pattern is required for chant to track your work.");
+             This commit message pattern is required for chant to track your work.",
+        );
     }
 
     result

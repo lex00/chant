@@ -118,7 +118,7 @@ impl ModelProvider for ClaudeCliProvider {
     }
 }
 
-/// Ollama provider (OpenAI-compatible API)
+/// Ollama provider (OpenAI-compatible API with agent runtime)
 pub struct OllamaProvider {
     pub endpoint: String,
 }
@@ -130,99 +130,28 @@ impl ModelProvider for OllamaProvider {
         model: &str,
         callback: &mut dyn FnMut(&str) -> Result<()>,
     ) -> Result<String> {
-        let url = format!("{}/chat/completions", self.endpoint);
-
         // Validate endpoint URL
         if !self.endpoint.starts_with("http://") && !self.endpoint.starts_with("https://") {
             return Err(anyhow!("Invalid endpoint URL: {}", self.endpoint));
         }
 
-        let request_body = serde_json::json!({
-            "model": model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": message
-                }
-            ],
-            "stream": true,
-        });
-
-        // Create HTTP agent and send request
-        let agent = Agent::new();
-        let response = agent
-            .post(&url)
-            .set("Content-Type", "application/json")
-            .send_json(&request_body)
-            .map_err(|e| {
-                let err_str = e.to_string();
-                if err_str.contains("Connection") || err_str.contains("connect") {
-                    anyhow!("Failed to connect to Ollama at {}\n\nOllama does not appear to be running. To fix:\n\n  1. Install Ollama: https://ollama.ai/download\n  2. Start Ollama: ollama serve\n  3. Pull a model: ollama pull {}\n\nOr switch to Claude CLI by removing 'provider: ollama' from .chant/config.md", self.endpoint, model)
-                } else {
-                    anyhow!("HTTP request failed: {}", e)
-                }
-            })?;
-
-        // Check response status
-        if response.status() != 200 {
-            return Err(anyhow!(
-                "HTTP {}: {}",
-                response.status(),
-                response.status_text()
-            ));
-        }
-
-        // Stream response body - buffer tokens until we have complete lines
-        let reader = std::io::BufReader::new(response.into_reader());
-        let mut captured_output = String::new();
-        let mut line_buffer = String::new();
-
-        for line in reader.lines().map_while(Result::ok) {
-            if let Some(json_str) = line.strip_prefix("data: ") {
-                if json_str == "[DONE]" {
-                    break;
-                }
-
-                if let Ok(json) = serde_json::from_str::<serde_json::Value>(json_str) {
-                    if let Some(choices) = json.get("choices").and_then(|c| c.as_array()) {
-                        for choice in choices {
-                            if let Some(delta) = choice.get("delta") {
-                                if let Some(content) = delta.get("content").and_then(|c| c.as_str())
-                                {
-                                    line_buffer.push_str(content);
-
-                                    // Only callback when we have complete lines
-                                    while let Some(newline_pos) = line_buffer.find('\n') {
-                                        let complete_line = &line_buffer[..newline_pos];
-                                        callback(complete_line)?;
-                                        captured_output.push_str(complete_line);
-                                        captured_output.push('\n');
-                                        line_buffer = line_buffer[newline_pos + 1..].to_string();
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+        // Use tokio runtime for async ollama-rs agent
+        let rt = tokio::runtime::Runtime::new()?;
+        rt.block_on(crate::agent::run_agent(
+            &self.endpoint,
+            model,
+            "",
+            message,
+            callback,
+        ))
+        .map_err(|e| {
+            let err_str = e.to_string();
+            if err_str.contains("Connection") || err_str.contains("connect") {
+                anyhow!("Failed to connect to Ollama at {}\n\nOllama does not appear to be running. To fix:\n\n  1. Install Ollama: https://ollama.ai/download\n  2. Start Ollama: ollama serve\n  3. Pull a model: ollama pull {}\n\nOr switch to Claude CLI by removing 'provider: ollama' from .chant/config.md", self.endpoint, model)
+            } else {
+                e
             }
-        }
-
-        // Flush any remaining buffered content
-        if !line_buffer.is_empty() {
-            callback(&line_buffer)?;
-            captured_output.push_str(&line_buffer);
-            captured_output.push('\n');
-        }
-
-        if captured_output.is_empty() {
-            return Err(anyhow!(
-                "Model '{}' not found. Run: ollama pull {}",
-                model,
-                model
-            ));
-        }
-
-        Ok(captured_output)
+        })
     }
 
     fn name(&self) -> &'static str {
