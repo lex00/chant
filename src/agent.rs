@@ -1,6 +1,6 @@
-//! Agent runtime integration for ollama with function calling support.
+//! Agent runtime for ollama with function calling support.
 //!
-//! Uses raw HTTP to avoid ollama-rs serialization issues with tool types.
+//! Uses ureq HTTP client for direct API communication.
 
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
@@ -64,7 +64,7 @@ struct ResponseMessage {
 /// 3. Runtime executes the tool
 /// 4. Runtime feeds result back to model
 /// 5. Loop continues until task is complete
-pub async fn run_agent(
+pub fn run_agent(
     endpoint: &str,
     model: &str,
     system_prompt: &str,
@@ -193,8 +193,8 @@ pub async fn run_agent(
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn test_agent_initialization() {
+    #[test]
+    fn test_agent_initialization() {
         // Test that agent can be created with proper parameters
         let endpoint = "http://localhost:11434";
         let model = "qwen2.5:7b";

@@ -38,9 +38,6 @@ rand = "0.8"
 # HTTP Client (rustls for cross-platform, no system OpenSSL needed)
 ureq = { version = "2", default-features = false, features = ["tls", "json"] }
 
-# Ollama integration for agent runtime (rustls for cross-platform builds)
-ollama-rs = { version = "0.3", default-features = false, features = ["rustls"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 glob = "0.3"
 url = "2"
 

@@ -135,15 +135,13 @@ impl ModelProvider for OllamaProvider {
             return Err(anyhow!("Invalid endpoint URL: {}", self.endpoint));
         }
 
-        // Use tokio runtime for async ollama-rs agent
-        let rt = tokio::runtime::Runtime::new()?;
-        rt.block_on(crate::agent::run_agent(
+        crate::agent::run_agent(
             &self.endpoint,
             model,
             "",
             message,
             callback,
-        ))
+        )
         .map_err(|e| {
             let err_str = e.to_string();
             if err_str.contains("Connection") || err_str.contains("connect") {
