@@ -11,6 +11,7 @@
 
 [mappings."src/main.rs"]
 docs = ["reference/cli.md"]
+last_audit = "2026-01-25"
 
 [mappings."src/spec.rs"]
 docs = ["concepts/specs.md", "reference/schema.md"]

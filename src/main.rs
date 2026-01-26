@@ -1,7 +1,7 @@
 //! CLI entry point and command handlers for chant.
 //!
 //! # Doc Audit
-//! - audited: (pending)
+//! - audited: 2026-01-25
 //! - docs: reference/cli.md
 //! - ignore: false
 
