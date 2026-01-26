@@ -614,10 +614,10 @@ mod tests {
     use crate::cmd::commits::{
         get_commits_for_spec, get_commits_for_spec_allow_no_commits, CommitError,
     };
-    use crate::cmd::model::{get_model_name, get_model_name_with_default};
-    use crate::cmd::work::{
+    use crate::cmd::finalize::{
         append_agent_output, finalize_spec, re_finalize_spec, MAX_AGENT_OUTPUT_CHARS,
     };
+    use crate::cmd::model::{get_model_name, get_model_name_with_default};
     use crate::{lookup_log_file, LogLookupResult};
     use serial_test::serial;
     use tempfile::TempDir;

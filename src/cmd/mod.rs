@@ -2,6 +2,7 @@
 
 pub mod agent;
 pub mod commits;
+pub mod finalize;
 pub mod git_ops;
 pub mod lifecycle;
 pub mod model;
