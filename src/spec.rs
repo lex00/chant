@@ -55,6 +55,16 @@ pub struct SpecFrontmatter {
     pub completed_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    // Documentation-specific fields
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tracks: Option<Vec<String>>,
+    // Research-specific fields
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub informed_by: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub origin: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub schedule: Option<String>,
     // Conflict-specific fields
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_branch: Option<String>,
@@ -87,6 +97,10 @@ impl Default for SpecFrontmatter {
             pr: None,
             completed_at: None,
             model: None,
+            tracks: None,
+            informed_by: None,
+            origin: None,
+            schedule: None,
             source_branch: None,
             target_branch: None,
             conflicting_files: None,
@@ -901,5 +915,146 @@ labels:
         let resolved = resolve_spec(&specs_dir, "2026-01-24-003-ghi").unwrap();
         assert_eq!(resolved.id, "2026-01-24-003-ghi");
         assert_eq!(resolved.frontmatter.status, SpecStatus::Pending);
+    }
+
+    #[test]
+    fn test_parse_documentation_spec_with_tracks() {
+        let content = r#"---
+type: documentation
+status: pending
+tracks:
+  - src/auth/*.rs
+  - src/lib.rs
+target_files:
+  - docs/auth.md
+---
+
+# Document auth module
+
+Description here.
+"#;
+        let spec = Spec::parse("2026-01-26-001-abc", content).unwrap();
+        assert_eq!(spec.frontmatter.r#type, "documentation");
+        assert_eq!(
+            spec.frontmatter.tracks,
+            Some(vec!["src/auth/*.rs".to_string(), "src/lib.rs".to_string()])
+        );
+        assert_eq!(
+            spec.frontmatter.target_files,
+            Some(vec!["docs/auth.md".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_parse_research_spec_with_origin_and_informed_by() {
+        let content = r#"---
+type: research
+status: pending
+origin:
+  - data/metrics.csv
+informed_by:
+  - docs/schema.md
+  - src/**/*.rs
+target_files:
+  - analysis/findings.md
+---
+
+# Analyze metrics
+
+Description here.
+"#;
+        let spec = Spec::parse("2026-01-26-002-def", content).unwrap();
+        assert_eq!(spec.frontmatter.r#type, "research");
+        assert_eq!(
+            spec.frontmatter.origin,
+            Some(vec!["data/metrics.csv".to_string()])
+        );
+        assert_eq!(
+            spec.frontmatter.informed_by,
+            Some(vec![
+                "docs/schema.md".to_string(),
+                "src/**/*.rs".to_string()
+            ])
+        );
+    }
+
+    #[test]
+    fn test_parse_research_spec_with_schedule() {
+        let content = r#"---
+type: research
+status: pending
+informed_by:
+  - docs/*.md
+schedule: weekly
+target_files:
+  - reports/weekly.md
+---
+
+# Weekly analysis
+
+Description here.
+"#;
+        let spec = Spec::parse("2026-01-26-003-ghi", content).unwrap();
+        assert_eq!(spec.frontmatter.schedule, Some("weekly".to_string()));
+    }
+
+    #[test]
+    fn test_spec_save_includes_new_fields() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let spec_path = temp_dir.path().join("test-new-fields.md");
+
+        let spec = Spec {
+            id: "2026-01-26-004-jkl".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "research".to_string(),
+                status: SpecStatus::Pending,
+                origin: Some(vec!["data/input.csv".to_string()]),
+                informed_by: Some(vec!["docs/reference.md".to_string()]),
+                schedule: Some("daily".to_string()),
+                target_files: Some(vec!["output/report.md".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Research spec".to_string()),
+            body: "# Research spec\n\nBody content.".to_string(),
+        };
+
+        spec.save(&spec_path).unwrap();
+
+        let saved_content = std::fs::read_to_string(&spec_path).unwrap();
+        assert!(saved_content.contains("origin:"));
+        assert!(saved_content.contains("informed_by:"));
+        assert!(saved_content.contains("schedule: daily"));
+    }
+
+    #[test]
+    fn test_documentation_spec_tracks_field_roundtrip() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let spec_path = temp_dir.path().join("test-tracks.md");
+
+        let spec = Spec {
+            id: "2026-01-26-005-mno".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "documentation".to_string(),
+                status: SpecStatus::Pending,
+                tracks: Some(vec!["src/**/*.rs".to_string()]),
+                target_files: Some(vec!["docs/api.md".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Doc spec".to_string()),
+            body: "# Doc spec\n\nBody content.".to_string(),
+        };
+
+        spec.save(&spec_path).unwrap();
+        let loaded_spec = Spec::load(&spec_path).unwrap();
+
+        assert_eq!(loaded_spec.frontmatter.r#type, "documentation");
+        assert_eq!(
+            loaded_spec.frontmatter.tracks,
+            Some(vec!["src/**/*.rs".to_string()])
+        );
     }
 }

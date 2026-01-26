@@ -249,6 +249,7 @@ pub fn cmd_lint() -> Result<()> {
     // Second pass: validate each spec
     for spec in &specs_to_check {
         let mut spec_issues: Vec<String> = Vec::new();
+        let mut spec_warnings: Vec<String> = Vec::new();
 
         // Check for title
         if spec.title.is_none() {
@@ -264,12 +265,39 @@ pub fn cmd_lint() -> Result<()> {
             }
         }
 
-        if spec_issues.is_empty() {
+        // Type-specific validation
+        match spec.frontmatter.r#type.as_str() {
+            "documentation" => {
+                if spec.frontmatter.tracks.is_none() {
+                    spec_warnings.push("Documentation spec missing 'tracks' field".to_string());
+                }
+                if spec.frontmatter.target_files.is_none() {
+                    spec_warnings
+                        .push("Documentation spec missing 'target_files' field".to_string());
+                }
+            }
+            "research" => {
+                if spec.frontmatter.informed_by.is_none() && spec.frontmatter.origin.is_none() {
+                    spec_warnings.push(
+                        "Research spec missing both 'informed_by' and 'origin' fields".to_string(),
+                    );
+                }
+                if spec.frontmatter.target_files.is_none() {
+                    spec_warnings.push("Research spec missing 'target_files' field".to_string());
+                }
+            }
+            _ => {}
+        }
+
+        if spec_issues.is_empty() && spec_warnings.is_empty() {
             println!("{} {}", "✓".green(), spec.id);
         } else {
             for issue in spec_issues {
                 println!("{} {}: {}", "✗".red(), spec.id, issue);
                 issues.push((spec.id.clone(), issue));
+            }
+            for warning in spec_warnings {
+                println!("{} {}: {}", "⚠".yellow(), spec.id, warning);
             }
         }
     }

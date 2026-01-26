@@ -28,6 +28,38 @@ use crate::cmd::git_ops::{commit_transcript, create_or_switch_branch, push_branc
 use crate::cmd::model::get_model_name_with_default;
 
 // ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+/// Auto-select a prompt based on spec type if the prompt file exists.
+/// Returns None if no auto-selected prompt is appropriate or available.
+fn auto_select_prompt_for_type(spec: &Spec, prompts_dir: &Path) -> Option<String> {
+    let auto_prompt = match spec.frontmatter.r#type.as_str() {
+        "documentation" => Some("documentation"),
+        "research" => {
+            // If origin is set (data analysis), prefer research-analysis
+            // Otherwise (synthesis), prefer research-synthesis
+            if spec.frontmatter.origin.is_some() {
+                Some("research-analysis")
+            } else {
+                Some("research-synthesis")
+            }
+        }
+        _ => None,
+    };
+
+    // Check if the auto-selected prompt actually exists
+    if let Some(prompt_name) = auto_prompt {
+        let prompt_path = prompts_dir.join(format!("{}.md", prompt_name));
+        if prompt_path.exists() {
+            return Some(prompt_name.to_string());
+        }
+    }
+
+    None
+}
+
+// ============================================================================
 // EXECUTION FUNCTIONS
 // ============================================================================
 
@@ -206,15 +238,18 @@ pub fn cmd_work(
         None
     };
 
-    // Resolve prompt
+    // Resolve prompt: explicit > frontmatter > auto-select by type > default
     let prompt_name = prompt_name
-        .or(spec.frontmatter.prompt.as_deref())
-        .unwrap_or(&config.defaults.prompt);
+        .map(|s| s.to_string())
+        .or_else(|| spec.frontmatter.prompt.clone())
+        .or_else(|| auto_select_prompt_for_type(&spec, &prompts_dir))
+        .unwrap_or_else(|| config.defaults.prompt.clone());
 
     let prompt_path = prompts_dir.join(format!("{}.md", prompt_name));
     if !prompt_path.exists() {
         anyhow::bail!("Prompt not found: {}", prompt_name);
     }
+    let prompt_name = prompt_name.as_str();
 
     // Update status to in_progress
     spec.frontmatter.status = SpecStatus::InProgress;
@@ -414,10 +449,12 @@ pub fn cmd_work_parallel(
     let mut handles = Vec::new();
 
     for spec in ready_specs.iter() {
-        // Determine prompt for this spec
+        // Determine prompt for this spec: explicit > frontmatter > auto-select by type > default
         let spec_prompt = prompt_name
-            .or(spec.frontmatter.prompt.as_deref())
-            .unwrap_or(default_prompt);
+            .map(|s| s.to_string())
+            .or_else(|| spec.frontmatter.prompt.clone())
+            .or_else(|| auto_select_prompt_for_type(spec, prompts_dir))
+            .unwrap_or_else(|| default_prompt.to_string());
 
         let prompt_path = prompts_dir.join(format!("{}.md", spec_prompt));
         if !prompt_path.exists() {
@@ -429,6 +466,7 @@ pub fn cmd_work_parallel(
             );
             continue;
         }
+        let spec_prompt = spec_prompt.as_str();
 
         // Update spec status to in_progress
         let spec_path = specs_dir.join(format!("{}.md", spec.id));
