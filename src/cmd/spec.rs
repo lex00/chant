@@ -26,6 +26,40 @@ use crate::cmd;
 use chant::spec::SpecFrontmatter;
 
 // ============================================================================
+// VALIDATION HELPERS
+// ============================================================================
+
+/// Validate a spec based on its type and return warnings.
+/// Returns a vector of warning messages for type-specific validation issues.
+pub fn validate_spec_type(spec: &Spec) -> Vec<String> {
+    let mut warnings = Vec::new();
+
+    match spec.frontmatter.r#type.as_str() {
+        "documentation" => {
+            if spec.frontmatter.tracks.is_none() {
+                warnings.push("Documentation spec missing 'tracks' field".to_string());
+            }
+            if spec.frontmatter.target_files.is_none() {
+                warnings.push("Documentation spec missing 'target_files' field".to_string());
+            }
+        }
+        "research" => {
+            if spec.frontmatter.informed_by.is_none() && spec.frontmatter.origin.is_none() {
+                warnings.push(
+                    "Research spec missing both 'informed_by' and 'origin' fields".to_string(),
+                );
+            }
+            if spec.frontmatter.target_files.is_none() {
+                warnings.push("Research spec missing 'target_files' field".to_string());
+            }
+        }
+        _ => {}
+    }
+
+    warnings
+}
+
+// ============================================================================
 // CORE COMMAND FUNCTIONS
 // ============================================================================
 
@@ -249,7 +283,6 @@ pub fn cmd_lint() -> Result<()> {
     // Second pass: validate each spec
     for spec in &specs_to_check {
         let mut spec_issues: Vec<String> = Vec::new();
-        let mut spec_warnings: Vec<String> = Vec::new();
 
         // Check for title
         if spec.title.is_none() {
@@ -266,28 +299,7 @@ pub fn cmd_lint() -> Result<()> {
         }
 
         // Type-specific validation
-        match spec.frontmatter.r#type.as_str() {
-            "documentation" => {
-                if spec.frontmatter.tracks.is_none() {
-                    spec_warnings.push("Documentation spec missing 'tracks' field".to_string());
-                }
-                if spec.frontmatter.target_files.is_none() {
-                    spec_warnings
-                        .push("Documentation spec missing 'target_files' field".to_string());
-                }
-            }
-            "research" => {
-                if spec.frontmatter.informed_by.is_none() && spec.frontmatter.origin.is_none() {
-                    spec_warnings.push(
-                        "Research spec missing both 'informed_by' and 'origin' fields".to_string(),
-                    );
-                }
-                if spec.frontmatter.target_files.is_none() {
-                    spec_warnings.push("Research spec missing 'target_files' field".to_string());
-                }
-            }
-            _ => {}
-        }
+        let spec_warnings = validate_spec_type(spec);
 
         if spec_issues.is_empty() && spec_warnings.is_empty() {
             println!("{} {}", "✓".green(), spec.id);
@@ -3973,5 +3985,213 @@ git:
             body: "# Test".to_string(),
         }];
         assert_eq!(specs.len(), 1);
+    }
+
+    // ========================================================================
+    // validate_spec_type tests
+    // ========================================================================
+
+    #[test]
+    fn test_validate_documentation_spec_missing_tracks() {
+        let spec = Spec {
+            id: "test-doc-spec".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "documentation".to_string(),
+                tracks: None,
+                target_files: Some(vec!["docs/output.md".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Test".to_string()),
+            body: "# Test".to_string(),
+        };
+
+        let warnings = super::validate_spec_type(&spec);
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("missing 'tracks' field"));
+    }
+
+    #[test]
+    fn test_validate_documentation_spec_missing_target_files() {
+        let spec = Spec {
+            id: "test-doc-spec".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "documentation".to_string(),
+                tracks: Some(vec!["src/**/*.rs".to_string()]),
+                target_files: None,
+                ..Default::default()
+            },
+            title: Some("Test".to_string()),
+            body: "# Test".to_string(),
+        };
+
+        let warnings = super::validate_spec_type(&spec);
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("missing 'target_files' field"));
+    }
+
+    #[test]
+    fn test_validate_documentation_spec_missing_both() {
+        let spec = Spec {
+            id: "test-doc-spec".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "documentation".to_string(),
+                tracks: None,
+                target_files: None,
+                ..Default::default()
+            },
+            title: Some("Test".to_string()),
+            body: "# Test".to_string(),
+        };
+
+        let warnings = super::validate_spec_type(&spec);
+        assert_eq!(warnings.len(), 2);
+        assert!(warnings.iter().any(|w| w.contains("'tracks'")));
+        assert!(warnings.iter().any(|w| w.contains("'target_files'")));
+    }
+
+    #[test]
+    fn test_validate_documentation_spec_valid() {
+        let spec = Spec {
+            id: "test-doc-spec".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "documentation".to_string(),
+                tracks: Some(vec!["src/**/*.rs".to_string()]),
+                target_files: Some(vec!["docs/api.md".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Test".to_string()),
+            body: "# Test".to_string(),
+        };
+
+        let warnings = super::validate_spec_type(&spec);
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn test_validate_research_spec_missing_both_origin_and_informed_by() {
+        let spec = Spec {
+            id: "test-research-spec".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "research".to_string(),
+                origin: None,
+                informed_by: None,
+                target_files: Some(vec!["analysis/output.md".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Test".to_string()),
+            body: "# Test".to_string(),
+        };
+
+        let warnings = super::validate_spec_type(&spec);
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("missing both 'informed_by' and 'origin'"));
+    }
+
+    #[test]
+    fn test_validate_research_spec_missing_target_files() {
+        let spec = Spec {
+            id: "test-research-spec".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "research".to_string(),
+                origin: Some(vec!["data/input.csv".to_string()]),
+                target_files: None,
+                ..Default::default()
+            },
+            title: Some("Test".to_string()),
+            body: "# Test".to_string(),
+        };
+
+        let warnings = super::validate_spec_type(&spec);
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("missing 'target_files'"));
+    }
+
+    #[test]
+    fn test_validate_research_spec_valid_with_origin() {
+        let spec = Spec {
+            id: "test-research-spec".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "research".to_string(),
+                origin: Some(vec!["data/input.csv".to_string()]),
+                target_files: Some(vec!["analysis/output.md".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Test".to_string()),
+            body: "# Test".to_string(),
+        };
+
+        let warnings = super::validate_spec_type(&spec);
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn test_validate_research_spec_valid_with_informed_by() {
+        let spec = Spec {
+            id: "test-research-spec".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "research".to_string(),
+                informed_by: Some(vec!["docs/reference.md".to_string()]),
+                target_files: Some(vec!["analysis/output.md".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Test".to_string()),
+            body: "# Test".to_string(),
+        };
+
+        let warnings = super::validate_spec_type(&spec);
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn test_validate_research_spec_valid_with_both() {
+        let spec = Spec {
+            id: "test-research-spec".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "research".to_string(),
+                origin: Some(vec!["data/input.csv".to_string()]),
+                informed_by: Some(vec!["docs/reference.md".to_string()]),
+                target_files: Some(vec!["analysis/output.md".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Test".to_string()),
+            body: "# Test".to_string(),
+        };
+
+        let warnings = super::validate_spec_type(&spec);
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn test_validate_code_spec_no_warnings() {
+        let spec = Spec {
+            id: "test-code-spec".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "code".to_string(),
+                ..Default::default()
+            },
+            title: Some("Test".to_string()),
+            body: "# Test".to_string(),
+        };
+
+        // Code specs don't have type-specific validation
+        let warnings = super::validate_spec_type(&spec);
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn test_validate_task_spec_no_warnings() {
+        let spec = Spec {
+            id: "test-task-spec".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "task".to_string(),
+                ..Default::default()
+            },
+            title: Some("Test".to_string()),
+            body: "# Test".to_string(),
+        };
+
+        // Task specs don't have type-specific validation
+        let warnings = super::validate_spec_type(&spec);
+        assert!(warnings.is_empty());
     }
 }

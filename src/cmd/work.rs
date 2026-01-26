@@ -913,6 +913,7 @@ fn is_silent_mode() -> bool {
 mod tests {
     use super::*;
     use crate::cmd::commits::{get_commits_for_spec_allow_no_commits, CommitError};
+    use chant::spec::SpecFrontmatter;
 
     #[test]
     fn test_commit_error_display() {
@@ -982,5 +983,175 @@ mod tests {
             // HEAD should be a short hash (7 chars)
             assert!(commits[0].len() >= 7, "First commit should be HEAD hash");
         }
+    }
+
+    #[test]
+    fn test_auto_select_prompt_research_with_origin() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let prompts_dir = temp_dir.path();
+
+        // Create the research-analysis prompt file
+        std::fs::write(prompts_dir.join("research-analysis.md"), "# Test prompt").unwrap();
+
+        let spec = Spec {
+            id: "test-spec".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "research".to_string(),
+                origin: Some(vec!["data/input.csv".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Test".to_string()),
+            body: "# Test".to_string(),
+        };
+
+        let result = auto_select_prompt_for_type(&spec, prompts_dir);
+        assert_eq!(result, Some("research-analysis".to_string()));
+    }
+
+    #[test]
+    fn test_auto_select_prompt_research_with_informed_by_only() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let prompts_dir = temp_dir.path();
+
+        // Create the research-synthesis prompt file
+        std::fs::write(prompts_dir.join("research-synthesis.md"), "# Test prompt").unwrap();
+
+        let spec = Spec {
+            id: "test-spec".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "research".to_string(),
+                informed_by: Some(vec!["docs/reference.md".to_string()]),
+                origin: None,
+                ..Default::default()
+            },
+            title: Some("Test".to_string()),
+            body: "# Test".to_string(),
+        };
+
+        let result = auto_select_prompt_for_type(&spec, prompts_dir);
+        assert_eq!(result, Some("research-synthesis".to_string()));
+    }
+
+    #[test]
+    fn test_auto_select_prompt_documentation() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let prompts_dir = temp_dir.path();
+
+        // Create the documentation prompt file
+        std::fs::write(prompts_dir.join("documentation.md"), "# Test prompt").unwrap();
+
+        let spec = Spec {
+            id: "test-spec".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "documentation".to_string(),
+                tracks: Some(vec!["src/**/*.rs".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Test".to_string()),
+            body: "# Test".to_string(),
+        };
+
+        let result = auto_select_prompt_for_type(&spec, prompts_dir);
+        assert_eq!(result, Some("documentation".to_string()));
+    }
+
+    #[test]
+    fn test_auto_select_prompt_code_type_returns_none() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let prompts_dir = temp_dir.path();
+
+        let spec = Spec {
+            id: "test-spec".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "code".to_string(),
+                ..Default::default()
+            },
+            title: Some("Test".to_string()),
+            body: "# Test".to_string(),
+        };
+
+        let result = auto_select_prompt_for_type(&spec, prompts_dir);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_auto_select_prompt_task_type_returns_none() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let prompts_dir = temp_dir.path();
+
+        let spec = Spec {
+            id: "test-spec".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "task".to_string(),
+                ..Default::default()
+            },
+            title: Some("Test".to_string()),
+            body: "# Test".to_string(),
+        };
+
+        let result = auto_select_prompt_for_type(&spec, prompts_dir);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_auto_select_prompt_returns_none_when_prompt_file_missing() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let prompts_dir = temp_dir.path();
+        // Don't create any prompt files
+
+        let spec = Spec {
+            id: "test-spec".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "research".to_string(),
+                origin: Some(vec!["data/input.csv".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Test".to_string()),
+            body: "# Test".to_string(),
+        };
+
+        // Should return None because research-analysis.md doesn't exist
+        let result = auto_select_prompt_for_type(&spec, prompts_dir);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_auto_select_prompt_research_prefers_analysis_over_synthesis() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let prompts_dir = temp_dir.path();
+
+        // Create both prompt files
+        std::fs::write(prompts_dir.join("research-analysis.md"), "# Analysis").unwrap();
+        std::fs::write(prompts_dir.join("research-synthesis.md"), "# Synthesis").unwrap();
+
+        // Spec has BOTH origin and informed_by - should prefer analysis because origin is set
+        let spec = Spec {
+            id: "test-spec".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "research".to_string(),
+                origin: Some(vec!["data/input.csv".to_string()]),
+                informed_by: Some(vec!["docs/reference.md".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Test".to_string()),
+            body: "# Test".to_string(),
+        };
+
+        let result = auto_select_prompt_for_type(&spec, prompts_dir);
+        assert_eq!(result, Some("research-analysis".to_string()));
     }
 }
