@@ -347,6 +347,7 @@ pub fn cmd_work(
 
 /// Result of a single spec execution in parallel mode
 #[allow(dead_code)]
+#[derive(Clone)]
 struct ParallelResult {
     spec_id: String,
     success: bool,
@@ -355,6 +356,7 @@ struct ParallelResult {
     worktree_path: Option<PathBuf>,
     branch_name: Option<String>,
     is_direct_mode: bool,
+    agent_completed: bool, // Whether agent work completed (separate from merge status)
 }
 
 pub fn cmd_work_parallel(
@@ -502,6 +504,7 @@ pub fn cmd_work_parallel(
                     worktree_path: None,
                     branch_name: None,
                     is_direct_mode,
+                    agent_completed: false,
                 });
                 continue;
             }
@@ -525,142 +528,64 @@ pub fn cmd_work_parallel(
                 config_model.as_deref(),
                 worktree_path_clone.as_deref(),
             );
-            let (success, commits, error, _final_status) = match result {
+            let (success, commits, error, agent_completed) = match result {
                 Ok(_) => {
-                    // Get the commits
+                    // Agent work succeeded - get commits
                     let commits = get_commits_for_spec(&spec_id).ok();
 
-                    // Handle cleanup based on mode
-                    let (cleanup_error, has_merge_conflict) = if is_direct_mode_clone {
-                        // Direct mode: merge and cleanup
-                        if let Some(ref branch) = branch_for_cleanup_clone {
-                            let merge_result = worktree::merge_and_cleanup(branch);
-                            let error = merge_result.error.as_ref().map(|e| e.to_string());
-                            (error, merge_result.has_conflict)
-                        } else {
-                            (None, false)
-                        }
-                    } else {
-                        // Branch mode: just remove worktree
-                        if let Some(ref path) = worktree_path_clone {
-                            match worktree::remove_worktree(path) {
-                                Ok(_) => (None, false),
-                                Err(e) => (Some(e.to_string()), false),
-                            }
-                        } else {
-                            (None, false)
-                        }
-                    };
-
-                    // Handle merge conflicts by creating a conflict spec
-                    if has_merge_conflict {
-                        // Detect conflicting files
-                        if let Ok(conflicting_files) = conflict::detect_conflicting_files() {
-                            // Get all specs to identify blocked specs
-                            let all_specs =
-                                spec::load_all_specs(&specs_dir_clone).unwrap_or_default();
-                            let blocked_specs =
-                                conflict::get_blocked_specs(&conflicting_files, &all_specs);
-
-                            // Build context for conflict spec
-                            let source_branch = if is_direct_mode_clone {
-                                format!("spec/{}", spec_id)
-                            } else {
-                                branch_for_cleanup_clone.clone().unwrap_or_default()
-                            };
-
-                            let (spec_title, _) =
-                                conflict::extract_spec_context(&specs_dir_clone, &spec_id)
-                                    .unwrap_or((None, String::new()));
-                            let diff_summary = conflict::get_diff_summary(&source_branch, "main")
-                                .unwrap_or_default();
-
-                            let context = conflict::ConflictContext {
-                                source_branch: source_branch.clone(),
-                                target_branch: "main".to_string(),
-                                conflicting_files,
-                                source_spec_id: spec_id.clone(),
-                                source_spec_title: spec_title,
-                                diff_summary,
-                            };
-
-                            // Create conflict spec
-                            if let Ok(conflict_spec_id) = conflict::create_conflict_spec(
-                                &specs_dir_clone,
-                                &context,
-                                blocked_specs,
-                            ) {
+                    // For branch mode: just remove worktree (don't merge yet)
+                    // For direct mode: also don't merge yet - defer to serialized phase
+                    if let Some(ref path) = worktree_path_clone {
+                        if !is_direct_mode_clone {
+                            // Branch mode: remove worktree now
+                            if let Err(e) = worktree::remove_worktree(path) {
                                 eprintln!(
-                                    "{} [{}] Conflict detected. Created resolution spec: {}",
-                                    "⚡".yellow(),
-                                    spec_id,
-                                    conflict_spec_id
-                                );
-                            }
-                        }
-                    }
-
-                    // Update spec status based on cleanup result
-                    let mut success_final = cleanup_error.is_none();
-                    let mut status_final = if cleanup_error.is_some() {
-                        SpecStatus::NeedsAttention
-                    } else {
-                        SpecStatus::Completed
-                    };
-
-                    // Update spec to completed or needs attention
-                    let spec_path = specs_dir_clone.join(format!("{}.md", spec_id));
-                    if let Ok(mut spec) = spec::resolve_spec(&specs_dir_clone, &spec_id) {
-                        // Check if spec is a driver with incomplete members before marking completed
-                        if status_final == SpecStatus::Completed {
-                            let all_specs = match spec::load_all_specs(&specs_dir_clone) {
-                                Ok(specs) => specs,
-                                Err(e) => {
-                                    eprintln!(
-                                        "{} [{}] Warning: Failed to load all specs for validation: {}",
-                                        "⚠".yellow(),
-                                        spec_id,
-                                        e
-                                    );
-                                    vec![]
-                                }
-                            };
-                            let incomplete_members =
-                                spec::get_incomplete_members(&spec_id, &all_specs);
-                            if !incomplete_members.is_empty() {
-                                eprintln!(
-                                    "{} [{}] Cannot complete driver spec with {} incomplete member(s): {}",
+                                    "{} [{}] Warning: Failed to remove worktree: {}",
                                     "⚠".yellow(),
                                     spec_id,
-                                    incomplete_members.len(),
-                                    incomplete_members.join(", ")
+                                    e
                                 );
-                                spec.frontmatter.status = SpecStatus::NeedsAttention;
-                                let _ = spec.save(&spec_path);
-                                success_final = false;
-                                status_final = SpecStatus::NeedsAttention;
-                            } else {
-                                spec.frontmatter.status = status_final.clone();
-                                spec.frontmatter.commits =
-                                    commits.clone().filter(|c: &Vec<String>| !c.is_empty());
-                                spec.frontmatter.completed_at = Some(
-                                    chrono::Local::now()
-                                        .format("%Y-%m-%dT%H:%M:%SZ")
-                                        .to_string(),
-                                );
-                                spec.frontmatter.model =
-                                    get_model_name_with_default(config_model.as_deref());
-                                if let Err(e) = spec.save(&spec_path) {
-                                    eprintln!(
-                                        "{} [{}] Warning: Failed to finalize spec: {}",
-                                        "⚠".yellow(),
-                                        spec_id,
-                                        e
-                                    );
-                                }
                             }
+                        }
+                        // Direct mode: leave worktree for now, merge later
+                    }
+
+                    // Finalize spec with completed status (merge status separate)
+                    let spec_path = specs_dir_clone.join(format!("{}.md", spec_id));
+                    if let Ok(mut spec) = spec::resolve_spec(&specs_dir_clone, &spec_id) {
+                        let all_specs = match spec::load_all_specs(&specs_dir_clone) {
+                            Ok(specs) => specs,
+                            Err(e) => {
+                                eprintln!(
+                                    "{} [{}] Warning: Failed to load all specs for validation: {}",
+                                    "⚠".yellow(),
+                                    spec_id,
+                                    e
+                                );
+                                vec![]
+                            }
+                        };
+
+                        // Check if driver with incomplete members
+                        let incomplete_members = spec::get_incomplete_members(&spec_id, &all_specs);
+                        if !incomplete_members.is_empty() {
+                            eprintln!(
+                                "{} [{}] Cannot complete driver spec with {} incomplete member(s): {}",
+                                "⚠".yellow(),
+                                spec_id,
+                                incomplete_members.len(),
+                                incomplete_members.join(", ")
+                            );
+                            spec.frontmatter.status = SpecStatus::NeedsAttention;
+                            let _ = spec.save(&spec_path);
+                            (
+                                false,
+                                commits,
+                                Some("Incomplete members".to_string()),
+                                false,
+                            )
                         } else {
-                            spec.frontmatter.status = status_final.clone();
+                            spec.frontmatter.status = SpecStatus::Completed;
                             spec.frontmatter.commits =
                                 commits.clone().filter(|c: &Vec<String>| !c.is_empty());
                             spec.frontmatter.completed_at = Some(
@@ -678,45 +603,28 @@ pub fn cmd_work_parallel(
                                     e
                                 );
                             }
-                        }
-                    }
-
-                    (success_final, commits, cleanup_error, status_final)
-                }
-                Err(e) => {
-                    // Agent failed - still need to cleanup worktree
-                    let _cleanup_error = if is_direct_mode_clone {
-                        // Direct mode: try to merge and cleanup anyway
-                        if let Some(ref branch) = branch_for_cleanup_clone {
-                            let merge_result = worktree::merge_and_cleanup(branch);
-                            merge_result.error.clone()
-                        } else {
-                            Some(e.to_string())
+                            (true, commits, None, true)
                         }
                     } else {
-                        // Branch mode: try to remove worktree
-                        if let Some(ref path) = worktree_path_clone {
-                            worktree::remove_worktree(path).err().map(|e| e.to_string())
-                        } else {
-                            Some(e.to_string())
+                        (true, commits, None, true)
+                    }
+                }
+                Err(e) => {
+                    // Agent failed - cleanup worktree
+                    if let Some(ref path) = worktree_path_clone {
+                        if !is_direct_mode_clone {
+                            let _ = worktree::remove_worktree(path);
                         }
-                    };
+                    }
 
                     // Update spec to failed
                     let spec_path = specs_dir_clone.join(format!("{}.md", spec_id));
                     if let Ok(mut spec) = spec::resolve_spec(&specs_dir_clone, &spec_id) {
                         spec.frontmatter.status = SpecStatus::Failed;
-                        if let Err(save_err) = spec.save(&spec_path) {
-                            eprintln!(
-                                "{} [{}] Warning: Failed to mark spec as failed: {}",
-                                "⚠".yellow(),
-                                spec_id,
-                                save_err
-                            );
-                        }
+                        let _ = spec.save(&spec_path);
                     }
 
-                    (false, None, Some(e.to_string()), SpecStatus::Failed)
+                    (false, None, Some(e.to_string()), false)
                 }
             };
 
@@ -728,6 +636,7 @@ pub fn cmd_work_parallel(
                 worktree_path: worktree_path_clone,
                 branch_name: branch_for_cleanup_clone,
                 is_direct_mode: is_direct_mode_clone,
+                agent_completed,
             });
         });
 
@@ -737,11 +646,12 @@ pub fn cmd_work_parallel(
     // Drop the original sender so the receiver knows when all threads are done
     drop(tx);
 
-    // Collect results
+    // Collect results from threads
     let mut completed = 0;
     let mut failed = 0;
     let mut all_results = Vec::new();
     let mut branch_mode_branches = Vec::new();
+    let mut direct_mode_results = Vec::new();
 
     println!();
 
@@ -760,11 +670,11 @@ pub fn cmd_work_parallel(
                 println!("[{}] {} Completed", result.spec_id.cyan(), "✓".green());
             }
 
-            // Collect branch info for branch mode
-            if !result.is_direct_mode {
-                if let Some(ref branch) = result.branch_name {
-                    branch_mode_branches.push((result.spec_id.clone(), branch.clone()));
-                }
+            // Collect branch info
+            if result.is_direct_mode {
+                direct_mode_results.push(result.clone());
+            } else if let Some(ref branch) = result.branch_name {
+                branch_mode_branches.push((result.spec_id.clone(), branch.clone()));
             }
         } else {
             failed += 1;
@@ -782,6 +692,88 @@ pub fn cmd_work_parallel(
     // Wait for all threads to finish
     for handle in handles {
         let _ = handle.join();
+    }
+
+    // =========================================================================
+    // SERIALIZED MERGE PHASE - Handle all direct mode merges sequentially
+    // =========================================================================
+
+    let mut merged_count = 0;
+    let mut merge_failed = Vec::new();
+
+    for result in &direct_mode_results {
+        if let Some(ref branch) = result.branch_name {
+            println!("[{}] Merging to main...", result.spec_id.cyan());
+            let merge_result = worktree::merge_and_cleanup(branch);
+
+            if merge_result.success {
+                merged_count += 1;
+                println!("[{}] {} Merged to main", result.spec_id.cyan(), "✓".green());
+
+                // Cleanup worktree after successful merge
+                if let Some(ref path) = result.worktree_path {
+                    let _ = worktree::remove_worktree(path);
+                }
+            } else {
+                // Merge failed - preserve branch and worktree
+                merge_failed.push((result.spec_id.clone(), merge_result.has_conflict));
+
+                // Update spec status to indicate merge pending
+                let spec_path = specs_dir.join(format!("{}.md", result.spec_id));
+                if let Ok(mut spec) = spec::resolve_spec(specs_dir, &result.spec_id) {
+                    spec.frontmatter.status = SpecStatus::NeedsAttention;
+                    let _ = spec.save(&spec_path);
+                }
+
+                // Don't cleanup worktree - needed for manual merge
+
+                let error_msg = merge_result
+                    .error
+                    .as_deref()
+                    .unwrap_or("Unknown merge error");
+                println!(
+                    "[{}] {} Merge failed (branch preserved): {}",
+                    result.spec_id.cyan(),
+                    "⚠".yellow(),
+                    error_msg
+                );
+
+                // Check for actual conflicts that need resolution spec
+                if merge_result.has_conflict {
+                    if let Ok(conflicting_files) = conflict::detect_conflicting_files() {
+                        let all_specs = spec::load_all_specs(specs_dir).unwrap_or_default();
+                        let blocked_specs =
+                            conflict::get_blocked_specs(&conflicting_files, &all_specs);
+
+                        let source_branch = branch.to_string();
+                        let (spec_title, _) =
+                            conflict::extract_spec_context(specs_dir, &result.spec_id)
+                                .unwrap_or((None, String::new()));
+                        let diff_summary =
+                            conflict::get_diff_summary(&source_branch, "main").unwrap_or_default();
+
+                        let context = conflict::ConflictContext {
+                            source_branch,
+                            target_branch: "main".to_string(),
+                            conflicting_files,
+                            source_spec_id: result.spec_id.clone(),
+                            source_spec_title: spec_title,
+                            diff_summary,
+                        };
+
+                        if let Ok(conflict_spec_id) =
+                            conflict::create_conflict_spec(specs_dir, &context, blocked_specs)
+                        {
+                            println!(
+                                "[{}] Created conflict resolution spec: {}",
+                                result.spec_id.cyan(),
+                                conflict_spec_id
+                            );
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // Auto-complete drivers if all their members completed
@@ -806,12 +798,30 @@ pub fn cmd_work_parallel(
     }
 
     // Print summary
-    println!(
-        "\n{}: {} completed, {} failed",
-        "Summary".bold(),
-        completed,
-        failed
-    );
+    println!("\n{}", "═".repeat(60).dimmed());
+    println!("{}", "Parallel execution complete:".bold());
+    println!("  {} {} specs completed work", "✓".green(), completed);
+
+    if !direct_mode_results.is_empty() {
+        println!("  {} {} branches merged to main", "✓".green(), merged_count);
+
+        if !merge_failed.is_empty() {
+            println!(
+                "  {} {} branches preserved (merge pending)",
+                "→".yellow(),
+                merge_failed.len()
+            );
+            for (spec_id, has_conflict) in &merge_failed {
+                let indicator = if *has_conflict { "⚡" } else { "→" };
+                println!("    {} {}", indicator.yellow(), spec_id);
+            }
+        }
+    }
+
+    if failed > 0 {
+        println!("  {} {} specs failed", "✗".red(), failed);
+    }
+    println!("{}", "═".repeat(60).dimmed());
 
     // Show branch mode information
     if !branch_mode_branches.is_empty() {
@@ -826,8 +836,16 @@ pub fn cmd_work_parallel(
             "\nUse {} to reconcile branches later.",
             "chant reconcile".bold()
         );
-    } else if cli_branch_prefix.is_some() || config.defaults.branch {
-        println!("\n{} Direct mode: All changes merged to main.", "→".cyan());
+    }
+
+    // Show next steps for merge failures
+    if !merge_failed.is_empty() {
+        println!("\n{} Next steps for merge-pending branches:", "→".cyan());
+        println!("  - Review each branch for conflicts");
+        println!(
+            "  - Resolve conflicts manually or run {} to merge sequentially",
+            "chant merge".bold()
+        );
     }
 
     if failed > 0 {
