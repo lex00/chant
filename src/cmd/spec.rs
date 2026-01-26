@@ -29,7 +29,7 @@ use chant::spec::SpecFrontmatter;
 // CORE COMMAND FUNCTIONS
 // ============================================================================
 
-pub fn cmd_add(description: &str) -> Result<()> {
+pub fn cmd_add(description: &str, prompt: Option<&str>) -> Result<()> {
     let _config = Config::load()?;
     let specs_dir = crate::cmd::ensure_initialized()?;
 
@@ -39,15 +39,20 @@ pub fn cmd_add(description: &str) -> Result<()> {
     let filepath = specs_dir.join(&filename);
 
     // Create spec content
+    let prompt_line = match prompt {
+        Some(p) => format!("prompt: {}\n", p),
+        None => String::new(),
+    };
+
     let content = format!(
         r#"---
 type: code
 status: pending
----
+{}---
 
 # {}
 "#,
-        description
+        prompt_line, description
     );
 
     std::fs::write(&filepath, content)?;

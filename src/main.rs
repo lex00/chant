@@ -51,6 +51,9 @@ enum Commands {
     Add {
         /// Description of what to implement
         description: String,
+        /// Prompt to use for execution
+        #[arg(long)]
+        prompt: Option<String>,
     },
     /// List specs
     List {
@@ -207,7 +210,10 @@ fn main() -> Result<()> {
             minimal,
             agent,
         } => cmd_init(name, silent, force, minimal, agent),
-        Commands::Add { description } => cmd::spec::cmd_add(&description),
+        Commands::Add {
+            description,
+            prompt,
+        } => cmd::spec::cmd_add(&description, prompt.as_deref()),
         Commands::List { ready, label } => cmd::spec::cmd_list(ready, &label),
         Commands::Show { id, no_render } => cmd::spec::cmd_show(&id, no_render),
         Commands::Work {
