@@ -3,7 +3,7 @@
 //! Supports multiple git hosting providers (GitHub, GitLab, Bitbucket).
 //!
 //! # Doc Audit
-//! - audited: (pending)
+//! - audited: 2026-01-25
 //! - docs: reference/git.md
 //! - ignore: false
 
