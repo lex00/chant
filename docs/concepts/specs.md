@@ -1,5 +1,52 @@
 # Specs
 
+## Spec Types at a Glance
+
+| Type | Use For | Example |
+|------|---------|---------|
+| `code` | Features, bugs, refactoring | Implement JWT auth |
+| `task` | Manual work, prompts, config | Create documentation prompt |
+| `driver` | Coordinate multiple specs | Auth system (with .1, .2, .3 members) |
+| `group` | Alias for driver | Same as driver |
+| `documentation` | Generate docs from code | Document auth module |
+| `research` | Analysis, synthesis | Analyze survey data |
+
+```yaml
+# Code spec - implement something
+---
+type: code
+target_files: [src/auth.rs]
+---
+
+# Task spec - manual/config work
+---
+type: task
+target_files: [.chant/prompts/doc.md]
+---
+
+# Driver spec - coordinates members
+---
+type: driver
+---
+# (has 001.1.md, 001.2.md members)
+
+# Documentation spec - docs from code
+---
+type: documentation
+tracks: [src/auth/*.rs]
+target_files: [docs/auth.md]
+---
+
+# Research spec - analysis/synthesis
+---
+type: research
+origin: [data/metrics.csv]
+target_files: [analysis/report.md]
+---
+```
+
+See [spec-types.md](spec-types.md) for detailed documentation of each type.
+
 ## Unified Model
 
 No separate "epic" type. Specs can be split into groups. A spec with group members is a driver.

@@ -1,14 +1,17 @@
 # Spec Types
 
-Chant supports three spec types, each with different behaviors for execution, verification, and drift detection.
+Chant supports six spec types, each with different behaviors for execution, verification, and drift detection.
 
 ## Overview
 
-| Type | What It Creates | Drift Trigger | Drifts When |
-|------|-----------------|---------------|-------------|
-| `code` | Code, config, infra | Criteria | Acceptance criteria fail |
-| `documentation` | Docs about code | `tracks:` files | Tracked source changes |
-| `research` | Analysis, findings | `origin:` + `informed_by:` | Input files change |
+| Type | Purpose | Drift Trigger |
+|------|---------|---------------|
+| `code` | Implement features, fix bugs | Acceptance criteria fail |
+| `task` | Manual work, prompts, config | Acceptance criteria fail |
+| `driver` | Coordinate multiple specs | Members incomplete |
+| `group` | Alias for `driver` | Members incomplete |
+| `documentation` | Generate docs from source | `tracks:` files change |
+| `research` | Analysis, synthesis, findings | `origin:` or `informed_by:` files change |
 
 ## Field Reference
 
@@ -45,6 +48,92 @@ target_files:
 **Execution**: Agent reads context, implements code changes.
 **Verification**: Acceptance criteria checked.
 **Drift**: When criteria no longer pass.
+
+## Task Specs
+
+For manual work, creating prompts, configuration, or anything that doesn't produce code.
+
+```yaml
+---
+type: task
+target_files:
+  - .chant/prompts/documentation.md
+---
+# Create documentation prompt
+
+Create a prompt that guides agents to generate documentation from tracked source files.
+
+## Acceptance Criteria
+- [ ] Prompt file created
+- [ ] Prompt explains process
+- [ ] Prompt is actionable
+```
+
+**Execution**: Agent performs the task, creates artifacts.
+**Verification**: Acceptance criteria checked.
+**Drift**: When criteria no longer pass.
+
+### Task vs Code
+
+| Aspect | `code` | `task` |
+|--------|--------|--------|
+| Output | Source code, tests | Prompts, config, docs |
+| Tests | Usually runs tests | Usually no tests |
+| Build | May require build | No build needed |
+
+## Driver Specs
+
+Coordinate multiple related specs. A spec becomes a driver when it has member specs (files with `.N` suffix).
+
+```yaml
+---
+type: driver
+status: pending
+---
+# Implement authentication system
+
+This driver coordinates the auth implementation.
+
+## Members
+- `.1` - Add JWT middleware
+- `.2` - Add login endpoint
+- `.3` - Add tests
+```
+
+**File structure:**
+```
+2026-01-22-001-x7m.md      ← Driver
+2026-01-22-001-x7m.1.md    ← Member 1
+2026-01-22-001-x7m.2.md    ← Member 2
+2026-01-22-001-x7m.3.md    ← Member 3
+```
+
+**Execution**: Driver waits for all members to complete, then auto-completes.
+**Verification**: All members must be completed.
+**Drift**: When any member becomes incomplete.
+
+### Driver Behavior
+
+- Driver cannot complete until all members complete
+- Members execute in order (`.1` before `.2`)
+- Starting a member marks driver as `in_progress`
+- Driver auto-completes when last member completes
+
+## Group Specs
+
+`group` is an alias for `driver`. Use whichever term feels more natural.
+
+```yaml
+---
+type: group
+---
+# Feature: User profiles
+
+## Members
+- `.1` - Add profile model
+- `.2` - Add profile API
+- `.3` - Add profile UI
+```
 
 ### The `context:` Field
 
@@ -262,20 +351,25 @@ prompt: research-analysis         # Use analysis prompt, not synthesis
 
 ## Summary
 
-| Concept | Code | Documentation | Research |
-|---------|------|---------------|----------|
-| **Purpose** | Implement features | Document code | Analyze/synthesize |
-| **Context field** | `context:` | `context:` | `context:` |
-| **Work input** | Acceptance criteria | `tracks:` | `informed_by:` / `origin:` |
-| **Drift trigger** | Criteria fail | `tracks:` changes | `informed_by:` or `origin:` changes |
-| **Supports schedule** | No | No | Yes |
-| **Default prompt** | `standard` | `documentation` | `research-synthesis` |
+| Concept | Code | Task | Driver/Group | Documentation | Research |
+|---------|------|------|--------------|---------------|----------|
+| **Purpose** | Implement features | Manual work | Coordinate specs | Document code | Analyze/synthesize |
+| **Work input** | Criteria | Criteria | Members | `tracks:` | `informed_by:` / `origin:` |
+| **Drift trigger** | Criteria fail | Criteria fail | Members incomplete | `tracks:` changes | Input files change |
+| **Schedule** | No | No | No | No | Yes |
+| **Default prompt** | `standard` | `standard` | — | `documentation` | `research-*` |
 
 ---
 
 ## Implementation Status
 
-> **Status: Planned** — The `documentation` and `research` spec types are designed but not yet implemented. The following design questions are TBD.
+The `documentation` and `research` spec types are implemented with:
+- Frontmatter fields: `tracks:`, `informed_by:`, `origin:`, `schedule:`
+- Lint validation warnings for missing fields
+- Auto-selection of prompts based on spec type
+- Prompts: `documentation`, `research-analysis`, `research-synthesis`
+
+The following design questions remain TBD for future versions.
 
 ### TBD: Schedule Execution Model
 
@@ -320,9 +414,9 @@ informed_by:
 
 **Decision:** TBD (recommend A for v0.2.0)
 
-### TBD: Required Prompts
+### Prompts
 
-These prompts need to be created:
+These prompts are available in `.chant/prompts/`:
 
 | Prompt | Type | Purpose |
 |--------|------|---------|
@@ -330,4 +424,7 @@ These prompts need to be created:
 | `research-synthesis` | research | Synthesize materials into findings |
 | `research-analysis` | research | Analyze data, generate reports |
 
-**Status:** Not yet created
+**Auto-selection:**
+- `type: documentation` → `documentation` prompt
+- `type: research` with `origin:` → `research-analysis` prompt
+- `type: research` without `origin:` → `research-synthesis` prompt
