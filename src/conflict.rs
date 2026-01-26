@@ -4,7 +4,7 @@
 //! of conflict resolution specs with context about the conflicting branches.
 //!
 //! # Doc Audit
-//! - audited: (pending)
+//! - audited: 2026-01-25
 //! - docs: guides/recovery.md
 //! - ignore: false
 
