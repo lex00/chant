@@ -1,20 +1,61 @@
-//! Agent runtime integration for ollama-rs with function calling support.
+//! Agent runtime integration for ollama with function calling support.
 //!
-//! Provides an agent loop that handles model thinking, tool execution,
-//! and feedback to create an agentic workflow with local LLMs.
+//! Uses raw HTTP to avoid ollama-rs serialization issues with tool types.
 
-use anyhow::Result;
-use ollama_rs::generation::chat::request::ChatMessageRequest;
-use ollama_rs::generation::chat::ChatMessage;
-use ollama_rs::generation::tools::ToolInfo;
-use ollama_rs::Ollama;
+use anyhow::{anyhow, Result};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use url::Url;
 
 use crate::tools;
 
 const MAX_ITERATIONS: usize = 50;
 
-/// Run an agent loop using ollama-rs with function calling.
+#[derive(Debug, Serialize, Deserialize)]
+struct ChatRequest {
+    model: String,
+    messages: Vec<Message>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tools: Vec<Value>,
+    stream: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Message {
+    role: String,
+    content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_calls: Option<Vec<ToolCall>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_call_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ToolCall {
+    id: String,
+    function: ToolCallFunction,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ToolCallFunction {
+    name: String,
+    arguments: Value,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChatResponse {
+    message: ResponseMessage,
+}
+
+#[derive(Debug, Deserialize)]
+struct ResponseMessage {
+    role: String,
+    content: String,
+    #[serde(default)]
+    tool_calls: Vec<ToolCall>,
+}
+
+/// Run an agent loop using direct HTTP with function calling.
 ///
 /// This creates an agent loop where:
 /// 1. Model receives a prompt and thinks about what to do
@@ -29,47 +70,37 @@ pub async fn run_agent(
     user_message: &str,
     callback: &mut dyn FnMut(&str) -> Result<()>,
 ) -> Result<String> {
-    // Parse endpoint to extract host and port for ollama-rs
-    let url =
-        Url::parse(endpoint).unwrap_or_else(|_| Url::parse("http://localhost:11434").unwrap());
-    let host = format!(
-        "{}://{}",
+    // Parse endpoint to get base URL
+    let url = Url::parse(endpoint).unwrap_or_else(|_| Url::parse("http://localhost:11434").unwrap());
+    let base_url = format!(
+        "{}://{}:{}",
         url.scheme(),
-        url.host_str().unwrap_or("localhost")
+        url.host_str().unwrap_or("localhost"),
+        url.port().unwrap_or(11434)
     );
-    let port = url.port().unwrap_or(11434);
+    let chat_url = format!("{}/api/chat", base_url);
 
-    let ollama = Ollama::new(host, port);
-
-    // Build messages with system prompt if provided
-    let mut messages = vec![];
+    // Build messages
+    let mut messages: Vec<Message> = vec![];
     if !system_prompt.is_empty() {
-        messages.push(ChatMessage::system(system_prompt.to_string()));
+        messages.push(Message {
+            role: "system".to_string(),
+            content: system_prompt.to_string(),
+            tool_calls: None,
+            tool_call_id: None,
+        });
     }
-    messages.push(ChatMessage::user(user_message.to_string()));
+    messages.push(Message {
+        role: "user".to_string(),
+        content: user_message.to_string(),
+        tool_calls: None,
+        tool_call_id: None,
+    });
 
-    // Get tool definitions and convert to ToolInfo objects
+    // Get tool definitions (already in correct format with lowercase "function")
     let tool_defs = tools::get_tool_definitions();
-    let mut tool_infos: Vec<ToolInfo> = Vec::new();
-    for tool_def in &tool_defs {
-        match serde_json::from_value::<ToolInfo>(tool_def.clone()) {
-            Ok(info) => tool_infos.push(info),
-            Err(e) => {
-                eprintln!("[DEBUG] Failed to deserialize tool: {}", e);
-                eprintln!(
-                    "[DEBUG] Tool JSON: {}",
-                    serde_json::to_string_pretty(tool_def).unwrap_or_default()
-                );
-            }
-        }
-    }
-    eprintln!(
-        "[DEBUG] Converted {}/{} tools to ToolInfo",
-        tool_infos.len(),
-        tool_defs.len()
-    );
 
-    // Tool calling loop - iterate until model completes task or max iterations reached
+    // Tool calling loop
     let mut iteration = 0;
     let mut final_response = String::new();
 
@@ -83,59 +114,74 @@ pub async fn run_agent(
             break;
         }
 
-        // Build request with tools
-        let request =
-            ChatMessageRequest::new(model.to_string(), messages.clone()).tools(tool_infos.clone());
+        // Build request
+        let request = ChatRequest {
+            model: model.to_string(),
+            messages: messages.clone(),
+            tools: tool_defs.clone(),
+            stream: false,
+        };
 
-        // Send request to ollama
-        eprintln!(
-            "[DEBUG] Sending request to ollama (iteration {})",
-            iteration
-        );
-        let response = ollama.send_chat_messages(request).await?;
+        // Send request
+        let client = ureq::Agent::new();
+        let response = client
+            .post(&chat_url)
+            .set("Content-Type", "application/json")
+            .send_json(&request)
+            .map_err(|e| anyhow!("HTTP request failed: {}", e))?;
 
-        eprintln!(
-            "[DEBUG] Response content length: {}",
-            response.message.content.len()
-        );
-        eprintln!(
-            "[DEBUG] Tool calls count: {}",
-            response.message.tool_calls.len()
-        );
+        let response_text = response.into_string()?;
+        let chat_response: ChatResponse = serde_json::from_str(&response_text)
+            .map_err(|e| anyhow!("Failed to parse response: {} - body: {}", e, response_text))?;
 
         // Check if model requested tool calls
-        if response.message.tool_calls.is_empty() {
+        if chat_response.message.tool_calls.is_empty() {
             // No tool calls - model has provided final response
-            final_response = response.message.content.clone();
+            final_response = chat_response.message.content.clone();
             for line in final_response.lines() {
                 callback(line)?;
             }
             break;
         }
 
+        // Add assistant message with tool calls to history
+        messages.push(Message {
+            role: "assistant".to_string(),
+            content: chat_response.message.content.clone(),
+            tool_calls: Some(chat_response.message.tool_calls.clone()),
+            tool_call_id: None,
+        });
+
         // Process each tool call from the model
-        for tool_call in &response.message.tool_calls {
+        for tool_call in &chat_response.message.tool_calls {
             let tool_name = &tool_call.function.name;
             let tool_args = &tool_call.function.arguments;
 
             // Log the tool call
-            callback(&format!("Calling tool: {}", tool_name))?;
+            callback(&format!("[Tool: {}] {}", tool_name, tool_args))?;
 
             // Execute the tool
             let result = match tools::execute_tool(tool_name, tool_args) {
                 Ok(output) => output,
-                Err(error) => format!("Tool error: {}", error),
+                Err(error) => format!("Error: {}", error),
             };
 
-            // Log the result
-            callback(&format!("Tool result: {}", result))?;
+            // Log abbreviated result
+            let result_preview = if result.len() > 200 {
+                format!("{}... ({} bytes)", &result[..200], result.len())
+            } else {
+                result.clone()
+            };
+            callback(&format!("[Result] {}", result_preview))?;
 
-            // Add tool response to messages for next iteration
-            messages.push(ChatMessage::tool(result));
+            // Add tool response to messages
+            messages.push(Message {
+                role: "tool".to_string(),
+                content: result,
+                tool_calls: None,
+                tool_call_id: Some(tool_call.id.clone()),
+            });
         }
-
-        // Add assistant's response to messages to maintain conversation context
-        messages.push(ChatMessage::assistant(response.message.content));
     }
 
     Ok(final_response)
@@ -148,7 +194,6 @@ mod tests {
     #[tokio::test]
     async fn test_agent_initialization() {
         // Test that agent can be created with proper parameters
-        // Note: This test doesn't actually call ollama (would require running instance)
         let endpoint = "http://localhost:11434";
         let model = "qwen2.5:7b";
         let system_prompt = "You are a helpful assistant.";
@@ -156,8 +201,7 @@ mod tests {
 
         let mut callback = |_line: &str| -> Result<()> { Ok(()) };
 
-        // This would fail without a running ollama instance, so we just verify
-        // the types are correct by not compiling to an error
+        // Verify types are correct
         let _endpoint = endpoint;
         let _model = model;
         let _system_prompt = system_prompt;
