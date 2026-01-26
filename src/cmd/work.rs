@@ -119,6 +119,16 @@ pub fn cmd_work(
             println!("Model: {}", model);
         }
 
+        // If this is a member spec, check if driver should be auto-completed
+        let all_specs = spec::load_all_specs(&specs_dir)?;
+        if spec::auto_complete_driver_if_ready(&spec.id, &all_specs, &specs_dir)? {
+            println!(
+                "\n{} Auto-completed driver spec: {}",
+                "✓".green(),
+                spec::extract_driver_id(&spec.id).unwrap()
+            );
+        }
+
         return Ok(());
     }
 

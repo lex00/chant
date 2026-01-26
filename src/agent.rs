@@ -4,7 +4,7 @@
 
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 use url::Url;
 
 use crate::tools;
@@ -49,6 +49,7 @@ struct ChatResponse {
 
 #[derive(Debug, Deserialize)]
 struct ResponseMessage {
+    #[allow(dead_code)]
     role: String,
     content: String,
     #[serde(default)]
@@ -71,7 +72,8 @@ pub async fn run_agent(
     callback: &mut dyn FnMut(&str) -> Result<()>,
 ) -> Result<String> {
     // Parse endpoint to get base URL
-    let url = Url::parse(endpoint).unwrap_or_else(|_| Url::parse("http://localhost:11434").unwrap());
+    let url =
+        Url::parse(endpoint).unwrap_or_else(|_| Url::parse("http://localhost:11434").unwrap());
     let base_url = format!(
         "{}://{}:{}",
         url.scheme(),
