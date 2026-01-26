@@ -92,6 +92,32 @@ These are available via `just` and are typically run during spec execution:
 - `just check` - Run format check, linter, and tests
 - `just all` - Full check and build
 
+## Releasing
+
+Use the `just release` command to create a new release:
+
+```bash
+just release 0.2.0
+```
+
+**Prerequisites:**
+- Clean working directory (no uncommitted changes)
+- Version must be in `X.Y.Z` format
+- Tag must not already exist
+
+**What the release script does:**
+1. Validates version format and checks for clean git state
+2. Updates `version` in `Cargo.toml`
+3. Builds release binary to update `Cargo.lock`
+4. Commits changes with message `Release vX.Y.Z`
+5. Creates annotated git tag `vX.Y.Z`
+6. Pushes commit and tag to origin
+
+**After the script completes:**
+1. GitHub Actions automatically builds binaries for Linux, macOS (x86_64 + aarch64), and Windows
+2. Binaries are uploaded to the GitHub release
+3. Update the Homebrew formula with new SHA256 hashes from the release assets
+
 ## Project Structure
 
 ```
