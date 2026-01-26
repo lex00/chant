@@ -24,6 +24,7 @@ docs = ["concepts/prompts.md"]
 
 [mappings."src/git.rs"]
 docs = ["reference/git.md"]
+last_audit = "2026-01-25"
 
 [mappings."src/provider.rs"]
 docs = ["architecture/invoke.md"]
