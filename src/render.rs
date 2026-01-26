@@ -16,6 +16,7 @@ use chant::spec::SpecStatus;
 /// - Completed: ● (green)
 /// - Failed: ✗ (red)
 /// - NeedsAttention: ⚠ (yellow)
+/// - Ready: ◕ (cyan)
 pub fn status_icon(status: &SpecStatus) -> ColoredString {
     match status {
         SpecStatus::Pending => "○".white(),
@@ -23,6 +24,7 @@ pub fn status_icon(status: &SpecStatus) -> ColoredString {
         SpecStatus::Completed => "●".green(),
         SpecStatus::Failed => "✗".red(),
         SpecStatus::NeedsAttention => "⚠".yellow(),
+        SpecStatus::Ready => "◕".cyan(),
     }
 }
 

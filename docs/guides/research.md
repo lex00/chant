@@ -294,20 +294,6 @@ Chant doesn't help with:
 - Peer review (but can prepare submissions)
 - Data collection (but can analyze collected data)
 
-## Future: Semantic Search
-
-Research would benefit from semantic search:
-- "Find specs about transformer efficiency"
-- "What analysis relates to this paper?"
-- "Which specs cite similar sources?"
-
-This is on the roadmap. For now, use labels and keyword search:
-
-```bash
-chant search "label:transformers"
-chant search "body:attention mechanism"
-```
-
 ## See Also
 
 - [spec-types.md](../concepts/spec-types.md) — Overview of research spec type

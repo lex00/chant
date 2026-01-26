@@ -26,6 +26,7 @@ pub enum SpecStatus {
     Completed,
     Failed,
     NeedsAttention,
+    Ready,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -513,65 +513,6 @@ fn test_phase6_pools() {
 }
 ```
 
-### Phase 6.5 Gate: Semantic Search (Optional)
-
-```rust
-#[test]
-#[ignore] // Requires fastembed-rs models downloaded
-fn test_phase6_5_semantic_search() {
-    let repo = TempRepo::new();
-    repo.init_with_config(r#"
-        search:
-          semantic: true
-    "#);
-
-    repo.add_spec("Fix authentication bug in login flow");
-    repo.add_spec("Add payment processing for checkout");
-    repo.add_spec("Update user credentials validation");
-
-    // Semantic search finds related concepts
-    let results = repo.search("--semantic 'security credentials'");
-    assert!(results.len() >= 2); // Should find auth and credentials specs
-}
-
-#[test]
-#[ignore] // Requires fastembed-rs models downloaded
-fn test_phase6_5_hybrid_search() {
-    let repo = TempRepo::new();
-    repo.init_with_config(r#"
-        search:
-          semantic: true
-          hybrid: true
-    "#);
-
-    repo.add_spec("Implement OAuth2 authentication");
-    repo.add_spec("Add SSO login support");
-
-    // Hybrid combines keyword + semantic
-    let results = repo.search("--hybrid 'user login'");
-    assert!(results.len() == 2);
-}
-
-#[test]
-#[ignore] // Requires fastembed-rs models downloaded
-fn test_phase6_5_similar() {
-    let repo = TempRepo::new();
-    repo.init_with_config(r#"
-        search:
-          semantic: true
-    "#);
-
-    let spec1 = repo.add_spec("Add rate limiting to API endpoints");
-    repo.add_spec("Implement request throttling");
-    repo.add_spec("Fix database connection pool");
-
-    // Find similar specs
-    let similar = repo.run(&format!("chant similar {}", spec1)).success();
-    assert!(similar.stdout.contains("throttling")); // Semantically similar
-    assert!(!similar.stdout.contains("database")); // Not related
-}
-```
-
 ### Phase 7 Gate: Autonomy
 
 ```rust
@@ -820,7 +761,6 @@ No criteria.
 | 6 → 7 | `test_phase6_queue` | Queue processes specs |
 | 6 → 7 | `test_phase6_pools` | Pools respect limits |
 | 6 → 7 | `test_daemon_mode` | Daemon indexes and serves |
-| 6.5   | `test_phase6_5_semantic_search` | Semantic search works (optional) |
 | 7 → 8 | `test_phase7_drift_detection` | Drift detected |
 | 7 → 8 | `test_phase7_replay` | Replay restores state |
 | 8 → ✓ | `test_phase8_approval_workflow` | Approvals block completion |

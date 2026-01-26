@@ -178,7 +178,7 @@ pub fn cmd_status() -> Result<()> {
 
     for spec in &specs {
         match spec.frontmatter.status {
-            SpecStatus::Pending => pending += 1,
+            SpecStatus::Pending | SpecStatus::Ready => pending += 1,
             SpecStatus::InProgress => in_progress += 1,
             SpecStatus::Completed => completed += 1,
             SpecStatus::Failed => failed += 1,

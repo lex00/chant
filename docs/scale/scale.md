@@ -197,7 +197,6 @@ chant daemon start
 
 Daemon provides:
 - Tantivy index (keyword search, always hot)
-- arroy index (semantic search, optional)
 - Lock table (in-memory, fast)
 - File watcher (instant updates)
 - Unix socket API
@@ -207,12 +206,10 @@ Daemon provides:
 ```
 Daemon process
 ├── Tantivy (keyword)     # Memory-mapped, scales to millions
-├── arroy (semantic)      # Memory-mapped via LMDB, same scale
-├── fastembed model       # Loaded once, ~200MB RAM
 └── File watcher          # Instant index updates
 ```
 
-Both Tantivy and arroy use memory-mapped storage. Same scaling patterns. Both handle millions of documents on a single machine.
+Tantivy uses memory-mapped storage and handles millions of documents on a single machine.
 
 **Built-in feature.** CLI connects to daemon if running, falls back to direct mode.
 
@@ -501,8 +498,6 @@ All Rust-native. No SQLite. No external services.
 | Component | Library | Storage | Scale |
 |-----------|---------|---------|-------|
 | Keyword search | Tantivy | Memory-mapped | Millions |
-| Semantic search | arroy | LMDB (memory-mapped) | Millions |
-| Embeddings | fastembed-rs | N/A | Local, ~200MB RAM |
 
 Deployment (you provide):
 - K8s for orchestration

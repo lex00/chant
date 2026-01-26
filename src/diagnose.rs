@@ -222,6 +222,13 @@ fn check_status_consistency(spec: &Spec, commit_exists: bool, unchecked: usize) 
         SpecStatus::NeedsAttention => {
             CheckResult::pass_with_details("Status consistency", "Marked as needs attention")
         }
+        SpecStatus::Ready => {
+            if commit_exists {
+                CheckResult::fail("Status consistency", "Status is ready but commit exists")
+            } else {
+                CheckResult::pass("Status consistency")
+            }
+        }
     }
 }
 

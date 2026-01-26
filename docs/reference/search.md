@@ -22,9 +22,11 @@ Search specific frontmatter fields:
 
 ```bash
 chant search "status:pending"
+chant search "type:code"
 chant search "project:auth"
 chant search "label:urgent"
 chant search "prompt:tdd"
+chant search "target_files:src/lib.rs"
 ```
 
 ### ID Search
@@ -107,9 +109,11 @@ chant search "auth~2"                # Edit distance 2
 |-------|------|-------------|
 | `id` | keyword | Spec ID (exact match) |
 | `status` | keyword | pending, in_progress, completed, failed |
+| `type` | keyword | code, task, driver, group |
 | `project` | keyword | Project prefix |
 | `label` | keyword[] | Labels (multi-value) |
 | `prompt` | keyword | Prompt name |
+| `target_files` | keyword[] | Target file paths (multi-value) |
 | `created` | date | Creation date |
 | `updated` | date | Last update |
 | `completed` | date | Completion date |
@@ -167,10 +171,11 @@ chant search "status:failed created:2026-01-22"
 chant search "cost_usd:[5 TO *]" --sort cost_usd:desc
 ```
 
-### Find specs touching auth files
+### Find specs targeting specific files
 
 ```bash
-chant search "body:src/auth/*"
+chant search "target_files:src/auth.rs"
+chant search "target_files:src/lib.rs"
 ```
 
 ### Find incomplete members of a group
@@ -232,95 +237,13 @@ With daemon, search hits hot index (instant). Without daemon, builds index on-de
 # No daemon: ~200ms (first), ~50ms (cached)
 ```
 
-## Semantic Search
+## Storage
 
-Vector-based similarity search finds conceptually related specs.
-
-### Why Semantic Search?
-
-Keyword search finds exact matches:
-```bash
-chant search "transformer"      # Finds "transformer"
-chant search "attention"        # Finds "attention"
+Tantivy index stored in `.chant/.index/`:
+```
+.chant/
+├── specs/         # Spec files
+└── .index/        # Tantivy search index
 ```
 
-Semantic search finds conceptual matches:
-```bash
-chant search --semantic "efficiency optimization"
-# Finds specs about:
-#   - "performance improvements"
-#   - "reducing latency"
-#   - "memory optimization"
-# Even if they don't contain "efficiency"
-```
-
-### Zero Setup
-
-Semantic search is built into the `chant` binary. No external services.
-
-| What | How |
-|------|-----|
-| Vector store | arroy (compiled in) |
-| Embeddings | fastembed-rs (compiled in) |
-| Storage | LMDB (compiled in) |
-| Model | Auto-downloads on first use |
-
-First use:
-```bash
-$ chant search --semantic "auth patterns"
-Downloading embedding model (BGE-small-en)... 50MB
-[results]
-```
-
-After that, fully offline. No API keys, no Docker, no Python.
-
-### Use Cases
-
-**Find similar specs:**
-```bash
-chant search --semantic "user login flow" --limit 5
-```
-
-**Research workflows:**
-```bash
-chant search --semantic "how does authentication work"
-# Finds specs and docs about auth, even without exact terms
-```
-
-**Explore related work:**
-```bash
-chant search --semantic --similar-to 001
-# Find specs conceptually similar to spec 001
-```
-
-### Combining Keyword and Semantic
-
-```bash
-# Filter by status, then rank by similarity
-chant search "status:pending" --semantic "performance"
-
-# Hybrid scoring (both keyword and semantic)
-chant search "auth" --hybrid --semantic "security patterns"
-```
-
-### Configuration
-
-```yaml
-# config.md
-search:
-  semantic:
-    enabled: true              # Default: true
-    model: BGE-small-en        # Embedding model
-    threshold: 0.5             # Minimum similarity score
-```
-
-### Storage
-
-Semantic index stored in `.chant/.store/vectors/`:
-```
-.chant/.store/
-├── tantivy/       # Keyword index
-└── vectors/       # Semantic index (arroy/LMDB)
-```
-
-Both are memory-mapped, both scale to millions of documents.
+The index is memory-mapped and scales to millions of documents.
