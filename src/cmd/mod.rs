@@ -1,6 +1,7 @@
 //! Command module structure for chant CLI
 
 pub mod agent;
+pub mod commits;
 pub mod git_ops;
 pub mod lifecycle;
 pub mod model;
