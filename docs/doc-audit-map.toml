@@ -11,51 +11,40 @@
 
 [mappings."src/main.rs"]
 docs = ["reference/cli.md"]
-# last_audit = "2026-01-25"  # Uncomment after first audit
 
 [mappings."src/spec.rs"]
 docs = ["concepts/specs.md", "reference/schema.md"]
-# last_audit = "2026-01-25"
 
 [mappings."src/config.rs"]
 docs = ["reference/config.md"]
-# last_audit = "2026-01-25"
 
 [mappings."src/prompt.rs"]
 docs = ["concepts/prompts.md"]
-# last_audit = "2026-01-25"
 
 [mappings."src/git.rs"]
 docs = ["reference/git.md"]
-# last_audit = "2026-01-25"
 
 [mappings."src/provider.rs"]
 docs = ["architecture/invoke.md"]
-# last_audit = "2026-01-25"
 
 [mappings."src/worktree.rs"]
 docs = ["scale/isolation.md"]
-# last_audit = "2026-01-25"
 
 [mappings."src/conflict.rs"]
 docs = ["guides/recovery.md"]
-# last_audit = "2026-01-25"
 
 [mappings."src/merge.rs"]
 docs = ["guides/recovery.md"]
-# last_audit = "2026-01-25"
 
 [mappings."src/mcp.rs"]
 docs = ["reference/mcp.md"]
-# last_audit = "2026-01-25"
 
 [mappings."src/id.rs"]
-docs = ["reference/schema.md"]
-# last_audit = "2026-01-25"
+docs = ["concepts/ids.md", "reference/schema.md"]
+last_audit = "2026-01-25"
 
 [mappings."src/diagnose.rs"]
 docs = ["guides/recovery.md"]
-# last_audit = "2026-01-25"
 
 # Modules without dedicated docs - internal implementation
 [mappings."src/render.rs"]

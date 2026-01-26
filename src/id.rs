@@ -1,8 +1,8 @@
 //! Spec ID generation with date-based sequencing.
 //!
 //! # Doc Audit
-//! - audited: (pending)
-//! - docs: reference/schema.md
+//! - audited: 2026-01-25
+//! - docs: concepts/ids.md, reference/schema.md
 //! - ignore: false
 
 use anyhow::Result;
