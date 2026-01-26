@@ -23,6 +23,8 @@ defaults:
   branch: false
   pr: false
   branch_prefix: "chant/"
+  model: claude-opus-4
+  provider: claude
 
 schema:
   spec:
@@ -83,10 +85,21 @@ defaults:
   branch: false             # Create branches?
   pr: false                 # Create PRs?
   branch_prefix: "chant/"   # Branch name prefix
+  model: null               # Default model name (e.g. "claude-opus-4", "claude-sonnet-4")
+  split_model: null         # Default model for split operations (defaults to sonnet)
+  main_branch: "main"       # Default main branch name for merges
+  provider: claude          # Default provider: claude, ollama, openai
 
 # Optional - git provider settings
 git:
   provider: github          # PR provider: github, gitlab, bitbucket
+
+# Optional - model provider endpoints
+providers:
+  ollama:
+    endpoint: http://localhost:11434/v1  # Ollama API endpoint
+  openai:
+    endpoint: https://api.openai.com/v1  # OpenAI API endpoint
 
 # Optional - schema validation (Planned)
 # Note: Schema validation is on the roadmap but not yet implemented
@@ -150,9 +163,15 @@ Project config overrides global config. Values are merged at the key level:
 defaults:
   branch: true
   pr: true
+  model: claude-opus-4
+  provider: claude
 
 git:
   provider: github
+
+providers:
+  openai:
+    endpoint: https://api.openai.com/v1
 ---
 
 # Global Chant Settings
