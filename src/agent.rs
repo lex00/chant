@@ -10,6 +10,7 @@ use url::Url;
 use crate::tools;
 
 const MAX_ITERATIONS: usize = 50;
+const DEFAULT_OLLAMA_ENDPOINT: &str = "http://localhost:11434";
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ChatRequest {
@@ -72,8 +73,10 @@ pub fn run_agent(
     callback: &mut dyn FnMut(&str) -> Result<()>,
 ) -> Result<String> {
     // Parse endpoint to get base URL
-    let url =
-        Url::parse(endpoint).unwrap_or_else(|_| Url::parse("http://localhost:11434").unwrap());
+    // Use const for fallback to avoid nested unwrap
+    let url = Url::parse(endpoint).unwrap_or_else(|_| {
+        Url::parse(DEFAULT_OLLAMA_ENDPOINT).expect("DEFAULT_OLLAMA_ENDPOINT is valid")
+    });
     let base_url = format!(
         "{}://{}:{}",
         url.scheme(),

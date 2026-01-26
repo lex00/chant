@@ -11,6 +11,7 @@ use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 
+use chant::paths::SPECS_DIR;
 use chant::spec::{load_all_specs, resolve_spec, SpecStatus};
 
 /// JSON-RPC 2.0 Request
@@ -244,11 +245,11 @@ fn handle_tools_call(params: Option<&Value>) -> Result<Value> {
     }
 }
 
-fn tool_chant_spec_list(arguments: Option<&Value>) -> Result<Value> {
-    let specs_dir = PathBuf::from(".chant/specs");
-
+/// Check if chant is initialized and return specs_dir, or an MCP error response.
+fn mcp_ensure_initialized() -> Result<PathBuf, Value> {
+    let specs_dir = PathBuf::from(SPECS_DIR);
     if !specs_dir.exists() {
-        return Ok(json!({
+        return Err(json!({
             "content": [
                 {
                     "type": "text",
@@ -258,6 +259,14 @@ fn tool_chant_spec_list(arguments: Option<&Value>) -> Result<Value> {
             "isError": true
         }));
     }
+    Ok(specs_dir)
+}
+
+fn tool_chant_spec_list(arguments: Option<&Value>) -> Result<Value> {
+    let specs_dir = match mcp_ensure_initialized() {
+        Ok(dir) => dir,
+        Err(err_response) => return Ok(err_response),
+    };
 
     let mut specs = load_all_specs(&specs_dir)?;
     specs.sort_by(|a, b| a.id.cmp(&b.id));
@@ -304,19 +313,10 @@ fn tool_chant_spec_list(arguments: Option<&Value>) -> Result<Value> {
 }
 
 fn tool_chant_spec_get(arguments: Option<&Value>) -> Result<Value> {
-    let specs_dir = PathBuf::from(".chant/specs");
-
-    if !specs_dir.exists() {
-        return Ok(json!({
-            "content": [
-                {
-                    "type": "text",
-                    "text": "Chant not initialized. Run `chant init` first."
-                }
-            ],
-            "isError": true
-        }));
-    }
+    let specs_dir = match mcp_ensure_initialized() {
+        Ok(dir) => dir,
+        Err(err_response) => return Ok(err_response),
+    };
 
     let id = arguments
         .and_then(|a| a.get("id"))
@@ -367,19 +367,10 @@ fn tool_chant_spec_get(arguments: Option<&Value>) -> Result<Value> {
 }
 
 fn tool_chant_spec_update(arguments: Option<&Value>) -> Result<Value> {
-    let specs_dir = PathBuf::from(".chant/specs");
-
-    if !specs_dir.exists() {
-        return Ok(json!({
-            "content": [
-                {
-                    "type": "text",
-                    "text": "Chant not initialized. Run `chant init` first."
-                }
-            ],
-            "isError": true
-        }));
-    }
+    let specs_dir = match mcp_ensure_initialized() {
+        Ok(dir) => dir,
+        Err(err_response) => return Ok(err_response),
+    };
 
     let args = arguments.ok_or_else(|| anyhow::anyhow!("Missing arguments"))?;
 

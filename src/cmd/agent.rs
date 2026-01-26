@@ -8,6 +8,7 @@ use colored::Colorize;
 use std::path::{Path, PathBuf};
 
 use chant::config::Config;
+use chant::paths::SPECS_DIR;
 use chant::provider;
 use chant::spec::Spec;
 
@@ -48,7 +49,7 @@ pub fn invoke_agent_with_prefix(
     };
 
     // Set environment variables
-    let spec_file = std::fs::canonicalize(format!(".chant/specs/{}.md", spec_id))?;
+    let spec_file = std::fs::canonicalize(format!("{}/{}.md", SPECS_DIR, spec_id))?;
 
     // Get the model to use
     let model = get_model_for_invocation(config_model);

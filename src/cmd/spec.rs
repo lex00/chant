@@ -14,6 +14,7 @@ use std::path::PathBuf;
 use chant::config::Config;
 use chant::git;
 use chant::id;
+use chant::paths::{ARCHIVE_DIR, LOGS_DIR};
 use chant::spec::{self, Spec, SpecStatus};
 use chant::worktree;
 
@@ -30,11 +31,7 @@ use chant::spec::SpecFrontmatter;
 
 pub fn cmd_add(description: &str) -> Result<()> {
     let _config = Config::load()?;
-    let specs_dir = PathBuf::from(".chant/specs");
-
-    if !specs_dir.exists() {
-        anyhow::bail!("Chant not initialized. Run `chant init` first.");
-    }
+    let specs_dir = crate::cmd::ensure_initialized()?;
 
     // Generate ID
     let id = id::generate_id(&specs_dir)?;
@@ -62,11 +59,7 @@ status: pending
 }
 
 pub fn cmd_list(ready_only: bool, labels: &[String]) -> Result<()> {
-    let specs_dir = PathBuf::from(".chant/specs");
-
-    if !specs_dir.exists() {
-        anyhow::bail!("Chant not initialized. Run `chant init` first.");
-    }
+    let specs_dir = crate::cmd::ensure_initialized()?;
 
     let mut specs = spec::load_all_specs(&specs_dir)?;
     specs.sort_by(|a, b| a.id.cmp(&b.id));
@@ -101,21 +94,15 @@ pub fn cmd_list(ready_only: bool, labels: &[String]) -> Result<()> {
     }
 
     for spec in &specs {
-        let status_icon = if spec.frontmatter.r#type == "conflict" {
+        let icon = if spec.frontmatter.r#type == "conflict" {
             "⚡".yellow()
         } else {
-            match spec.frontmatter.status {
-                SpecStatus::Pending => "○".white(),
-                SpecStatus::InProgress => "◐".yellow(),
-                SpecStatus::Completed => "●".green(),
-                SpecStatus::Failed => "✗".red(),
-                SpecStatus::NeedsAttention => "⚠".yellow(),
-            }
+            render::status_icon(&spec.frontmatter.status)
         };
 
         println!(
             "{} {} {}",
-            status_icon,
+            icon,
             spec.id.cyan(),
             spec.title.as_deref().unwrap_or("(no title)")
         );
@@ -125,11 +112,7 @@ pub fn cmd_list(ready_only: bool, labels: &[String]) -> Result<()> {
 }
 
 pub fn cmd_show(id: &str, no_render: bool) -> Result<()> {
-    let specs_dir = PathBuf::from(".chant/specs");
-
-    if !specs_dir.exists() {
-        anyhow::bail!("Chant not initialized. Run `chant init` first.");
-    }
+    let specs_dir = crate::cmd::ensure_initialized()?;
 
     let spec = spec::resolve_spec(&specs_dir, id)?;
 
@@ -178,11 +161,7 @@ pub fn cmd_show(id: &str, no_render: bool) -> Result<()> {
 }
 
 pub fn cmd_status() -> Result<()> {
-    let specs_dir = PathBuf::from(".chant/specs");
-
-    if !specs_dir.exists() {
-        anyhow::bail!("Chant not initialized. Run `chant init` first.");
-    }
+    let specs_dir = crate::cmd::ensure_initialized()?;
 
     let specs = spec::load_all_specs(&specs_dir)?;
 
@@ -225,11 +204,7 @@ pub fn cmd_status() -> Result<()> {
 }
 
 pub fn cmd_lint() -> Result<()> {
-    let specs_dir = PathBuf::from(".chant/specs");
-
-    if !specs_dir.exists() {
-        anyhow::bail!("Chant not initialized. Run `chant init` first.");
-    }
+    let specs_dir = crate::cmd::ensure_initialized()?;
 
     println!("Linting specs...");
 
@@ -316,12 +291,8 @@ pub fn cmd_delete(
     dry_run: bool,
     yes: bool,
 ) -> Result<()> {
-    let specs_dir = PathBuf::from(".chant/specs");
-    let logs_dir = PathBuf::from(".chant/logs");
-
-    if !specs_dir.exists() {
-        anyhow::bail!("Chant not initialized. Run `chant init` first.");
-    }
+    let specs_dir = crate::cmd::ensure_initialized()?;
+    let logs_dir = PathBuf::from(LOGS_DIR);
 
     // Load config for branch prefix
     let config = Config::load()?;
@@ -329,7 +300,7 @@ pub fn cmd_delete(
 
     // Load all specs (both active and archived)
     let mut all_specs = spec::load_all_specs(&specs_dir)?;
-    let archive_dir = PathBuf::from(".chant/archive");
+    let archive_dir = PathBuf::from(ARCHIVE_DIR);
     if archive_dir.exists() {
         let archived_specs = spec::load_all_specs(&archive_dir)?;
         all_specs.extend(archived_specs);

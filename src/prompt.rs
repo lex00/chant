@@ -11,7 +11,8 @@ use std::io::{self, Write};
 use std::path::Path;
 
 use crate::config::Config;
-use crate::spec::Spec;
+use crate::paths::SPECS_DIR;
+use crate::spec::{split_frontmatter, Spec};
 
 /// Ask user for confirmation with a yes/no prompt.
 /// Returns true if user confirms (y/yes), false if user declines (n/no).
@@ -41,7 +42,7 @@ pub fn assemble(spec: &Spec, prompt_path: &Path, config: &Config) -> Result<Stri
         .with_context(|| format!("Failed to read prompt from {}", prompt_path.display()))?;
 
     // Extract body (skip frontmatter)
-    let body = extract_body(&prompt_content);
+    let (_frontmatter, body) = split_frontmatter(&prompt_content);
 
     // Check if this is a split prompt (don't inject commit instruction for analysis prompts)
     let is_split_prompt = prompt_path
@@ -53,21 +54,6 @@ pub fn assemble(spec: &Spec, prompt_path: &Path, config: &Config) -> Result<Stri
     let message = substitute(body, spec, config, !is_split_prompt);
 
     Ok(message)
-}
-
-fn extract_body(content: &str) -> &str {
-    let content = content.trim();
-
-    if !content.starts_with("---") {
-        return content;
-    }
-
-    let rest = &content[3..];
-    if let Some(end) = rest.find("---") {
-        rest[end + 3..].trim_start()
-    } else {
-        content
-    }
 }
 
 fn substitute(template: &str, spec: &Spec, config: &Config, inject_commit: bool) -> String {
@@ -85,7 +71,7 @@ fn substitute(template: &str, spec: &Spec, config: &Config, inject_commit: bool)
     result = result.replace("{{spec.description}}", &spec.body);
 
     // Spec path (constructed from id)
-    let spec_path = format!(".chant/specs/{}.md", spec.id);
+    let spec_path = format!("{}/{}.md", SPECS_DIR, spec.id);
     result = result.replace("{{spec.path}}", &spec_path);
 
     // The full spec content
@@ -200,14 +186,14 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_body() {
+    fn test_split_frontmatter_extracts_body() {
         let content = r#"---
 name: test
 ---
 
 Body content here."#;
 
-        let body = extract_body(content);
+        let (_frontmatter, body) = split_frontmatter(content);
         assert_eq!(body, "Body content here.");
     }
 

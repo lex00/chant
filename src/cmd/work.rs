@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 use chant::config::Config;
 use chant::conflict;
 use chant::git;
+use chant::paths::PROMPTS_DIR;
 use chant::prompt;
 use chant::spec::{self, Spec, SpecStatus};
 use chant::worktree;
@@ -42,13 +43,9 @@ pub fn cmd_work(
     finalize: bool,
     allow_no_commits: bool,
 ) -> Result<()> {
-    let specs_dir = PathBuf::from(".chant/specs");
-    let prompts_dir = PathBuf::from(".chant/prompts");
+    let specs_dir = crate::cmd::ensure_initialized()?;
+    let prompts_dir = PathBuf::from(PROMPTS_DIR);
     let config = Config::load()?;
-
-    if !specs_dir.exists() {
-        anyhow::bail!("Chant not initialized. Run `chant init` first.");
-    }
 
     // Check for silent mode conflicts
     let in_silent_mode = is_silent_mode();

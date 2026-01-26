@@ -250,7 +250,12 @@ impl Spec {
     }
 }
 
-fn split_frontmatter(content: &str) -> (Option<String>, &str) {
+/// Split content into frontmatter and body.
+///
+/// If the content starts with `---`, extracts the YAML frontmatter between
+/// the first and second `---` delimiters, and returns the body after.
+/// Otherwise returns None for frontmatter and the entire content as body.
+pub fn split_frontmatter(content: &str) -> (Option<String>, &str) {
     let content = content.trim();
 
     if !content.starts_with("---") {

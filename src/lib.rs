@@ -63,3 +63,19 @@ pub mod spec;
 pub mod spec_group;
 pub mod tools;
 pub mod worktree;
+
+/// Default path constants for chant directory structure.
+pub mod paths {
+    /// Directory containing spec files: `.chant/specs`
+    pub const SPECS_DIR: &str = ".chant/specs";
+    /// Directory containing prompt templates: `.chant/prompts`
+    pub const PROMPTS_DIR: &str = ".chant/prompts";
+    /// Directory containing execution logs: `.chant/logs`
+    pub const LOGS_DIR: &str = ".chant/logs";
+    /// Directory containing archived specs: `.chant/archive`
+    pub const ARCHIVE_DIR: &str = ".chant/archive";
+    /// Directory containing lock files: `.chant/.locks`
+    pub const LOCKS_DIR: &str = ".chant/.locks";
+    /// Directory containing internal store: `.chant/.store`
+    pub const STORE_DIR: &str = ".chant/.store";
+}

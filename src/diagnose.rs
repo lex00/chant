@@ -10,6 +10,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::paths::SPECS_DIR;
 use crate::spec::{Spec, SpecStatus};
 
 /// A single diagnostic check result.
@@ -226,7 +227,7 @@ fn check_status_consistency(spec: &Spec, commit_exists: bool, unchecked: usize) 
 
 /// Run all diagnostic checks on a spec.
 pub fn diagnose_spec(spec_id: &str) -> Result<DiagnosticReport> {
-    let specs_dir = Path::new(".chant/specs");
+    let specs_dir = Path::new(SPECS_DIR);
     let spec_file = specs_dir.join(format!("{}.md", spec_id));
 
     // Load the spec

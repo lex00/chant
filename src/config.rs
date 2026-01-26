@@ -12,6 +12,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::provider::{ProviderConfig, ProviderType};
+use crate::spec::split_frontmatter;
 
 /// Git hosting provider for PR creation
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
@@ -110,12 +111,10 @@ impl Default for DefaultsConfig {
 }
 
 impl Config {
-    #[allow(dead_code)]
     pub fn load() -> Result<Self> {
         Self::load_from(Path::new(".chant/config.md"))
     }
 
-    #[allow(dead_code)]
     pub fn load_from(path: &Path) -> Result<Self> {
         let content = fs::read_to_string(path)
             .with_context(|| format!("Failed to read config from {}", path.display()))?;
@@ -124,9 +123,9 @@ impl Config {
     }
 
     pub fn parse(content: &str) -> Result<Self> {
-        // Extract YAML frontmatter
-        let frontmatter =
-            extract_frontmatter(content).context("Failed to extract frontmatter from config")?;
+        // Extract YAML frontmatter using shared function
+        let (frontmatter, _body) = split_frontmatter(content);
+        let frontmatter = frontmatter.context("Failed to extract frontmatter from config")?;
 
         serde_yaml::from_str(&frontmatter).context("Failed to parse config frontmatter")
     }
@@ -213,8 +212,8 @@ impl PartialConfig {
     }
 
     fn parse(content: &str) -> Result<Self> {
-        let frontmatter =
-            extract_frontmatter(content).context("Failed to extract frontmatter from config")?;
+        let (frontmatter, _body) = split_frontmatter(content);
+        let frontmatter = frontmatter.context("Failed to extract frontmatter from config")?;
 
         serde_yaml::from_str(&frontmatter).context("Failed to parse config frontmatter")
     }
@@ -271,17 +270,6 @@ impl PartialConfig {
             providers: Default::default(),
         }
     }
-}
-
-fn extract_frontmatter(content: &str) -> Option<String> {
-    let content = content.trim();
-
-    if !content.starts_with("---") {
-        return None;
-    }
-
-    let rest = &content[3..];
-    rest.find("---").map(|end| rest[..end].to_string())
 }
 
 #[cfg(test)]

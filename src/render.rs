@@ -3,8 +3,28 @@
 //! # Doc Audit
 //! - ignore: internal implementation detail
 
-use colored::Colorize;
+use colored::{ColoredString, Colorize};
 use pulldown_cmark::{Event, Parser, Tag, TagEnd};
+
+use chant::spec::SpecStatus;
+
+/// Returns a colored status icon for the given spec status.
+///
+/// Icons:
+/// - Pending: ○ (white)
+/// - InProgress: ◐ (yellow)
+/// - Completed: ● (green)
+/// - Failed: ✗ (red)
+/// - NeedsAttention: ⚠ (yellow)
+pub fn status_icon(status: &SpecStatus) -> ColoredString {
+    match status {
+        SpecStatus::Pending => "○".white(),
+        SpecStatus::InProgress => "◐".yellow(),
+        SpecStatus::Completed => "●".green(),
+        SpecStatus::Failed => "✗".red(),
+        SpecStatus::NeedsAttention => "⚠".yellow(),
+    }
+}
 
 /// Renders markdown text to the terminal with ANSI formatting
 pub fn render_markdown(markdown: &str) {

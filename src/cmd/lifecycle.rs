@@ -16,6 +16,7 @@ use chant::config::Config;
 use chant::diagnose;
 use chant::git;
 use chant::merge;
+use chant::paths::{ARCHIVE_DIR, PROMPTS_DIR};
 use chant::prompt;
 use chant::spec::{self, Spec, SpecFrontmatter, SpecStatus};
 
@@ -27,11 +28,7 @@ use crate::cmd;
 
 /// Display detailed diagnostic information for a spec
 pub fn cmd_diagnose(id: &str) -> Result<()> {
-    let specs_dir = PathBuf::from(".chant/specs");
-
-    if !specs_dir.exists() {
-        anyhow::bail!("Chant not initialized. Run `chant init` first.");
-    }
+    let specs_dir = crate::cmd::ensure_initialized()?;
 
     // Resolve spec ID
     let spec = spec::resolve_spec(&specs_dir, id)?;
@@ -90,6 +87,7 @@ pub fn cmd_log_at(base_path: &std::path::Path, id: &str, lines: usize, follow: b
     let specs_dir = base_path.join("specs");
     let logs_dir = base_path.join("logs");
 
+    // Note: For custom base paths, we check specs_dir directly instead of using ensure_initialized()
     if !specs_dir.exists() {
         anyhow::bail!("Chant not initialized. Run `chant init` first.");
     }
@@ -144,13 +142,9 @@ struct MemberSpec {
 
 /// Split a pending spec into member specs
 pub fn cmd_split(id: &str, override_model: Option<&str>, force: bool) -> Result<()> {
-    let specs_dir = PathBuf::from(".chant/specs");
-    let prompts_dir = PathBuf::from(".chant/prompts");
+    let specs_dir = crate::cmd::ensure_initialized()?;
+    let prompts_dir = PathBuf::from(PROMPTS_DIR);
     let config = Config::load()?;
-
-    if !specs_dir.exists() {
-        anyhow::bail!("Chant not initialized. Run `chant init` first.");
-    }
 
     // Resolve the spec to split
     let mut spec = spec::resolve_spec(&specs_dir, id)?;
@@ -443,12 +437,8 @@ pub fn cmd_archive(
     older_than: Option<u64>,
     force: bool,
 ) -> Result<()> {
-    let specs_dir = PathBuf::from(".chant/specs");
-    let archive_dir = PathBuf::from(".chant/archive");
-
-    if !specs_dir.exists() {
-        anyhow::bail!("Chant not initialized. Run `chant init` first.");
-    }
+    let specs_dir = crate::cmd::ensure_initialized()?;
+    let archive_dir = PathBuf::from(ARCHIVE_DIR);
 
     // Load all specs
     let specs = spec::load_all_specs(&specs_dir)?;
@@ -711,11 +701,7 @@ pub fn cmd_merge(
     continue_on_error: bool,
     yes: bool,
 ) -> Result<()> {
-    let specs_dir = PathBuf::from(".chant/specs");
-
-    if !specs_dir.exists() {
-        anyhow::bail!("Chant not initialized. Run `chant init` first.");
-    }
+    let specs_dir = crate::cmd::ensure_initialized()?;
 
     // Load config
     let config = Config::load()?;

@@ -12,14 +12,12 @@ use crate::spec_group::{extract_member_number, is_member_of};
 use anyhow::Result;
 
 /// Load main_branch from config with fallback to "main"
-#[allow(dead_code)]
 pub fn load_main_branch(config: &Config) -> String {
     config.defaults.main_branch.clone()
 }
 
 /// Get the list of specs to merge based on arguments
 /// Returns vector of (spec_id, Spec) tuples
-#[allow(dead_code)]
 pub fn get_specs_to_merge(
     args: &[String],
     all: bool,
@@ -82,15 +80,13 @@ pub fn validate_spec_can_merge(spec: &Spec, branch_exists: bool) -> Result<()> {
 }
 
 /// Check if a spec is a driver spec (has member specs)
-#[allow(dead_code)]
 pub fn is_driver_spec(spec: &Spec, all_specs: &[Spec]) -> bool {
     let members = collect_member_specs(spec, all_specs);
     !members.is_empty()
 }
 
 /// Collect member specs of a driver spec in order (by sequence number)
-#[allow(dead_code)]
-pub fn collect_member_specs(driver_spec: &Spec, all_specs: &[Spec]) -> Vec<Spec> {
+fn collect_member_specs(driver_spec: &Spec, all_specs: &[Spec]) -> Vec<Spec> {
     let driver_id = &driver_spec.id;
     let mut members: Vec<(u32, Spec)> = Vec::new();
 
@@ -121,7 +117,6 @@ pub fn collect_member_specs(driver_spec: &Spec, all_specs: &[Spec]) -> Vec<Spec>
 /// 6. Returns a list of all merge results (members + driver)
 ///
 /// If any validation fails, returns an error with a clear listing of incomplete members.
-#[allow(dead_code)]
 pub fn merge_driver_spec(
     driver_spec: &Spec,
     all_specs: &[Spec],

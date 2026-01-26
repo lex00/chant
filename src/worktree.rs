@@ -49,7 +49,7 @@ pub fn create_worktree(spec_id: &str, branch: &str) -> Result<PathBuf> {
             "add",
             "-b",
             branch,
-            worktree_path.to_str().unwrap(),
+            &worktree_path.to_string_lossy(),
         ])
         .output()
         .context("Failed to create git worktree")?;
@@ -76,7 +76,7 @@ pub fn create_worktree(spec_id: &str, branch: &str) -> Result<PathBuf> {
 pub fn remove_worktree(path: &Path) -> Result<()> {
     // Try to remove the git worktree entry
     let _output = Command::new("git")
-        .args(["worktree", "remove", path.to_str().unwrap()])
+        .args(["worktree", "remove", &path.to_string_lossy()])
         .output()
         .context("Failed to run git worktree remove")?;
 

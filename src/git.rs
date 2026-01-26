@@ -174,7 +174,6 @@ pub fn get_current_branch() -> Result<String> {
 }
 
 /// Check if a branch exists in the repository.
-#[allow(dead_code)]
 pub fn branch_exists(branch_name: &str) -> Result<bool> {
     let output = Command::new("git")
         .args(["branch", "--list", branch_name])
@@ -191,8 +190,7 @@ pub fn branch_exists(branch_name: &str) -> Result<bool> {
 
 /// Checkout a specific branch or commit.
 /// If branch is "HEAD", it's a detached HEAD checkout.
-#[allow(dead_code)]
-pub fn checkout_branch(branch: &str, dry_run: bool) -> Result<()> {
+fn checkout_branch(branch: &str, dry_run: bool) -> Result<()> {
     if dry_run {
         return Ok(());
     }
@@ -212,8 +210,7 @@ pub fn checkout_branch(branch: &str, dry_run: bool) -> Result<()> {
 
 /// Merge a branch using fast-forward only.
 /// Returns true if successful, false if there are conflicts.
-#[allow(dead_code)]
-pub fn merge_branch_ff_only(spec_branch: &str, dry_run: bool) -> Result<bool> {
+fn merge_branch_ff_only(spec_branch: &str, dry_run: bool) -> Result<bool> {
     if dry_run {
         return Ok(true);
     }
@@ -240,7 +237,6 @@ pub fn merge_branch_ff_only(spec_branch: &str, dry_run: bool) -> Result<bool> {
 
 /// Delete a branch.
 /// Returns Ok(()) on success, or an error if deletion fails.
-#[allow(dead_code)]
 pub fn delete_branch(branch_name: &str, dry_run: bool) -> Result<()> {
     if dry_run {
         return Ok(());
@@ -270,7 +266,6 @@ pub fn delete_branch(branch_name: &str, dry_run: bool) -> Result<()> {
 /// 6. Returns to original branch
 ///
 /// In dry-run mode, no actual git commands are executed.
-#[allow(dead_code)]
 pub fn merge_single_spec(
     spec_id: &str,
     spec_branch: &str,
@@ -345,7 +340,6 @@ pub fn merge_single_spec(
 
 /// Result of a merge operation.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct MergeResult {
     pub spec_id: String,
     pub success: bool,
