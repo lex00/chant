@@ -50,13 +50,24 @@ pub async fn run_agent(
 
     // Get tool definitions and convert to ToolInfo objects
     let tool_defs = tools::get_tool_definitions();
-    let tool_infos: Vec<ToolInfo> = tool_defs
-        .iter()
-        .filter_map(|tool_def| {
-            // Deserialize the serde_json::Value into ToolInfo
-            serde_json::from_value(tool_def.clone()).ok()
-        })
-        .collect();
+    let mut tool_infos: Vec<ToolInfo> = Vec::new();
+    for tool_def in &tool_defs {
+        match serde_json::from_value::<ToolInfo>(tool_def.clone()) {
+            Ok(info) => tool_infos.push(info),
+            Err(e) => {
+                eprintln!("[DEBUG] Failed to deserialize tool: {}", e);
+                eprintln!(
+                    "[DEBUG] Tool JSON: {}",
+                    serde_json::to_string_pretty(tool_def).unwrap_or_default()
+                );
+            }
+        }
+    }
+    eprintln!(
+        "[DEBUG] Converted {}/{} tools to ToolInfo",
+        tool_infos.len(),
+        tool_defs.len()
+    );
 
     // Tool calling loop - iterate until model completes task or max iterations reached
     let mut iteration = 0;
@@ -77,7 +88,20 @@ pub async fn run_agent(
             ChatMessageRequest::new(model.to_string(), messages.clone()).tools(tool_infos.clone());
 
         // Send request to ollama
+        eprintln!(
+            "[DEBUG] Sending request to ollama (iteration {})",
+            iteration
+        );
         let response = ollama.send_chat_messages(request).await?;
+
+        eprintln!(
+            "[DEBUG] Response content length: {}",
+            response.message.content.len()
+        );
+        eprintln!(
+            "[DEBUG] Tool calls count: {}",
+            response.message.tool_calls.len()
+        );
 
         // Check if model requested tool calls
         if response.message.tool_calls.is_empty() {

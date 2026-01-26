@@ -13,7 +13,7 @@ use std::process::Command;
 pub fn get_tool_definitions() -> Vec<Value> {
     vec![
         json!({
-            "type": "function",
+            "type": "Function",
             "function": {
                 "name": "read_file",
                 "description": "Read the contents of a file at the given path",
@@ -30,7 +30,7 @@ pub fn get_tool_definitions() -> Vec<Value> {
             }
         }),
         json!({
-            "type": "function",
+            "type": "Function",
             "function": {
                 "name": "write_file",
                 "description": "Write content to a file, creating or overwriting it",
@@ -51,7 +51,7 @@ pub fn get_tool_definitions() -> Vec<Value> {
             }
         }),
         json!({
-            "type": "function",
+            "type": "Function",
             "function": {
                 "name": "run_command",
                 "description": "Run a shell command and return its output",
@@ -68,7 +68,7 @@ pub fn get_tool_definitions() -> Vec<Value> {
             }
         }),
         json!({
-            "type": "function",
+            "type": "Function",
             "function": {
                 "name": "list_files",
                 "description": "List files matching a glob pattern",
@@ -85,7 +85,7 @@ pub fn get_tool_definitions() -> Vec<Value> {
             }
         }),
         json!({
-            "type": "function",
+            "type": "Function",
             "function": {
                 "name": "task_complete",
                 "description": "Signal that the task has been completed successfully",
