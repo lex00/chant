@@ -143,8 +143,21 @@ pub fn run_agent(
         if chat_response.message.tool_calls.is_empty() {
             // No tool calls - model has provided final response
             final_response = chat_response.message.content.clone();
-            for line in final_response.lines() {
-                callback(line)?;
+
+            // Buffer content and only call callback when we have complete lines
+            let mut line_buffer = String::new();
+            for ch in final_response.chars() {
+                line_buffer.push(ch);
+                if ch == '\n' {
+                    let line = line_buffer.trim_end_matches('\n');
+                    callback(line)?;
+                    line_buffer.clear();
+                }
+            }
+
+            // Flush any remaining buffered content
+            if !line_buffer.is_empty() {
+                callback(&line_buffer)?;
             }
             break;
         }
