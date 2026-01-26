@@ -1,7 +1,7 @@
 //! Model Context Protocol (MCP) server implementation.
 //!
 //! # Doc Audit
-//! - audited: (pending)
+//! - audited: 2026-01-25
 //! - docs: reference/mcp.md
 //! - ignore: false
 

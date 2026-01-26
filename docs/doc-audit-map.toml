@@ -39,6 +39,7 @@ docs = ["guides/recovery.md"]
 
 [mappings."src/mcp.rs"]
 docs = ["reference/mcp.md"]
+last_audit = "2026-01-25"
 
 [mappings."src/id.rs"]
 docs = ["concepts/ids.md", "reference/schema.md"]
