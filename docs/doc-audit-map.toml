@@ -46,6 +46,7 @@ last_audit = "2026-01-25"
 
 [mappings."src/diagnose.rs"]
 docs = ["guides/recovery.md"]
+last_audit = "2026-01-25"
 
 # Modules without dedicated docs - internal implementation
 [mappings."src/render.rs"]
