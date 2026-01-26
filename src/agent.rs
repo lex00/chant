@@ -4,9 +4,15 @@
 //! and feedback to create an agentic workflow with local LLMs.
 
 use anyhow::Result;
+use ollama_rs::generation::chat::request::ChatMessageRequest;
 use ollama_rs::generation::chat::ChatMessage;
+use ollama_rs::generation::tools::ToolInfo;
 use ollama_rs::Ollama;
 use url::Url;
+
+use crate::tools;
+
+const MAX_ITERATIONS: usize = 50;
 
 /// Run an agent loop using ollama-rs with function calling.
 ///
@@ -42,26 +48,73 @@ pub async fn run_agent(
     }
     messages.push(ChatMessage::user(user_message.to_string()));
 
-    // For now, use standard chat completion without streaming
-    // Function calling support in ollama-rs depends on model capabilities
-    // and proper formatting of tool definitions
-    let response = ollama
-        .send_chat_messages(
-            ollama_rs::generation::chat::request::ChatMessageRequest::new(
-                model.to_string(),
-                messages,
-            ),
-        )
-        .await?;
+    // Get tool definitions and convert to ToolInfo objects
+    let tool_defs = tools::get_tool_definitions();
+    let tool_infos: Vec<ToolInfo> = tool_defs
+        .iter()
+        .filter_map(|tool_def| {
+            // Deserialize the serde_json::Value into ToolInfo
+            serde_json::from_value(tool_def.clone()).ok()
+        })
+        .collect();
 
-    let full_response = response.message.content;
+    // Tool calling loop - iterate until model completes task or max iterations reached
+    let mut iteration = 0;
+    let mut final_response = String::new();
 
-    // Stream response to callback
-    for line in full_response.lines() {
-        callback(line)?;
+    loop {
+        iteration += 1;
+        if iteration > MAX_ITERATIONS {
+            callback(&format!(
+                "Warning: Reached max iterations ({})",
+                MAX_ITERATIONS
+            ))?;
+            break;
+        }
+
+        // Build request with tools
+        let request =
+            ChatMessageRequest::new(model.to_string(), messages.clone()).tools(tool_infos.clone());
+
+        // Send request to ollama
+        let response = ollama.send_chat_messages(request).await?;
+
+        // Check if model requested tool calls
+        if response.message.tool_calls.is_empty() {
+            // No tool calls - model has provided final response
+            final_response = response.message.content.clone();
+            for line in final_response.lines() {
+                callback(line)?;
+            }
+            break;
+        }
+
+        // Process each tool call from the model
+        for tool_call in &response.message.tool_calls {
+            let tool_name = &tool_call.function.name;
+            let tool_args = &tool_call.function.arguments;
+
+            // Log the tool call
+            callback(&format!("Calling tool: {}", tool_name))?;
+
+            // Execute the tool
+            let result = match tools::execute_tool(tool_name, tool_args) {
+                Ok(output) => output,
+                Err(error) => format!("Tool error: {}", error),
+            };
+
+            // Log the result
+            callback(&format!("Tool result: {}", result))?;
+
+            // Add tool response to messages for next iteration
+            messages.push(ChatMessage::tool(result));
+        }
+
+        // Add assistant's response to messages to maintain conversation context
+        messages.push(ChatMessage::assistant(response.message.content));
     }
 
-    Ok(full_response)
+    Ok(final_response)
 }
 
 #[cfg(test)]

@@ -4,8 +4,145 @@
 //! run commands, and list files during spec execution.
 
 use anyhow::Result;
+use serde_json::{json, Value};
 use std::fs;
 use std::process::Command;
+
+/// Get JSON schema definitions for all available tools.
+/// These schemas are passed to the ollama model to enable function calling.
+pub fn get_tool_definitions() -> Vec<Value> {
+    vec![
+        json!({
+            "type": "function",
+            "function": {
+                "name": "read_file",
+                "description": "Read the contents of a file at the given path",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "File path to read"
+                        }
+                    },
+                    "required": ["path"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "write_file",
+                "description": "Write content to a file, creating or overwriting it",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "File path to write to"
+                        },
+                        "content": {
+                            "type": "string",
+                            "description": "Content to write to the file"
+                        }
+                    },
+                    "required": ["path", "content"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "run_command",
+                "description": "Run a shell command and return its output",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "string",
+                            "description": "Shell command to execute"
+                        }
+                    },
+                    "required": ["command"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "list_files",
+                "description": "List files matching a glob pattern",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "pattern": {
+                            "type": "string",
+                            "description": "Glob pattern like 'src/**/*.rs' or '*.txt'"
+                        }
+                    },
+                    "required": ["pattern"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "task_complete",
+                "description": "Signal that the task has been completed successfully",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "summary": {
+                            "type": "string",
+                            "description": "Brief summary of what was accomplished"
+                        }
+                    },
+                    "required": ["summary"]
+                }
+            }
+        }),
+    ]
+}
+
+/// Execute a tool by name with the given arguments.
+/// Returns the result as a string to be sent back to the model.
+pub fn execute_tool(name: &str, args: &Value) -> Result<String, String> {
+    match name {
+        "read_file" => {
+            let path = args["path"]
+                .as_str()
+                .ok_or_else(|| "missing or invalid 'path' parameter".to_string())?;
+            read_file(path.to_string()).map_err(|e| format!("read_file failed: {}", e))
+        }
+        "write_file" => {
+            let path = args["path"]
+                .as_str()
+                .ok_or_else(|| "missing or invalid 'path' parameter".to_string())?;
+            let content = args["content"]
+                .as_str()
+                .ok_or_else(|| "missing or invalid 'content' parameter".to_string())?;
+            write_file(path.to_string(), content.to_string())
+                .map_err(|e| format!("write_file failed: {}", e))
+        }
+        "run_command" => {
+            let command = args["command"]
+                .as_str()
+                .ok_or_else(|| "missing or invalid 'command' parameter".to_string())?;
+            run_command(command.to_string()).map_err(|e| format!("run_command failed: {}", e))
+        }
+        "list_files" => {
+            let pattern = args["pattern"]
+                .as_str()
+                .ok_or_else(|| "missing or invalid 'pattern' parameter".to_string())?;
+            list_files(pattern.to_string()).map_err(|e| format!("list_files failed: {}", e))
+        }
+        "task_complete" => {
+            let summary = args["summary"].as_str().unwrap_or("Task completed");
+            Ok(format!("TASK_COMPLETE: {}", summary))
+        }
+        _ => Err(format!("Unknown tool: {}", name)),
+    }
+}
 
 /// Read the contents of a file at the given path.
 /// Use this to understand existing code before making changes.
