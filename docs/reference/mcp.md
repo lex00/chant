@@ -169,6 +169,17 @@ Update a chant spec status or append output.
 - `status` (optional): New status - `pending`, `in_progress`, `completed`, `failed`
 - `output` (optional): Output text to append to spec body
 
+#### Output Append Behavior
+
+When `output` is provided, the text is appended to the spec body under an `## Output` section. Important characteristics:
+
+- **No timestamp**: Unlike agent-driven workflow outputs, MCP appended output does not include automatic timestamps
+- **No truncation**: Long output strings are not automatically truncated (the caller is responsible for managing output size)
+- **Section header**: Output is placed under an `## Output` markdown header for organization
+- **Formatting**: Output is appended as plain text without automatic code block wrapping
+
+This differs from the standard `append_agent_output` function used in regular spec execution, which includes timestamps, truncation logic, and automatic code block formatting.
+
 **Example Request:**
 ```json
 {
@@ -200,6 +211,17 @@ Update a chant spec status or append output.
   },
   "id": 1
 }
+```
+
+**Example Resulting Spec Body:**
+```
+# Feature Implementation
+
+Some initial content...
+
+## Output
+
+Implementation complete. All tests passing.
 ```
 
 ## Tool Schemas
@@ -238,7 +260,7 @@ Full JSON schemas as returned by `tools/list`:
     },
     {
       "name": "chant_spec_update",
-      "description": "Update a chant spec status or add output",
+      "description": "Update a chant spec status or append output. Output is appended under an '## Output' section without timestamps or automatic truncation.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -252,7 +274,7 @@ Full JSON schemas as returned by `tools/list`:
           },
           "output": {
             "type": "string",
-            "description": "Output text to append to spec body"
+            "description": "Output text to append to spec body. Appended under '## Output' section without timestamps or automatic code block wrapping."
           }
         },
         "required": ["id"]
