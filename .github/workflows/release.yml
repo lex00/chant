@@ -71,3 +71,87 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload ${{ github.ref_name }} ${{ matrix.asset_name }}
+
+  update-homebrew:
+    needs: build-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p assets
+          gh release download ${{ github.ref_name }} --dir assets
+
+      - name: Compute SHA256 hashes
+        id: hashes
+        run: |
+          cd assets
+          SHA_LINUX=$(sha256sum chant-linux-x86_64 | awk '{print $1}')
+          SHA_MACOS_X86=$(sha256sum chant-macos-x86_64 | awk '{print $1}')
+          SHA_MACOS_ARM=$(sha256sum chant-macos-aarch64 | awk '{print $1}')
+
+          echo "sha_linux=$SHA_LINUX" >> $GITHUB_OUTPUT
+          echo "sha_macos_x86=$SHA_MACOS_X86" >> $GITHUB_OUTPUT
+          echo "sha_macos_arm=$SHA_MACOS_ARM" >> $GITHUB_OUTPUT
+
+      - name: Clone homebrew-tap
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          git clone https://x-access-token:${{ secrets.HOMEBREW_TAP_TOKEN }}@github.com/lex00/homebrew-tap.git /tmp/homebrew-tap
+
+      - name: Update Formula/chant.rb
+        run: |
+          cat > /tmp/homebrew-tap/Formula/chant.rb << 'EOF'
+          class Chant < Formula
+            desc "Intent Driven Development tool with specification-driven execution"
+            homepage "https://github.com/lex00/chant"
+            version "${{ steps.version.outputs.version }}"
+
+            on_macos do
+              on_arm do
+                url "https://github.com/lex00/chant/releases/download/v#{version}/chant-macos-aarch64"
+                sha256 "${{ steps.hashes.outputs.sha_macos_arm }}"
+              end
+              on_intel do
+                url "https://github.com/lex00/chant/releases/download/v#{version}/chant-macos-x86_64"
+                sha256 "${{ steps.hashes.outputs.sha_macos_x86 }}"
+              end
+            end
+
+            on_linux do
+              url "https://github.com/lex00/chant/releases/download/v#{version}/chant-linux-x86_64"
+              sha256 "${{ steps.hashes.outputs.sha_linux }}"
+            end
+
+            def install
+              bin.install "chant-#{os.kernel_name.downcase}-#{hardware.platform_cpu}" => "chant"
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/chant --version")
+            end
+          end
+          EOF
+
+      - name: Commit and push
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          cd /tmp/homebrew-tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/chant.rb
+          git commit -m "Update chant to v${{ steps.version.outputs.version }}"
+          git push origin master
