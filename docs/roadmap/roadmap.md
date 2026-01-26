@@ -116,7 +116,7 @@ The prompt does the heavy lifting. Core just orchestrates.
 
 ## Version Roadmap
 
-### Current Status: v0.1.3
+### Current Status: v0.1.10
 
 Development moved faster than the original phased plan. Most features from Phases 0-6 are implemented.
 
@@ -136,7 +136,7 @@ Development moved faster than the original phased plan. Most features from Phase
 
 | Version | Focus |
 |---------|-------|
-| v0.2.0 | Semantic search (Tantivy + arroy) |
+| v0.2.0 | Full-text search (Tantivy) |
 | v0.3.0 | Full multi-repo support |
 | v0.4.0 | Autonomy (drift, verify, replay) |
 | v1.0.0 | Stable API, complete documentation |
@@ -218,15 +218,6 @@ See [observability.md](../scale/observability.md), [errors.md](../reference/erro
 
 See [scale.md](../scale/scale.md), [locks.md](../scale/locks.md).
 
-### Phase 6.5: Semantic Search ❌ NOT STARTED
-
-Future enhancement for research workflows. Adds vector-based similarity search.
-
-**Planned tech stack:**
-- `tantivy` — Full-text search
-- `fastembed-rs` — Rust-native embeddings
-- `arroy` — Vector similarity (ANN)
-
 ### Phase 7: Autonomy ❌ NOT STARTED
 
 - ❌ `chant verify` command for drift detection
@@ -253,7 +244,8 @@ See [ecosystem.md](../guides/ecosystem.md), [approvals.md](../guides/approvals.m
 See [Testing Strategy](../reference/testing.md) for test specifications.
 
 Current test coverage:
-- 140+ unit tests in `src/`
+- 275+ tests (unit, integration, end-to-end)
+- Unit tests in `src/`
 - Integration tests in `tests/`
 
 ```bash
