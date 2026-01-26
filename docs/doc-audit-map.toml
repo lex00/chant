@@ -43,6 +43,7 @@ last_audit = "2026-01-25"
 
 [mappings."src/merge.rs"]
 docs = ["guides/recovery.md"]
+last_audit = "2026-01-25"
 
 [mappings."src/mcp.rs"]
 docs = ["reference/mcp.md"]
