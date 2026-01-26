@@ -4,7 +4,7 @@
 //! These functions handle the mechanics of worktree lifecycle management.
 //!
 //! # Doc Audit
-//! - audited: (pending)
+//! - audited: 2026-01-25
 //! - docs: scale/isolation.md
 //! - ignore: false
 

@@ -35,6 +35,7 @@ last_audit = "2026-01-25"
 
 [mappings."src/worktree.rs"]
 docs = ["scale/isolation.md"]
+last_audit = "2026-01-25"
 
 [mappings."src/conflict.rs"]
 docs = ["guides/recovery.md"]
