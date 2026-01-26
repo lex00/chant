@@ -136,10 +136,21 @@ Development moved faster than the original phased plan. Most features from Phase
 
 | Version | Focus |
 |---------|-------|
-| v0.2.0 | Full-text search (Tantivy) |
+| v0.2.0 | Full-text search (Tantivy), spec types (`documentation`, `research`) |
 | v0.3.0 | Full multi-repo support |
 | v0.4.0 | Autonomy (drift, verify, replay) |
 | v1.0.0 | Stable API, complete documentation |
+
+### v0.2.0 Spec Types
+
+New spec types enable specialized workflows:
+
+| Type | Purpose | Key Fields |
+|------|---------|------------|
+| `documentation` | Keep docs in sync with code | `tracks:` (drift trigger) |
+| `research` | Analysis, synthesis, investigation | `informed_by:`, `origin:`, `schedule:` |
+
+See [spec-types.md](../concepts/spec-types.md) for details.
 
 ## Implementation Phases
 

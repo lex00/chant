@@ -1,6 +1,6 @@
 # Research Workflows Guide
 
-Using chant for research: literature synthesis, data analysis, and reproducible findings.
+Using chant for research: investigation, synthesis, data analysis, and reproducible findings.
 
 ## Why Chant for Research?
 
@@ -14,7 +14,7 @@ Chant addresses this:
 - **Spec IS the method** — Not a paper written after the fact
 - **Execution is recorded** — Agent logs every step
 - **Verification is built-in** — Re-run and compare
-- **Drift detection** — Know when results change
+- **Drift detection** — Know when inputs change
 
 ## Quick Start
 
@@ -31,6 +31,7 @@ Edit the spec:
 ```yaml
 ---
 type: research
+prompt: research-analysis
 origin:
   - data/q1-survey.csv
 target_files:
@@ -62,9 +63,9 @@ Run:
 chant work 001
 ```
 
-## Research Spec Types
+## Research Patterns
 
-### Literature Synthesis
+### Pattern: Synthesis
 
 Synthesize multiple sources into findings:
 
@@ -92,9 +93,9 @@ target_files:
 - [ ] Gaps in research identified
 ```
 
-The `informed_by` field lists sources to synthesize. External sources (arxiv, doi) are resolved by the prompt.
+The `informed_by:` field lists materials to synthesize. Changes to these files trigger drift detection.
 
-### Data Analysis
+### Pattern: Data Analysis
 
 Analyze data files to generate findings:
 
@@ -121,13 +122,95 @@ target_files:
 - [ ] Visualization of distributions
 ```
 
-The `origin` field declares data files. When they change after analysis, drift is detected.
+The `origin:` field declares input data. When data changes after analysis, drift is detected.
+
+### Pattern: Codebase Investigation
+
+Research specs work for code analysis too:
+
+```yaml
+---
+type: research
+prompt: research-analysis
+informed_by:
+  - src/**/*.rs
+target_files:
+  - analysis/tech-debt.md
+---
+# Investigate technical debt
+
+## Research Questions
+- [ ] Where are the TODO/FIXME comments?
+- [ ] Which modules have highest complexity?
+- [ ] What patterns are inconsistently applied?
+
+## Acceptance Criteria
+- [ ] All modules scanned
+- [ ] Issues prioritized by impact
+- [ ] Recommendations provided
+```
+
+### Pattern: Library Comparison
+
+Before choosing a dependency:
+
+```yaml
+---
+type: research
+prompt: research-synthesis
+informed_by:
+  - https://docs.rs/serde
+  - https://docs.rs/rkyv
+target_files:
+  - findings/serialization-comparison.md
+---
+# Compare serialization libraries
+
+## Research Questions
+- [ ] Performance characteristics?
+- [ ] API ergonomics?
+- [ ] Ecosystem support?
+
+## Acceptance Criteria
+- [ ] Both libraries evaluated
+- [ ] Benchmarks compared
+- [ ] Recommendation with rationale
+```
+
+## Recurring Research
+
+Use `schedule:` for automated recurring analysis:
+
+```yaml
+---
+type: research
+prompt: research-analysis
+schedule: weekly
+origin:
+  - logs/production-*.json
+target_files:
+  - reports/weekly-errors.md
+---
+# Weekly error analysis
+
+## Methodology
+- Aggregate errors by type
+- Identify new patterns
+- Compare to previous week
+
+## Acceptance Criteria
+- [ ] All error types categorized
+- [ ] Trends identified
+- [ ] Actionable recommendations
+```
+
+Schedule options: `daily`, `weekly`, `monthly`, or cron expressions.
 
 ## Drift Detection
 
 ### Data Drift
 
-When origin data changes:
+When `origin:` data changes:
 
 ```bash
 $ chant verify 001
@@ -139,6 +222,20 @@ Origin files changed since completion:
 New data rows: 47 added since analysis
 
 Recommendation: Re-run spec to update analysis
+```
+
+### Source Drift
+
+When `informed_by:` materials change:
+
+```bash
+$ chant verify 002
+Spec 002 (research): DRIFT
+
+Informed-by files changed since completion:
+  - papers/smith2025.pdf (modified 2026-01-25)
+
+Recommendation: Re-run spec to incorporate updates
 ```
 
 ### Replaying Analysis
@@ -211,7 +308,7 @@ status: completed
 completed_at: 2026-01-22T15:00:00Z
 commit: abc123
 origin:
-  - data/survey.csv@sha256:def456  # Could track hash
+  - data/survey.csv
 informed_by:
   - papers/methodology.pdf
 ---
@@ -219,20 +316,7 @@ informed_by:
 
 The spec itself is the audit trail.
 
-## Patterns
-
-### Living Literature Review
-
-```yaml
----
-type: research
-informed_by:
-  - semantic-scholar:topic/transformer-efficiency
----
-# Transformer efficiency literature
-
-When new papers match the topic, re-run to update synthesis.
-```
+## Research Pipelines
 
 ### Experiment Pipeline
 
@@ -280,13 +364,25 @@ Attempt to reproduce results from original paper.
 - [ ] Discrepancies documented
 ```
 
+## Use Cases Summary
+
+| Use Case | `informed_by:` | `origin:` | `schedule:` |
+|----------|----------------|-----------|-------------|
+| Literature review | papers, docs | — | — |
+| Log analysis | — | log files | `daily` |
+| Codebase health | `src/**/*.rs` | — | `weekly` |
+| Performance report | prior reports | metrics CSV | `weekly` |
+| Bug investigation | related code | error logs | — |
+| Library comparison | library docs | — | — |
+| Survey analysis | methodology docs | survey data | — |
+
 ## Limitations
 
 Chant helps with:
 - Computational research
 - Data analysis
 - Literature synthesis
-- Documentation
+- Code investigation
 
 Chant doesn't help with:
 - Wet lab work (but can analyze results)
@@ -296,6 +392,6 @@ Chant doesn't help with:
 
 ## See Also
 
-- [spec-types.md](../concepts/spec-types.md) — Overview of research spec type
+- [spec-types.md](../concepts/spec-types.md) — Overview of spec types including research
 - [prompts.md](../concepts/prompts.md) — research-synthesis and research-analysis prompts
 - [autonomy.md](../concepts/autonomy.md) — Drift detection and replay

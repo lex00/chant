@@ -8,18 +8,18 @@ Chant supports three spec types, each with different behaviors for execution, ve
 |------|-----------------|---------------|-------------|
 | `code` | Code, config, infra | Criteria | Acceptance criteria fail |
 | `documentation` | Docs about code | `tracks:` files | Tracked source changes |
-| `research` | Analysis, findings | `data:` files | Input data changes |
+| `research` | Analysis, findings | `origin:` + `informed_by:` | Input files change |
 
-## Field Names by Type
+## Field Reference
 
-Each type uses specific field names to avoid ambiguity:
-
-| Field | Code | Documentation | Research |
-|-------|------|---------------|----------|
-| **Context** (what to read for background) | `context:` | `context:` | `context:` |
-| **Work input** (what to process) | — | `tracks:` | `sources:` |
-| **Drift trigger** (what triggers re-verification) | Criteria | `tracks:` | `data:` |
-| **Output** | `target_files:` | `target_files:` | `target_files:` |
+| Field | Type(s) | Triggers Drift? | Purpose |
+|-------|---------|-----------------|---------|
+| `context:` | all | No | Background reading for the agent |
+| `tracks:` | documentation | **Yes** | Source code being documented |
+| `informed_by:` | research | **Yes** | Materials to synthesize |
+| `origin:` | research | **Yes** | Input data for analysis |
+| `target_files:` | all | No | Output files to create/modify |
+| `schedule:` | research | No | Recurring execution (e.g., `daily`, `weekly`) |
 
 ## Code Specs
 
@@ -31,8 +31,8 @@ type: code
 context:                          # Reference docs for background
   - docs/api-design.md
 target_files:
-  - src/auth/middleware.go
-  - src/auth/jwt.go
+  - src/auth/middleware.rs
+  - src/auth/jwt.rs
 ---
 # Add JWT authentication
 
@@ -70,7 +70,7 @@ Creates or updates documentation based on source code.
 ---
 type: documentation
 tracks:                           # Source code to document and monitor
-  - src/auth/*.go
+  - src/auth/*.rs
 target_files:
   - docs/authentication.md
 ---
@@ -93,37 +93,50 @@ target_files:
 
 ### The `tracks:` Field
 
-The `tracks:` field creates a relationship between docs and code:
+The `tracks:` field creates a living link between docs and code:
 
 ```
 Code changes → triggers → Doc spec drift → re-verify → update docs
 ```
 
-When `src/auth/*.go` changes after doc completion:
+When `src/auth/*.rs` changes after doc completion:
 
 ```bash
 $ chant verify 001
 Spec 001 (documentation): DRIFT
 
 Tracked files changed since completion:
-  - src/auth/middleware.go (modified 2026-01-25)
-  - src/auth/token.go (added 2026-01-25)
+  - src/auth/middleware.rs (modified 2026-01-25)
+  - src/auth/token.rs (added 2026-01-25)
 
 Recommendation: Re-run spec to update docs
 ```
 
+### Documentation Use Cases
+
+| Use Case | `tracks:` | `target_files:` |
+|----------|-----------|-----------------|
+| API reference | `src/api/**/*.rs` | `docs/api.md` |
+| Architecture docs | `src/`, `Cargo.toml` | `docs/architecture.md` |
+| Module docs | `src/auth/*.rs` | `docs/auth.md` |
+| README | `src/lib.rs` | `README.md` |
+
 ## Research Specs
 
-Creates analysis, synthesis, or findings from source materials.
+Creates analysis, synthesis, or findings. Supports two patterns: synthesis (reading materials) and analysis (processing data). Both can be combined.
 
-### Literature Synthesis
+### Pattern: Synthesis
+
+Read and synthesize materials into findings:
 
 ```yaml
 ---
 type: research
-sources:                          # Materials to synthesize
+prompt: research-synthesis
+informed_by:                      # Materials to read and synthesize
   - papers/smith2025.pdf
   - papers/jones2024.pdf
+  - docs/prior-analysis.md
 target_files:
   - findings/lit-review.md
 ---
@@ -140,12 +153,15 @@ target_files:
 - [ ] Research gaps identified
 ```
 
-### Data Analysis
+### Pattern: Analysis
+
+Process data files into reports:
 
 ```yaml
 ---
 type: research
-data:                             # Input data files (trigger drift)
+prompt: research-analysis
+origin:                           # Input data to analyze
   - data/survey-2026.csv
 target_files:
   - analysis/survey-results.md
@@ -165,51 +181,85 @@ target_files:
 - [ ] Visualizations generated
 ```
 
-**Execution**: Agent reads sources/data, performs analysis, writes findings.
-**Verification**: Data files haven't changed.
-**Drift**: When data changes after analysis is complete.
+### Combined Pattern
 
-### Research Fields
-
-| Field | Purpose |
-|-------|---------|
-| `sources:` | Materials to synthesize (papers, docs, prior findings) |
-| `data:` | Input data files that trigger drift when changed |
-| `context:` | Background reference (same as code specs) |
-
-A research spec can have both `sources:` AND `data:`:
+Research specs can use both `informed_by:` AND `origin:`:
 
 ```yaml
 ---
 type: research
-sources:                          # Prior work to build on
+informed_by:                      # Prior work to build on
   - papers/methodology.pdf
-data:                             # Data to analyze
+  - docs/previous-analysis.md
+origin:                           # Data to analyze
   - data/experiment-results.csv
 target_files:
   - findings/analysis.md
 ---
+# Analyze experiment using established methodology
 ```
+
+### Recurring Research
+
+Use `schedule:` for automated recurring analysis:
+
+```yaml
+---
+type: research
+prompt: research-analysis
+schedule: weekly                  # daily | weekly | monthly | cron expression
+origin:
+  - logs/production-*.json
+target_files:
+  - reports/weekly-errors.md
+---
+# Weekly error analysis
+
+## Methodology
+- Aggregate errors by type
+- Identify new error patterns
+- Compare to previous week
+
+## Acceptance Criteria
+- [ ] All error types categorized
+- [ ] Trends identified
+- [ ] Actionable recommendations
+```
+
+**Execution**: Agent reads `informed_by:` and `origin:` files, performs analysis/synthesis, writes findings.
+**Verification**: Input files haven't changed since completion.
+**Drift**: When `origin:` OR `informed_by:` files change after completion.
 
 ### Research Drift
 
 | Drift Type | Trigger | Detection |
 |------------|---------|-----------|
-| **Data drift** | Input data changed | `data:` file changes |
-| **Literature drift** | New papers published | External (future) |
+| **Data drift** | `origin:` files changed | File modification detected |
+| **Source drift** | `informed_by:` files changed | File modification detected |
 | **Reproducibility drift** | Can't replicate results | `chant verify` fails |
+
+### Research Use Cases
+
+| Use Case | `informed_by:` | `origin:` | `schedule:` |
+|----------|----------------|-----------|-------------|
+| Literature review | papers, docs | — | — |
+| Log analysis | — | log files | `daily` |
+| Codebase health | `src/**/*.rs` | — | `weekly` |
+| Performance report | prior reports | metrics CSV | `weekly` |
+| Bug investigation | related code | error logs | — |
+| Library comparison | library docs | — | — |
 
 ## Prompt Selection by Type
 
 Prompts are auto-selected based on type:
 
 ```yaml
-# config.md
+# config.yaml
 prompts:
   by_type:
     code: standard
     documentation: documentation
-    research: research-synthesis   # or research-analysis
+    research: research-synthesis
 ```
 
 Override per-spec:
@@ -227,6 +277,7 @@ prompt: research-analysis         # Use analysis prompt, not synthesis
 |---------|------|---------------|----------|
 | **Purpose** | Implement features | Document code | Analyze/synthesize |
 | **Context field** | `context:` | `context:` | `context:` |
-| **Work input** | Acceptance criteria | `tracks:` | `sources:` / `data:` |
-| **Drift trigger** | Criteria fail | `tracks:` changes | `data:` changes |
-| **Default prompt** | `standard` | `documentation` | `research-*` |
+| **Work input** | Acceptance criteria | `tracks:` | `informed_by:` / `origin:` |
+| **Drift trigger** | Criteria fail | `tracks:` changes | `informed_by:` or `origin:` changes |
+| **Supports schedule** | No | No | Yes |
+| **Default prompt** | `standard` | `documentation` | `research-synthesis` |

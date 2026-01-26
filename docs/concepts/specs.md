@@ -43,8 +43,9 @@ context:                       # Docs injected as background for agent
 
 # Type-specific fields (see spec-types.md)
 tracks:                        # documentation: source code to monitor
-sources:                       # research: materials to synthesize
-data:                          # research: input data triggering drift
+informed_by:                   # research: materials to synthesize
+origin:                        # research: input data (triggers drift)
+schedule: weekly               # research: recurring execution
 
 # Git (populated on completion)
 branch: chant/2026-01-22-002-q2n
