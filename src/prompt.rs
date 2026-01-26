@@ -43,7 +43,7 @@ pub fn assemble(spec: &Spec, prompt_path: &Path, config: &Config) -> Result<Stri
     // Extract body (skip frontmatter)
     let body = extract_body(&prompt_content);
 
-    // Substitute template variables
+    // Substitute template variables and inject commit instruction
     let message = substitute(body, spec, config);
 
     Ok(message)
@@ -99,6 +99,19 @@ fn substitute(template: &str, spec: &Spec, config: &Config) -> String {
         result = result.replace("{{spec.context}}", &context_content);
     } else {
         result = result.replace("{{spec.context}}", "");
+    }
+
+    // Inject commit instruction if not already present
+    if !result.to_lowercase().contains("commit your work") {
+        let commit_instruction = "\n\n## Required: Commit Your Work\n\n\
+             When you have completed the work, commit your changes with:\n\n\
+             ```\n\
+             git commit -m \"chant(";
+        result.push_str(commit_instruction);
+        result.push_str(&spec.id);
+        result.push_str("): <brief description of changes>\"\n\
+             ```\n\n\
+             This commit message pattern is required for chant to track your work.");
     }
 
     result
@@ -173,5 +186,32 @@ Body content here."#;
 
         let body = extract_body(content);
         assert_eq!(body, "Body content here.");
+    }
+
+    #[test]
+    fn test_commit_instruction_is_injected() {
+        let template = "# Do some work\n\nThis is a test prompt.";
+        let spec = make_test_spec();
+        let config = make_test_config();
+
+        let result = substitute(template, &spec, &config);
+
+        // Should contain commit instruction
+        assert!(result.contains("## Required: Commit Your Work"));
+        assert!(result.contains("git commit -m \"chant(2026-01-22-001-x7m):"));
+    }
+
+    #[test]
+    fn test_commit_instruction_not_duplicated() {
+        let template =
+            "# Do some work\n\n## Required: Commit Your Work\n\nAlready has instruction.";
+        let spec = make_test_spec();
+        let config = make_test_config();
+
+        let result = substitute(template, &spec, &config);
+
+        // Count occurrences of the section header
+        let count = result.matches("## Required: Commit Your Work").count();
+        assert_eq!(count, 1, "Commit instruction should not be duplicated");
     }
 }
