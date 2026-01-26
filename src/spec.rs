@@ -1,7 +1,7 @@
 //! Spec parsing, frontmatter handling, and spec lifecycle management.
 //!
 //! # Doc Audit
-//! - audited: (pending)
+//! - audited: 2026-01-25
 //! - docs: concepts/specs.md, reference/schema.md
 //! - ignore: false
 
