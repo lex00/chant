@@ -81,30 +81,37 @@ waiting → pending → in_progress → completed
 
 ## Drift Detection
 
-### The `origin:` Field
-
-Documentation and research specs declare their source files:
+Documentation and research specs declare their input files. When these change after completion, drift is detected.
 
 ```yaml
+# Documentation: tracks source code
 ---
 type: documentation
-origin:
-  - src/auth/*.go
-  - src/api/handler.go
+tracks:
+  - src/auth/*.rs
 target_files:
   - docs/auth.md
 ---
-```
 
-When origin files change after spec completion → drift detected.
+# Research: origin data + informed_by materials
+---
+type: research
+origin:
+  - data/metrics.csv
+informed_by:
+  - docs/methodology.md
+target_files:
+  - analysis/report.md
+---
+```
 
 ### Drift by Type
 
-| Type | Drifts When |
-|------|-------------|
-| `code` | Acceptance criteria fail |
-| `documentation` | Origin source code changes |
-| `research` | Origin data files change |
+| Type | Field | Drifts When |
+|------|-------|-------------|
+| `code` | — | Acceptance criteria fail |
+| `documentation` | `tracks:` | Tracked source code changes |
+| `research` | `origin:`, `informed_by:` | Input files change |
 
 ### Checking for Drift (Planned)
 

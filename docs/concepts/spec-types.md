@@ -238,17 +238,6 @@ target_files:
 | **Source drift** | `informed_by:` files changed | File modification detected |
 | **Reproducibility drift** | Can't replicate results | `chant verify` fails |
 
-### Research Use Cases
-
-| Use Case | `informed_by:` | `origin:` | `schedule:` |
-|----------|----------------|-----------|-------------|
-| Literature review | papers, docs | — | — |
-| Log analysis | — | log files | `daily` |
-| Codebase health | `src/**/*.rs` | — | `weekly` |
-| Performance report | prior reports | metrics CSV | `weekly` |
-| Bug investigation | related code | error logs | — |
-| Library comparison | library docs | — | — |
-
 ## Prompt Selection by Type
 
 Prompts are auto-selected based on type:
@@ -281,3 +270,64 @@ prompt: research-analysis         # Use analysis prompt, not synthesis
 | **Drift trigger** | Criteria fail | `tracks:` changes | `informed_by:` or `origin:` changes |
 | **Supports schedule** | No | No | Yes |
 | **Default prompt** | `standard` | `documentation` | `research-synthesis` |
+
+---
+
+## Implementation Status
+
+> **Status: Planned** — The `documentation` and `research` spec types are designed but not yet implemented. The following design questions are TBD.
+
+### TBD: Schedule Execution Model
+
+How does `schedule:` trigger recurring execution?
+
+| Option | Description | Trade-offs |
+|--------|-------------|------------|
+| A: Daemon | Daemon polls schedules, triggers work | Requires daemon running |
+| B: External cron | User configures cron to call `chant work --scheduled` | User manages cron |
+| C: Built-in scheduler | `chant schedule` manages system cron/launchd | Platform-specific |
+
+**Decision:** TBD
+
+### TBD: Drift Detection Storage
+
+Where do we store baseline file state for drift comparison?
+
+| Option | Description | Trade-offs |
+|--------|-------------|------------|
+| A: Frontmatter | Store hashes in spec (`tracks_hashes:`) | Clutters spec, but self-contained |
+| B: Separate files | `.chant/drift/<spec-id>.json` | Clean specs, extra files |
+| C: Git-based | Compare to files at `commit:` time | No extra storage, requires git history |
+
+**Decision:** TBD
+
+### TBD: URL Handling in `informed_by:`
+
+Can `informed_by:` reference URLs and external identifiers?
+
+```yaml
+informed_by:
+  - papers/local.pdf          # Local file
+  - https://docs.rs/serde     # URL
+  - arxiv:2401.12345          # External identifier
+```
+
+| Option | Description | Trade-offs |
+|--------|-------------|------------|
+| A: Local only | Only local file paths | Simple, defer URLs to future |
+| B: URLs fetched | Agent fetches URLs at execution | Need caching, auth handling |
+| C: Full external | Support `arxiv:`, `doi:`, etc. | Complex resolution logic |
+
+**Decision:** TBD (recommend A for v0.2.0)
+
+### TBD: Required Prompts
+
+These prompts need to be created:
+
+| Prompt | Type | Purpose |
+|--------|------|---------|
+| `documentation` | documentation | Generate/update docs from tracked code |
+| `research-synthesis` | research | Synthesize materials into findings |
+| `research-analysis` | research | Analyze data, generate reports |
+
+**Status:** Not yet created

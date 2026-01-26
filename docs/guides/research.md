@@ -1,5 +1,7 @@
 # Research Workflows Guide
 
+> **Status: Planned** — The `research` spec type is designed but not yet implemented. This guide describes the intended workflow.
+
 Using chant for research: investigation, synthesis, data analysis, and reproducible findings.
 
 ## Why Chant for Research?
