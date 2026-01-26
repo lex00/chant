@@ -611,10 +611,11 @@ fn is_silent_mode() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cmd::model::{get_model_name, get_model_name_with_default};
     use crate::cmd::work::{
         append_agent_output, finalize_spec, get_commits_for_spec,
-        get_commits_for_spec_allow_no_commits, get_model_name, get_model_name_with_default,
-        re_finalize_spec, CommitError, MAX_AGENT_OUTPUT_CHARS,
+        get_commits_for_spec_allow_no_commits, re_finalize_spec, CommitError,
+        MAX_AGENT_OUTPUT_CHARS,
     };
     use crate::{lookup_log_file, LogLookupResult};
     use serial_test::serial;
