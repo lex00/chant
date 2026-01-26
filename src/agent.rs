@@ -6,6 +6,7 @@
 use anyhow::Result;
 use ollama_rs::generation::chat::ChatMessage;
 use ollama_rs::Ollama;
+use url::Url;
 
 /// Run an agent loop using ollama-rs with function calling.
 ///
@@ -22,7 +23,17 @@ pub async fn run_agent(
     user_message: &str,
     callback: &mut dyn FnMut(&str) -> Result<()>,
 ) -> Result<String> {
-    let ollama = Ollama::new(endpoint.to_string(), 11434);
+    // Parse endpoint to extract host and port for ollama-rs
+    let url =
+        Url::parse(endpoint).unwrap_or_else(|_| Url::parse("http://localhost:11434").unwrap());
+    let host = format!(
+        "{}://{}",
+        url.scheme(),
+        url.host_str().unwrap_or("localhost")
+    );
+    let port = url.port().unwrap_or(11434);
+
+    let ollama = Ollama::new(host, port);
 
     // Build messages with system prompt if provided
     let mut messages = vec![];

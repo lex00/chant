@@ -7,6 +7,7 @@ defaults:
   branch: false
   pr: false
   model: haiku
+  provider: claude
   split_model: sonnet
 ---
 

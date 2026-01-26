@@ -1967,9 +1967,11 @@ This is the second member of the driver spec.
     eprintln!("✓ Test Case 1: All specs created successfully");
 
     // Test Case 2: Verify initial state (driver starts as pending)
-    let driver_initial = fs::read_to_string(&driver_path)
-        .expect("Failed to read driver spec");
-    assert!(driver_initial.contains("status: pending"), "Driver should start as pending");
+    let driver_initial = fs::read_to_string(&driver_path).expect("Failed to read driver spec");
+    assert!(
+        driver_initial.contains("status: pending"),
+        "Driver should start as pending"
+    );
     eprintln!("✓ Test Case 2: Driver starts as pending");
 
     // Test Case 3: Simulate first member starting (mark driver as in_progress)
@@ -1987,8 +1989,7 @@ This is a driver spec to test auto-completion when all members complete.
 - [x] Created driver spec with 2 members
 "#;
 
-    fs::write(&driver_path, driver_in_progress)
-        .expect("Failed to mark driver as in_progress");
+    fs::write(&driver_path, driver_in_progress).expect("Failed to mark driver as in_progress");
 
     let member1_started = r#"---
 type: code
@@ -2004,12 +2005,13 @@ This is the first member of the driver spec.
 - [x] First member spec created
 "#;
 
-    fs::write(&member1_path, member1_started)
-        .expect("Failed to mark member1 as in_progress");
+    fs::write(&member1_path, member1_started).expect("Failed to mark member1 as in_progress");
 
-    let driver_check1 = fs::read_to_string(&driver_path)
-        .expect("Failed to read driver spec");
-    assert!(driver_check1.contains("status: in_progress"), "Driver should be in_progress after first member starts");
+    let driver_check1 = fs::read_to_string(&driver_path).expect("Failed to read driver spec");
+    assert!(
+        driver_check1.contains("status: in_progress"),
+        "Driver should be in_progress after first member starts"
+    );
     eprintln!("✓ Test Case 3: Driver marked as in_progress when first member starts");
 
     // Test Case 4: First member completes
@@ -2028,13 +2030,15 @@ This is the first member of the driver spec.
 - [x] First member spec created
 "#;
 
-    fs::write(&member1_path, member1_completed)
-        .expect("Failed to mark member1 as completed");
+    fs::write(&member1_path, member1_completed).expect("Failed to mark member1 as completed");
 
     // Driver should still be in_progress (not all members done yet)
     let driver_check2 = fs::read_to_string(&driver_path)
         .expect("Failed to read driver spec after member1 completion");
-    assert!(driver_check2.contains("status: in_progress"), "Driver should still be in_progress");
+    assert!(
+        driver_check2.contains("status: in_progress"),
+        "Driver should still be in_progress"
+    );
     eprintln!("✓ Test Case 4: First member completes, driver remains in_progress");
 
     // Test Case 5: Second member completes
@@ -2053,24 +2057,29 @@ This is the second member of the driver spec.
 - [x] Second member spec created
 "#;
 
-    fs::write(&member2_path, member2_completed)
-        .expect("Failed to mark member2 as completed");
+    fs::write(&member2_path, member2_completed).expect("Failed to mark member2 as completed");
 
     // At this point in a real scenario, auto_complete_driver_if_ready would be triggered
     // and the driver would be marked as completed automatically by finalize_spec
     // This integration test documents that the specs exist and can transition states
 
     // Verify final structure
-    let driver_final = fs::read_to_string(&driver_path)
-        .expect("Failed to read driver spec final");
-    let member1_final = fs::read_to_string(&member1_path)
-        .expect("Failed to read member1 final");
-    let member2_final = fs::read_to_string(&member2_path)
-        .expect("Failed to read member2 final");
+    let driver_final = fs::read_to_string(&driver_path).expect("Failed to read driver spec final");
+    let member1_final = fs::read_to_string(&member1_path).expect("Failed to read member1 final");
+    let member2_final = fs::read_to_string(&member2_path).expect("Failed to read member2 final");
 
-    assert!(driver_final.contains("type: driver"), "Driver should have type: driver");
-    assert!(member1_final.contains("status: completed"), "Member1 should be completed");
-    assert!(member2_final.contains("status: completed"), "Member2 should be completed");
+    assert!(
+        driver_final.contains("type: driver"),
+        "Driver should have type: driver"
+    );
+    assert!(
+        member1_final.contains("status: completed"),
+        "Member1 should be completed"
+    );
+    assert!(
+        member2_final.contains("status: completed"),
+        "Member2 should be completed"
+    );
 
     eprintln!("✓ Test Case 5: Second member completes, all specs in correct final state");
     eprintln!("✓ Integration test completed successfully");

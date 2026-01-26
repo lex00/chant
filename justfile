@@ -103,3 +103,68 @@ doc-audit-mark MODULE:
 # Create a spec to audit docs for a module
 doc-audit MODULE:
     just chant add "Audit docs for {{MODULE}}" --prompt doc-audit
+
+# --- Release ---
+
+# Release a new version (e.g., just release 0.2.0)
+release VERSION:
+    #!/usr/bin/env bash
+    set -e
+
+    # Validate version format (X.Y.Z)
+    if ! [[ "{{VERSION}}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "Error: Version must be in X.Y.Z format (e.g., 0.2.0)"
+        exit 1
+    fi
+
+    # Check for dirty working directory
+    if ! git diff --quiet; then
+        echo "Error: Working directory has uncommitted changes"
+        exit 1
+    fi
+
+    if ! git diff --cached --quiet; then
+        echo "Error: Staging area has uncommitted changes"
+        exit 1
+    fi
+
+    # Check if tag already exists
+    if git tag -l "v{{VERSION}}" | grep -q .; then
+        echo "Error: Tag v{{VERSION}} already exists"
+        exit 1
+    fi
+
+    echo "Releasing version {{VERSION}}..."
+
+    # Update version in Cargo.toml
+    sed -i '' 's/^version = ".*"/version = "{{VERSION}}"/' Cargo.toml
+    echo "✓ Updated Cargo.toml to version {{VERSION}}"
+
+    # Build release to update Cargo.lock
+    ~/.cargo/bin/cargo build --release
+    echo "✓ Built release binary and updated Cargo.lock"
+
+    # Commit changes
+    git add Cargo.toml Cargo.lock
+    git commit -m "Release v{{VERSION}}"
+    echo "✓ Created commit: Release v{{VERSION}}"
+
+    # Create annotated tag
+    git tag -a "v{{VERSION}}" -m "Release v{{VERSION}}"
+    echo "✓ Created annotated tag v{{VERSION}}"
+
+    # Push commits and tags
+    git push origin main
+    git push origin "v{{VERSION}}"
+    echo "✓ Pushed commits and tags to origin"
+
+    echo ""
+    echo "========================================="
+    echo "Release v{{VERSION}} complete!"
+    echo "========================================="
+    echo ""
+    echo "Next steps:"
+    echo "1. Wait for GitHub Actions to build and publish releases"
+    echo "2. Update homebrew formula with new SHA256 hashes from releases"
+    echo "3. Run: brew audit --strict chant-dev/chant/chant"
+    echo ""
