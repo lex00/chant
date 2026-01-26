@@ -55,28 +55,28 @@ The system has a minimal core with optional layers built on top:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  Layer 7: Autonomy                                              │
-│  Drift detection, replay, verification, coaching                │
+│  Layer 7: Autonomy                              ❌ NOT STARTED  │
+│  Drift detection, replay, verification                          │
 ├─────────────────────────────────────────────────────────────────┤
-│  Layer 6: Scale                                                 │
-│  Daemon, queue, locks, Tantivy search                           │
+│  Layer 6: Scale                                 ⏳ PARTIAL      │
+│  Locks ✓, parallel ✓ | Daemon ❌, Tantivy ❌, queue ❌          │
 ├─────────────────────────────────────────────────────────────────┤
-│  Layer 5: Observability                                         │
-│  Logging, cost tracking, metrics, audit                         │
+│  Layer 5: Observability                         ✅ COMPLETE     │
+│  lint, status, log, diagnose commands                           │
 ├─────────────────────────────────────────────────────────────────┤
-│  Layer 4: Structure                                             │
-│  Dependencies, groups, labels                                   │
+│  Layer 4: Structure                             ✅ COMPLETE     │
+│  Dependencies, groups, labels, split                            │
 ├─────────────────────────────────────────────────────────────────┤
-│  Layer 3: Multi-Repo                                            │
-│  Global config, cross-repo deps, repo: prefix                   │
+│  Layer 3: Multi-Repo                            ⏳ PARTIAL      │
+│  Global config ✓ | Cross-repo deps ❌                           │
 ├─────────────────────────────────────────────────────────────────┤
-│  Layer 2: MCP + Providers                                       │
-│  MCP server, Kiro provider                                      │
+│  Layer 2: MCP + Providers                       ✅ COMPLETE     │
+│  MCP server, Claude/Ollama/OpenAI providers                     │
 ├─────────────────────────────────────────────────────────────────┤
-│  Layer 1: Git+                                                  │
-│  Branches, PRs, isolation, hooks                                │
+│  Layer 1: Git+                                  ✅ COMPLETE     │
+│  Branches, PRs, worktree isolation, merge                       │
 ├─────────────────────────────────────────────────────────────────┤
-│  Layer 0: CORE                                                  │
+│  Layer 0: CORE                                  ✅ COMPLETE     │
 │  Specs, states, prompts, work, commit                           │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -103,255 +103,163 @@ The prompt does the heavy lifting. Core just orchestrates.
 
 ### Layer Dependencies
 
-| Layer | Requires | Adds |
-|-------|----------|------|
-| 0: Core | Nothing | Basic spec execution |
-| 1: Git+ | Core | Branches, PRs, isolation |
-| 2: MCP | Core | MCP server, Kiro provider |
-| 3: Multi-Repo | Core | Global config, cross-repo deps |
-| 4: Structure | Core | Dependencies, hierarchy, labels |
-| 5: Observability | Core | Logging, costs, metrics |
-| 6: Scale | Core + Observability | Daemon, queue, Tantivy search |
-| 7: Autonomy | Core + Structure | Drift, replay, coaching |
-
-Layers 1-4 are independent of each other. You can have Multi-Repo without MCP, or Structure without Git+.
+| Layer | Status | Adds |
+|-------|--------|------|
+| 0: Core | ✅ | Spec CRUD, state machine, prompts, agent execution |
+| 1: Git+ | ✅ | `--branch`, `--pr`, worktree isolation, merge |
+| 2: MCP + Providers | ✅ | MCP server, Claude/Ollama/OpenAI |
+| 3: Multi-Repo | ⏳ | Global config (cross-repo deps pending) |
+| 4: Structure | ✅ | `depends_on`, groups, labels, split |
+| 5: Observability | ✅ | lint, status, log, diagnose |
+| 6: Scale | ⏳ | Locks, parallel (daemon/search pending) |
+| 7: Autonomy | ❌ | Drift, replay, verify (not started) |
 
 ## Version Roadmap
 
-| Version | Phase | Description |
-|---------|-------|-------------|
-| v0.1.0 | Phase 0 | Bootstrap Core - minimal working CLI |
-| v0.2.0 | Phase 1 | Git+ - branches, PRs, isolation |
-| v0.3.0 | Phase 2 | MCP + Providers |
-| v0.4.0 | Phase 3 | Multi-Repo support |
-| v0.5.0 | Phase 4 | Structure - deps, groups, labels |
-| v0.6.0 | Phase 5 | Observability - logging, costs, metrics |
-| v0.7.0 | Phase 6 | Scale - daemon, queue, search |
-| v0.8.0 | Phase 7 | Autonomy - drift, replay, verification |
-| v0.9.0 | Phase 8 | Polish - ecosystem, templates, approvals |
+### Current Status: v0.1.3
 
-Phases 1-4 are independent and can be released in any order. Versions continue incrementing as features are refined.
+Development moved faster than the original phased plan. Most features from Phases 0-6 are implemented.
+
+| Phase | Status | Features |
+|-------|--------|----------|
+| Phase 0: Core | ✅ Complete | Spec CRUD, state machine, prompts, agent invocation, git commits |
+| Phase 1: Git+ | ✅ Complete | `--branch`, `--pr`, worktree isolation, merge command |
+| Phase 2: MCP + Providers | ✅ Complete | MCP server, Claude/Ollama/OpenAI providers |
+| Phase 3: Multi-Repo | ⏳ Partial | Global config exists; cross-repo deps not yet |
+| Phase 4: Structure | ✅ Complete | `depends_on`, groups (`.N` suffix), labels, `split` command |
+| Phase 5: Observability | ✅ Complete | `lint`, `status`, `log`, `diagnose` commands |
+| Phase 6: Scale | ⏳ Partial | Locks, `--parallel`; NOT: daemon, Tantivy, queue |
+| Phase 7: Autonomy | ❌ Not started | Drift detection, replay, verification |
+| Phase 8: Polish | ⏳ Partial | `ready` command; NOT: notifications, approvals |
+
+### Upcoming Releases
+
+| Version | Focus |
+|---------|-------|
+| v0.2.0 | Semantic search (Tantivy + arroy) |
+| v0.3.0 | Full multi-repo support |
+| v0.4.0 | Autonomy (drift, verify, replay) |
+| v1.0.0 | Stable API, complete documentation |
 
 ## Implementation Phases
 
-### Phase 0: Bootstrap Core (Manual) → v0.1.0
+### Phase 0: Bootstrap Core ✅ COMPLETE
 
-Build Core without chant (using AI agent directly). Tasks within each group run in parallel:
+Built Core manually (using AI agent directly):
 
-```
-Group A (parallel):
-  - Spec parser (read/write markdown + YAML)
-  - State machine
-  - CLI skeleton (init, add, list, show)
-
-Group B (parallel, after A):
-  - Prompt assembler
-  - Agent invoker (default provider)
-  - Git commit
-
-Group C (after B):
-  - chant work (execute spec) - ties it all together
-
-Deliverable: Working chant that can execute specs
-```
+- ✅ Spec parser (read/write markdown + YAML frontmatter)
+- ✅ State machine (pending → in_progress → completed/failed)
+- ✅ CLI (init, add, list, show, work)
+- ✅ Prompt assembler
+- ✅ Agent invoker (Claude provider)
+- ✅ Git commit with `chant(spec-id):` format
 
 **After Phase 0, chant builds chant.**
 
-### Phases 1-4: Independent Layers
+### Phase 1: Git+ ✅ COMPLETE
 
-These phases only depend on Core (not each other), but **each feature within a phase must be done sequentially via specs**.
+- ✅ `--branch` flag creates feature branches
+- ✅ `--pr` flag creates pull requests via `gh` CLI
+- ✅ Worktree isolation for parallel execution
+- ✅ `chant merge` command
+- ✅ Config defaults for branch/pr
 
-```
-Phase 1 → Phase 2 → Phase 3 → Phase 4
-  │          │          │          │
-  └──────────┴──────────┴──────────┘
-     (order flexible, but ONE SPEC AT A TIME)
-```
+See [git.md](../reference/git.md) and [isolation.md](../scale/isolation.md).
 
-#### Phase 1: Git+ → v0.2.0
+### Phase 2: MCP + Providers ✅ COMPLETE
 
-**Execute each spec one at a time, verify completion before next:**
+- ✅ MCP server with spec tools (`chant mcp`)
+- ✅ Claude provider (default)
+- ✅ Ollama provider (local models)
+- ✅ OpenAI provider
+- ✅ Provider selection via config or `--provider` flag
 
-```bash
-chant add "Add --branch flag to create feature branches"
-chant work <id>
-# TEST: chant work --branch <spec> creates a branch
+See [mcp.md](../reference/mcp.md) and [protocol.md](../architecture/protocol.md).
 
-chant add "Add --pr flag to create pull requests via gh CLI"
-chant work <id>
-# TEST: chant work --pr <spec> creates a PR
+### Phase 3: Multi-Repo ⏳ PARTIAL
 
-chant add "Add branch and pr settings to config.md"
-chant work <id>
-# TEST: config defaults work
-```
+- ✅ Global config at `~/.config/chant/`
+- ❌ `repo:` prefix parsing for cross-repo specs
+- ❌ Cross-repo dependencies
 
-See [git.md](../reference/git.md) and [isolation.md](../scale/isolation.md) for design.
+See [multi-project.md](../scale/multi-project.md).
 
-**After Phase 1**: Chant's own development switches to `branch: true` - all subsequent work uses task branches and PRs.
+### Phase 4: Structure ✅ COMPLETE
 
-#### Phase 2: MCP + Providers → v0.3.0
+- ✅ `depends_on` field with dependency checking
+- ✅ `--label` filter on list command
+- ✅ Spec groups via `.N` filename suffix
+- ✅ `chant split` command for decomposing specs
+- ✅ Driver/group spec types with auto-completion
 
-```bash
-chant add "Add MCP server with chant_spec_list tool"
-chant work <id>
+See [deps.md](../concepts/deps.md), [groups.md](../concepts/groups.md), [spec-types.md](../concepts/spec-types.md).
 
-chant add "Add chant_spec_get tool to MCP server"
-chant work <id>
+### Phase 5: Observability ✅ COMPLETE
 
-chant add "Add chant_spec_update tool to MCP server"
-chant work <id>
+- ✅ `chant lint` command for spec validation
+- ✅ `chant status` command for project overview
+- ✅ `chant log` command for execution logs
+- ✅ `chant diagnose` command for troubleshooting
+- ✅ Exit codes and error messages
 
-chant add "Add chant mcp command to start server"
-chant work <id>
-```
+See [observability.md](../scale/observability.md), [errors.md](../reference/errors.md).
 
-See [mcp.md](../reference/mcp.md) and [protocol.md](../architecture/protocol.md) for design.
+### Phase 6: Scale ⏳ PARTIAL
 
-#### Phase 3: Multi-Repo → v0.4.0
+**Implemented:**
+- ✅ PID-based locking to prevent concurrent work
+- ✅ `--parallel` flag for concurrent spec execution
+- ✅ `chant archive` command
 
-```bash
-chant add "Add global config support at ~/.config/chant/"
-chant work <id>
+**Not yet implemented:**
+- ❌ Daemon mode
+- ❌ Tantivy full-text search
+- ❌ Queue architecture
 
-chant add "Add repo: prefix parsing for cross-repo specs"
-chant work <id>
-```
+See [scale.md](../scale/scale.md), [locks.md](../scale/locks.md).
 
-See [multi-project.md](../scale/multi-project.md) for design.
+### Phase 6.5: Semantic Search ❌ NOT STARTED
 
-#### Phase 4: Structure → v0.5.0
+Future enhancement for research workflows. Adds vector-based similarity search.
 
-```bash
-chant add "Add depends_on field with dependency checking"
-chant work <id>
+**Planned tech stack:**
+- `tantivy` — Full-text search
+- `fastembed-rs` — Rust-native embeddings
+- `arroy` — Vector similarity (ANN)
 
-chant add "Add --label filter to list command"
-chant work <id>
+### Phase 7: Autonomy ❌ NOT STARTED
 
-chant add "Add spec groups via .N filename suffix"
-chant work <id>
-```
-
-See [deps.md](../concepts/deps.md), [groups.md](../concepts/groups.md), [triggers.md](../concepts/triggers.md), [spec-types.md](../concepts/spec-types.md).
-
-### Phase 5: Observability → v0.6.0
-
-Depends on: Core
-
-```bash
-chant add "Add chant lint command for spec validation"
-chant work <id>
-
-chant add "Add chant status command for project overview"
-chant work <id>
-
-chant add "Add exit codes and error recovery hints"
-chant work <id>
-```
-
-See [observability.md](../scale/observability.md), [costs.md](../reference/costs.md), [schema.md](../reference/schema.md), [errors.md](../reference/errors.md), [reports.md](../reference/reports.md).
-
-### Phase 6: Scale → v0.7.0
-
-Depends on: Core + Observability
-
-```bash
-chant add "Add PID-based locking to prevent concurrent work"
-chant work <id>
-
-chant add "Add chant lock list command"
-chant work <id>
-```
-
-See [scale.md](../scale/scale.md), [daemon.md](../scale/daemon.md), [locks.md](../scale/locks.md), [queue.md](../scale/queue.md).
-
-### Phase 6.5: Semantic Search (Optional) → v0.7.x
-
-Optional enhancement for research workflows. Adds vector-based similarity search.
-
-```bash
-chant add "Add fastembed-rs integration"
-chant add "Add arroy vector store"
-chant add "Add semantic search CLI (--semantic flag)"
-chant add "Add hybrid search merging"
-chant add "Add chant similar command"
-chant work --parallel
-```
-
-**Tech stack:**
-- `fastembed-rs` — Rust-native embeddings, runs locally
-- `arroy` — Pure Rust ANN, LMDB storage (same patterns as Tantivy)
-- `BGE-small-en` — Default model (384 dims, 50MB)
-
-**Why optional:** Code specs work fine with keyword search. Research specs benefit from semantic similarity. Opt-in via config.
-
-### Phase 7: Autonomy → v0.8.0
-
-Depends on: Core + Structure (Phase 4)
-
-```bash
-chant add "Add chant verify command for drift detection"
-chant work <id>
-```
+- ❌ `chant verify` command for drift detection
+- ❌ `chant replay` command
+- ❌ Specification verification
 
 See [autonomy.md](../concepts/autonomy.md).
 
-### Phase 8: Polish → v0.9.0
+### Phase 8: Polish ⏳ PARTIAL
+
+**Implemented:**
+- ✅ `chant ready` shortcut command
+- ✅ `chant delete` command
+
+**Not yet implemented:**
+- ❌ Notifications
+- ❌ Approvals workflow
+- ❌ Template registry
+
+See [ecosystem.md](../guides/ecosystem.md), [approvals.md](../guides/approvals.md).
+
+## Testing
+
+See [Testing Strategy](../reference/testing.md) for test specifications.
+
+Current test coverage:
+- 140+ unit tests in `src/`
+- Integration tests in `tests/`
 
 ```bash
-chant add "Add chant ready shortcut command"
-chant work <id>
+just test      # Run all tests
+just check     # Run fmt, clippy, and tests
 ```
-
-See [ecosystem.md](../guides/ecosystem.md), [approvals.md](../guides/approvals.md), [notifications.md](../reference/notifications.md), [templates.md](../reference/templates.md), [git-hooks.md](../reference/git-hooks.md).
-
-Note: Claude provider is Phase 0. Phase 8 adds additional providers and ecosystem features.
-
-## Phase Validation
-
-Each phase must include integration tests that validate its features before moving to the next phase. See [Testing Strategy](../reference/testing.md) for comprehensive test specifications.
-
-### Testing Requirements
-
-| Phase | Validation |
-|-------|------------|
-| 0: Core | Spec create → work → complete cycle works end-to-end |
-| 1: Git+ | Branch creation, PR creation, worktree isolation work |
-| 2: MCP | MCP server responds, provider plugins load |
-| 3: Multi-Repo | Cross-repo deps resolve, global list shows all repos |
-| 4: Structure | Dependencies block correctly, groups split/combine |
-| 5: Observability | Logs written, costs tracked, linter catches errors |
-| 6: Scale | Locks prevent conflicts, daemon serves queries, queue orders correctly |
-| 7: Autonomy | Drift detected on file change, replay restores state |
-| 8: Polish | Notifications fire, templates expand, approvals block |
-
-### Test Structure
-
-```
-tests/
-├── integration/
-│   ├── phase0_core_test.rs
-│   ├── phase1_git_test.rs
-│   ├── phase2_mcp_test.rs
-│   ├── phase3_multirepo_test.rs
-│   ├── phase4_structure_test.rs
-│   ├── phase5_observability_test.rs
-│   ├── phase6_scale_test.rs
-│   ├── phase7_autonomy_test.rs
-│   └── phase8_polish_test.rs
-└── fixtures/
-    └── sample_specs/
-```
-
-### Phase Gate
-
-A phase is complete when:
-1. All feature specs are `status: completed`
-2. Integration tests pass
-3. Documentation updated
-
-No phase proceeds without passing its integration tests.
 
 ## Self-Bootstrap
 
