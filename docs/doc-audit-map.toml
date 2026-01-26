@@ -21,6 +21,7 @@ last_audit = "2026-01-25"
 
 [mappings."src/prompt.rs"]
 docs = ["concepts/prompts.md"]
+last_audit = "2026-01-25"
 
 [mappings."src/git.rs"]
 docs = ["reference/git.md"]
