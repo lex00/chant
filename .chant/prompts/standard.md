@@ -22,7 +22,7 @@ You are implementing a spec for {{project.name}}.
 5. **Run `cargo clippy`** to fix any lint errors and warnings
 6. **Run tests** with `just test` and fix any failures
 7. **Verify** the implementation works and all acceptance criteria are met
-8. **Check off** each acceptance criterion by changing `- [ ]` to `- [x]` in the spec file
+8. **Check off** each acceptance criterion in `{{spec.path}}` by changing `- [ ]` to `- [x]`
 9. **Commit** with message: `chant({{spec.id}}): <description>`
 10. **Verify git status is clean** - ensure no uncommitted changes remain
 

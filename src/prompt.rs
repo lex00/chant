@@ -78,6 +78,10 @@ fn substitute(template: &str, spec: &Spec, config: &Config) -> String {
     );
     result = result.replace("{{spec.description}}", &spec.body);
 
+    // Spec path (constructed from id)
+    let spec_path = format!(".chant/specs/{}.md", spec.id);
+    result = result.replace("{{spec.path}}", &spec_path);
+
     // The full spec content
     result = result.replace("{{spec}}", &format_spec_for_prompt(spec));
 
@@ -176,6 +180,17 @@ mod tests {
         assert!(result.contains("Project: test-project"));
         assert!(result.contains("Spec: 2026-01-22-001-x7m"));
         assert!(result.contains("Title: Fix the bug"));
+    }
+
+    #[test]
+    fn test_spec_path_substitution() {
+        let template = "Edit {{spec.path}} to check off criteria";
+        let spec = make_test_spec();
+        let config = make_test_config();
+
+        let result = substitute(template, &spec, &config);
+
+        assert!(result.contains(".chant/specs/2026-01-22-001-x7m.md"));
     }
 
     #[test]
