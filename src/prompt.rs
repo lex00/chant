@@ -1,7 +1,7 @@
 //! Prompt template management and variable substitution.
 //!
 //! # Doc Audit
-//! - audited: (pending)
+//! - audited: 2026-01-25
 //! - docs: concepts/prompts.md
 //! - ignore: false
 
