@@ -1,7 +1,7 @@
 //! Configuration management for chant projects.
 //!
 //! # Doc Audit
-//! - audited: (pending)
+//! - audited: 2026-01-25
 //! - docs: reference/config.md
 //! - ignore: false
 

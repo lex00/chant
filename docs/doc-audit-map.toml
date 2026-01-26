@@ -17,6 +17,7 @@ docs = ["concepts/specs.md", "reference/schema.md"]
 
 [mappings."src/config.rs"]
 docs = ["reference/config.md"]
+last_audit = "2026-01-25"
 
 [mappings."src/prompt.rs"]
 docs = ["concepts/prompts.md"]
