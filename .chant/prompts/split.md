@@ -7,6 +7,8 @@ purpose: Split a driver spec into members with detailed acceptance criteria
 
 You are analyzing a driver specification for the {{project.name}} project and proposing how to split it into smaller, ordered member specs.
 
+**IMPORTANT: This is an analysis task. Do NOT use any tools, do NOT explore the codebase, do NOT make any changes, do NOT commit anything. ONLY output text in the exact format specified below.**
+
 ## Driver Specification to Split
 
 **ID:** {{spec.id}}
@@ -44,10 +46,12 @@ This way, Haiku has a detailed specification to follow and won't miss important 
 
 ## Output Format
 
-For each member, output exactly this format:
+**CRITICAL: Output ONLY the member specs in EXACTLY this format. No preamble, no summary, no tool use.**
+
+Start your output directly with `## Member 1:` and continue with each member.
 
 ```
-## Member N: <title>
+## Member 1: <title>
 
 <description of what this member accomplishes>
 
@@ -71,8 +75,14 @@ For this feature, verify:
 **Affected Files:**
 - file1.rs
 - file2.rs
+
+## Member 2: <title>
+
+... (continue with same format)
 ```
 
 If no files are identified, you can omit the Affected Files section.
 
-Create as many members as needed (typically 3-5 for a medium spec).
+Create as many members as needed (typically 3-7 for a medium spec).
+
+**Remember: Output ONLY the `## Member N:` sections. No introduction, no summary, no "I will create..." statements.**

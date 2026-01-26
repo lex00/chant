@@ -43,8 +43,14 @@ pub fn assemble(spec: &Spec, prompt_path: &Path, config: &Config) -> Result<Stri
     // Extract body (skip frontmatter)
     let body = extract_body(&prompt_content);
 
-    // Substitute template variables and inject commit instruction
-    let message = substitute(body, spec, config);
+    // Check if this is a split prompt (don't inject commit instruction for analysis prompts)
+    let is_split_prompt = prompt_path
+        .file_stem()
+        .map(|s| s.to_string_lossy() == "split")
+        .unwrap_or(false);
+
+    // Substitute template variables and inject commit instruction (except for split)
+    let message = substitute(body, spec, config, !is_split_prompt);
 
     Ok(message)
 }
@@ -64,7 +70,7 @@ fn extract_body(content: &str) -> &str {
     }
 }
 
-fn substitute(template: &str, spec: &Spec, config: &Config) -> String {
+fn substitute(template: &str, spec: &Spec, config: &Config, inject_commit: bool) -> String {
     let mut result = template.to_string();
 
     // Project variables
@@ -105,8 +111,8 @@ fn substitute(template: &str, spec: &Spec, config: &Config) -> String {
         result = result.replace("{{spec.context}}", "");
     }
 
-    // Inject commit instruction if not already present
-    if !result.to_lowercase().contains("commit your work") {
+    // Inject commit instruction if not already present (and if enabled)
+    if inject_commit && !result.to_lowercase().contains("commit your work") {
         let commit_instruction = "\n\n## Required: Commit Your Work\n\n\
              When you have completed the work, commit your changes with:\n\n\
              ```\n\
@@ -175,7 +181,7 @@ mod tests {
         let spec = make_test_spec();
         let config = make_test_config();
 
-        let result = substitute(template, &spec, &config);
+        let result = substitute(template, &spec, &config, true);
 
         assert!(result.contains("Project: test-project"));
         assert!(result.contains("Spec: 2026-01-22-001-x7m"));
@@ -188,7 +194,7 @@ mod tests {
         let spec = make_test_spec();
         let config = make_test_config();
 
-        let result = substitute(template, &spec, &config);
+        let result = substitute(template, &spec, &config, true);
 
         assert!(result.contains(".chant/specs/2026-01-22-001-x7m.md"));
     }
@@ -211,7 +217,7 @@ Body content here."#;
         let spec = make_test_spec();
         let config = make_test_config();
 
-        let result = substitute(template, &spec, &config);
+        let result = substitute(template, &spec, &config, true);
 
         // Should contain commit instruction
         assert!(result.contains("## Required: Commit Your Work"));
@@ -225,10 +231,25 @@ Body content here."#;
         let spec = make_test_spec();
         let config = make_test_config();
 
-        let result = substitute(template, &spec, &config);
+        let result = substitute(template, &spec, &config, true);
 
         // Count occurrences of the section header
         let count = result.matches("## Required: Commit Your Work").count();
         assert_eq!(count, 1, "Commit instruction should not be duplicated");
+    }
+
+    #[test]
+    fn test_commit_instruction_skipped_when_disabled() {
+        let template = "# Analyze something\n\nJust output text.";
+        let spec = make_test_spec();
+        let config = make_test_config();
+
+        let result = substitute(template, &spec, &config, false);
+
+        // Should NOT contain commit instruction
+        assert!(
+            !result.contains("## Required: Commit Your Work"),
+            "Commit instruction should not be injected when disabled"
+        );
     }
 }
