@@ -335,11 +335,9 @@ amendments:
 ---
 ```
 
-### Splitting Specs (Planned)
+### Splitting Specs
 
-> **Status: Planned** - The `chant split` command is on the roadmap but not yet implemented.
-
-If a spec grows too large:
+If a spec grows too large, use `chant split` to break it into member specs:
 
 ```bash
 $ chant split 001

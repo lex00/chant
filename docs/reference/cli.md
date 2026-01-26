@@ -50,13 +50,17 @@ chant work --parallel                      # Execute all ready specs in parallel
 chant work --parallel --label auth         # Execute ready specs with label
 ```
 
-### Split Spec (Planned)
+### Split Spec
 
-> **Status: Planned** - This feature is on the roadmap but not yet implemented.
+Split a spec into member specs using AI analysis:
 
 ```bash
 chant split 2026-01-22-001-x7m             # Split into group members
+chant split 001 --force                    # Force split even if not pending
+chant split 001 --model claude-opus-4-5    # Use specific model for analysis
 ```
+
+The split command analyzes the spec content and creates numbered member specs (`.1`, `.2`, etc.) that break down the work into smaller pieces.
 
 ### Replaying Completed Specs
 
