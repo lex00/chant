@@ -1,8 +1,8 @@
 //! Diagnostic utilities for checking spec execution status.
 //!
 //! # Doc Audit
-//! - audited: (pending)
-//! - docs: guides/recovery.md
+//! - audited: 2026-01-25
+//! - docs: guides/recovery.md, reference/cli.md
 //! - ignore: false
 
 use anyhow::{Context, Result};
