@@ -6,39 +6,21 @@ Claude Code is an AI-powered coding assistant that helps implement specification
 
 ## Primary Rules
 
-### 1. Always Use `just chant` for CLI Operations
+### 1. Always Use `chant` for CLI Operations
 
-Use **ONLY** the `just chant` command to interact with the chant binary. Never use direct binary paths like `./target/debug/chant` or `cargo run`.
-
-**Why?** The `just` wrapper ensures:
-- The binary is automatically rebuilt if source code changed
-- You always run the most recent version
-- Consistent interface and behavior across all operations
-- Avoids stale binary issues from previous builds
+Use the `chant` command to interact with the chant CLI. This is the primary tool for managing and executing specs.
 
 ```bash
-just chant add "description of work"
-just chant work <spec-id>
-just chant list
-just chant show <spec-id>
-```
-
-**What NOT to do:**
-```bash
-# ❌ WRONG - Don't use direct binary paths
-./target/debug/chant add "description"
-./target/release/chant work <spec-id>
-
-# ❌ WRONG - Don't use cargo run
-cargo run -- add "description"
-cargo run --release -- work <spec-id>
+chant add "description of work"
+chant work <spec-id>
+chant list
+chant show <spec-id>
 ```
 
 ### 2. Never Touch the Disk Directly
 
-Only the chant CLI gets to write files during spec execution. Claude should not:
+Only the chant CLI gets to write files during spec execution. You should not:
 - Edit files directly unless authorized by the spec system
-- Run `cargo test` or `cargo build` directly (use `just test`, `just build` instead)
 - Make ad-hoc changes outside of specs
 
 All work must flow through the spec system.
@@ -59,21 +41,17 @@ When implementing a spec:
 2. **Plan** your approach before making changes
 3. **Implement** the changes according to spec acceptance criteria
 4. **Verify** with tests and ensure all pass
-5. **Lint** with `just lint` and fix all errors and warnings
-6. **Commit** with message referencing the spec ID: `chant(SPEC-ID): description`
+5. **Commit** with message referencing the spec ID: `chant(SPEC-ID): description`
 
 ## Core Commands
 
-### Development Commands
+### Spec Management
 
-These are available via `just` and should be used during spec execution:
-
-- `just build` - Build the binary with `cargo build`
-- `just test` - Run tests with `cargo test`
-- `just lint` - Run clippy linter
-- `just fmt` - Format code with rustfmt
-- `just check` - Run format check, linter, and tests
-- `just all` - Full check and build
+- `chant add "description"` - Create a new spec
+- `chant list` - List all specs
+- `chant show <spec-id>` - View spec details
+- `chant work <spec-id>` - Execute a spec
+- `chant log <spec-id>` - Show spec execution log
 
 ## Spec Format and Patterns
 
@@ -111,29 +89,20 @@ Change `- [ ]` to `- [x]` as you complete each criterion.
 
 1. **Read before modifying** - Always read relevant files first to understand existing code
 2. **Write tests** - Validate behavior with tests and run until passing
-3. **Lint everything** - Always run `just lint` and fix all errors and warnings
-4. **Run full tests** - When complete, run `just test` to verify all tests pass
-5. **Build must succeed** - Always ensure the binary builds successfully
-6. **Minimal changes** - Only modify files related to the spec; don't refactor unrelated code
-7. **Add model to frontmatter** - After all acceptance criteria are met, add `model: claude-haiku-4-5-20251001` to the spec frontmatter
+3. **Run full tests** - When complete, verify all tests pass
+4. **Minimal changes** - Only modify files related to the spec; don't refactor unrelated code
+5. **Add model to frontmatter** - After all acceptance criteria are met, add `model: claude-haiku-4-5-20251001` to the spec frontmatter
 
 ### What NOT to do
 
-**Binary/Build Execution:**
-- ❌ **Never** run `./target/debug/chant` or `./target/release/chant` directly
-- ❌ **Never** run `cargo run -- ` to invoke chant
-- ❌ **Never** run `cargo build` or `cargo test` directly (use `just build`, `just test` instead)
-
-These bypass the `justfile` wrapper, which means:
-- You may run stale binaries from previous builds
-- Source changes won't trigger automatic rebuilds
-- You lose consistency across the development team
-- Build environment assumptions aren't validated
+**Spec Execution:**
+- ❌ **Never** edit files directly outside of spec execution
+- ❌ **Never** make ad-hoc changes to the repository outside of the spec system
 
 ### On Unexpected Errors
 
 If an unexpected error occurs during spec execution:
-1. Create a new spec to fix it with `just chant add "fix unexpected error X"`
+1. Create a new spec to fix it with `chant add "fix unexpected error X"`
 2. Do not continue with the original spec
 3. Reference the original spec ID in the new spec
 
