@@ -50,14 +50,82 @@ Supported agent providers: `claude`, `cursor`, `amazonq`, `generic`, `all`
 
 ## Spec Management
 
+### Create and List
+
 ```bash
-chant add "Fix authentication bug"    # Create spec
-chant list                            # List all specs
-chant list --ready                    # List ready specs
-chant list --label auth               # Filter by label
-chant list --label auth --label api   # Filter by multiple labels (OR)
-chant list --ready --label feature    # Combine filters
-chant show 2026-01-22-001-x7m         # Show spec details
+chant add                                    # Interactive wizard
+chant add "Fix authentication bug"           # Create spec with description
+chant list                                   # List all specs
+chant show 2026-01-22-001-x7m                # Show spec details
+```
+
+### Interactive Wizard for Add
+
+When you run `chant add` without a description, you'll be guided through spec creation interactively:
+
+```
+? Spec title: Fix authentication bug
+? Spec type: code
+? Brief description: Add JWT token validation to API endpoints
+? Acceptance criteria (one per line, end with empty line):
+  - [ ] JWT validation middleware implemented
+  - [ ] All tests passing
+  - [ ] Code linted
+?
+? Target files (optional):
+  - src/auth/middleware.rs
+  - src/auth/tokens.rs
+?
+```
+
+### List Specs
+
+```bash
+chant list                                   # List all specs
+chant list --ready                           # List ready specs (shortcut for --status ready)
+chant list --label auth                      # Filter by label
+chant list --label auth --label api          # Multiple labels (OR logic)
+chant list --ready --label feature           # Combine filters
+```
+
+#### Type Filtering
+
+Filter specs by type:
+
+```bash
+chant list --type code                       # Code specs only
+chant list --type documentation              # Documentation specs
+chant list --type task                       # Task specs
+chant list --type research                   # Research specs
+chant list --type driver                     # Driver/group specs
+
+# Supported types: code, task, driver, documentation, research, group
+```
+
+#### Status Filtering
+
+Filter specs by status:
+
+```bash
+chant list --status pending                  # Pending specs
+chant list --status ready                    # Ready specs (shortcut: --ready)
+chant list --status in_progress              # In-progress specs
+chant list --status completed                # Completed specs
+chant list --status failed                   # Failed specs
+chant list --status blocked                  # Blocked specs (waiting on dependencies)
+chant list --status cancelled                # Cancelled specs
+
+# Combine filters
+chant list --type code --status pending      # Pending code specs
+chant list --status completed --label auth   # Completed auth specs
+```
+
+#### Label Filtering
+
+```bash
+chant list --label auth                      # Specs with 'auth' label
+chant list --label auth --label api          # Specs with 'auth' OR 'api' label
+chant list --label feature --label urgent    # Combine multiple labels
 ```
 
 ### Edit Spec (Planned)
@@ -68,29 +136,38 @@ chant show 2026-01-22-001-x7m         # Show spec details
 chant edit 2026-01-22-001-x7m         # Open in editor
 ```
 
-### Label Filtering
+### Cancel Spec
 
-Filter specs by labels defined in their frontmatter:
-
-```yaml
-# In spec frontmatter
-labels: [auth, feature]
-```
+Soft-delete a spec by marking it cancelled. The spec file is preserved but excluded from lists and execution:
 
 ```bash
-# Filter by single label
-chant list --label auth
-
-# Filter by multiple labels (OR - shows specs matching ANY label)
-chant list --label auth --label api
-
-# Combine with --ready
-chant list --ready --label feature
+chant cancel 2026-01-22-001-x7m                # Cancel a spec (confirms)
+chant cancel 2026-01-22-001-x7m --yes          # Skip confirmation
+chant cancel 2026-01-22-001-x7m --dry-run      # Preview changes
+chant cancel 2026-01-22-001-x7m --force        # Force cancellation (skip safety checks)
 ```
+
+**Safety Checks:**
+- Cannot cancel specs that are in-progress or failed (unless `--force`)
+- Cannot cancel member specs (cancel the driver instead)
+- Cannot cancel already-cancelled specs
+- Warns if other specs depend on this spec (unless `--force`)
+
+**What Happens:**
+1. Spec status changed to `Cancelled` in frontmatter
+2. File is preserved in `.chant/specs/`
+3. Cancelled specs excluded from `chant list` and `chant work`
+4. Can still view with `chant show` or `chant list --status cancelled`
+5. All git history preserved
+
+**Difference from Delete:**
+- `cancel`: Changes status to Cancelled, preserves files and history
+- `delete`: Removes spec file, logs, and worktree artifacts
 
 ## Execution
 
 ```bash
+chant work                                 # Interactive wizard to select specs
 chant work 2026-01-22-001-x7m              # Execute single spec
 chant work 2026-01-22-001-x7m --prompt tdd # Execute with specific prompt
 chant work 2026-01-22-001-x7m --force      # Replay a completed spec
@@ -98,6 +175,28 @@ chant work --parallel                      # Execute all ready specs in parallel
 chant work --parallel --label auth         # Execute ready specs with label
 chant work 001 002 003 --parallel          # Execute specific specs in parallel
 ```
+
+### Interactive Wizard for Work
+
+When you run `chant work` without a spec ID, an interactive wizard guides you through selection:
+
+```
+? Select specs to execute:
+  [x] 2026-01-26-001-abc  Fix login bug
+  [ ] 2026-01-26-002-def  Add API logging
+  [ ] 2026-01-26-003-ghi  Update docs
+  [Select all]
+? Use parallel execution? No
+? Select prompt: standard (auto-detected for code)
+? Create feature branch? No
+```
+
+The wizard:
+1. Shows all ready specs with multi-select
+2. Asks whether to use parallel execution
+3. Lets you choose a prompt (defaults to spec's prompt or type-based default)
+4. Asks about branch creation (if `defaults.branch` not set)
+5. Executes the selected specs
 
 ### Split Spec
 
@@ -244,6 +343,61 @@ After parallel execution, chant detects and reports issues:
 chant search "auth"                   # Search archive
 chant search "label:feature"          # Search by label
 ```
+
+## Lint
+
+Validate specs for structural issues and best practices:
+
+```bash
+chant lint                            # Validate all specs
+chant lint 001                        # Validate specific spec
+```
+
+### Validation Rules
+
+Lint checks are organized into categories:
+
+**Hard Errors** (fail validation):
+- Missing title in spec
+- Unknown spec IDs in `depends_on` (broken dependencies)
+- Invalid YAML frontmatter
+
+**Type-Specific Warnings:**
+- `documentation`: Missing `tracks` or `target_files` fields
+- `research`: Missing both `informed_by` AND `origin` fields
+
+**Complexity Warnings:**
+- More than 5 acceptance criteria
+- More than 5 target files
+- More than 500 words in description
+- Suggests using `chant split` if too complex
+
+**Coupling Warnings:**
+- Detecting spec ID references in body (outside code blocks)
+- Suggests using `depends_on` for explicit dependencies
+- Skipped for drivers/groups (allowed to reference members)
+
+**Model Waste Warnings:**
+- Using expensive models (opus/sonnet) on simple specs
+- Simple spec definition: ≤3 criteria, ≤2 files, ≤200 words
+- Suggests using haiku for simple work
+
+### Output
+
+```
+✓ 2026-01-26-001-abc          (all valid)
+✗ 2026-01-26-002-def: Missing title
+⚠ 2026-01-26-003-ghi: Spec has 8 acceptance criteria (>5)
+  Consider: chant split 2026-01-26-003-ghi
+⚠ 2026-01-26-004-jkl: Spec references 001-abc without depends_on
+  Suggestion: Use depends_on to explicit document dependency
+
+Validation Summary:
+  Errors: 1
+  Warnings: 3
+```
+
+Exit code: 0 (all valid) or 1 (errors found)
 
 ## Logs
 
@@ -404,13 +558,50 @@ A spec has "drifted" when any tracked file was modified after the spec was compl
 Export spec data in various formats:
 
 ```bash
-chant export                          # Export all specs as JSON (default)
+chant export                          # Interactive wizard
+chant export --format json            # Export all specs as JSON
 chant export --format csv             # Export as CSV
 chant export --format markdown        # Export as Markdown table
 chant export --output specs.json      # Write to file instead of stdout
 ```
 
-### Filtering
+### Interactive Wizard for Export
+
+When you run `chant export` without format or filters, an interactive wizard guides you:
+
+```
+? Export format:
+  JSON
+  CSV
+  Markdown
+? Filter by status (select multiple):
+  [x] Ready
+  [ ] Completed
+  [ ] Pending
+  [ ] Failed
+  [ ] All statuses
+? Filter by type:
+  (none)
+  code
+  task
+  documentation
+  driver
+? Output destination:
+  Print to stdout
+  Save to file
+? Output filename: specs.json
+```
+
+The wizard:
+1. Lets you choose export format (JSON, CSV, or Markdown)
+2. Allows selecting multiple status filters
+3. Lets you filter by type
+4. Asks where to save (stdout or file)
+5. Prompts for filename if saving to file
+
+### Direct Mode
+
+Use flags to skip the wizard:
 
 ```bash
 chant export --status completed       # Filter by status
@@ -460,6 +651,61 @@ Worktrees in /tmp:
 Grand Total:
   5.8 GB
 ```
+
+## Config Validation
+
+Validate configuration semantically:
+
+```bash
+chant config --validate                     # Check configuration for issues
+```
+
+### Validation Checks
+
+The `config --validate` command performs these checks:
+
+**Agent Commands** (errors):
+- Verifies each agent command exists in PATH (using `which`)
+- Example: `claude`, `claude-alt1`, etc.
+- Error if command not found
+
+**Prompt Files** (errors):
+- Checks `defaults.prompt` file exists at `.chant/prompts/{name}.md`
+- Checks `parallel.cleanup.prompt` file exists (if cleanup enabled)
+- Error if prompt file not found
+
+**Parallel Configuration** (informational):
+- Shows number of configured agents
+- Shows total capacity (sum of all `max_concurrent` values)
+
+**Recommended Fields** (warnings):
+- Warns if `defaults.model` not set (will default to haiku)
+
+### Output
+
+```
+→ Checking configuration...
+
+Checking parallel agents...
+  ✓ main (claude) - found in PATH
+  ✓ alt1 (claude-alt1) - found in PATH
+  ✗ alt2 (claude-alt2) - not found in PATH
+
+Checking prompt files...
+  ✓ standard (.chant/prompts/standard.md)
+  ✓ parallel-cleanup (.chant/prompts/parallel-cleanup.md)
+
+Parallel Configuration:
+  Agents: 2
+  Total capacity: 5 concurrent
+
+Recommended Fields:
+  ⚠ defaults.model not set (will use haiku)
+
+✓ Configuration valid with 1 warning
+```
+
+Exit code: 0 (valid) or 1 (errors found)
 
 ## Cleanup
 

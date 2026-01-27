@@ -22,7 +22,21 @@
      ▼
 ┌──────────┐
 │ Pending  │  Waiting for work or dependencies
-└────┬─────┘
+└────┬─────────────────────┐
+     │                     │
+     │                     │ has unmet
+     │                     │ dependencies
+     │                     ▼
+     │                ┌──────────┐
+     │                │ Blocked  │  Waiting for depends_on
+     │                └────┬─────┘
+     │                     │
+     │                     │ dependencies
+     │                     │ complete
+     │                     ▼
+     │                ┌──────────┐
+     │                │ Pending  │
+     │                └──────────┘
      │
      ▼
 ┌──────────┐
@@ -45,6 +59,71 @@
 ┌──────────┐
 │ Archived │  (optional, after retention period)
 └──────────┘
+
+Cancelled (any status)  ← chant cancel
+     │
+     └─────► Excluded from lists and work
+```
+
+## Spec Statuses
+
+### Pending
+- Spec created and ready for work
+- Or failed spec that has been retried
+- Can have unmet dependencies
+
+### Blocked
+- Pending spec with unmet dependencies
+- Waiting for one or more specs in `depends_on` to complete
+- Status automatically applied when spec is loaded if dependencies incomplete
+- Excluded from `chant work` until dependencies complete
+- Use `chant status` to see which specs are blocked
+
+### In Progress
+- Spec is currently being executed by an agent
+- Lock file created in `.chant/.locks/{spec-id}.pid`
+
+### Completed
+- Spec execution completed successfully
+- All acceptance criteria were checked
+- Commit hash recorded in frontmatter
+
+### Failed
+- Spec execution failed (agent error or acceptance criteria unchecked)
+- Can be retried with `chant resume {spec-id} --work`
+- Use `chant log {spec-id}` to view agent output
+
+### Cancelled
+- Spec soft-deleted with `chant cancel {spec-id}`
+- Status changed to `Cancelled`, file preserved
+- Excluded from `chant list` and `chant work`
+- Can still be viewed with `chant show` or filtered with `chant list --status cancelled`
+- Use `chant delete` if you want to permanently remove the spec file
+
+## Dependency Blocking
+
+Specs can declare dependencies using `depends_on`:
+
+```markdown
+---
+type: code
+status: pending
+depends_on:
+  - 2026-01-26-001-auth     # This spec depends on 001
+---
+```
+
+When a spec has unmet dependencies:
+1. Status automatically changes to `Blocked`
+2. Spec excluded from `chant work` (can't execute)
+3. Spec excluded from `chant list` (hidden by default)
+4. When all dependencies complete, status reverts to `Pending`
+5. Spec becomes available for work
+
+**View blocked specs:**
+```bash
+chant list --status blocked          # Show all blocked specs
+chant status                          # See overview with block reasons
 ```
 
 ## Retention Policies

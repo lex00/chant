@@ -498,6 +498,75 @@ Use `--max N` flag to limit below your total capacity when needed.
 
 Run `chant config --validate` to verify your configuration.
 
+## Agent Rotation
+
+When executing a single spec, distribute work across multiple configured agents using rotation strategies. This is useful for load balancing across multiple accounts or distributing expensive computations.
+
+### Configuration
+
+```markdown
+# .chant/config.md
+---
+parallel:
+  rotation_strategy: round-robin  # none, random, round-robin
+  agents:
+    - name: main
+      command: claude
+      weight: 1           # Selection weight (default: 1)
+    - name: alt1
+      command: claude-alt1
+      weight: 2           # Picked 2x as often as 'main'
+    - name: alt2
+      command: claude-alt2
+      weight: 1
+---
+```
+
+### Strategies
+
+**none** (default) - Always use first agent
+- Most conservative approach
+- Consistent behavior
+- Single point of contact
+
+**random** - Weighted random selection
+- Each agent selected with probability proportional to weight
+- Unpredictable agent assignment
+- Load distributed randomly across agents
+
+**round-robin** - Sequential rotation with weights
+- Agents selected in rotating order: main → alt1 → alt2 → main → ...
+- Agents with higher weights appear more frequently in rotation
+- Selection state persists in `.chant/store/rotation.json`
+- Ensures even distribution over time
+
+### Weight Configuration
+
+The `weight` field controls selection probability:
+
+```yaml
+agents:
+  - name: main
+    command: claude
+    weight: 1      # Default
+  - name: worker1
+    command: claude-1
+    weight: 2      # Selected 2x as often as main
+  - name: worker2
+    command: claude-2
+    weight: 3      # Selected 3x as often as main
+```
+
+In the above example, the rotation list would be: `[main, worker1, worker1, worker2, worker2, worker2]`
+
+With `round-robin`, specs are executed in sequence using agents from this list, ensuring `worker2` gets picked 3 times per 6-spec cycle.
+
+### Use Cases
+
+- **Load balancing**: Distribute work across multiple accounts with different rate limits
+- **Account rotation**: Rotate through multiple Claude accounts to avoid session conflicts
+- **Capacity planning**: Weight agents based on their availability/capacity
+
 ### Override Per Spec
 
 You can override the default provider in individual specs using frontmatter:
