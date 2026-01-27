@@ -65,6 +65,9 @@ pub struct ParallelConfig {
     /// Cleanup configuration
     #[serde(default)]
     pub cleanup: CleanupConfig,
+    /// Delay in milliseconds between spawning each agent to avoid API rate limiting
+    #[serde(default = "default_stagger_delay_ms")]
+    pub stagger_delay_ms: u64,
 }
 
 impl ParallelConfig {
@@ -79,6 +82,7 @@ impl Default for ParallelConfig {
         Self {
             agents: vec![AgentConfig::default()],
             cleanup: CleanupConfig::default(),
+            stagger_delay_ms: default_stagger_delay_ms(),
         }
     }
 }
@@ -139,6 +143,10 @@ pub struct CleanupConfig {
     /// Whether to automatically run cleanup without confirmation
     #[serde(default)]
     pub auto_run: bool,
+}
+
+fn default_stagger_delay_ms() -> u64 {
+    1000 // Default 1 second between agent spawns
 }
 
 fn default_cleanup_enabled() -> bool {

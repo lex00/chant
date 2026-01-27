@@ -160,6 +160,7 @@ mod tests {
                 make_agent("alt1", "claude-alt1", 1),
             ],
             cleanup: chant::config::CleanupConfig::default(),
+            stagger_delay_ms: 1000,
         };
 
         let result = select_agent_for_work("none", &config).unwrap();
@@ -171,6 +172,7 @@ mod tests {
         let config = ParallelConfig {
             agents: vec![],
             cleanup: chant::config::CleanupConfig::default(),
+            stagger_delay_ms: 1000,
         };
 
         let result = select_agent_for_work("none", &config).unwrap();
@@ -185,6 +187,7 @@ mod tests {
                 make_agent("alt1", "claude-alt1", 1),
             ],
             cleanup: chant::config::CleanupConfig::default(),
+            stagger_delay_ms: 1000,
         };
 
         // Run multiple times to check that both agents can be selected
@@ -214,6 +217,7 @@ mod tests {
                 make_agent("alt2", "claude-alt2", 1),
             ],
             cleanup: chant::config::CleanupConfig::default(),
+            stagger_delay_ms: 1000,
         };
 
         // Just verify round-robin selection returns valid agents
@@ -233,6 +237,7 @@ mod tests {
                 make_agent("alt1", "claude-alt1", 1),
             ],
             cleanup: chant::config::CleanupConfig::default(),
+            stagger_delay_ms: 1000,
         };
 
         // Verify round-robin respects weights by returning valid agents
@@ -251,6 +256,7 @@ mod tests {
                 make_agent("alt1", "claude-alt1", 1),
             ],
             cleanup: chant::config::CleanupConfig::default(),
+            stagger_delay_ms: 1000,
         };
 
         let result = select_agent_for_work("unknown-strategy", &config).unwrap();
@@ -268,6 +274,7 @@ mod tests {
                 make_agent("alt1", "claude-alt1", 1),
             ],
             cleanup: chant::config::CleanupConfig::default(),
+            stagger_delay_ms: 1000,
         };
 
         // Verify the function returns valid results

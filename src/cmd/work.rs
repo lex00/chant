@@ -680,6 +680,7 @@ pub fn cmd_work_parallel(
 ) -> Result<()> {
     use std::sync::mpsc;
     use std::thread;
+    use std::time::Duration;
 
     // Load specs: either specific IDs or all ready specs
     let ready_specs: Vec<Spec> = if !options.specific_ids.is_empty() {
@@ -1018,6 +1019,11 @@ pub fn cmd_work_parallel(
         });
 
         handles.push(handle);
+
+        // Apply stagger delay between spawning agents to avoid API rate limiting
+        if config.parallel.stagger_delay_ms > 0 {
+            thread::sleep(Duration::from_millis(config.parallel.stagger_delay_ms));
+        }
     }
 
     // Drop the original sender so the receiver knows when all threads are done
@@ -1664,6 +1670,7 @@ mod tests {
             parallel: chant::config::ParallelConfig {
                 agents,
                 cleanup: chant::config::CleanupConfig::default(),
+                stagger_delay_ms: 1000,
             },
             repos: vec![],
         }
