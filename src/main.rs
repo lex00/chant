@@ -192,6 +192,20 @@ enum Commands {
         /// Spec ID (full or partial). If omitted, check all completed specs.
         id: Option<String>,
     },
+    /// Resume a failed spec - resets it to pending and optionally re-runs it
+    Resume {
+        /// Spec ID (full or partial)
+        id: String,
+        /// Automatically re-execute the spec after resuming
+        #[arg(long)]
+        work: bool,
+        /// Prompt to use if --work is specified
+        #[arg(long)]
+        prompt: Option<String>,
+        /// Create a feature branch before re-executing (only with --work)
+        #[arg(long, num_args = 0..=1, require_equals = true, value_name = "PREFIX")]
+        branch: Option<String>,
+    },
     /// Delete a spec and clean up artifacts
     Delete {
         /// Spec ID (full or partial)
@@ -309,6 +323,12 @@ fn main() -> Result<()> {
         ),
         Commands::Diagnose { id } => cmd::lifecycle::cmd_diagnose(&id),
         Commands::Drift { id } => cmd::lifecycle::cmd_drift(id.as_deref()),
+        Commands::Resume {
+            id,
+            work,
+            prompt,
+            branch,
+        } => cmd::lifecycle::cmd_resume(&id, work, prompt.as_deref(), branch),
         Commands::Delete {
             id,
             force,
