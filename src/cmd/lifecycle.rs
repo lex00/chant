@@ -539,12 +539,49 @@ fn parse_member_specs_from_output(output: &str) -> Result<Vec<MemberSpec>> {
 // ARCHIVING
 // ============================================================================
 
+/// Check if we're in a git repository
+fn is_git_repo() -> bool {
+    std::process::Command::new("git")
+        .args(["rev-parse", "--git-dir"])
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
+/// Move a file using git mv, falling back to fs::rename if not in a git repo or if no_stage is true
+fn move_spec_file(src: &PathBuf, dst: &PathBuf, no_stage: bool) -> Result<()> {
+    let use_git = !no_stage && is_git_repo();
+
+    if use_git {
+        // Use git mv to stage the move
+        let status = std::process::Command::new("git")
+            .args(["mv", &src.to_string_lossy(), &dst.to_string_lossy()])
+            .status()
+            .context("Failed to run git mv")?;
+
+        if !status.success() {
+            anyhow::bail!("git mv failed for {}", src.display());
+        }
+    } else {
+        // Fall back to filesystem rename
+        std::fs::rename(src, dst).context(format!(
+            "Failed to move file from {} to {}",
+            src.display(),
+            dst.display()
+        ))?;
+    }
+
+    Ok(())
+}
+
 /// Archive completed specs (move from specs to archive directory)
 pub fn cmd_archive(
     spec_id: Option<&str>,
     dry_run: bool,
     older_than: Option<u64>,
     force: bool,
+    commit: bool,
+    no_stage: bool,
 ) -> Result<()> {
     let specs_dir = crate::cmd::ensure_initialized()?;
     let archive_dir = PathBuf::from(ARCHIVE_DIR);
@@ -715,7 +752,7 @@ pub fn cmd_archive(
 
         let dst = date_dir.join(format!("{}.md", spec.id));
 
-        std::fs::rename(&src, &dst)?;
+        move_spec_file(&src, &dst, no_stage)?;
         if spec::extract_driver_id(&spec.id).is_some() {
             println!("  {} {} (archived)", "→".cyan(), spec.id);
         } else {
@@ -736,6 +773,19 @@ pub fn cmd_archive(
         format!("Archived {} spec(s)", count)
     };
     println!("{} {}", "✓".green(), summary);
+
+    // Create commit if requested (and in a git repo)
+    if commit && is_git_repo() {
+        let status = std::process::Command::new("git")
+            .args(["commit", "-m", "Archive completed specs"])
+            .status()
+            .context("Failed to create commit")?;
+
+        if !status.success() {
+            anyhow::bail!("git commit failed");
+        }
+        println!("{} Created commit: Archive completed specs", "✓".green());
+    }
 
     Ok(())
 }

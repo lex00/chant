@@ -224,6 +224,12 @@ enum Commands {
         /// Force archive of non-completed specs
         #[arg(long)]
         force: bool,
+        /// Create a commit after archiving (only in git repos)
+        #[arg(long)]
+        commit: bool,
+        /// Use fs::rename instead of git mv (for special cases)
+        #[arg(long)]
+        no_stage: bool,
     },
     /// Merge completed spec branches back to main
     Merge {
@@ -520,7 +526,11 @@ fn main() -> Result<()> {
             dry_run,
             older_than,
             force,
-        } => cmd::lifecycle::cmd_archive(id.as_deref(), dry_run, older_than, force),
+            commit,
+            no_stage,
+        } => {
+            cmd::lifecycle::cmd_archive(id.as_deref(), dry_run, older_than, force, commit, no_stage)
+        }
         Commands::Merge {
             ids,
             all,
