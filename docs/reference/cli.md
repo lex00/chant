@@ -461,6 +461,43 @@ Grand Total:
   5.8 GB
 ```
 
+## Cleanup
+
+Remove orphan worktrees and stale artifacts from /tmp:
+
+```bash
+chant cleanup                         # Interactive - show and prompt
+chant cleanup --dry-run               # Show what would be cleaned
+chant cleanup --yes                   # Remove without prompting
+```
+
+**Example output:**
+
+```
+Scanning for orphan worktrees...
+
+Found 3 orphan worktrees:
+  chant-2026-01-25-01g-v2e (234 MB, 2 days)
+  chant-2026-01-25-01l-c41 (512 MB, 3 days)
+  chant-2026-01-24-009-8f2 (128 MB, 5 days)
+
+Total: 874 MB
+
+? Clean up these worktrees? [Y/n] y
+
+Removing chant-2026-01-25-01g-v2e... done
+Removing chant-2026-01-25-01l-c41... done
+Removing chant-2026-01-24-009-8f2... done
+Running git worktree prune... done
+
+Cleaned up 3 worktrees, 874 MB reclaimed
+```
+
+**Use cases:**
+- Recover disk space after failed or abandoned specs
+- Clean up stale worktrees from interrupted executions
+- Maintain clean /tmp directory on CI systems
+
 ## DAG Visualization (Planned)
 
 > **Status: Planned** - This feature is on the roadmap but not yet implemented.

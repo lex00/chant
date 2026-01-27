@@ -325,6 +325,15 @@ enum Commands {
     },
     /// Show disk usage of chant artifacts
     Disk,
+    /// Remove orphan worktrees and stale artifacts
+    Cleanup {
+        /// Show what would be cleaned without removing
+        #[arg(long)]
+        dry_run: bool,
+        /// Skip confirmation prompt and proceed with cleanup
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -491,6 +500,7 @@ fn main() -> Result<()> {
             output.as_deref(),
         ),
         Commands::Disk => cmd::disk::cmd_disk(),
+        Commands::Cleanup { dry_run, yes } => cmd::cleanup::cmd_cleanup(dry_run, yes),
     }
 }
 
