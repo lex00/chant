@@ -1,249 +1,190 @@
-# Search Syntax (Planned)
+# Search Command
 
-> **Status: Planned** - The `chant search` command is on the roadmap but not yet implemented. Spec filtering is currently available via `chant list --label`.
+> **Status: Implemented** - The `chant search` command performs simple text search across spec titles and body content.
 
 ## Overview
 
-Chant uses Tantivy for full-text search with structured query syntax.
+Search specs by title and body content with optional filters for date, status, type, and labels. Supports both interactive wizard mode (when run without arguments) and direct command-line search.
 
-## Basic Search
+## Interactive Wizard Mode
+
+Run without arguments to launch an interactive search wizard:
 
 ```bash
-chant search "authentication bug"
+chant search
 ```
 
-Searches spec body for matching terms.
+The wizard prompts for:
+- **Search query** (required)
+- **Search scope**: Title + Body, Title only, or Body only
+- **Date range**: Any time, Last 7 days, Last 2 weeks, Last month, or Custom
+- **Archive scope**: Include archived specs or not
+- **Status filter**: Any, pending, ready, in_progress, completed, failed
+- **Type filter**: Any, code, task, documentation, research
 
-## Query Syntax
+## Direct Search Mode
 
-### Field Search
-
-Search specific frontmatter fields:
+Search from the command line with optional filters:
 
 ```bash
-chant search "status:pending"
-chant search "type:code"
-chant search "project:auth"
-chant search "label:urgent"
-chant search "prompt:tdd"
-chant search "target_files:src/lib.rs"
+chant search "authentication"           # Search title + body
+chant search "auth" --title-only        # Search title only
+chant search "TODO" --body-only         # Search body only
+chant search "Auth" --case-sensitive    # Case-sensitive match
 ```
 
-### ID Search
+## Filtering
+
+### By Status
 
 ```bash
-chant search "id:2026-01-22-001"     # Prefix match
-chant search "id:2026-01-22-*"       # Wildcard
-chant search "id:auth-*"             # Project prefix
+chant search "api" --status pending      # Filter by status
+chant search "auth" --status completed
+chant search "fix" --status in_progress
 ```
 
-### Git Hash Search
+Supported statuses: `pending`, `ready`, `in_progress`, `completed`, `failed`
 
-Find specs by commit:
+### By Type
 
 ```bash
-chant search "commit:abc123"         # Specs with this commit
-chant search "branch:chant/2026-*"   # Specs on branch
+chant search "auth" --type code          # Filter by type
+chant search "doc" --type documentation
 ```
 
-### Body Search
+Supported types: `code`, `task`, `documentation`, `research`
 
-Fuzzy text search on spec body:
+### By Labels
 
 ```bash
-chant search "body:authentication"
-chant search "body:fix bug"          # Multiple terms (AND)
-chant search "body:\"fix the bug\""  # Exact phrase
+chant search "api" --label feature       # Filter by label
+chant search "bug" --label urgent --label critical
 ```
 
-### Combined Queries
+Labels use OR logic - specs with any matching label are included.
+
+### By Date Range
+
+Use relative dates or absolute dates:
 
 ```bash
-# Pending auth tasks mentioning OAuth
-chant search "status:pending project:auth OAuth"
+# Relative dates
+chant search "bug" --since 7d            # Last 7 days
+chant search "feature" --since 2w        # Last 2 weeks
+chant search "api" --since 1m            # Last month
+chant search "auth" --since 1w           # Last week
 
-# Failed tasks from this week
-chant search "status:failed created:2026-01-*"
+# Absolute dates
+chant search "auth" --since 2026-01-20   # Since specific date
+chant search "fix" --until 2026-01-15    # Until specific date
 
-# Urgent bugs
-chant search "label:urgent label:bug"
+# Date ranges
+chant search "api" --since 1w --until 3d # Between dates
 ```
 
-## Operators
+Date is based on the spec ID date component (YYYY-MM-DD prefix).
 
-### Boolean
+### Archive Scope
+
+By default, search includes both active and archived specs:
 
 ```bash
-chant search "auth AND OAuth"        # Both terms
-chant search "auth OR OAuth"         # Either term
-chant search "auth NOT OAuth"        # Exclude term
-chant search "(auth OR login) bug"   # Grouping
+chant search "auth"                     # Both active and archived
+chant search "auth" --active-only       # Only .chant/specs/
+chant search "auth" --archived-only     # Only .chant/archive/
 ```
 
-### Wildcards
+## Combined Filters
+
+Combine multiple filters with AND logic:
 
 ```bash
-chant search "auth*"                 # Prefix
-chant search "*tion"                 # Suffix (slow)
-chant search "auth?n"                # Single char
+# Pending code specs from last 2 weeks
+chant search "auth" --status pending --type code --since 2w
+
+# Failed API tasks with urgent label
+chant search "api" --status failed --label urgent
+
+# Recently completed documentation
+chant search "doc" --status completed --type documentation --since 1w
 ```
 
-### Ranges
+## Text Matching Options
+
+### Case-Sensitive Search
 
 ```bash
-chant search "created:[2026-01-01 TO 2026-01-31]"
-chant search "cost_usd:[0 TO 1.00]"
-chant search "tokens:[* TO 10000]"   # Up to 10k tokens
+chant search "Auth" --case-sensitive     # Matches exact case
 ```
 
-### Fuzzy
+By default, search is case-insensitive.
+
+### Title-Only Search
 
 ```bash
-chant search "authentcation~"        # Typo tolerance
-chant search "auth~2"                # Edit distance 2
+chant search "authentication" --title-only
 ```
 
-## Indexed Fields
+Searches only the spec title (first `# ` heading in the spec body).
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | keyword | Spec ID (exact match) |
-| `status` | keyword | pending, in_progress, completed, failed |
-| `type` | keyword | code, task, driver, group |
-| `project` | keyword | Project prefix |
-| `label` | keyword[] | Labels (multi-value) |
-| `prompt` | keyword | Prompt name |
-| `target_files` | keyword[] | Target file paths (multi-value) |
-| `created` | date | Creation date |
-| `updated` | date | Last update |
-| `completed` | date | Completion date |
-| `body` | text | Full spec body (analyzed) |
-| `subject` | text | First line of body |
-| `commit` | keyword | Git commit hash |
-| `branch` | keyword | Git branch |
-| `cost_usd` | float | Cost in USD |
-| `tokens` | integer | Token count |
-| `duration_s` | integer | Execution duration |
-| `group` | keyword | Group driver ID (find all members) |
-| `depends_on` | keyword[] | Dependency IDs |
-
-## Output Formats
+### Body-Only Search
 
 ```bash
-# Default (table)
-chant search "status:pending"
-
-# JSON (for scripting)
-chant search "status:pending" --json
-
-# IDs only
-chant search "status:pending" --ids-only
-
-# Count only
-chant search "status:pending" --count
+chant search "TODO" --body-only
 ```
 
-## Sorting
+Searches only the spec body (everything after frontmatter).
 
-```bash
-chant search "status:pending" --sort created:desc
-chant search "status:completed" --sort cost_usd:desc
-chant search "project:auth" --sort id:asc
+## Output Format
+
+Results show:
+- Status icon (● for active, ◌ for archived)
+- Spec ID (in cyan)
+- Spec title
+- Archive indicator `[archived]` for archived specs
+
 ```
+● 2026-01-24-001-abc Add user authentication
+● 2026-01-24-005-xyz Fix auth token refresh
+◌ 2026-01-20-003-def [archived] Old auth implementation
 
-## Pagination
-
-```bash
-chant search "status:pending" --limit 10 --offset 20
+Found 3 specs matching "auth"
 ```
 
 ## Examples
 
-### Find failed tasks from today
+### Find pending authentication tasks
 
 ```bash
-chant search "status:failed created:2026-01-22"
+chant search "auth" --status pending
 ```
 
-### Find expensive specs
+### Find recently completed code specs
 
 ```bash
-chant search "cost_usd:[5 TO *]" --sort cost_usd:desc
+chant search "" --status completed --type code --since 1w
 ```
 
-### Find specs targeting specific files
+### Find failed API tasks
 
 ```bash
-chant search "target_files:src/auth.rs"
-chant search "target_files:src/lib.rs"
+chant search "api" --status failed
 ```
 
-### Find incomplete members of a group
+### Find critical bugs added this week
 
 ```bash
-chant search "group:2026-01-22-001-x7m NOT status:completed"
+chant search "bug" --label critical --since 7d
 ```
 
-### Find specs by commit
+### Search only active specs
 
 ```bash
-chant search "commit:abc123def"
+chant search "refactor" --active-only
 ```
 
-### Find blocked specs
+### Case-sensitive search for specific term
 
 ```bash
-# Specs with unmet dependencies
-chant search "depends_on:* NOT status:completed"
+chant search "TODO" --body-only --case-sensitive
 ```
-
-### Find stale in-progress specs
-
-```bash
-chant search "status:in_progress updated:[* TO 2026-01-21]"
-```
-
-## Full-Text Analysis
-
-Body field is analyzed with:
-- Lowercase normalization
-- English stemming (running → run)
-- Stop word removal (the, a, is)
-
-```bash
-# These find the same specs:
-chant search "body:running"
-chant search "body:runs"
-chant search "body:run"
-```
-
-## CLI Shortcuts
-
-Common searches have shortcuts:
-
-```bash
-chant ready                          # status:pending (deps met)
-chant list --status pending          # status:pending
-chant list --failed                  # status:failed
-chant list --project auth            # project:auth
-```
-
-## Daemon Mode
-
-With daemon, search hits hot index (instant). Without daemon, builds index on-demand (slower for first query).
-
-```bash
-# Daemon running: ~5ms
-# No daemon: ~200ms (first), ~50ms (cached)
-```
-
-## Storage
-
-Tantivy index stored in `.chant/.index/`:
-```
-.chant/
-├── specs/         # Spec files
-└── .index/        # Tantivy search index
-```
-
-The index is memory-mapped and scales to millions of documents.

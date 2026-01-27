@@ -14,6 +14,7 @@ pub mod finalize;
 pub mod git_ops;
 pub mod lifecycle;
 pub mod model;
+pub mod search;
 pub mod spec;
 pub mod work;
 

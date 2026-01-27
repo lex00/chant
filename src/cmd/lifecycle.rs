@@ -755,7 +755,10 @@ IMPORTANT: Do NOT use git commit. Just resolve conflicts, stage files, and run g
     let conflict_spec = Spec {
         id: format!("conflict-{}", branch_name.replace('/', "-")),
         frontmatter: SpecFrontmatter::default(),
-        title: Some(format!("Resolve conflict: {} → {}", branch_name, onto_branch)),
+        title: Some(format!(
+            "Resolve conflict: {} → {}",
+            branch_name, onto_branch
+        )),
         body: message.clone(),
     };
 
@@ -904,7 +907,12 @@ pub fn cmd_merge(
 
         // If rebase mode, rebase branch onto main first
         if rebase {
-            println!("  {} Rebasing {} onto {}...", "→".cyan(), branch_name, main_branch);
+            println!(
+                "  {} Rebasing {} onto {}...",
+                "→".cyan(),
+                branch_name,
+                main_branch
+            );
 
             match git::rebase_branch(&branch_name, &main_branch) {
                 Ok(rebase_result) => {
@@ -931,7 +939,8 @@ pub fn cmd_merge(
                                 Err(e) => {
                                     let error_msg = format!("Auto-resolve failed: {}", e);
                                     errors.push((spec_id.clone(), error_msg.clone()));
-                                    skipped_conflicts.push((spec_id.clone(), rebase_result.conflicting_files));
+                                    skipped_conflicts
+                                        .push((spec_id.clone(), rebase_result.conflicting_files));
                                     println!("    {} {}", "✗".red(), error_msg);
                                     if !continue_on_error {
                                         anyhow::bail!("Merge stopped at spec {}.", spec_id);
@@ -948,7 +957,8 @@ pub fn cmd_merge(
                                 rebase_result.conflicting_files.join(", ")
                             );
                             errors.push((spec_id.clone(), error_msg.clone()));
-                            skipped_conflicts.push((spec_id.clone(), rebase_result.conflicting_files));
+                            skipped_conflicts
+                                .push((spec_id.clone(), rebase_result.conflicting_files));
                             println!("    {} {} (use --auto to resolve)", "✗".red(), error_msg);
                             if !continue_on_error {
                                 anyhow::bail!("Merge stopped at spec {}. Use --auto to auto-resolve conflicts.", spec_id);
@@ -1248,8 +1258,6 @@ fn check_files_for_changes(
     Ok(())
 }
 
-
-
 // ============================================================================
 // RESUME
 // ============================================================================
@@ -1309,7 +1317,6 @@ pub fn cmd_resume(
 
     Ok(())
 }
-
 
 #[cfg(test)]
 mod tests {

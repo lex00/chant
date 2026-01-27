@@ -317,10 +317,7 @@ pub fn get_conflicting_files() -> Result<Vec<String>> {
         // Conflict markers: UU, AA, DD, AU, UD, UA, DU
         if line.len() >= 3 {
             let status = &line[0..2];
-            if status.contains('U')
-                || status == "AA"
-                || status == "DD"
-            {
+            if status.contains('U') || status == "AA" || status == "DD" {
                 let file = line[3..].trim();
                 files.push(file.to_string());
             }

@@ -72,6 +72,41 @@ enum Commands {
         #[arg(long)]
         no_render: bool,
     },
+    /// Search specs by title and body content
+    Search {
+        /// Search query (omit to launch interactive wizard)
+        query: Option<String>,
+        /// Search title only
+        #[arg(long)]
+        title_only: bool,
+        /// Search body only
+        #[arg(long)]
+        body_only: bool,
+        /// Case-sensitive matching
+        #[arg(long)]
+        case_sensitive: bool,
+        /// Filter by status
+        #[arg(long)]
+        status: Option<String>,
+        /// Filter by type
+        #[arg(long)]
+        type_: Option<String>,
+        /// Filter by label (can be specified multiple times)
+        #[arg(long)]
+        label: Vec<String>,
+        /// Filter by date (relative: 7d, 2w, 1m; or absolute: YYYY-MM-DD)
+        #[arg(long)]
+        since: Option<String>,
+        /// Filter until date (relative: 7d, 2w, 1m; or absolute: YYYY-MM-DD)
+        #[arg(long)]
+        until: Option<String>,
+        /// Search active specs only
+        #[arg(long)]
+        active_only: bool,
+        /// Search archived specs only
+        #[arg(long)]
+        archived_only: bool,
+    },
     /// Execute a spec
     Work {
         /// Spec ID(s) (full or partial). If omitted with --parallel, executes all ready specs.
@@ -289,6 +324,31 @@ fn main() -> Result<()> {
         } => cmd::spec::cmd_add(&description, prompt.as_deref()),
         Commands::List { ready, label } => cmd::spec::cmd_list(ready, &label),
         Commands::Show { id, no_render } => cmd::spec::cmd_show(&id, no_render),
+        Commands::Search {
+            query,
+            title_only,
+            body_only,
+            case_sensitive,
+            status,
+            type_,
+            label,
+            since,
+            until,
+            active_only,
+            archived_only,
+        } => cmd::search::cmd_search(
+            query,
+            title_only,
+            body_only,
+            case_sensitive,
+            status,
+            type_,
+            label,
+            since,
+            until,
+            active_only,
+            archived_only,
+        ),
         Commands::Work {
             ids,
             prompt,
