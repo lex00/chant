@@ -328,6 +328,53 @@ These bypass the `justfile` wrapper, which means:
 - You lose consistency across the development team
 - Build environment assumptions aren't validated
 
+**Task Tool for Multi-Spec Parallelization:**
+- ❌ **Never** use the Task tool to parallelize spec execution across multiple specs
+- ❌ **Never** use the Task tool to invoke `chant work` on multiple specs in parallel
+- ❌ **Never** use the Task tool to orchestrate multiple spec executions
+
+**Why?** Chant has built-in orchestration for parallel execution:
+- Use `just chant work --parallel` to execute all ready specs in parallel
+- Use `just chant work --parallel --label <LABEL>` to execute labeled specs in parallel
+- Chant handles agent rotation, worktree management, and conflict resolution
+- Using Task to parallelize bypasses these safeguards and can cause conflicts
+
+**What IS allowed - Task tool within a single spec:**
+- ✅ **DO** use the Task tool to search/explore the codebase within a spec
+- ✅ **DO** use the Task tool with `subagent_type: Explore` for codebase analysis
+- ✅ **DO** use the Task tool with specialized agents (Bash, general-purpose, Plan) for research within a single spec
+- ✅ **DO** use parallel tool calls within a single spec execution (e.g., reading multiple files in parallel)
+
+**Examples:**
+
+❌ **WRONG - Using Task to parallelize specs:**
+```bash
+# Don't do this - it bypasses chant's orchestration
+Task tool with:
+  description: "Run spec 1"
+  subagent_type: bash
+  prompt: "just chant work 2026-01-27-001-abc"
+
+Task tool with:
+  description: "Run spec 2"
+  subagent_type: bash
+  prompt: "just chant work 2026-01-27-002-def"
+```
+
+✅ **RIGHT - Use chant's built-in parallel execution:**
+```bash
+just chant work --parallel
+```
+
+✅ **RIGHT - Using Task for search within a spec:**
+```bash
+# This is fine - exploring the codebase for the current spec
+Task tool with:
+  description: "Find all API endpoints"
+  subagent_type: Explore
+  prompt: "Find all files that define API endpoints"
+```
+
 ### On Unexpected Errors
 
 If an unexpected error occurs during spec execution:
