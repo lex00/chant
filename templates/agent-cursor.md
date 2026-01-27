@@ -112,16 +112,34 @@ Cursor should enforce:
 2. Run `just all` for final validation
 3. Create commit: `git commit -m "chant(SPEC-ID): description"`
 
+## Parallel Development with Merge Workflow
+
+When working with multiple parallel specs:
+
+1. Execute specs in parallel: `just chant work --parallel`
+2. Merge with conflict auto-resolution: `just chant merge --all --rebase --auto`
+
+The `--rebase` and `--auto` flags:
+- Rebase each branch sequentially onto main
+- Auto-resolve conflicts using AI agent
+- Create cleaner commit history for interdependent work
+
 ## Key Commands
 
 | Action | Command |
 |--------|---------|
 | Show spec | `just chant show <spec-id>` |
+| List specs | `just chant list` |
+| Search specs | `just chant search` |
+| Execute spec | `just chant work <spec-id>` |
+| Execute in parallel | `just chant work --parallel` |
+| Merge specs | `just chant merge --all --rebase --auto` |
 | Run tests | `just test` |
 | Check code | `just lint` |
 | Format code | `just fmt` |
 | Full check | `just check` |
-| List specs | `just chant list` |
+| Show status | `just chant status` |
+| Export specs | `just chant export` |
 
 ## Notes
 

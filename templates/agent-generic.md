@@ -142,11 +142,40 @@ All code must meet these standards:
 | View spec details | `just chant show <spec-id>` |
 | List all specs | `just chant list` |
 | Show ready specs | `just chant ready` |
+| Search specs | `just chant search` |
+| Execute spec | `just chant work <spec-id>` |
+| Execute parallel | `just chant work --parallel` |
+| Resume failed spec | `just chant resume <spec-id> --work` |
+| Merge specs | `just chant merge --all --rebase --auto` |
+| Show status | `just chant status` |
+| Export specs | `just chant export` |
+| Check disk usage | `just chant disk` |
 | Run tests | `just test` |
 | Run linter | `just lint` |
 | Format code | `just fmt` |
 | Full check | `just check` |
 | Build | `just build` |
+
+## Parallel Development Workflow
+
+When executing multiple parallel specs with potential conflicts:
+
+1. Execute all ready specs: `just chant work --parallel`
+2. Merge with automatic rebase and conflict resolution:
+   ```bash
+   just chant merge --all --rebase --auto
+   ```
+
+This creates a clean sequential integration of parallel work.
+
+## Interactive Wizard Modes
+
+Some commands support interactive wizard modes (invoked without certain arguments):
+
+- `just chant search` - Interactive spec search (omit query to launch wizard)
+- `just chant export` - Interactive export format selection (omit `--format` to launch)
+
+These wizards provide guided discovery of available options.
 
 ## Troubleshooting
 

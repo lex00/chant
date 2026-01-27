@@ -65,21 +65,45 @@ The spec system handles all file modifications, testing, and git management.
 
 ### Spec Management
 - `just chant add "description"` - Create a new spec
-- `just chant list` - List all specs
+- `just chant list` - List all specs (with `--ready`, `--type`, `--status`, `--label` filters)
 - `just chant show <spec-id>` - View spec details
 - `just chant ready` - Show ready specs
 - `just chant lint` - Validate all specs
+- `just chant search [query]` - Search specs (or launch interactive wizard with no query)
+- `just chant archive <spec-id>` - Archive completed specs
+- `just chant cancel <spec-id>` - Cancel a spec (soft-delete)
+- `just chant delete <spec-id>` - Delete a spec and clean up artifacts
 
 ### Execution
 - `just chant work <spec-id>` - Execute a spec
 - `just chant work <spec-id> --branch` - Execute with feature branch
+- `just chant work <spec-id> --branch=prefix` - Execute with custom branch prefix
 - `just chant work <spec-id> --pr` - Execute and create pull request
-- `just chant work --parallel` - Execute all ready specs
+- `just chant work --parallel` - Execute all ready specs in parallel
+- `just chant work <spec-id> --finalize` - Re-finalize an existing spec
+- `just chant work <spec-id> --force` - Skip validation of unchecked acceptance criteria
+- `just chant resume <spec-id>` - Resume a failed spec (resets to pending)
+- `just chant resume <spec-id> --work` - Resume and automatically re-execute
+- `just chant resume <spec-id> --work --branch` - Resume with feature branch
 
 ### Utilities
-- `just chant log <spec-id>` - Show spec execution log
+- `just chant log <spec-id>` - Show spec execution log (with `-n` for line count and `--no-follow` for static output)
 - `just chant status` - Project status summary
-- `just chant split <spec-id>` - Split spec into members
+- `just chant split <spec-id>` - Split spec into member specs
+- `just chant merge <spec-id>` - Merge spec branches back to main
+- `just chant merge --all` - Merge all completed spec branches
+- `just chant merge --rebase` - Rebase branches before merging
+- `just chant merge --rebase --auto` - Auto-resolve conflicts during rebase
+- `just chant diagnose <spec-id>` - Diagnose spec execution issues
+- `just chant drift [spec-id]` - Check for drift in documentation/research specs
+- `just chant export` - Export specs (interactive wizard for format selection)
+- `just chant export --format json` - Export specs as JSON
+- `just chant export --format csv` - Export specs as CSV
+- `just chant export --format markdown` - Export specs as Markdown
+- `just chant export --format json --output file.json` - Export to file
+- `just chant disk` - Show disk usage of chant artifacts
+- `just chant cleanup` - Remove orphan worktrees and stale artifacts
+- `just chant config --validate` - Validate configuration
 
 ## Development Commands
 
@@ -91,6 +115,48 @@ These are available via `just` and are typically run during spec execution:
 - `just fmt` - Format code with rustfmt
 - `just check` - Run format check, linter, and tests
 - `just all` - Full check and build
+
+## Parallel Development Workflow
+
+When working with multiple parallel specs that may have conflicts, use the merge with rebase workflow:
+
+1. **Execute specs in parallel**: `just chant work --parallel`
+2. **Merge with rebase for sequential integration**:
+   ```bash
+   just chant merge --all --rebase --auto
+   ```
+   This approach:
+   - Rebases each spec's branch onto main before merging
+   - Auto-resolves conflicts using the AI agent (with `--auto`)
+   - Creates clean, sequential commit history
+   - Better for complex features with interdependencies
+
+**Without `--rebase`**, specs are merged directly (useful when branches don't conflict).
+
+**Example workflow:**
+```bash
+# Execute three related specs in parallel
+just chant work --parallel
+
+# Check their status
+just chant status
+
+# Merge them sequentially, auto-resolving conflicts
+just chant merge --all --rebase --auto
+
+# Or preview merges first
+just chant merge --all --rebase --dry-run
+```
+
+## Interactive Wizard Modes
+
+Several commands support interactive wizard modes when invoked without arguments:
+
+- `just chant search` - Launch interactive search wizard for filtering and finding specs
+- `just chant export` - Launch interactive wizard to select export format and filters
+- Many commands with `--help` will show available wizard options
+
+Wizard modes provide guided interfaces for complex operations, making it easier to discover available filters and options.
 
 ## Releasing
 

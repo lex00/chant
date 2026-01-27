@@ -48,10 +48,33 @@ When implementing a spec:
 ### Spec Management
 
 - `chant add "description"` - Create a new spec
-- `chant list` - List all specs
+- `chant list` - List all specs (with `--ready`, `--type`, `--status`, `--label` filters)
 - `chant show <spec-id>` - View spec details
+- `chant ready` - Show ready specs
+- `chant lint` - Validate all specs
+- `chant search [query]` - Search specs (or launch interactive wizard)
+- `chant archive <spec-id>` - Archive completed specs
+- `chant cancel <spec-id>` - Cancel a spec
+- `chant delete <spec-id>` - Delete a spec and clean up artifacts
+
+### Execution
+
 - `chant work <spec-id>` - Execute a spec
+- `chant work <spec-id> --branch` - Execute with feature branch
+- `chant work --parallel` - Execute all ready specs in parallel
+- `chant resume <spec-id>` - Resume a failed spec
+- `chant resume <spec-id> --work` - Resume and automatically re-execute
+
+### Additional Tools
+
 - `chant log <spec-id>` - Show spec execution log
+- `chant split <spec-id>` - Split spec into member specs
+- `chant merge --all --rebase --auto` - Merge specs with conflict auto-resolution
+- `chant diagnose <spec-id>` - Diagnose spec execution issues
+- `chant drift [spec-id]` - Check for drift in documentation specs
+- `chant export` - Export specs (interactive wizard or with `--format json/csv/markdown`)
+- `chant disk` - Show disk usage of chant artifacts
+- `chant cleanup` - Remove orphan worktrees and stale artifacts
 
 ## Spec Format and Patterns
 
@@ -124,6 +147,15 @@ If an unexpected error occurs during spec execution:
 - Write tests that validate the spec's acceptance criteria
 - Run tests frequently during implementation
 - Ensure all tests pass before marking spec complete
+
+## Interactive Wizard Modes
+
+Several commands support interactive wizards for easier operation:
+
+- `chant search` - Launch interactive search wizard (omit query to trigger)
+- `chant export` - Launch interactive export wizard (omit `--format` to trigger)
+
+These wizards guide you through available filters and options.
 
 ## Key Principles
 

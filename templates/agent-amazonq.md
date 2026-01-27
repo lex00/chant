@@ -91,6 +91,18 @@ Review:
 3. Implement changes following spec requirements
 4. Write tests alongside implementation
 
+### Step 2a: Parallel Execution (if working with multiple specs)
+
+For multiple related specs, execute them in parallel:
+```bash
+just chant work --parallel
+```
+
+Then merge with automatic conflict resolution:
+```bash
+just chant merge --all --rebase --auto
+```
+
 ### Step 3: Validate
 
 ```bash
@@ -145,11 +157,17 @@ Amazon Q may suggest AWS services or patterns. Remember:
 |---------|---------|
 | View spec | `just chant show <spec-id>` |
 | List all specs | `just chant list` |
+| Search specs | `just chant search` |
+| Execute spec | `just chant work <spec-id>` |
+| Execute parallel | `just chant work --parallel` |
+| Merge specs | `just chant merge --all --rebase --auto` |
 | Run tests | `just test` |
 | Check code quality | `just lint` |
 | Auto-format code | `just fmt` |
 | Full validation | `just check` |
 | Build binary | `just build` |
+| Show status | `just chant status` |
+| Export specs | `just chant export` |
 
 ## Common Patterns in Chant
 
