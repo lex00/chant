@@ -182,6 +182,69 @@ impl Spec {
         count
     }
 
+    /// Count total checkboxes (both checked and unchecked) in the Acceptance Criteria section.
+    /// Used to assess spec complexity.
+    pub fn count_total_checkboxes(&self) -> usize {
+        let acceptance_criteria_marker = "## Acceptance Criteria";
+
+        // First pass: find the line number of the LAST AC heading outside code fences
+        let mut in_code_fence = false;
+        let mut last_ac_line: Option<usize> = None;
+
+        for (line_num, line) in self.body.lines().enumerate() {
+            let trimmed = line.trim_start();
+
+            if trimmed.starts_with("```") {
+                in_code_fence = !in_code_fence;
+                continue;
+            }
+
+            if !in_code_fence && trimmed.starts_with(acceptance_criteria_marker) {
+                last_ac_line = Some(line_num);
+            }
+        }
+
+        let Some(ac_start) = last_ac_line else {
+            return 0;
+        };
+
+        // Second pass: count all checkboxes from the AC section until next ## heading
+        let mut in_code_fence = false;
+        let mut in_ac_section = false;
+        let mut count = 0;
+
+        for (line_num, line) in self.body.lines().enumerate() {
+            let trimmed = line.trim_start();
+
+            if trimmed.starts_with("```") {
+                in_code_fence = !in_code_fence;
+                continue;
+            }
+
+            if in_code_fence {
+                continue;
+            }
+
+            if line_num == ac_start {
+                in_ac_section = true;
+                continue;
+            }
+
+            if in_ac_section && trimmed.starts_with("## ") {
+                break;
+            }
+
+            // Count both unchecked and checked checkboxes
+            if in_ac_section {
+                count += line.matches("- [ ]").count();
+                count += line.matches("- [x]").count();
+                count += line.matches("- [X]").count();
+            }
+        }
+
+        count
+    }
+
     /// Parse a spec from file content.
     pub fn parse(id: &str, content: &str) -> Result<Self> {
         let (frontmatter_str, body) = split_frontmatter(content);

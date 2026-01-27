@@ -7,6 +7,7 @@ use chant::paths::SPECS_DIR;
 
 pub mod agent;
 pub mod commits;
+pub mod config;
 pub mod finalize;
 pub mod git_ops;
 pub mod lifecycle;

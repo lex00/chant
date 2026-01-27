@@ -200,6 +200,12 @@ enum Commands {
         #[arg(long)]
         yes: bool,
     },
+    /// Validate configuration
+    Config {
+        /// Validate config semantically (check paths, prompts, limits)
+        #[arg(long)]
+        validate: bool,
+    },
     /// Show version information
     Version {
         /// Show additional build information
@@ -287,6 +293,14 @@ fn main() -> Result<()> {
             dry_run,
             yes,
         } => cmd::spec::cmd_delete(&id, force, cascade, delete_branch, dry_run, yes),
+        Commands::Config { validate } => {
+            if validate {
+                cmd::config::cmd_config_validate()
+            } else {
+                println!("Usage: chant config --validate");
+                Ok(())
+            }
+        }
         Commands::Version { verbose } => cmd_version(verbose),
     }
 }

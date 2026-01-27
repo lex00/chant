@@ -29,6 +29,166 @@ use chant::spec::SpecFrontmatter;
 // VALIDATION HELPERS
 // ============================================================================
 
+/// Thresholds for spec complexity warnings
+const COMPLEXITY_THRESHOLD_CRITERIA: usize = 5;
+const COMPLEXITY_THRESHOLD_FILES: usize = 5;
+const COMPLEXITY_THRESHOLD_WORDS: usize = 500;
+
+/// Regex pattern for spec IDs: YYYY-MM-DD-XXX-abc with optional .N suffix
+const SPEC_ID_PATTERN: &str = r"\b\d{4}-\d{2}-\d{2}-[0-9a-z]{3}-[0-9a-z]{3}(?:\.\d+)?\b";
+
+/// Thresholds for "simple" spec detection (model waste)
+const SIMPLE_THRESHOLD_CRITERIA: usize = 3;
+const SIMPLE_THRESHOLD_FILES: usize = 2;
+const SIMPLE_THRESHOLD_WORDS: usize = 200;
+
+/// Validate spec complexity and return warnings.
+/// Detects specs that may be too complex for haiku execution.
+pub fn validate_spec_complexity(spec: &Spec) -> Vec<String> {
+    let mut warnings = Vec::new();
+
+    // Count total acceptance criteria
+    let criteria_count = spec.count_total_checkboxes();
+    if criteria_count > COMPLEXITY_THRESHOLD_CRITERIA {
+        warnings.push(format!(
+            "Spec has {} acceptance criteria (>{}) - consider splitting for haiku",
+            criteria_count, COMPLEXITY_THRESHOLD_CRITERIA
+        ));
+    }
+
+    // Count target files
+    if let Some(files) = &spec.frontmatter.target_files {
+        if files.len() > COMPLEXITY_THRESHOLD_FILES {
+            warnings.push(format!(
+                "Spec touches {} files (>{}) - consider splitting",
+                files.len(),
+                COMPLEXITY_THRESHOLD_FILES
+            ));
+        }
+    }
+
+    // Count words in body
+    let word_count = spec.body.split_whitespace().count();
+    if word_count > COMPLEXITY_THRESHOLD_WORDS {
+        warnings.push(format!(
+            "Spec description is {} words (>{}) - may be too complex for haiku",
+            word_count, COMPLEXITY_THRESHOLD_WORDS
+        ));
+    }
+
+    warnings
+}
+
+/// Validate spec for coupling - detect references to other spec IDs in body text.
+/// Specs should be self-contained; use depends_on for explicit dependencies.
+pub fn validate_spec_coupling(spec: &Spec) -> Vec<String> {
+    use regex::Regex;
+
+    let mut warnings = Vec::new();
+
+    // Build regex for spec ID pattern
+    let re = match Regex::new(SPEC_ID_PATTERN) {
+        Ok(r) => r,
+        Err(_) => return warnings,
+    };
+
+    // Remove code blocks from body before searching
+    let body_without_code = remove_code_blocks(&spec.body);
+
+    // Find all spec IDs in the body (excluding code blocks)
+    let mut referenced_ids: Vec<String> = re
+        .find_iter(&body_without_code)
+        .map(|m| m.as_str().to_string())
+        .filter(|id| {
+            // Exclude the spec's own ID
+            !id.starts_with(&spec.id) && !spec.id.starts_with(id)
+        })
+        .collect();
+
+    // Deduplicate
+    referenced_ids.sort();
+    referenced_ids.dedup();
+
+    if !referenced_ids.is_empty() {
+        let ids_str = referenced_ids.join(", ");
+        warnings.push(format!(
+            "Spec references other spec ID(s) in body: {} - use depends_on for dependencies",
+            ids_str
+        ));
+    }
+
+    warnings
+}
+
+/// Remove code blocks from text (content between ``` markers)
+fn remove_code_blocks(text: &str) -> String {
+    let mut result = String::new();
+    let mut in_code_block = false;
+
+    for line in text.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("```") {
+            in_code_block = !in_code_block;
+            continue;
+        }
+        if !in_code_block {
+            result.push_str(line);
+            result.push('\n');
+        }
+    }
+
+    result
+}
+
+/// Validate model usage - warn when expensive models are used on simple specs.
+/// Haiku should be used for straightforward specs; opus/sonnet for complex work.
+pub fn validate_model_waste(spec: &Spec) -> Vec<String> {
+    let mut warnings = Vec::new();
+
+    // Only check if model is explicitly set to opus or sonnet
+    let model = match &spec.frontmatter.model {
+        Some(m) => m.to_lowercase(),
+        None => return warnings,
+    };
+
+    let is_expensive = model.contains("opus") || model.contains("sonnet");
+    if !is_expensive {
+        return warnings;
+    }
+
+    // Don't warn on driver/research specs - they benefit from smarter models
+    let spec_type = spec.frontmatter.r#type.as_str();
+    if spec_type == "driver" || spec_type == "group" || spec_type == "research" {
+        return warnings;
+    }
+
+    // Check if spec looks simple
+    let criteria_count = spec.count_total_checkboxes();
+    let file_count = spec
+        .frontmatter
+        .target_files
+        .as_ref()
+        .map(|f| f.len())
+        .unwrap_or(0);
+    let word_count = spec.body.split_whitespace().count();
+
+    let is_simple = criteria_count <= SIMPLE_THRESHOLD_CRITERIA
+        && file_count <= SIMPLE_THRESHOLD_FILES
+        && word_count <= SIMPLE_THRESHOLD_WORDS;
+
+    if is_simple {
+        warnings.push(format!(
+            "Spec uses '{}' but appears simple ({} criteria, {} files, {} words) - consider haiku",
+            spec.frontmatter.model.as_ref().unwrap(),
+            criteria_count,
+            file_count,
+            word_count
+        ));
+    }
+
+    warnings
+}
+
 /// Validate a spec based on its type and return warnings.
 /// Returns a vector of warning messages for type-specific validation issues.
 pub fn validate_spec_type(spec: &Spec) -> Vec<String> {
@@ -299,7 +459,22 @@ pub fn cmd_lint() -> Result<()> {
         }
 
         // Type-specific validation
-        let spec_warnings = validate_spec_type(spec);
+        let type_warnings = validate_spec_type(spec);
+
+        // Complexity validation
+        let complexity_warnings = validate_spec_complexity(spec);
+
+        // Coupling validation (spec references other spec IDs)
+        let coupling_warnings = validate_spec_coupling(spec);
+
+        // Model waste validation (expensive model on simple spec)
+        let model_warnings = validate_model_waste(spec);
+
+        // Combine all warnings
+        let mut spec_warnings = type_warnings;
+        spec_warnings.extend(complexity_warnings);
+        spec_warnings.extend(coupling_warnings);
+        spec_warnings.extend(model_warnings);
 
         if spec_issues.is_empty() && spec_warnings.is_empty() {
             println!("{} {}", "✓".green(), spec.id);
@@ -4193,5 +4368,381 @@ git:
         // Task specs don't have type-specific validation
         let warnings = super::validate_spec_type(&spec);
         assert!(warnings.is_empty());
+    }
+
+    // ========================================================================
+    // validate_spec_complexity tests
+    // ========================================================================
+
+    #[test]
+    fn test_complexity_warns_on_too_many_criteria() {
+        let spec = Spec {
+            id: "test-complex".to_string(),
+            frontmatter: SpecFrontmatter::default(),
+            title: Some("Complex spec".to_string()),
+            body: r#"# Complex spec
+
+## Acceptance Criteria
+
+- [ ] Criterion 1
+- [ ] Criterion 2
+- [ ] Criterion 3
+- [ ] Criterion 4
+- [ ] Criterion 5
+- [ ] Criterion 6
+"#
+            .to_string(),
+        };
+
+        let warnings = super::validate_spec_complexity(&spec);
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("6 acceptance criteria"));
+        assert!(warnings[0].contains("consider splitting"));
+    }
+
+    #[test]
+    fn test_complexity_no_warning_at_threshold() {
+        let spec = Spec {
+            id: "test-ok".to_string(),
+            frontmatter: SpecFrontmatter::default(),
+            title: Some("OK spec".to_string()),
+            body: r#"# OK spec
+
+## Acceptance Criteria
+
+- [ ] Criterion 1
+- [ ] Criterion 2
+- [ ] Criterion 3
+- [ ] Criterion 4
+- [ ] Criterion 5
+"#
+            .to_string(),
+        };
+
+        let warnings = super::validate_spec_complexity(&spec);
+        assert!(
+            warnings.is_empty(),
+            "Should not warn at exactly 5 criteria"
+        );
+    }
+
+    #[test]
+    fn test_complexity_warns_on_too_many_files() {
+        let spec = Spec {
+            id: "test-many-files".to_string(),
+            frontmatter: SpecFrontmatter {
+                target_files: Some(vec![
+                    "file1.rs".to_string(),
+                    "file2.rs".to_string(),
+                    "file3.rs".to_string(),
+                    "file4.rs".to_string(),
+                    "file5.rs".to_string(),
+                    "file6.rs".to_string(),
+                ]),
+                ..Default::default()
+            },
+            title: Some("Many files".to_string()),
+            body: "# Many files".to_string(),
+        };
+
+        let warnings = super::validate_spec_complexity(&spec);
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("6 files"));
+        assert!(warnings[0].contains("consider splitting"));
+    }
+
+    #[test]
+    fn test_complexity_warns_on_long_description() {
+        // Create a body with >500 words
+        let long_body = format!(
+            "# Long spec\n\n{}",
+            "word ".repeat(510) // 510 words
+        );
+
+        let spec = Spec {
+            id: "test-long".to_string(),
+            frontmatter: SpecFrontmatter::default(),
+            title: Some("Long spec".to_string()),
+            body: long_body,
+        };
+
+        let warnings = super::validate_spec_complexity(&spec);
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("words"));
+        assert!(warnings[0].contains("too complex"));
+    }
+
+    #[test]
+    fn test_complexity_multiple_warnings() {
+        // Create a body with >500 words and many criteria
+        let long_body = format!(
+            "# Complex spec\n\n{}\n\n## Acceptance Criteria\n\n- [ ] A\n- [ ] B\n- [ ] C\n- [ ] D\n- [ ] E\n- [ ] F\n",
+            "word ".repeat(510)
+        );
+
+        let spec = Spec {
+            id: "test-multi".to_string(),
+            frontmatter: SpecFrontmatter {
+                target_files: Some(vec![
+                    "a.rs".to_string(),
+                    "b.rs".to_string(),
+                    "c.rs".to_string(),
+                    "d.rs".to_string(),
+                    "e.rs".to_string(),
+                    "f.rs".to_string(),
+                ]),
+                ..Default::default()
+            },
+            title: Some("Multi warning".to_string()),
+            body: long_body,
+        };
+
+        let warnings = super::validate_spec_complexity(&spec);
+        assert_eq!(warnings.len(), 3, "Should warn on criteria, files, and words");
+    }
+
+    #[test]
+    fn test_complexity_simple_spec_no_warnings() {
+        let spec = Spec {
+            id: "test-simple".to_string(),
+            frontmatter: SpecFrontmatter {
+                target_files: Some(vec!["single.rs".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Simple spec".to_string()),
+            body: "# Simple spec\n\nDo the thing.\n\n## Acceptance Criteria\n\n- [ ] Done"
+                .to_string(),
+        };
+
+        let warnings = super::validate_spec_complexity(&spec);
+        assert!(warnings.is_empty());
+    }
+
+    // ========================================================================
+    // validate_spec_coupling tests
+    // ========================================================================
+
+    #[test]
+    fn test_coupling_detects_spec_id_reference() {
+        let spec = Spec {
+            id: "2026-01-26-00a-xyz".to_string(),
+            frontmatter: SpecFrontmatter::default(),
+            title: Some("Test spec".to_string()),
+            body: "# Test spec\n\nSee 2026-01-26-00b-abc for details.".to_string(),
+        };
+
+        let warnings = super::validate_spec_coupling(&spec);
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("2026-01-26-00b-abc"));
+        assert!(warnings[0].contains("depends_on"));
+    }
+
+    #[test]
+    fn test_coupling_excludes_own_id() {
+        let spec = Spec {
+            id: "2026-01-26-00a-xyz".to_string(),
+            frontmatter: SpecFrontmatter::default(),
+            title: Some("Test spec".to_string()),
+            body: "# Test spec 2026-01-26-00a-xyz\n\nThis is about 2026-01-26-00a-xyz itself."
+                .to_string(),
+        };
+
+        let warnings = super::validate_spec_coupling(&spec);
+        assert!(warnings.is_empty(), "Should not warn about own ID");
+    }
+
+    #[test]
+    fn test_coupling_excludes_code_blocks() {
+        let spec = Spec {
+            id: "2026-01-26-00a-xyz".to_string(),
+            frontmatter: SpecFrontmatter::default(),
+            title: Some("Test spec".to_string()),
+            body: r#"# Test spec
+
+Example:
+
+```bash
+chant show 2026-01-26-00b-abc
+```
+
+No coupling here.
+"#
+            .to_string(),
+        };
+
+        let warnings = super::validate_spec_coupling(&spec);
+        assert!(warnings.is_empty(), "Should not warn about IDs in code blocks");
+    }
+
+    #[test]
+    fn test_coupling_detects_multiple_refs() {
+        let spec = Spec {
+            id: "2026-01-26-00a-xyz".to_string(),
+            frontmatter: SpecFrontmatter::default(),
+            title: Some("Test spec".to_string()),
+            body: "# Test\n\nRelated: 2026-01-26-00b-abc and 2026-01-26-00c-def".to_string(),
+        };
+
+        let warnings = super::validate_spec_coupling(&spec);
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("2026-01-26-00b-abc"));
+        assert!(warnings[0].contains("2026-01-26-00c-def"));
+    }
+
+    #[test]
+    fn test_coupling_handles_member_spec_ids() {
+        let spec = Spec {
+            id: "2026-01-26-00a-xyz".to_string(),
+            frontmatter: SpecFrontmatter::default(),
+            title: Some("Test spec".to_string()),
+            body: "# Test\n\nSee member 2026-01-26-00b-abc.1 for part 1.".to_string(),
+        };
+
+        let warnings = super::validate_spec_coupling(&spec);
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("2026-01-26-00b-abc.1"));
+    }
+
+    #[test]
+    fn test_coupling_no_warnings_clean_spec() {
+        let spec = Spec {
+            id: "2026-01-26-00a-xyz".to_string(),
+            frontmatter: SpecFrontmatter::default(),
+            title: Some("Clean spec".to_string()),
+            body: "# Clean spec\n\nThis spec is self-contained.\n\n## Acceptance Criteria\n\n- [ ] Done".to_string(),
+        };
+
+        let warnings = super::validate_spec_coupling(&spec);
+        assert!(warnings.is_empty());
+    }
+
+    // ========================================================================
+    // validate_model_waste tests
+    // ========================================================================
+
+    #[test]
+    fn test_model_waste_warns_on_opus_simple_spec() {
+        let spec = Spec {
+            id: "test-simple".to_string(),
+            frontmatter: SpecFrontmatter {
+                model: Some("claude-opus-4".to_string()),
+                target_files: Some(vec!["file.rs".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Simple".to_string()),
+            body: "# Simple\n\nShort.\n\n## Acceptance Criteria\n\n- [ ] Done".to_string(),
+        };
+
+        let warnings = super::validate_model_waste(&spec);
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("opus"));
+        assert!(warnings[0].contains("consider haiku"));
+    }
+
+    #[test]
+    fn test_model_waste_warns_on_sonnet_simple_spec() {
+        let spec = Spec {
+            id: "test-simple".to_string(),
+            frontmatter: SpecFrontmatter {
+                model: Some("claude-sonnet-4".to_string()),
+                target_files: Some(vec!["file.rs".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Simple".to_string()),
+            body: "# Simple\n\nShort.".to_string(),
+        };
+
+        let warnings = super::validate_model_waste(&spec);
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("sonnet"));
+    }
+
+    #[test]
+    fn test_model_waste_no_warning_on_haiku() {
+        let spec = Spec {
+            id: "test-simple".to_string(),
+            frontmatter: SpecFrontmatter {
+                model: Some("haiku".to_string()),
+                ..Default::default()
+            },
+            title: Some("Simple".to_string()),
+            body: "# Simple\n\nShort.".to_string(),
+        };
+
+        let warnings = super::validate_model_waste(&spec);
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn test_model_waste_no_warning_without_model() {
+        let spec = Spec {
+            id: "test-simple".to_string(),
+            frontmatter: SpecFrontmatter::default(),
+            title: Some("Simple".to_string()),
+            body: "# Simple\n\nShort.".to_string(),
+        };
+
+        let warnings = super::validate_model_waste(&spec);
+        assert!(warnings.is_empty(), "Should not warn when model not set");
+    }
+
+    #[test]
+    fn test_model_waste_no_warning_on_complex_spec() {
+        let long_body = format!(
+            "# Complex\n\n{}\n\n## Acceptance Criteria\n\n- [ ] A\n- [ ] B\n- [ ] C\n- [ ] D",
+            "word ".repeat(250)
+        );
+
+        let spec = Spec {
+            id: "test-complex".to_string(),
+            frontmatter: SpecFrontmatter {
+                model: Some("opus".to_string()),
+                target_files: Some(vec![
+                    "a.rs".to_string(),
+                    "b.rs".to_string(),
+                    "c.rs".to_string(),
+                ]),
+                ..Default::default()
+            },
+            title: Some("Complex".to_string()),
+            body: long_body,
+        };
+
+        let warnings = super::validate_model_waste(&spec);
+        assert!(warnings.is_empty(), "Should not warn on complex specs");
+    }
+
+    #[test]
+    fn test_model_waste_no_warning_on_driver() {
+        let spec = Spec {
+            id: "test-driver".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "driver".to_string(),
+                model: Some("opus".to_string()),
+                ..Default::default()
+            },
+            title: Some("Driver".to_string()),
+            body: "# Driver\n\nCoordinate.".to_string(),
+        };
+
+        let warnings = super::validate_model_waste(&spec);
+        assert!(warnings.is_empty(), "Should not warn on driver specs");
+    }
+
+    #[test]
+    fn test_model_waste_no_warning_on_research() {
+        let spec = Spec {
+            id: "test-research".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "research".to_string(),
+                model: Some("opus".to_string()),
+                ..Default::default()
+            },
+            title: Some("Research".to_string()),
+            body: "# Research\n\nAnalyze.".to_string(),
+        };
+
+        let warnings = super::validate_model_waste(&spec);
+        assert!(warnings.is_empty(), "Should not warn on research specs");
     }
 }
