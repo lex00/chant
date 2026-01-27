@@ -293,10 +293,7 @@ fn perform_search(opts: &SearchOptions) -> Result<()> {
 
     // Load archived specs
     if !opts.active_only {
-        let archive_path = specs_dir
-            .parent()
-            .ok_or_else(|| anyhow::anyhow!("Cannot determine archive path"))?
-            .join(ARCHIVE_DIR);
+        let archive_path = std::path::PathBuf::from(ARCHIVE_DIR);
         if archive_path.exists() {
             let mut archived = spec::load_all_specs(&archive_path)?;
             all_specs.append(&mut archived);
