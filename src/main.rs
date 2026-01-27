@@ -69,6 +69,15 @@ enum Commands {
         /// Filter by status (pending, in_progress, completed, failed, blocked, cancelled)
         #[arg(long)]
         status: Option<String>,
+        /// List specs from all configured repos in global config
+        #[arg(long)]
+        global: bool,
+        /// Filter to specific repository (implies --global)
+        #[arg(long)]
+        repo: Option<String>,
+        /// Filter to specific project within repository
+        #[arg(long)]
+        project: Option<String>,
     },
     /// Show spec details
     Show {
@@ -400,7 +409,18 @@ fn main() -> Result<()> {
             label,
             r#type,
             status,
-        } => cmd::spec::cmd_list(ready, &label, r#type.as_deref(), status.as_deref()),
+            global,
+            repo,
+            project,
+        } => cmd::spec::cmd_list(
+            ready,
+            &label,
+            r#type.as_deref(),
+            status.as_deref(),
+            global,
+            repo.as_deref(),
+            project.as_deref(),
+        ),
         Commands::Show { id, no_render } => cmd::spec::cmd_show(&id, no_render),
         Commands::Search {
             query,
@@ -459,7 +479,7 @@ fn main() -> Result<()> {
         ),
         Commands::Mcp => mcp::run_server(),
         Commands::Status => cmd::spec::cmd_status(),
-        Commands::Ready => cmd::spec::cmd_list(true, &[], None, None),
+        Commands::Ready => cmd::spec::cmd_list(true, &[], None, None, false, None, None),
         Commands::Lint => cmd::spec::cmd_lint(),
         Commands::Log {
             id,
