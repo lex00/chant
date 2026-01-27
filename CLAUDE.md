@@ -71,8 +71,8 @@ The spec system handles all file modifications, testing, and git management.
 - `just chant lint` - Validate all specs
 - `just chant search [query]` - Search specs (or launch interactive wizard with no query)
 - `just chant archive <spec-id>` - Archive completed specs
-- `just chant cancel <spec-id>` - Cancel a spec (soft-delete)
-- `just chant delete <spec-id>` - Delete a spec and clean up artifacts
+- `just chant cancel <spec-id>` - Cancel a spec (soft-delete); proceeds without prompting in non-TTY contexts
+- `just chant delete <spec-id>` - Delete a spec and clean up artifacts; proceeds without prompting in non-TTY contexts
 
 ### Execution
 - `just chant work <spec-id>` - Execute a spec
@@ -86,11 +86,17 @@ The spec system handles all file modifications, testing, and git management.
 - `just chant resume <spec-id> --work` - Resume and automatically re-execute
 - `just chant resume <spec-id> --work --branch` - Resume with feature branch
 
+### Autonomy Commands
+- `just chant verify [<spec-id>]` - Verify acceptance criteria still pass; checks all completed specs if no ID provided
+- `just chant verify --all` - Verify all completed specs
+- `just chant replay <spec-id>` - Re-execute a completed spec
+- `just chant replay <spec-id> --yes` - Re-execute without confirmation prompt
+
 ### Utilities
 - `just chant log <spec-id>` - Show spec execution log (with `-n` for line count and `--no-follow` for static output)
 - `just chant status` - Project status summary
-- `just chant split <spec-id>` - Split spec into member specs
-- `just chant merge <spec-id>` - Merge spec branches back to main
+- `just chant split <spec-id>` - Split spec into member specs; auto-lints created member specs
+- `just chant merge <spec-id>` - Merge spec branches back to main; proceeds without prompting in non-TTY contexts
 - `just chant merge --all` - Merge all completed spec branches
 - `just chant merge --rebase` - Rebase branches before merging
 - `just chant merge --rebase --auto` - Auto-resolve conflicts during rebase
@@ -205,6 +211,23 @@ chant/
 └── CLAUDE.md             # This file
 ```
 
+## Configuration
+
+### Agent Rotation
+
+When executing specs in parallel, chant can distribute work across agents using different rotation strategies. Configure rotation in your chant configuration:
+
+```yaml
+parallel:
+  rotation_strategy: round-robin  # Options: none, random, round-robin
+```
+
+- **none**: No rotation; use single agent for all specs
+- **random**: Randomly assign specs to available agents
+- **round-robin**: Distribute specs sequentially across agents (default)
+
+This is useful for balancing load and ensuring reproducible execution patterns during parallel spec execution.
+
 ## Spec Format and Patterns
 
 ### Spec Filenames
@@ -215,7 +238,7 @@ chant/
 ```yaml
 ---
 type: code | task | driver | group
-status: pending | ready | in_progress | blocked | completed
+status: pending | ready | in_progress | blocked | completed | cancelled
 target_files:
 - relative/path/to/file
 model: claude-opus-4-5  # Added after all acceptance criteria met
@@ -227,6 +250,14 @@ model: claude-opus-4-5  # Added after all acceptance criteria met
 - **task**: Manual work, research, planning
 - **driver**: Group multiple specs for coordinated execution
 - **group**: Alias for driver
+
+### Spec Statuses
+- **pending**: Initial state; ready for acceptance criteria to be defined or refined
+- **ready**: All acceptance criteria are defined; spec can be executed
+- **in_progress**: Spec is currently being executed
+- **blocked**: Dependencies are unmet; automatically applied when a spec depends on incomplete work
+- **completed**: Spec has been executed and acceptance criteria are met
+- **cancelled**: Spec has been soft-deleted; does not appear in normal listings
 
 ### Split Specs
 Split specs use a `.N` suffix: `2026-01-24-01e-o0l.1`, `2026-01-24-01e-o0l.2`
