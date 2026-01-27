@@ -116,7 +116,7 @@ The prompt does the heavy lifting. Core just orchestrates.
 
 ## Version Roadmap
 
-### Current Status: v0.3.0 (released)
+### Current Status: v0.3.1 (released)
 
 Development moved faster than the original phased plan. Most features from Phases 0-8 are implemented.
 
@@ -138,6 +138,7 @@ Development moved faster than the original phased plan. Most features from Phase
 |---------|-------|
 | v0.2.0 | ✅ Released - Autonomy layer (`drift`, `verify`, `replay` commands) |
 | v0.3.0 | ✅ Released - Multi-repo support (cross-repo deps, `--global` flag) |
+| v0.3.1 | ✅ Released - Robustness (staggered launch, throttle/retry, init --force, non-TTY hints) |
 | v0.4.0 | Full-text search (Tantivy indexing) |
 | v0.5.0 | Daemon mode for background execution |
 | v1.0.0 | Stable API, complete documentation |
@@ -227,9 +228,11 @@ See [observability.md](../scale/observability.md), [errors.md](../reference/erro
 **Implemented:**
 - ✅ PID-based locking to prevent concurrent work
 - ✅ `--parallel` flag for concurrent spec execution
-- ✅ `chant archive` command
+- ✅ `chant archive` command with `--commit` and `--no-stage` flags
 - ✅ Agent rotation strategies (`none`, `random`, `round-robin`)
 - ✅ Multi-agent configuration with weighted selection
+- ✅ Staggered agent launch (`parallel.stagger_delay_ms` config)
+- ✅ API throttle detection and exponential backoff retry (`max_retries`, `retry_delay_ms`)
 
 **Not yet implemented:**
 - ❌ Daemon mode (background service)
@@ -260,6 +263,8 @@ See [autonomy.md](../concepts/autonomy.md).
 - ✅ `Blocked` status (auto-applied for unmet dependencies)
 - ✅ `Cancelled` status for soft-deleted specs
 - ✅ List filtering by `--status` (including blocked, cancelled)
+- ✅ `chant init --force` flag to update existing installations
+- ✅ Non-TTY usage hints for `search`, `export`, `work` commands
 
 **Not yet implemented:**
 - ❌ Notifications (webhooks, email, Slack)
@@ -273,7 +278,7 @@ See [ecosystem.md](../guides/ecosystem.md), [approvals.md](../guides/approvals.m
 See [Testing Strategy](../reference/testing.md) for test specifications.
 
 Current test coverage:
-- 450+ tests (unit, integration, end-to-end)
+- 456+ tests (unit, integration, end-to-end)
 - Unit tests in `src/`
 - Integration tests in `tests/`
 
