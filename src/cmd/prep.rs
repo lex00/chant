@@ -1,9 +1,14 @@
 //! Prep command for retrieving and cleaning spec content for agents.
 //!
-//! Outputs the spec content with preprocessing:
-//! - Reads the spec file
-//! - Strips any agent conversation sections (for replayed specs)
-//! - Outputs clean spec content for the agent to read
+//! This module implements the `chant prep` subcommand, which loads a specification
+//! and outputs its content in a clean format suitable for agents to read. It handles
+//! preprocessing of spec content to remove artifacts from previous executions.
+//!
+//! Key responsibilities:
+//! - Loads spec files from the specs directory
+//! - Strips agent conversation sections that may have been added during previous runs
+//! - Outputs the cleaned spec content to stdout
+//! - Preserves section hierarchy while removing level 2 headers tagged as agent output
 
 use anyhow::{Context, Result};
 use std::path::Path;
