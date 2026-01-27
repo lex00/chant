@@ -437,7 +437,7 @@ fn distribute_specs_to_agents(
         config.parallel.agents.clone()
     };
 
-    let total_max = max_override.unwrap_or(config.parallel.total_max);
+    let total_max = max_override.unwrap_or_else(|| config.parallel.total_capacity());
 
     // Track current allocation per agent
     let mut agent_allocations: Vec<usize> = vec![0; agents.len()];
@@ -1443,7 +1443,6 @@ mod tests {
             providers: chant::provider::ProviderConfig::default(),
             parallel: chant::config::ParallelConfig {
                 agents,
-                total_max: 8,
                 cleanup: chant::config::CleanupConfig::default(),
             },
         }
@@ -1525,6 +1524,7 @@ mod tests {
 
     #[test]
     fn test_distribute_specs_respects_total_max() {
+        // Total capacity is sum of agent max_concurrent values (5 + 5 = 10)
         let agents = vec![
             chant::config::AgentConfig {
                 name: "main".to_string(),
@@ -1537,28 +1537,27 @@ mod tests {
                 max_concurrent: 5,
             },
         ];
-        let mut config = make_test_config_with_agents(agents);
-        config.parallel.total_max = 4; // Override total max
+        let config = make_test_config_with_agents(agents);
 
-        let specs: Vec<Spec> = (1..=10)
+        let specs: Vec<Spec> = (1..=15)
             .map(|i| make_test_spec_for_parallel(&format!("spec-{}", i)))
             .collect();
 
         let assignments = distribute_specs_to_agents(&specs, &config, None);
 
-        // Should assign only 4 specs (total_max)
-        assert_eq!(assignments.len(), 4);
+        // Should assign only 10 specs (5 + 5 total capacity)
+        assert_eq!(assignments.len(), 10);
     }
 
     #[test]
     fn test_distribute_specs_with_max_override() {
+        // Agent has capacity for 10, but we override with --max 3
         let agents = vec![chant::config::AgentConfig {
             name: "main".to_string(),
             command: "claude".to_string(),
             max_concurrent: 10,
         }];
-        let mut config = make_test_config_with_agents(agents);
-        config.parallel.total_max = 10;
+        let config = make_test_config_with_agents(agents);
 
         let specs: Vec<Spec> = (1..=10)
             .map(|i| make_test_spec_for_parallel(&format!("spec-{}", i)))

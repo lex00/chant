@@ -24,8 +24,8 @@ Multiple specs were executed in parallel using different Claude agents. This can
 ### API Concurrency Errors (429, rate limit)
 
 These are retryable. Solutions:
-- Reduce `total_max` in parallel config
 - Reduce `max_concurrent` for individual agents
+- Use `--max N` flag to limit parallel execution
 - Retry failed specs after successful ones complete
 
 ### Merge Conflicts

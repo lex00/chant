@@ -133,7 +133,6 @@ parallel:
     - name: alt1
       command: claude-alt1
       max_concurrent: 3
-  total_max: 8
 ```
 
 Example output:

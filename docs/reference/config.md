@@ -107,7 +107,6 @@ parallel:
     - name: main            # Display name
       command: claude       # Shell command
       max_concurrent: 2     # Max concurrent for this agent
-  total_max: 8              # Max total concurrent agents
   cleanup:
     enabled: true           # Offer cleanup after parallel execution
     prompt: parallel-cleanup # Cleanup prompt to use
@@ -377,17 +376,14 @@ project:
 parallel:
   agents:
     - name: main
-      command: claude           # Shell alias or path
+      command: claude           # Shell command or wrapper script
       max_concurrent: 2         # Limited - may have active session
     - name: alt1
-      command: claude-alt1      # Shell alias for alternate account
+      command: claude-alt1      # Wrapper for alternate account
       max_concurrent: 3
     - name: alt2
       command: claude-alt2
       max_concurrent: 3
-
-  total_max: 8                  # Never exceed this many concurrent agents
-
   cleanup:
     enabled: true
     prompt: parallel-cleanup    # Prompt for agent-assisted recovery
@@ -402,7 +398,7 @@ parallel:
 - `command`: Shell command to invoke the agent (default: `claude`)
 - `max_concurrent`: Maximum concurrent instances for this agent (default: 2)
 
-**total_max** - Maximum total concurrent agents across all accounts (default: 8)
+Total capacity is the sum of all agent `max_concurrent` values. Use the `--max` flag to limit below capacity.
 
 **cleanup** - Post-execution cleanup settings
 - `enabled`: Whether to offer cleanup after parallel execution (default: true)
@@ -431,7 +427,7 @@ When `chant work --parallel` runs, specs are distributed using a least-loaded-fi
 1. Gather available capacity from all configured agents
 2. Respect per-agent `max_concurrent` limits
 3. Distribute to agents with most remaining capacity first
-4. Stop when `total_max` is reached
+4. Stop when total capacity is reached (or `--max` limit if specified)
 
 Example distribution with 5 specs:
 ```
@@ -452,6 +448,55 @@ After parallel execution, chant detects common issues:
 | Stale worktrees | Worktrees not cleaned up | Low |
 
 Issues are reported in the execution summary, and cleanup can be offered if enabled.
+
+### Tuning Limits
+
+The `max_concurrent` values are user-configurable. There are no universally "correct" values - the right settings depend on your specific setup.
+
+**Factors to consider:**
+
+- **API rate limits**: Different accounts may have different rate limits
+- **System resources**: More concurrent agents means more CPU, memory, network
+- **Account usage**: Leave headroom if you also use accounts interactively
+- **Experimentation**: Start conservative, increase based on observed behavior
+
+**Example configurations:**
+
+```yaml
+# Conservative - single account, shared with manual use
+parallel:
+  agents:
+    - name: main
+      command: claude
+      max_concurrent: 1
+
+# Moderate - dedicated accounts for parallel work
+parallel:
+  agents:
+    - name: worker1
+      command: claude1
+      max_concurrent: 3
+    - name: worker2
+      command: claude2
+      max_concurrent: 3
+
+# Aggressive - maximize throughput
+parallel:
+  agents:
+    - name: worker1
+      command: claude1
+      max_concurrent: 5
+    - name: worker2
+      command: claude2
+      max_concurrent: 5
+    - name: worker3
+      command: claude3
+      max_concurrent: 5
+```
+
+Use `--max N` flag to limit below your total capacity when needed.
+
+Run `chant config --validate` to verify your configuration.
 
 ### Override Per Spec
 

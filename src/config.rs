@@ -53,23 +53,22 @@ pub struct ParallelConfig {
     /// List of available agents (Claude accounts/commands)
     #[serde(default)]
     pub agents: Vec<AgentConfig>,
-    /// Maximum total concurrent agents across all accounts
-    #[serde(default = "default_total_max")]
-    pub total_max: usize,
     /// Cleanup configuration
     #[serde(default)]
     pub cleanup: CleanupConfig,
 }
 
-fn default_total_max() -> usize {
-    8
+impl ParallelConfig {
+    /// Calculate total capacity as sum of all agent max_concurrent values
+    pub fn total_capacity(&self) -> usize {
+        self.agents.iter().map(|a| a.max_concurrent).sum()
+    }
 }
 
 impl Default for ParallelConfig {
     fn default() -> Self {
         Self {
             agents: vec![AgentConfig::default()],
-            total_max: default_total_max(),
             cleanup: CleanupConfig::default(),
         }
     }
@@ -750,7 +749,6 @@ parallel:
     - name: alt1
       command: claude-alt1
       max_concurrent: 3
-  total_max: 5
   cleanup:
     enabled: true
     prompt: custom-cleanup
@@ -766,7 +764,7 @@ parallel:
         assert_eq!(config.parallel.agents[1].name, "alt1");
         assert_eq!(config.parallel.agents[1].command, "claude-alt1");
         assert_eq!(config.parallel.agents[1].max_concurrent, 3);
-        assert_eq!(config.parallel.total_max, 5);
+        assert_eq!(config.parallel.total_capacity(), 5); // 2 + 3
         assert!(config.parallel.cleanup.enabled);
         assert_eq!(config.parallel.cleanup.prompt, "custom-cleanup");
         assert!(config.parallel.cleanup.auto_run);
@@ -786,7 +784,7 @@ project:
         assert_eq!(config.parallel.agents[0].name, "main");
         assert_eq!(config.parallel.agents[0].command, "claude");
         assert_eq!(config.parallel.agents[0].max_concurrent, 2);
-        assert_eq!(config.parallel.total_max, 8);
+        assert_eq!(config.parallel.total_capacity(), 2); // Single agent with default max_concurrent
         assert!(config.parallel.cleanup.enabled);
         assert_eq!(config.parallel.cleanup.prompt, "parallel-cleanup");
         assert!(!config.parallel.cleanup.auto_run);

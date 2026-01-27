@@ -24,8 +24,8 @@ pub fn cmd_config_validate() -> Result<()> {
     // Validate prompts
     errors += validate_prompts(&config);
 
-    // Validate parallel limits
-    warnings += validate_parallel_limits(&config);
+    // Show parallel config (informational only)
+    show_parallel_config(&config);
 
     // Check recommended fields
     warnings += check_recommended_fields(&config);
@@ -142,46 +142,23 @@ fn validate_prompts(config: &Config) -> usize {
     errors
 }
 
-/// Validate parallel configuration limits
-fn validate_parallel_limits(config: &Config) -> usize {
+/// Display parallel configuration (informational, no warnings)
+fn show_parallel_config(config: &Config) {
     let agents = &config.parallel.agents;
     if agents.is_empty() {
-        return 0;
+        return;
     }
 
-    println!("{}", "Checking parallel config...".dimmed());
+    println!("{}", "Parallel config...".dimmed());
 
-    let mut warnings = 0;
+    let total_capacity = config.parallel.total_capacity();
 
-    // Calculate sum of agent limits
-    let sum_limits: usize = agents.iter().map(|a| a.max_concurrent).sum();
-    let total_max = config.parallel.total_max;
-
-    if total_max > sum_limits {
-        println!(
-            "  {} total_max ({}) exceeds sum of agent limits ({}) - ineffective cap",
-            "⚠".yellow(),
-            total_max,
-            sum_limits
-        );
-        warnings += 1;
-    } else if total_max == sum_limits {
-        println!(
-            "  {} total_max ({}) equals sum of agent limits - no room for manual sessions",
-            "⚠".yellow(),
-            total_max
-        );
-        warnings += 1;
-    } else {
-        println!(
-            "  {} Agent limits are reasonable (total_max: {}, sum: {})",
-            "✓".green(),
-            total_max,
-            sum_limits
-        );
-    }
-
-    warnings
+    println!(
+        "  {} {} agent(s), total capacity: {}",
+        "ℹ".blue(),
+        agents.len(),
+        total_capacity
+    );
 }
 
 /// Check for missing recommended fields

@@ -10,6 +10,22 @@ defaults:
   model: haiku
   #provider: ollama
   split_model: sonnet
+
+parallel:
+  agents:
+    - name: claude1
+      command: claude1
+      max_concurrent: 1    # limited - often has active session
+    - name: claude2
+      command: claude2
+      max_concurrent: 3
+    - name: claude3
+      command: claude3
+      max_concurrent: 3
+  cleanup:
+      enabled: true
+      prompt: parallel-cleanup
+      auto_run: false
 ---
 
 # Chant Configuration
