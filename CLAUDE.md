@@ -196,11 +196,17 @@ Change `- [ ]` to `- [x]` as you complete each criterion.
 - ❌ **Never** use the Task tool to invoke `chant work` on multiple specs in parallel
 - ❌ **Never** use the Task tool to orchestrate multiple spec executions
 
+**Bash Backgrounding for Parallel Spec Work:**
+- ❌ **Never** background chant commands with `&` (e.g., `chant work spec-1 &; chant work spec-2 &; wait`)
+- ❌ **Never** use shell job control (`&`, `jobs`, `wait`) to parallelize spec execution
+- ❌ **Never** manually parallelize spec work in bash
+
 **Why?** Chant has built-in orchestration for parallel execution:
 - Use `chant work --parallel` to execute all ready specs in parallel
 - Use `chant work --parallel --label <LABEL>` to execute labeled specs in parallel
+- Use `chant work spec-1 spec-2 spec-3` to work on multiple specific specs sequentially or with parallel mode
 - Chant handles agent rotation, worktree management, and conflict resolution
-- Using Task to parallelize bypasses these safeguards and can cause conflicts
+- Using bash backgrounding or manual parallelization bypasses these safeguards, loses output visibility, and can cause conflicts
 
 **What IS allowed - Task tool within a single spec:**
 - ✅ **DO** use the Task tool to search/explore the codebase within a spec
