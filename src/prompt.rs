@@ -17,7 +17,16 @@ use crate::spec::{split_frontmatter, Spec};
 /// Ask user for confirmation with a yes/no prompt.
 /// Returns true if user confirms (y/yes), false if user declines (n/no).
 /// Repeats until user provides valid input.
+///
+/// In non-interactive (non-TTY) contexts, automatically proceeds without prompting
+/// and logs a message indicating confirmation was skipped.
 pub fn confirm(message: &str) -> Result<bool> {
+    // Detect non-TTY contexts (e.g., when running in worktrees or piped input)
+    if !atty::is(atty::Stream::Stdin) {
+        eprintln!("ℹ Non-interactive mode detected, proceeding without confirmation");
+        return Ok(true);
+    }
+
     loop {
         print!("{} (y/n): ", message);
         io::stdout().flush()?;

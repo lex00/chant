@@ -8,6 +8,7 @@
 //! Note: Lifecycle operations (merge, archive, split, diagnostics, logging) are in cmd::lifecycle module
 
 use anyhow::{Context, Result};
+use atty;
 use colored::Colorize;
 use std::path::PathBuf;
 
@@ -881,18 +882,23 @@ pub fn cmd_delete(
 
     // Ask for confirmation unless --yes
     if !yes {
-        eprint!(
-            "{} Are you sure you want to delete {}? [y/N] ",
-            "❓".cyan(),
-            spec_id
-        );
-        std::io::Write::flush(&mut std::io::stderr())?;
+        // Detect non-TTY contexts (e.g., when running in worktrees or piped input)
+        if !atty::is(atty::Stream::Stdin) {
+            eprintln!("ℹ Non-interactive mode detected, proceeding without confirmation");
+        } else {
+            eprint!(
+                "{} Are you sure you want to delete {}? [y/N] ",
+                "❓".cyan(),
+                spec_id
+            );
+            std::io::Write::flush(&mut std::io::stderr())?;
 
-        let mut response = String::new();
-        std::io::stdin().read_line(&mut response)?;
-        if !response.trim().eq_ignore_ascii_case("y") {
-            println!("{} Delete cancelled.", "✗".red());
-            return Ok(());
+            let mut response = String::new();
+            std::io::stdin().read_line(&mut response)?;
+            if !response.trim().eq_ignore_ascii_case("y") {
+                println!("{} Delete cancelled.", "✗".red());
+                return Ok(());
+            }
         }
     }
 
@@ -1018,18 +1024,23 @@ pub fn cmd_cancel(id: &str, force: bool, dry_run: bool, yes: bool) -> Result<()>
 
     // Ask for confirmation unless --yes
     if !yes {
-        eprint!(
-            "{} Are you sure you want to cancel {}? [y/N] ",
-            "❓".cyan(),
-            spec_id
-        );
-        std::io::Write::flush(&mut std::io::stderr())?;
+        // Detect non-TTY contexts (e.g., when running in worktrees or piped input)
+        if !atty::is(atty::Stream::Stdin) {
+            eprintln!("ℹ Non-interactive mode detected, proceeding without confirmation");
+        } else {
+            eprint!(
+                "{} Are you sure you want to cancel {}? [y/N] ",
+                "❓".cyan(),
+                spec_id
+            );
+            std::io::Write::flush(&mut std::io::stderr())?;
 
-        let mut response = String::new();
-        std::io::stdin().read_line(&mut response)?;
-        if !response.trim().eq_ignore_ascii_case("y") {
-            println!("{} Cancel cancelled.", "✗".red());
-            return Ok(());
+            let mut response = String::new();
+            std::io::stdin().read_line(&mut response)?;
+            if !response.trim().eq_ignore_ascii_case("y") {
+                println!("{} Cancel cancelled.", "✗".red());
+                return Ok(());
+            }
         }
     }
 
