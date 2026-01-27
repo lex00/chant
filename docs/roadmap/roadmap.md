@@ -55,8 +55,8 @@ The system has a minimal core with optional layers built on top:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  Layer 7: Autonomy                              ⏳ PARTIAL      │
-│  Drift ✓ | Replay ❌, verify ❌                                 │
+│  Layer 7: Autonomy                              ✅ COMPLETE     │
+│  Drift ✓, Replay ✓, Verify ✓                                    │
 ├─────────────────────────────────────────────────────────────────┤
 │  Layer 6: Scale                                 ⏳ PARTIAL      │
 │  Locks ✓, parallel ✓, rotation ✓ | Daemon ❌, Tantivy ❌       │
@@ -112,11 +112,11 @@ The prompt does the heavy lifting. Core just orchestrates.
 | 4: Structure | ✅ | `depends_on`, groups, labels, split |
 | 5: Observability | ✅ | lint, status, log, diagnose |
 | 6: Scale | ⏳ | Locks, parallel, agent rotation (daemon/Tantivy pending) |
-| 7: Autonomy | ⏳ | Drift detection (replay/verify pending) |
+| 7: Autonomy | ✅ | Drift, verify, replay commands |
 
 ## Version Roadmap
 
-### Current Status: v0.1.13
+### Current Status: v0.2.0 (in release)
 
 Development moved faster than the original phased plan. Most features from Phases 0-8 are implemented.
 
@@ -129,7 +129,7 @@ Development moved faster than the original phased plan. Most features from Phase
 | Phase 4: Structure | ✅ Complete | `depends_on`, groups (`.N` suffix), labels, `split` command |
 | Phase 5: Observability | ✅ Complete | `lint`, `status`, `log`, `diagnose` commands |
 | Phase 6: Scale | ⏳ Partial | Locks, `--parallel`, agent rotation; NOT: daemon, Tantivy |
-| Phase 7: Autonomy | ⏳ Partial | `drift` command; NOT: replay, verify |
+| Phase 7: Autonomy | ✅ Complete | `drift`, `verify`, `replay` commands |
 | Phase 8: Polish | ✅ Complete | Interactive wizards, export, cancel, config validation |
 
 ### Upcoming Releases
@@ -235,14 +235,12 @@ See [observability.md](../scale/observability.md), [errors.md](../reference/erro
 
 See [scale.md](../scale/scale.md), [locks.md](../scale/locks.md).
 
-### Phase 7: Autonomy ⏳ PARTIAL
+### Phase 7: Autonomy ✅ COMPLETE
 
 **Implemented:**
 - ✅ `chant drift` command for detecting spec staleness
-
-**Not yet implemented:**
-- ❌ `chant verify` command for specification verification
-- ❌ `chant replay` command for re-executing specs
+- ✅ `chant verify` command for specification verification
+- ✅ `chant replay` command for re-executing specs
 
 See [autonomy.md](../concepts/autonomy.md).
 
