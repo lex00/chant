@@ -360,10 +360,31 @@ pub fn cmd_split(id: &str, override_model: Option<&str>, force: bool) -> Result<
         println!("  • {}.{}", spec.id, i);
     }
 
-    println!(
-        "\n{} All resulting specs pass complexity checks ✓",
-        "→".cyan()
-    );
+    // Auto-lint member specs to validate they pass complexity checks
+    println!("\n{} Running lint on member specs...", "→".cyan());
+
+    let member_ids: Vec<String> = (1..=members.len())
+        .map(|i| format!("{}.{}", spec.id, i))
+        .collect();
+
+    let lint_result = cmd::spec::lint_specific_specs(&specs_dir, &member_ids)?;
+
+    let total_members = member_ids.len();
+    let summary = if lint_result.failed > 0 {
+        format!(
+            "All {} members checked. {} passed, {} warned, {} failed.",
+            total_members, lint_result.passed, lint_result.warned, lint_result.failed
+        )
+    } else if lint_result.warned > 0 {
+        format!(
+            "All {} members checked. {} passed, {} warned.",
+            total_members, lint_result.passed, lint_result.warned
+        )
+    } else {
+        format!("All {} members checked. All passed ✓", total_members)
+    };
+
+    println!("{} {}", "→".cyan(), summary);
 
     Ok(())
 }

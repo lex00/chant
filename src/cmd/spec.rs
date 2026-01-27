@@ -472,6 +472,133 @@ pub fn cmd_status() -> Result<()> {
     Ok(())
 }
 
+/// Internal result type for linting operations
+pub struct LintResult {
+    pub passed: usize,
+    pub warned: usize,
+    pub failed: usize,
+}
+
+/// Lint specific specs (by ID) and return a summary.
+/// Useful for linting a subset of specs, like member specs after split.
+pub fn lint_specific_specs(specs_dir: &std::path::Path, spec_ids: &[String]) -> Result<LintResult> {
+    let mut all_spec_ids: Vec<String> = Vec::new();
+    let mut specs_to_check: Vec<Spec> = Vec::new();
+
+    // Load all specs to validate dependencies
+    for entry in std::fs::read_dir(specs_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+
+        if path.extension().map(|e| e == "md").unwrap_or(false) {
+            if let Ok(spec) = Spec::load(&path) {
+                all_spec_ids.push(spec.id.clone());
+            }
+        }
+    }
+
+    // Load only the specs we want to check
+    for spec_id in spec_ids {
+        let spec_path = specs_dir.join(format!("{}.md", spec_id));
+        if spec_path.exists() {
+            match Spec::load(&spec_path) {
+                Ok(spec) => {
+                    specs_to_check.push(spec);
+                }
+                Err(e) => {
+                    eprintln!("{} {}: Invalid YAML frontmatter: {}", "✗".red(), spec_id, e);
+                    return Ok(LintResult {
+                        passed: 0,
+                        warned: 0,
+                        failed: 1,
+                    });
+                }
+            }
+        }
+    }
+
+    let mut passed = 0;
+    let mut warned = 0;
+    let mut failed = 0;
+
+    // Validate each spec
+    for spec in &specs_to_check {
+        let mut spec_issues: Vec<String> = Vec::new();
+
+        // Check for title
+        if spec.title.is_none() {
+            spec_issues.push("Missing title".to_string());
+        }
+
+        // Check depends_on references
+        if let Some(deps) = &spec.frontmatter.depends_on {
+            for dep_id in deps {
+                if !all_spec_ids.contains(dep_id) {
+                    spec_issues.push(format!("Unknown dependency '{}'", dep_id));
+                }
+            }
+        }
+
+        // Type-specific validation
+        let type_warnings = validate_spec_type(spec);
+
+        // Complexity validation
+        let complexity_warnings = validate_spec_complexity(spec);
+
+        // Coupling validation (spec references other spec IDs)
+        let coupling_warnings = validate_spec_coupling(spec);
+
+        // Model waste validation (expensive model on simple spec)
+        let model_warnings = validate_model_waste(spec);
+
+        // Combine all warnings
+        let mut spec_warnings = type_warnings;
+        spec_warnings.extend(complexity_warnings);
+        spec_warnings.extend(coupling_warnings);
+        spec_warnings.extend(model_warnings);
+
+        if spec_issues.is_empty() && spec_warnings.is_empty() {
+            println!("  {} {}", "✓".green(), spec.id);
+            passed += 1;
+        } else {
+            let has_errors = !spec_issues.is_empty();
+            let has_warnings = !spec_warnings.is_empty();
+
+            if has_errors {
+                for issue in &spec_issues {
+                    println!("  {} {}: {}", "✗".red(), spec.id, issue);
+                }
+                failed += 1;
+            }
+
+            if has_warnings {
+                let has_complexity_warning = spec_warnings.iter().any(|w| {
+                    w.contains("complexity")
+                        || w.contains("criteria")
+                        || w.contains("files")
+                        || w.contains("words")
+                });
+                for warning in &spec_warnings {
+                    println!("  {} {}: {}", "⚠".yellow(), spec.id, warning);
+                }
+                // Suggest split if there are complexity warnings
+                if has_complexity_warning {
+                    println!("      {} Consider: chant split {}", "→".cyan(), spec.id);
+                }
+                if !has_errors {
+                    warned += 1;
+                }
+            }
+        }
+    }
+
+    Ok(LintResult {
+        passed,
+        warned,
+        failed,
+    })
+}
+
 pub fn cmd_lint() -> Result<()> {
     let specs_dir = crate::cmd::ensure_initialized()?;
 
