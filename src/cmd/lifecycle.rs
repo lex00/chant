@@ -9,6 +9,7 @@
 //! Note: Core spec operations (add, list, show) are in cmd::spec module
 
 use anyhow::{Context, Result};
+use chrono::Local;
 use colored::Colorize;
 use std::path::PathBuf;
 
@@ -1538,6 +1539,7 @@ pub fn cmd_replay(
     pr: bool,
     force: bool,
     dry_run: bool,
+    yes: bool,
 ) -> Result<()> {
     let specs_dir = crate::cmd::ensure_initialized()?;
 
@@ -1554,37 +1556,80 @@ pub fn cmd_replay(
         );
     }
 
+    // Extract date from spec ID (format: YYYY-MM-DD-...)
+    let completion_date = spec_id.split('-').take(3).collect::<Vec<_>>().join("-");
+    let current_date = Local::now().format("%Y-%m-%d").to_string();
+
+    // Display what will be replayed
+    println!(
+        "{} {} replay spec {}",
+        "→".cyan(),
+        if dry_run { "Would" } else { "Will" },
+        spec_id.cyan()
+    );
+    if let Some(title) = &spec.title {
+        println!("  {} {}", "•".cyan(), title.dimmed());
+    }
+    println!(
+        "  {} Original completion: {}",
+        "•".cyan(),
+        completion_date.dimmed()
+    );
+    println!("  {} Current date: {}", "•".cyan(), current_date.dimmed());
+
+    if let Some(completed_at) = &spec.frontmatter.completed_at {
+        println!("  {} Completed at: {}", "•".cyan(), completed_at.dimmed());
+    }
+    if let Some(model) = &spec.frontmatter.model {
+        println!("  {} Model: {}", "•".cyan(), model.dimmed());
+    }
+
+    // Show options that will be applied
+    println!("  {} Options:", "•".cyan());
+    if branch.is_some() {
+        println!(
+            "    {} Create feature branch{}",
+            "∘".cyan(),
+            branch
+                .as_ref()
+                .map(|b| format!(" with prefix: {}", b))
+                .unwrap_or_default()
+        );
+    }
+    if pr {
+        println!("    {} Create pull request", "∘".cyan());
+    }
+    if force {
+        println!(
+            "    {} Skip validation of unchecked acceptance criteria",
+            "∘".cyan()
+        );
+    }
+    if prompt.is_some() {
+        println!(
+            "    {} Use custom prompt: {}",
+            "∘".cyan(),
+            prompt.unwrap_or("standard").cyan()
+        );
+    }
+    if branch.is_none() && !pr && !force && prompt.is_none() {
+        println!("    {} {}", "∘".cyan(), "(no additional options)".dimmed());
+    }
+
+    // If dry-run, show what would happen and exit
     if dry_run {
-        println!("{} Would replay spec {}", "→".cyan(), spec_id.cyan());
-        println!("  Status: {}", "completed".green());
-        println!("  Options:");
-        if branch.is_some() {
-            println!(
-                "    {} Create feature branch{}",
-                "•".cyan(),
-                branch
-                    .as_ref()
-                    .map(|b| format!(" with prefix: {}", b))
-                    .unwrap_or_default()
-            );
-        }
-        if pr {
-            println!("    {} Create pull request", "•".cyan());
-        }
-        if force {
-            println!(
-                "    {} Skip validation of unchecked acceptance criteria",
-                "•".cyan()
-            );
-        }
-        if prompt.is_some() {
-            println!(
-                "    {} Use custom prompt: {}",
-                "•".cyan(),
-                prompt.unwrap_or("standard").cyan()
-            );
-        }
+        println!("{} Dry-run mode: no changes made.", "ℹ".blue());
         return Ok(());
+    }
+
+    // Ask for confirmation unless --yes
+    if !yes {
+        let confirmed =
+            prompt::confirm(&format!("Proceed with replaying spec {}?", spec_id))?;
+        if !confirmed {
+            println!("{} Replay cancelled.", "✗".yellow());
+            return Ok(());
+        }
     }
 
     println!("{} Replaying spec {}", "→".cyan(), spec_id.cyan());

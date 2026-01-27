@@ -266,6 +266,9 @@ enum Commands {
         /// Preview the replay without executing (show what would happen)
         #[arg(long)]
         dry_run: bool,
+        /// Skip confirmation prompt and proceed directly with replay
+        #[arg(long)]
+        yes: bool,
     },
     /// Cancel a spec (soft-delete with status change)
     Cancel {
@@ -503,7 +506,8 @@ fn main() -> Result<()> {
             pr,
             force,
             dry_run,
-        } => cmd::lifecycle::cmd_replay(&id, prompt.as_deref(), branch, pr, force, dry_run),
+            yes,
+        } => cmd::lifecycle::cmd_replay(&id, prompt.as_deref(), branch, pr, force, dry_run, yes),
         Commands::Cancel {
             id,
             force,
