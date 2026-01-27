@@ -1,6 +1,6 @@
 [package]
 name = "chant"
-version = "0.1.13"
+version = "0.2.0"
 edition = "2021"
 description = "Intent Driven Development"
 license = "MIT"
