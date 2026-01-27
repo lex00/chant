@@ -65,23 +65,35 @@ The spec system handles all file modifications, testing, and git management.
 
 ### Spec Management
 - `just chant add "description"` - Create a new spec
-- `just chant list` - List all specs (with `--ready`, `--type`, `--status`, `--label` filters)
-- `just chant show <spec-id>` - View spec details
+- `just chant add "description" --prompt <PROMPT>` - Create spec with custom prompt
+- `just chant list` - List all specs (with `--ready`, `--type`, `--status`, `--label`, `--global`, `--repo`, `--project` filters)
+- `just chant show <spec-id>` - View spec details (supports repo:spec-id for cross-repo specs)
+- `just chant show <spec-id> --no-render` - View spec details without markdown rendering
 - `just chant ready` - Show ready specs
 - `just chant lint` - Validate all specs
 - `just chant search [query]` - Search specs (or launch interactive wizard with no query)
-- `just chant archive <spec-id>` - Archive completed specs
-- `just chant cancel <spec-id>` - Cancel a spec (soft-delete); proceeds without prompting in non-TTY contexts
-- `just chant delete <spec-id>` - Delete a spec and clean up artifacts; proceeds without prompting in non-TTY contexts
+  - Search flags: `--title-only`, `--body-only`, `--case-sensitive`
+  - Filter flags: `--status <STATUS>`, `--type <TYPE>`, `--label <LABEL>` (multiple allowed)
+  - Date filters: `--since <DATE>`, `--until <DATE>` (relative: 7d, 2w, 1m; or absolute: YYYY-MM-DD)
+  - Scope flags: `--active-only`, `--archived-only`, `--global`, `--repo <REPO>`
+- `just chant archive [<spec-id>]` - Archive completed specs (default: all if no ID); flags: `--dry-run`, `--older-than <N>`, `--force`, `--commit`, `--no-stage`
+- `just chant cancel <spec-id>` - Cancel a spec (soft-delete); proceeds without prompting in non-TTY contexts; flags: `--force`, `--dry-run`, `--yes`
+- `just chant delete <spec-id>` - Delete a spec and clean up artifacts; proceeds without prompting in non-TTY contexts; flags: `--force`, `--cascade`, `--delete-branch`, `--dry-run`, `--yes`
 
 ### Execution
 - `just chant work <spec-id>` - Execute a spec
 - `just chant work <spec-id> --branch` - Execute with feature branch
 - `just chant work <spec-id> --branch=prefix` - Execute with custom branch prefix
 - `just chant work <spec-id> --pr` - Execute and create pull request
+- `just chant work <spec-id> --prompt <PROMPT>` - Execute with custom prompt
 - `just chant work --parallel` - Execute all ready specs in parallel
+- `just chant work --parallel --label <LABEL>` - Execute ready specs matching label(s)
 - `just chant work <spec-id> --finalize` - Re-finalize an existing spec
 - `just chant work <spec-id> --force` - Skip validation of unchecked acceptance criteria
+- `just chant work <spec-id> --allow-no-commits` - Allow completion without matching commits (special cases only)
+- `just chant work --parallel --max <N>` - Override maximum parallel agents
+- `just chant work --parallel --no-cleanup` - Skip cleanup prompt after parallel execution
+- `just chant work --parallel --cleanup` - Force cleanup prompt even on success
 - `just chant resume <spec-id>` - Resume a failed spec (resets to pending)
 - `just chant resume <spec-id> --work` - Resume and automatically re-execute
 - `just chant resume <spec-id> --work --branch` - Resume with feature branch
@@ -89,7 +101,16 @@ The spec system handles all file modifications, testing, and git management.
 ### Autonomy Commands
 - `just chant verify [<spec-id>]` - Verify acceptance criteria still pass; checks all completed specs if no ID provided
 - `just chant verify --all` - Verify all completed specs
+- `just chant verify --label <LABEL>` - Verify specs with matching label(s)
+- `just chant verify --exit-code` - Exit with code 1 if any spec fails verification
+- `just chant verify --dry-run` - Show what would be verified without making changes
+- `just chant verify --prompt <PROMPT>` - Use custom prompt for verification
 - `just chant replay <spec-id>` - Re-execute a completed spec
+- `just chant replay <spec-id> --prompt <PROMPT>` - Re-execute with custom prompt
+- `just chant replay <spec-id> --branch` - Re-execute with feature branch
+- `just chant replay <spec-id> --pr` - Re-execute and create pull request
+- `just chant replay <spec-id> --force` - Skip validation of unchecked acceptance criteria
+- `just chant replay <spec-id> --dry-run` - Preview the replay without executing
 - `just chant replay <spec-id> --yes` - Re-execute without confirmation prompt
 
 ### Utilities
@@ -98,6 +119,10 @@ The spec system handles all file modifications, testing, and git management.
 - `just chant split <spec-id>` - Split spec into member specs; auto-lints created member specs
 - `just chant merge <spec-id>` - Merge spec branches back to main; proceeds without prompting in non-TTY contexts
 - `just chant merge --all` - Merge all completed spec branches
+- `just chant merge --dry-run` - Preview merges without executing
+- `just chant merge --delete-branch` - Delete branch after successful merge
+- `just chant merge --continue-on-error` - Continue even if a single spec merge fails
+- `just chant merge --yes` - Skip confirmation prompt and proceed with merges
 - `just chant merge --rebase` - Rebase branches before merging
 - `just chant merge --rebase --auto` - Auto-resolve conflicts during rebase
 - `just chant diagnose <spec-id>` - Diagnose spec execution issues
@@ -107,8 +132,14 @@ The spec system handles all file modifications, testing, and git management.
 - `just chant export --format csv` - Export specs as CSV
 - `just chant export --format markdown` - Export specs as Markdown
 - `just chant export --format json --output file.json` - Export to file
+- `just chant export --status <STATUS>` - Filter by status (can be specified multiple times)
+- `just chant export --type <TYPE>` - Filter by type (code, task, driver, etc.)
+- `just chant export --label <LABEL>` - Filter by labels (can be specified multiple times, OR logic)
+- `just chant export --ready` - Only export ready specs
+- `just chant export --from YYYY-MM-DD --to YYYY-MM-DD` - Filter by date range
+- `just chant export --fields <FIELDS>` - Comma-separated fields to include (or 'all')
 - `just chant disk` - Show disk usage of chant artifacts
-- `just chant cleanup` - Remove orphan worktrees and stale artifacts
+- `just chant cleanup` - Remove orphan worktrees and stale artifacts (with `--dry-run`, `--yes` flags)
 - `just chant config --validate` - Validate configuration
 
 ## Development Commands
