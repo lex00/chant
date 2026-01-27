@@ -1,4 +1,3 @@
 # Local state (not shared)
 .locks/
 .store/
-logs/

@@ -724,81 +724,160 @@ fn cmd_init(
     }
 
     if chant_dir.exists() {
-        if !force {
+        // If agents are specified, allow proceeding to update agent files
+        // Otherwise, check if --force is set for full reinitialization
+        if final_agents.is_empty() && !force {
             println!("{}", "Chant already initialized.".yellow());
             return Ok(());
         }
-        // force flag: preserve specs and config, but reinitialize agent files
-        // This allows updating agent instructions without losing existing specs/config
-        let specs_backup = chant_dir.join("specs");
-        let config_backup = chant_dir.join("config.md");
-        let prompts_backup = chant_dir.join("prompts");
-        let gitignore_backup = chant_dir.join(".gitignore");
-        let locks_backup = chant_dir.join(".locks");
-        let store_backup = chant_dir.join(".store");
 
-        // Check which directories exist before deletion
-        let has_specs = specs_backup.exists();
-        let has_config = config_backup.exists();
-        let has_prompts = prompts_backup.exists();
-        let has_gitignore = gitignore_backup.exists();
-        let has_locks = locks_backup.exists();
-        let has_store = store_backup.exists();
+        // If agents are specified and chant already exists, we continue without full reinitialization
+        // If --force is set (and no agents), do full reinitialization below
+        if force && !final_agents.is_empty() {
+            // force flag with agents: reinitialize everything (preserve specs/config)
+            // This allows updating agent instructions without losing existing specs/config
+            let specs_backup = chant_dir.join("specs");
+            let config_backup = chant_dir.join("config.md");
+            let prompts_backup = chant_dir.join("prompts");
+            let gitignore_backup = chant_dir.join(".gitignore");
+            let locks_backup = chant_dir.join(".locks");
+            let store_backup = chant_dir.join(".store");
 
-        // Temporarily move important files
-        let temp_dir = PathBuf::from(".chant_temp_backup");
-        std::fs::create_dir_all(&temp_dir)?;
+            // Check which directories exist before deletion
+            let has_specs = specs_backup.exists();
+            let has_config = config_backup.exists();
+            let has_prompts = prompts_backup.exists();
+            let has_gitignore = gitignore_backup.exists();
+            let has_locks = locks_backup.exists();
+            let has_store = store_backup.exists();
 
-        if has_specs {
-            std::fs::rename(&specs_backup, temp_dir.join("specs"))?;
-        }
-        if has_config {
-            std::fs::rename(&config_backup, temp_dir.join("config.md"))?;
-        }
-        if has_prompts {
-            std::fs::rename(&prompts_backup, temp_dir.join("prompts"))?;
-        }
-        if has_gitignore {
-            std::fs::rename(&gitignore_backup, temp_dir.join(".gitignore"))?;
-        }
-        if has_locks {
-            std::fs::rename(&locks_backup, temp_dir.join(".locks"))?;
-        }
-        if has_store {
-            std::fs::rename(&store_backup, temp_dir.join(".store"))?;
-        }
+            // Temporarily move important files
+            let temp_dir = PathBuf::from(".chant_temp_backup");
+            std::fs::create_dir_all(&temp_dir)?;
 
-        // Remove the old .chant directory
-        std::fs::remove_dir_all(&chant_dir)?;
+            if has_specs {
+                std::fs::rename(&specs_backup, temp_dir.join("specs"))?;
+            }
+            if has_config {
+                std::fs::rename(&config_backup, temp_dir.join("config.md"))?;
+            }
+            if has_prompts {
+                std::fs::rename(&prompts_backup, temp_dir.join("prompts"))?;
+            }
+            if has_gitignore {
+                std::fs::rename(&gitignore_backup, temp_dir.join(".gitignore"))?;
+            }
+            if has_locks {
+                std::fs::rename(&locks_backup, temp_dir.join(".locks"))?;
+            }
+            if has_store {
+                std::fs::rename(&store_backup, temp_dir.join(".store"))?;
+            }
 
-        // Create fresh directory structure
-        std::fs::create_dir_all(chant_dir.join("specs"))?;
-        std::fs::create_dir_all(chant_dir.join("prompts"))?;
-        std::fs::create_dir_all(chant_dir.join(".locks"))?;
-        std::fs::create_dir_all(chant_dir.join(".store"))?;
+            // Remove the old .chant directory
+            std::fs::remove_dir_all(&chant_dir)?;
 
-        // Restore backed-up files
-        if has_specs {
-            std::fs::rename(temp_dir.join("specs"), chant_dir.join("specs"))?;
-        }
-        if has_config {
-            std::fs::rename(temp_dir.join("config.md"), chant_dir.join("config.md"))?;
-        }
-        if has_prompts {
-            std::fs::rename(temp_dir.join("prompts"), chant_dir.join("prompts"))?;
-        }
-        if has_gitignore {
-            std::fs::rename(temp_dir.join(".gitignore"), chant_dir.join(".gitignore"))?;
-        }
-        if has_locks {
-            std::fs::rename(temp_dir.join(".locks"), chant_dir.join(".locks"))?;
-        }
-        if has_store {
-            std::fs::rename(temp_dir.join(".store"), chant_dir.join(".store"))?;
-        }
+            // Create fresh directory structure
+            std::fs::create_dir_all(chant_dir.join("specs"))?;
+            std::fs::create_dir_all(chant_dir.join("prompts"))?;
+            std::fs::create_dir_all(chant_dir.join(".locks"))?;
+            std::fs::create_dir_all(chant_dir.join(".store"))?;
 
-        // Clean up temp directory
-        let _ = std::fs::remove_dir(&temp_dir);
+            // Restore backed-up files
+            if has_specs {
+                std::fs::rename(temp_dir.join("specs"), chant_dir.join("specs"))?;
+            }
+            if has_config {
+                std::fs::rename(temp_dir.join("config.md"), chant_dir.join("config.md"))?;
+            }
+            if has_prompts {
+                std::fs::rename(temp_dir.join("prompts"), chant_dir.join("prompts"))?;
+            }
+            if has_gitignore {
+                std::fs::rename(temp_dir.join(".gitignore"), chant_dir.join(".gitignore"))?;
+            }
+            if has_locks {
+                std::fs::rename(temp_dir.join(".locks"), chant_dir.join(".locks"))?;
+            }
+            if has_store {
+                std::fs::rename(temp_dir.join(".store"), chant_dir.join(".store"))?;
+            }
+
+            // Clean up temp directory
+            let _ = std::fs::remove_dir(&temp_dir);
+        } else if force && final_agents.is_empty() {
+            // force flag without agents: do full reinitialization (classic behavior)
+            let specs_backup = chant_dir.join("specs");
+            let config_backup = chant_dir.join("config.md");
+            let prompts_backup = chant_dir.join("prompts");
+            let gitignore_backup = chant_dir.join(".gitignore");
+            let locks_backup = chant_dir.join(".locks");
+            let store_backup = chant_dir.join(".store");
+
+            // Check which directories exist before deletion
+            let has_specs = specs_backup.exists();
+            let has_config = config_backup.exists();
+            let has_prompts = prompts_backup.exists();
+            let has_gitignore = gitignore_backup.exists();
+            let has_locks = locks_backup.exists();
+            let has_store = store_backup.exists();
+
+            // Temporarily move important files
+            let temp_dir = PathBuf::from(".chant_temp_backup");
+            std::fs::create_dir_all(&temp_dir)?;
+
+            if has_specs {
+                std::fs::rename(&specs_backup, temp_dir.join("specs"))?;
+            }
+            if has_config {
+                std::fs::rename(&config_backup, temp_dir.join("config.md"))?;
+            }
+            if has_prompts {
+                std::fs::rename(&prompts_backup, temp_dir.join("prompts"))?;
+            }
+            if has_gitignore {
+                std::fs::rename(&gitignore_backup, temp_dir.join(".gitignore"))?;
+            }
+            if has_locks {
+                std::fs::rename(&locks_backup, temp_dir.join(".locks"))?;
+            }
+            if has_store {
+                std::fs::rename(&store_backup, temp_dir.join(".store"))?;
+            }
+
+            // Remove the old .chant directory
+            std::fs::remove_dir_all(&chant_dir)?;
+
+            // Create fresh directory structure
+            std::fs::create_dir_all(chant_dir.join("specs"))?;
+            std::fs::create_dir_all(chant_dir.join("prompts"))?;
+            std::fs::create_dir_all(chant_dir.join(".locks"))?;
+            std::fs::create_dir_all(chant_dir.join(".store"))?;
+
+            // Restore backed-up files
+            if has_specs {
+                std::fs::rename(temp_dir.join("specs"), chant_dir.join("specs"))?;
+            }
+            if has_config {
+                std::fs::rename(temp_dir.join("config.md"), chant_dir.join("config.md"))?;
+            }
+            if has_prompts {
+                std::fs::rename(temp_dir.join("prompts"), chant_dir.join("prompts"))?;
+            }
+            if has_gitignore {
+                std::fs::rename(temp_dir.join(".gitignore"), chant_dir.join(".gitignore"))?;
+            }
+            if has_locks {
+                std::fs::rename(temp_dir.join(".locks"), chant_dir.join(".locks"))?;
+            }
+            if has_store {
+                std::fs::rename(temp_dir.join(".store"), chant_dir.join(".store"))?;
+            }
+
+            // Clean up temp directory
+            let _ = std::fs::remove_dir(&temp_dir);
+        }
+        // If agents are specified and no --force: just continue to update agent files
     }
 
     // Detect project name
@@ -1059,6 +1138,8 @@ Overall status: PASS/FAIL/MIXED
 
     // Handle agent configuration if specified
     let parsed_agents = templates::parse_agent_providers(&final_agents)?;
+    let mut created_agents = Vec::new();
+    let mut created_agent_names = Vec::new();
     if !parsed_agents.is_empty() {
         // Create agents directory
         std::fs::create_dir_all(chant_dir.join("agents"))?;
@@ -1080,6 +1161,35 @@ Overall status: PASS/FAIL/MIXED
                 }
             };
 
+            // Check if file already exists
+            if target_path.exists() && !force {
+                // File exists and --force not specified
+                // Handle TTY vs non-TTY scenarios
+                if atty::is(atty::Stream::Stdin) {
+                    // TTY mode: prompt for confirmation
+                    let should_overwrite = dialoguer::Confirm::new()
+                        .with_prompt(format!(
+                            "{} already exists. Overwrite?",
+                            target_path.display()
+                        ))
+                        .default(false)
+                        .interact()?;
+
+                    if !should_overwrite {
+                        continue; // Skip this file
+                    }
+                } else {
+                    // Non-TTY mode: show usage hint and skip
+                    eprintln!(
+                        "{} {} already exists. Use {} to overwrite.",
+                        "•".yellow(),
+                        target_path.display(),
+                        "--force".cyan()
+                    );
+                    continue;
+                }
+            }
+
             // Write the template
             if let Some(parent) = target_path.parent() {
                 if !parent.as_os_str().is_empty() {
@@ -1087,6 +1197,8 @@ Overall status: PASS/FAIL/MIXED
                 }
             }
             std::fs::write(&target_path, template.content)?;
+            created_agents.push(target_path);
+            created_agent_names.push(provider.as_str());
         }
     }
 
@@ -1098,16 +1210,9 @@ Overall status: PASS/FAIL/MIXED
     }
     println!("{} .chant/specs/", "Created".green());
 
-    // Print agent files created
-    for provider in &parsed_agents {
-        match provider.config_filename() {
-            ".amazonq/rules.md" => {
-                println!("{} .amazonq/rules.md", "Created".green());
-            }
-            filename => {
-                println!("{} {}", "Created".green(), filename);
-            }
-        }
+    // Print agent files that were actually created
+    for target_path in &created_agents {
+        println!("{} {}", "Created".green(), target_path.display());
     }
 
     println!("\nChant initialized for project: {}", project_name.cyan());
@@ -1134,12 +1239,8 @@ Overall status: PASS/FAIL/MIXED
         );
     }
 
-    if !parsed_agents.is_empty() {
-        let agent_names = parsed_agents
-            .iter()
-            .map(|p| p.as_str())
-            .collect::<Vec<_>>()
-            .join(", ");
+    if !created_agent_names.is_empty() {
+        let agent_names = created_agent_names.join(", ");
         println!(
             "{} Agent configuration created for: {}",
             "ℹ".cyan(),

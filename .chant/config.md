@@ -1,37 +1,13 @@
 ---
 project:
-  name: chant
+  name: my-project
 
 defaults:
   prompt: standard
   branch: false
   pr: false
-  #model: qwen2.5:7b
-  model: haiku
-  #provider: ollama
-  split_model: sonnet
-  rotation_strategy: round-robin
-
-parallel:
-  agents:
-    - name: claude1
-      command: claude1
-      max_concurrent: 1
-      weight: 1            # limited - often has active session
-    - name: claude2
-      command: claude2
-      max_concurrent: 3
-      weight: 3
-    - name: claude3
-      command: claude3
-      max_concurrent: 3
-      weight: 3
-  cleanup:
-      enabled: true
-      prompt: parallel-cleanup
-      auto_run: false
 ---
 
 # Chant Configuration
 
-Project initialized on 2026-01-24.
+Project initialized on 2026-01-27.
