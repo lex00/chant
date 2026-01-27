@@ -1736,7 +1736,8 @@ fn test_silent_mode_init_on_tracked_fails() {
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
 
     // Initialize chant normally first (this creates .chant/ tracked in git)
-    let output = run_chant(&repo, &["init"]).expect("Failed to run chant init");
+    // Use --minimal to avoid wizard mode which requires interactive input
+    let output = run_chant(&repo, &["init", "--minimal"]).expect("Failed to run chant init");
     assert!(
         output.status.success(),
         "Chant init failed: {}",
