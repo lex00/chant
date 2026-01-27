@@ -647,12 +647,14 @@ pub fn cmd_work_parallel(
         } else {
             // Parallel execution forces branch mode even if config.defaults.branch is false
             // This prevents merge race conditions during parallel work
-            (false, "spec/".to_string())
+            // Use config's branch_prefix to stay consistent with merge command expectations
+            (false, config.defaults.branch_prefix.clone())
         };
 
         // Determine branch name based on mode
         let branch_name = if is_direct_mode {
-            format!("spec/{}", spec.id)
+            // Direct mode uses config prefix (this branch is currently unused)
+            format!("{}{}", config.defaults.branch_prefix, spec.id)
         } else {
             format!("{}{}", branch_prefix, spec.id)
         };

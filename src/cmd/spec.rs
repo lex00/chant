@@ -3685,11 +3685,13 @@ git:
     #[test]
     fn test_branch_name_determination_direct_mode() {
         // This test verifies branch naming logic for direct commit mode
-        // Direct mode should use spec/{spec_id} format
+        // Direct mode should use {config_prefix}{spec_id} format
+        // Default config prefix is "chant/"
 
         let spec_id = "test-spec-001";
-        let expected_branch = format!("spec/{}", spec_id);
-        assert_eq!(expected_branch, "spec/test-spec-001");
+        let default_prefix = "chant/";
+        let expected_branch = format!("{}{}", default_prefix, spec_id);
+        assert_eq!(expected_branch, "chant/test-spec-001");
     }
 
     #[test]

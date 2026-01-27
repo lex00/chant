@@ -33,21 +33,50 @@ pub fn get_specs_to_merge(
             }
         }
     } else {
-        // Resolve each ID and collect matching specs
+        // Resolve each ID using the same matching logic as resolve_spec:
+        // 1. Exact match
+        // 2. Suffix match (ends_with)
+        // 3. Contains match (partial_id anywhere in spec.id)
         for partial_id in args {
-            // Find spec matching this partial ID
-            let mut found = false;
-            for spec in all_specs {
-                if &spec.id == partial_id || spec.id.ends_with(partial_id) {
-                    result.push((spec.id.clone(), spec.clone()));
-                    found = true;
-                    break;
-                }
+            // Try exact match first
+            if let Some(spec) = all_specs.iter().find(|s| s.id == *partial_id) {
+                result.push((spec.id.clone(), spec.clone()));
+                continue;
             }
 
-            if !found {
-                anyhow::bail!("Spec not found: {}", partial_id);
+            // Try suffix match
+            let suffix_matches: Vec<_> = all_specs
+                .iter()
+                .filter(|s| s.id.ends_with(partial_id))
+                .collect();
+            if suffix_matches.len() == 1 {
+                result.push((suffix_matches[0].id.clone(), suffix_matches[0].clone()));
+                continue;
             }
+
+            // Try contains match
+            let contains_matches: Vec<_> = all_specs
+                .iter()
+                .filter(|s| s.id.contains(partial_id))
+                .collect();
+            if contains_matches.len() == 1 {
+                result.push((contains_matches[0].id.clone(), contains_matches[0].clone()));
+                continue;
+            }
+
+            if contains_matches.len() > 1 {
+                anyhow::bail!(
+                    "Ambiguous spec ID '{}'. Matches: {}",
+                    partial_id,
+                    contains_matches
+                        .iter()
+                        .map(|s| s.id.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+            }
+
+            anyhow::bail!("Spec not found: {}", partial_id);
         }
     }
 

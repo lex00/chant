@@ -940,7 +940,9 @@ pub fn cmd_merge(
                                 }
                             }
                         } else {
-                            // No auto-resolve, skip this branch
+                            // No auto-resolve, abort rebase and skip this branch
+                            git::rebase_abort()?;
+
                             let error_msg = format!(
                                 "Rebase conflict in: {}",
                                 rebase_result.conflicting_files.join(", ")
