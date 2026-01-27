@@ -295,9 +295,9 @@ enum Commands {
     },
     /// Export specs to JSON, CSV, or Markdown format
     Export {
-        /// Output format (json, csv, markdown)
-        #[arg(long, default_value = "json")]
-        format: String,
+        /// Output format (json, csv, markdown, or omit for interactive wizard)
+        #[arg(long)]
+        format: Option<String>,
         /// Filter by status (can be specified multiple times)
         #[arg(long)]
         status: Vec<String>,
@@ -480,7 +480,7 @@ fn main() -> Result<()> {
             fields,
             output,
         } => cmd::spec::cmd_export(
-            &format,
+            format.as_deref(),
             &status,
             type_.as_deref(),
             &label,

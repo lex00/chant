@@ -573,8 +573,9 @@ pub fn cmd_lint() -> Result<()> {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn cmd_export(
-    format: &str,
+    format: Option<&str>,
     statuses: &[String],
     type_: Option<&str>,
     labels: &[String],

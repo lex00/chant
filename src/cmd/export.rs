@@ -2,8 +2,11 @@
 //!
 //! Supports JSON, CSV, and Markdown formats with flexible filtering options
 //! including status, type, labels, and date ranges.
+//!
+//! When run without the --format flag, launches an interactive wizard to configure options.
 
 use anyhow::{Context, Result};
+use dialoguer::Select;
 use serde_json::json;
 use std::fs::File;
 use std::io::Write;
@@ -11,9 +14,20 @@ use std::path::PathBuf;
 
 use chant::spec::{self, Spec};
 
+/// Holds the result of the interactive wizard
+struct WizardOptions {
+    format: String,
+    statuses: Vec<String>,
+    type_filter: Option<String>,
+    labels: Vec<String>,
+    ready_only: bool,
+    output_file: Option<String>,
+}
+
 /// Main export command handler
+#[allow(clippy::too_many_arguments)]
 pub fn cmd_export(
-    format: &str,
+    format: Option<&str>,
     statuses: &[String],
     type_filter: Option<&str>,
     labels: &[String],
@@ -23,6 +37,31 @@ pub fn cmd_export(
     fields: Option<&str>,
     output_file: Option<&str>,
 ) -> Result<()> {
+    // Detect wizard mode: triggered if format is None AND no other filters are set
+    let is_wizard_mode = format.is_none()
+        && statuses.is_empty()
+        && type_filter.is_none()
+        && labels.is_empty()
+        && !ready_only
+        && from_date.is_none()
+        && to_date.is_none()
+        && output_file.is_none();
+
+    // If wizard mode, launch the interactive wizard
+    let options = if is_wizard_mode {
+        run_wizard()?
+    } else {
+        // Direct mode: use provided values
+        WizardOptions {
+            format: format.unwrap_or("json").to_string(),
+            statuses: statuses.to_vec(),
+            type_filter: type_filter.map(|s| s.to_string()),
+            labels: labels.to_vec(),
+            ready_only,
+            output_file: output_file.map(|s| s.to_string()),
+        }
+    };
+
     let specs_dir = crate::cmd::ensure_initialized()?;
 
     // Load all specs
@@ -32,17 +71,17 @@ pub fn cmd_export(
     // Apply filters
     apply_filters(
         &mut specs,
-        statuses,
-        type_filter,
-        labels,
-        ready_only,
+        &options.statuses,
+        options.type_filter.as_deref(),
+        &options.labels,
+        options.ready_only,
         from_date,
         to_date,
     )?;
 
     if specs.is_empty() {
         let output = "No specs match the specified filters.";
-        if let Some(file_path) = output_file {
+        if let Some(file_path) = &options.output_file {
             let mut file = File::create(file_path).context("Failed to create output file")?;
             writeln!(file, "{}", output).context("Failed to write to output file")?;
         } else {
@@ -52,19 +91,19 @@ pub fn cmd_export(
     }
 
     // Generate output based on format
-    let output = match format.to_lowercase().as_str() {
+    let output = match options.format.to_lowercase().as_str() {
         "json" => export_json(&specs, fields)?,
         "csv" => export_csv(&specs, fields)?,
         "markdown" | "md" => export_markdown(&specs, fields)?,
         _ => anyhow::bail!(
             "Unknown format: {}. Supported formats: json, csv, markdown",
-            format
+            options.format
         ),
     };
 
     // Write output
-    if let Some(file_path) = output_file {
-        let mut file = File::create(file_path).context("Failed to create output file")?;
+    if let Some(file_path) = options.output_file {
+        let mut file = File::create(&file_path).context("Failed to create output file")?;
         write!(file, "{}", output).context("Failed to write to output file")?;
         println!("Export written to: {}", file_path);
     } else {
@@ -72,6 +111,93 @@ pub fn cmd_export(
     }
 
     Ok(())
+}
+
+/// Run the interactive wizard to configure export options
+fn run_wizard() -> Result<WizardOptions> {
+    use dialoguer::{Input, MultiSelect};
+
+    // 1. Ask for format
+    let formats = vec!["JSON", "CSV", "Markdown"];
+    let format_selection = Select::new()
+        .with_prompt("Export format:")
+        .items(&formats)
+        .default(0)
+        .interact()?;
+    let format = formats[format_selection].to_lowercase();
+
+    // 2. Ask for status filter
+    let status_options = vec![
+        "pending",
+        "ready",
+        "in_progress",
+        "completed",
+        "blocked",
+        "cancelled",
+    ];
+    let status_selections = MultiSelect::new()
+        .with_prompt("Filter by status (space to toggle, enter to confirm):")
+        .items(&status_options)
+        .defaults(&[false, true, false, false, false, false]) // ready is selected by default
+        .interact()?;
+
+    let statuses: Vec<String> = status_options
+        .iter()
+        .enumerate()
+        .filter_map(|(i, &s)| {
+            if status_selections.contains(&i) {
+                Some(s.to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    // 3. Ask for type filter
+    let type_options = vec![
+        "No filter",
+        "code",
+        "task",
+        "driver",
+        "documentation",
+        "research",
+    ];
+    let type_selection = Select::new()
+        .with_prompt("Filter by type:")
+        .items(&type_options)
+        .default(0)
+        .interact()?;
+    let type_filter = if type_selection == 0 {
+        None
+    } else {
+        Some(type_options[type_selection].to_string())
+    };
+
+    // 4. Ask for output destination
+    let output_options = vec!["Print to stdout", "Save to file"];
+    let output_selection = Select::new()
+        .with_prompt("Output destination:")
+        .items(&output_options)
+        .default(0)
+        .interact()?;
+
+    let output_file = if output_selection == 1 {
+        let filename = Input::new()
+            .with_prompt("Output filename:")
+            .interact_text()?;
+        Some(filename)
+    } else {
+        None
+    };
+
+    Ok(WizardOptions {
+        format,
+        statuses,
+        type_filter,
+        labels: vec![],
+        ready_only: false,
+        output_file,
+    })
 }
 
 /// Apply all filters to the specs list
@@ -128,11 +254,11 @@ fn apply_filters(
             let mut matches = true;
 
             if let Some(from) = from_date {
-                matches = matches && spec_date >= from.to_string();
+                matches = matches && spec_date.as_str() >= from;
             }
 
             if let Some(to) = to_date {
-                matches = matches && spec_date <= to.to_string();
+                matches = matches && spec_date.as_str() <= to;
             }
 
             matches
@@ -338,5 +464,36 @@ mod tests {
         assert!(fields.contains(&"id".to_string()));
         assert!(fields.contains(&"type".to_string()));
         assert!(fields.contains(&"title".to_string()));
+    }
+
+    #[test]
+    fn test_wizard_options_default() {
+        let options = WizardOptions {
+            format: "json".to_string(),
+            statuses: vec!["ready".to_string()],
+            type_filter: None,
+            labels: vec![],
+            ready_only: false,
+            output_file: None,
+        };
+        assert_eq!(options.format, "json");
+        assert_eq!(options.statuses.len(), 1);
+        assert_eq!(options.statuses[0], "ready");
+    }
+
+    #[test]
+    fn test_wizard_options_with_type_filter() {
+        let options = WizardOptions {
+            format: "csv".to_string(),
+            statuses: vec!["ready".to_string(), "completed".to_string()],
+            type_filter: Some("code".to_string()),
+            labels: vec![],
+            ready_only: false,
+            output_file: Some("export.csv".to_string()),
+        };
+        assert_eq!(options.format, "csv");
+        assert_eq!(options.statuses.len(), 2);
+        assert_eq!(options.type_filter, Some("code".to_string()));
+        assert_eq!(options.output_file, Some("export.csv".to_string()));
     }
 }
