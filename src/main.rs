@@ -63,6 +63,12 @@ enum Commands {
         /// Filter by label (can be specified multiple times, shows specs with any matching label)
         #[arg(long)]
         label: Vec<String>,
+        /// Filter by type (code, task, driver, documentation, research)
+        #[arg(long)]
+        r#type: Option<String>,
+        /// Filter by status (pending, in_progress, completed, failed, blocked, cancelled)
+        #[arg(long)]
+        status: Option<String>,
     },
     /// Show spec details
     Show {
@@ -322,7 +328,12 @@ fn main() -> Result<()> {
             description,
             prompt,
         } => cmd::spec::cmd_add(&description, prompt.as_deref()),
-        Commands::List { ready, label } => cmd::spec::cmd_list(ready, &label),
+        Commands::List {
+            ready,
+            label,
+            r#type,
+            status,
+        } => cmd::spec::cmd_list(ready, &label, r#type.as_deref(), status.as_deref()),
         Commands::Show { id, no_render } => cmd::spec::cmd_show(&id, no_render),
         Commands::Search {
             query,
@@ -378,7 +389,7 @@ fn main() -> Result<()> {
         ),
         Commands::Mcp => mcp::run_server(),
         Commands::Status => cmd::spec::cmd_status(),
-        Commands::Ready => cmd::spec::cmd_list(true, &[]),
+        Commands::Ready => cmd::spec::cmd_list(true, &[], None, None),
         Commands::Lint => cmd::spec::cmd_lint(),
         Commands::Log {
             id,

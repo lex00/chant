@@ -257,7 +257,12 @@ status: pending
     Ok(())
 }
 
-pub fn cmd_list(ready_only: bool, labels: &[String]) -> Result<()> {
+pub fn cmd_list(
+    ready_only: bool,
+    labels: &[String],
+    type_filter: Option<&str>,
+    status_filter: Option<&str>,
+) -> Result<()> {
     let specs_dir = crate::cmd::ensure_initialized()?;
 
     let mut specs = spec::load_all_specs(&specs_dir)?;
@@ -266,6 +271,28 @@ pub fn cmd_list(ready_only: bool, labels: &[String]) -> Result<()> {
     if ready_only {
         let all_specs = specs.clone();
         specs.retain(|s| s.is_ready(&all_specs));
+    }
+
+    // Filter by type if specified
+    if let Some(type_val) = type_filter {
+        specs.retain(|s| s.frontmatter.r#type == type_val);
+    }
+
+    // Filter by status if specified
+    if let Some(status_val) = status_filter {
+        let target_status = match status_val.to_lowercase().as_str() {
+            "pending" => SpecStatus::Pending,
+            "in_progress" | "inprogress" => SpecStatus::InProgress,
+            "completed" => SpecStatus::Completed,
+            "failed" => SpecStatus::Failed,
+            "blocked" => SpecStatus::NeedsAttention,
+            "cancelled" => SpecStatus::NeedsAttention,
+            "ready" => SpecStatus::Ready,
+            _ => {
+                anyhow::bail!("Invalid status filter: {}. Valid options: pending, in_progress, completed, failed, blocked, cancelled, ready", status_val);
+            }
+        };
+        specs.retain(|s| s.frontmatter.status == target_status);
     }
 
     // Filter by labels if specified (OR logic - show specs with any matching label)
