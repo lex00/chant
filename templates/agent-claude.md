@@ -18,6 +18,36 @@ You are NOT the orchestrator. The orchestrator:
 - Dispatches specs to you with `chant work`
 - Reviews your completed work
 
+## Spec Creation Workflow
+
+⚠️ **Important**: Do NOT immediately work a freshly-created spec. Follow this 3-step workflow:
+
+1. **Create the spec skeleton** with `chant add "description"`
+   - This creates a minimal spec with just a description
+
+2. **Edit the spec file** to add detailed information
+   - Add a detailed problem description
+   - Describe the solution approach
+   - Define clear acceptance criteria as a checklist
+   - Example acceptance criteria structure:
+     ```markdown
+     ## Acceptance Criteria
+
+     - [ ] Feature X implemented
+     - [ ] All tests passing
+     - [ ] Code linted and formatted
+     ```
+
+3. **Work the spec** with `chant work <spec-id>`
+   - Now that acceptance criteria are defined, the agent knows exactly what "done" means
+   - Implementation can be validated against clear criteria
+
+This workflow ensures:
+- Clear definition of done before work starts
+- Agent doesn't guess what "complete" means
+- Work matches expectations
+- All specs are thoroughly documented
+
 ## Primary Rules
 
 ### 1. Always Use `chant` for CLI Operations
