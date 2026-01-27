@@ -187,6 +187,11 @@ enum Commands {
         /// Spec ID (full or partial)
         id: String,
     },
+    /// Check for drift in documentation and research specs
+    Drift {
+        /// Spec ID (full or partial). If omitted, check all completed specs.
+        id: Option<String>,
+    },
     /// Delete a spec and clean up artifacts
     Delete {
         /// Spec ID (full or partial)
@@ -303,6 +308,7 @@ fn main() -> Result<()> {
             auto,
         ),
         Commands::Diagnose { id } => cmd::lifecycle::cmd_diagnose(&id),
+        Commands::Drift { id } => cmd::lifecycle::cmd_drift(id.as_deref()),
         Commands::Delete {
             id,
             force,

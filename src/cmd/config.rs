@@ -107,11 +107,7 @@ fn validate_prompts(config: &Config) -> usize {
     let default_prompt = &config.defaults.prompt;
     let default_path = prompts_dir.join(format!("{}.md", default_prompt));
     if default_path.exists() {
-        println!(
-            "  {} {}.md (defaults.prompt)",
-            "✓".green(),
-            default_prompt
-        );
+        println!("  {} {}.md (defaults.prompt)", "✓".green(), default_prompt);
     } else {
         println!(
             "  {} {}.md not found (defaults.prompt)",
@@ -170,10 +166,7 @@ fn check_recommended_fields(config: &Config) -> usize {
     if let Some(model) = &config.defaults.model {
         println!("  {} defaults.model: {}", "✓".green(), model);
     } else {
-        println!(
-            "  {} No defaults.model set - will use haiku",
-            "⚠".yellow()
-        );
+        println!("  {} No defaults.model set - will use haiku", "⚠".yellow());
         warnings += 1;
     }
 

@@ -4420,10 +4420,7 @@ git:
         };
 
         let warnings = super::validate_spec_complexity(&spec);
-        assert!(
-            warnings.is_empty(),
-            "Should not warn at exactly 5 criteria"
-        );
+        assert!(warnings.is_empty(), "Should not warn at exactly 5 criteria");
     }
 
     #[test]
@@ -4498,7 +4495,11 @@ git:
         };
 
         let warnings = super::validate_spec_complexity(&spec);
-        assert_eq!(warnings.len(), 3, "Should warn on criteria, files, and words");
+        assert_eq!(
+            warnings.len(),
+            3,
+            "Should warn on criteria, files, and words"
+        );
     }
 
     #[test]
@@ -4571,7 +4572,10 @@ No coupling here.
         };
 
         let warnings = super::validate_spec_coupling(&spec);
-        assert!(warnings.is_empty(), "Should not warn about IDs in code blocks");
+        assert!(
+            warnings.is_empty(),
+            "Should not warn about IDs in code blocks"
+        );
     }
 
     #[test]
