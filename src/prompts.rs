@@ -128,7 +128,11 @@ mod tests {
     fn test_all_prompts_have_content() {
         let prompts = all_bundled_prompts();
         for prompt in prompts {
-            assert!(!prompt.content.is_empty(), "Prompt {} has no content", prompt.name);
+            assert!(
+                !prompt.content.is_empty(),
+                "Prompt {} has no content",
+                prompt.name
+            );
         }
     }
 

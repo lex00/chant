@@ -1111,7 +1111,9 @@ fn write_bundled_prompts(chant_dir: &std::path::Path) -> Result<()> {
     use chant::prompts;
 
     for prompt in prompts::all_bundled_prompts() {
-        let prompt_path = chant_dir.join("prompts").join(format!("{}.md", prompt.name));
+        let prompt_path = chant_dir
+            .join("prompts")
+            .join(format!("{}.md", prompt.name));
 
         // Only write if the file doesn't exist (preserve user customizations)
         if !prompt_path.exists() {
@@ -1310,7 +1312,14 @@ mod tests {
             assert!(result2.is_ok()); // Should still be Ok, just skip re-initialization
 
             // Third init with --force should succeed and reinitialize
-            let result3 = cmd_init(None, Some("test-force".to_string()), false, true, false, vec![]);
+            let result3 = cmd_init(
+                None,
+                Some("test-force".to_string()),
+                false,
+                true,
+                false,
+                vec![],
+            );
             assert!(result3.is_ok());
 
             let _ = std::env::set_current_dir(orig_dir);
@@ -1355,7 +1364,14 @@ mod tests {
             assert!(spec_file.exists());
 
             // Second init with --force should preserve specs
-            let result2 = cmd_init(None, Some("test-force".to_string()), false, true, false, vec![]);
+            let result2 = cmd_init(
+                None,
+                Some("test-force".to_string()),
+                false,
+                true,
+                false,
+                vec![],
+            );
             assert!(result2.is_ok());
 
             // Verify spec was preserved
