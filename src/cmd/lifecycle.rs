@@ -1624,8 +1624,7 @@ pub fn cmd_replay(
 
     // Ask for confirmation unless --yes
     if !yes {
-        let confirmed =
-            prompt::confirm(&format!("Proceed with replaying spec {}?", spec_id))?;
+        let confirmed = prompt::confirm(&format!("Proceed with replaying spec {}?", spec_id))?;
         if !confirmed {
             println!("{} Replay cancelled.", "✗".yellow());
             return Ok(());
@@ -1634,13 +1633,21 @@ pub fn cmd_replay(
 
     println!("{} Replaying spec {}", "→".cyan(), spec_id.cyan());
 
+    // Reset spec status to in_progress before execution
+    let spec_path = specs_dir.join(format!("{}.md", spec_id));
+    let mut spec = spec::resolve_spec(&specs_dir, &spec_id)?;
+    spec.frontmatter.status = SpecStatus::InProgress;
+    spec.save(&spec_path)?;
+
     // Execute the spec using cmd_work
-    cmd::work::cmd_work(
+    // Pass force=true to ensure cmd_work proceeds (it will see the InProgress status
+    // and still execute because force bypasses various guards)
+    let work_result = cmd::work::cmd_work(
         std::slice::from_ref(&spec_id),
         prompt,
         branch,
         pr,
-        force,
+        true,  // force=true to bypass guards in cmd_work for replay
         false, // parallel
         &[],   // label
         false, // finalize
@@ -1648,9 +1655,10 @@ pub fn cmd_replay(
         None,  // max_parallel
         false, // no_cleanup
         false, // cleanup
-    )?;
+    );
 
-    Ok(())
+    // Handle result: cmd_work will have set the status to completed or failed
+    work_result
 }
 
 #[cfg(test)]
