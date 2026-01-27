@@ -116,7 +116,7 @@ The prompt does the heavy lifting. Core just orchestrates.
 
 ## Version Roadmap
 
-### Current Status: v0.2.0 (in release)
+### Current Status: v0.2.0 (released)
 
 Development moved faster than the original phased plan. Most features from Phases 0-8 are implemented.
 
@@ -136,7 +136,7 @@ Development moved faster than the original phased plan. Most features from Phase
 
 | Version | Focus |
 |---------|-------|
-| v0.2.0 | Complete autonomy (`verify`, `replay` commands) |
+| v0.2.0 | ✅ Released - Autonomy layer (`drift`, `verify`, `replay` commands) |
 | v0.3.0 | Full-text search (Tantivy indexing) |
 | v0.4.0 | Full multi-repo support (cross-repo deps) |
 | v0.5.0 | Daemon mode for background execution |
@@ -270,7 +270,7 @@ See [ecosystem.md](../guides/ecosystem.md), [approvals.md](../guides/approvals.m
 See [Testing Strategy](../reference/testing.md) for test specifications.
 
 Current test coverage:
-- 275+ tests (unit, integration, end-to-end)
+- 420+ tests (unit, integration, end-to-end)
 - Unit tests in `src/`
 - Integration tests in `tests/`
 
@@ -407,10 +407,6 @@ chant resume 023 --work
 ```
 
 Chant maintains chant.
-
-**Future additions** (v0.2.0):
-- `chant verify` - Verify spec acceptance criteria still pass
-- `chant replay` - Re-execute a spec from scratch
 
 ## Non-Goals
 
