@@ -53,6 +53,8 @@ When implementing a spec:
 - `chant ready` - Show ready specs
 - `chant lint` - Validate all specs
 - `chant search [query]` - Search specs (or launch interactive wizard)
+  - Non-TTY hint: When stdin is not a terminal, run with explicit query: `chant search "keyword"`
+  - Supports filters: `--status`, `--type`, `--label`, `--since`, `--until`
 - `chant archive <spec-id>` - Archive completed specs
 - `chant cancel <spec-id>` - Cancel a spec
 - `chant delete <spec-id>` - Delete a spec and clean up artifacts
@@ -60,8 +62,12 @@ When implementing a spec:
 ### Execution
 
 - `chant work <spec-id>` - Execute a spec
+  - Non-TTY hint: When stdin is not a terminal, provide spec ID explicitly: `chant work <SPEC_ID>`
+  - Optional: `--prompt <name>`, `--branch`, `--force`, `--finalize`
 - `chant work <spec-id> --branch` - Execute with feature branch
 - `chant work --parallel` - Execute all ready specs in parallel
+  - Supports: `--max-parallel N` to limit concurrent agents
+  - Supports: `--label <LABEL>` to execute only labeled specs
 - `chant resume <spec-id>` - Resume a failed spec
 - `chant resume <spec-id> --work` - Resume and automatically re-execute
 
@@ -72,9 +78,61 @@ When implementing a spec:
 - `chant merge --all --rebase --auto` - Merge specs with conflict auto-resolution
 - `chant diagnose <spec-id>` - Diagnose spec execution issues
 - `chant drift [spec-id]` - Check for drift in documentation specs
-- `chant export` - Export specs (interactive wizard or with `--format json/csv/markdown`)
+- `chant export` - Export specs with wizard or direct options
+  - Non-TTY hint: When stdin is not a terminal, provide format explicitly: `chant export --format json`
+  - Formats: `--format json|csv|markdown`
+  - Supports filters: `--status`, `--type`, `--label`, `--ready-only`
+  - Options: `--output <file>` to save to file
 - `chant disk` - Show disk usage of chant artifacts
 - `chant cleanup` - Remove orphan worktrees and stale artifacts
+- `chant init [--force]` - Initialize or reinitialize .chant/ directory
+  - `--force`: Fully reinitialize while preserving specs, config, and custom files
+  - Use when updating agent configurations or resetting to defaults
+
+## Configuration
+
+### Global Configuration File: `~/.config/chant/config.md`
+
+The global config supports parallel execution settings and retry behavior:
+
+```markdown
+## parallel
+
+- `stagger_delay_ms`: Delay in milliseconds between spawning agents (default: 1000)
+  - Prevents thundering herd and API rate limiting
+  - Use 500-2000ms depending on API provider limits
+  - Example: `stagger_delay_ms: 1000`
+
+## providers
+
+Configure retry behavior for API providers (Ollama, OpenAI):
+
+- `max_retries`: Maximum number of retry attempts (default: 3)
+  - Applies to HTTP 429 (rate limit), 5xx errors, and network failures
+  - Exponential backoff: 2^(attempt-1) * retry_delay_ms ± 10% jitter
+
+- `retry_delay_ms`: Initial delay for retries in milliseconds (default: 1000)
+  - First retry: ~1000ms
+  - Second retry: ~2000ms
+  - Third retry: ~4000ms
+  - Jitter prevents thundering herd on synchronized retries
+
+Example configuration:
+```yaml
+## providers
+
+### ollama
+- max_retries: 3
+- retry_delay_ms: 1000
+
+### openai
+- max_retries: 5
+- retry_delay_ms: 2000
+```
+
+### Local Configuration: `.chant/config.md`
+
+Local project config overrides global settings. Supports same `parallel` and `providers` sections.
 
 ## Spec Format and Patterns
 
@@ -167,12 +225,49 @@ If an unexpected error occurs during spec execution:
 
 ## Interactive Wizard Modes
 
-Several commands support interactive wizards for easier operation:
+Several commands support interactive wizards for easier operation. Wizards only activate in TTY (terminal) contexts:
 
 - `chant search` - Launch interactive search wizard (omit query to trigger)
-- `chant export` - Launch interactive export wizard (omit `--format` to trigger)
+  - In non-TTY contexts (piped input, CI/CD): Provide explicit query
+  - Example: `chant search "keyword"`
 
-These wizards guide you through available filters and options.
+- `chant work` - Launch interactive spec selector (omit spec ID to trigger)
+  - In non-TTY contexts: Provide explicit spec ID
+  - Example: `chant work 2026-01-27-001-abc`
+
+- `chant export` - Launch interactive export wizard (omit `--format` to trigger)
+  - In non-TTY contexts: Provide explicit format flag
+  - Example: `chant export --format json`
+
+These wizards guide you through available filters and options when running interactively in a terminal.
+
+## Reinitialization with --force
+
+The `chant init --force` flag allows full reinitialization of the `.chant/` directory while preserving important data:
+
+- **When to use**: Update agent configurations, reset settings, or reinitialize without losing work
+- **What it preserves**:
+  - `.chant/specs/` - All active specs
+  - `.chant/config.md` - Configuration settings
+  - `.chant/prompts/` - Custom prompts
+  - `.chant/.gitignore` - Git ignore rules
+  - `.chant/.locks/` - Lock files
+  - `.chant/.store/` - Data store
+
+- **Usage**:
+  ```bash
+  # Interactive reinitialization (uses wizard if TTY)
+  chant init
+
+  # Force full reinitialization with specific agent
+  chant init --force --agent claude-opus-4-5
+
+  # Force with multiple agents
+  chant init --force --agent claude-opus-4-5 --agent claude-haiku-4-5
+
+  # Silent mode (non-interactive, validates no git tracking conflict)
+  chant init --force --silent
+  ```
 
 ## Key Principles
 
