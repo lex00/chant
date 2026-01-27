@@ -45,6 +45,7 @@ pub fn cmd_diagnose(id: &str) -> Result<()> {
         SpecStatus::Failed => "failed".red(),
         SpecStatus::NeedsAttention => "needs_attention".yellow(),
         SpecStatus::Ready => "ready".cyan(),
+        SpecStatus::Blocked => "blocked".red(),
     };
     println!("Status: {}", status_str);
 
@@ -165,6 +166,9 @@ pub fn cmd_split(id: &str, override_model: Option<&str>, force: bool) -> Result<
             }
             SpecStatus::NeedsAttention => {
                 anyhow::bail!("Cannot split spec that needs attention");
+            }
+            SpecStatus::Blocked => {
+                anyhow::bail!("Cannot split blocked spec");
             }
             SpecStatus::Pending | SpecStatus::Ready => {
                 // Allowed to split

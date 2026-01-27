@@ -27,6 +27,7 @@ pub enum SpecStatus {
     Failed,
     NeedsAttention,
     Ready,
+    Blocked,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -287,22 +288,33 @@ impl Spec {
         Ok(())
     }
 
-    /// Check if this spec is ready to execute.
-    pub fn is_ready(&self, all_specs: &[Spec]) -> bool {
-        // Must be pending
-        if self.frontmatter.status != SpecStatus::Pending {
-            return false;
-        }
-
-        // Check dependencies are completed
+    /// Check if this spec has unmet dependencies that would block it.
+    /// Returns true if the spec has dependencies pointing to incomplete specs.
+    pub fn is_blocked(&self, all_specs: &[Spec]) -> bool {
+        // Check dependencies are all completed
         if let Some(deps) = &self.frontmatter.depends_on {
             for dep_id in deps {
                 let dep = all_specs.iter().find(|s| s.id == *dep_id);
                 match dep {
                     Some(d) if d.frontmatter.status == SpecStatus::Completed => continue,
-                    _ => return false,
+                    _ => return true, // Found an unmet dependency
                 }
             }
+        }
+
+        false
+    }
+
+    /// Check if this spec is ready to execute.
+    pub fn is_ready(&self, all_specs: &[Spec]) -> bool {
+        // Must be pending and not blocked
+        if self.frontmatter.status != SpecStatus::Pending {
+            return false;
+        }
+
+        // Check dependencies are completed
+        if self.is_blocked(all_specs) {
+            return false;
         }
 
         // Check that all prior siblings are completed (if this is a member spec)
@@ -361,6 +373,25 @@ fn extract_title(body: &str) -> Option<String> {
 }
 
 /// Load all specs from a directory.
+/// Apply blocked status to specs with unmet dependencies.
+/// For pending specs that have incomplete dependencies, updates their status to blocked.
+fn apply_blocked_status(specs: &mut [Spec]) {
+    // Build a reference list of specs for dependency checking
+    let specs_snapshot = specs.to_vec();
+
+    for spec in specs.iter_mut() {
+        // Only apply blocked status to pending specs
+        if spec.frontmatter.status != SpecStatus::Pending {
+            continue;
+        }
+
+        // Check if this spec has unmet dependencies
+        if spec.is_blocked(&specs_snapshot) {
+            spec.frontmatter.status = SpecStatus::Blocked;
+        }
+    }
+}
+
 pub fn load_all_specs(specs_dir: &Path) -> Result<Vec<Spec>> {
     let mut specs = Vec::new();
 
@@ -369,6 +400,10 @@ pub fn load_all_specs(specs_dir: &Path) -> Result<Vec<Spec>> {
     }
 
     load_specs_recursive(specs_dir, &mut specs)?;
+
+    // Apply blocked status to specs with unmet dependencies
+    apply_blocked_status(&mut specs);
+
     Ok(specs)
 }
 
@@ -1119,5 +1154,201 @@ Description here.
             loaded_spec.frontmatter.tracks,
             Some(vec!["src/**/*.rs".to_string()])
         );
+    }
+
+    #[test]
+    fn test_is_blocked_with_unmet_dependencies() {
+        // Create a pending spec with unmet dependencies
+        let spec_with_unmet = Spec::parse(
+            "2026-01-26-001-abc",
+            r#"---
+status: pending
+depends_on:
+  - 2026-01-26-002-def
+---
+# Test
+"#,
+        )
+        .unwrap();
+
+        // Create the dependency as pending (not completed)
+        let dependency_pending = Spec::parse(
+            "2026-01-26-002-def",
+            r#"---
+status: pending
+---
+# Dependency
+"#,
+        )
+        .unwrap();
+
+        let all_specs = vec![dependency_pending];
+
+        // The spec should be blocked because dependency is not completed
+        assert!(spec_with_unmet.is_blocked(&all_specs));
+    }
+
+    #[test]
+    fn test_is_not_blocked_with_met_dependencies() {
+        // Create a pending spec with met dependencies
+        let spec_with_met = Spec::parse(
+            "2026-01-26-001-abc",
+            r#"---
+status: pending
+depends_on:
+  - 2026-01-26-002-def
+---
+# Test
+"#,
+        )
+        .unwrap();
+
+        // Create the dependency as completed
+        let dependency_completed = Spec::parse(
+            "2026-01-26-002-def",
+            r#"---
+status: completed
+---
+# Dependency
+"#,
+        )
+        .unwrap();
+
+        let all_specs = vec![dependency_completed];
+
+        // The spec should not be blocked because dependency is completed
+        assert!(!spec_with_met.is_blocked(&all_specs));
+    }
+
+    #[test]
+    fn test_apply_blocked_status_to_specs_with_unmet_deps() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        // Create a completed spec
+        let completed_spec = Spec {
+            id: "2026-01-26-001-abc".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                ..Default::default()
+            },
+            title: Some("Completed".to_string()),
+            body: "# Completed\n\nBody.".to_string(),
+        };
+
+        // Create a pending spec with unmet dependency
+        let pending_with_unmet = Spec {
+            id: "2026-01-26-002-def".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                depends_on: Some(vec!["2026-01-26-003-ghi".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Pending with unmet".to_string()),
+            body: "# Pending with unmet\n\nBody.".to_string(),
+        };
+
+        // Create an incomplete spec that blocks the above
+        let incomplete_dep = Spec {
+            id: "2026-01-26-003-ghi".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                ..Default::default()
+            },
+            title: Some("Incomplete dependency".to_string()),
+            body: "# Incomplete dependency\n\nBody.".to_string(),
+        };
+
+        // Save all specs
+        completed_spec
+            .save(&specs_dir.join("2026-01-26-001-abc.md"))
+            .unwrap();
+        pending_with_unmet
+            .save(&specs_dir.join("2026-01-26-002-def.md"))
+            .unwrap();
+        incomplete_dep
+            .save(&specs_dir.join("2026-01-26-003-ghi.md"))
+            .unwrap();
+
+        // Load all specs (this applies blocked status)
+        let specs = load_all_specs(specs_dir).unwrap();
+
+        // Find the spec with unmet dependency
+        let spec_with_unmet = specs.iter().find(|s| s.id == "2026-01-26-002-def").unwrap();
+
+        // It should now have status Blocked
+        assert_eq!(spec_with_unmet.frontmatter.status, SpecStatus::Blocked);
+
+        // The completed and pending specs should keep their original status
+        let completed = specs.iter().find(|s| s.id == "2026-01-26-001-abc").unwrap();
+        assert_eq!(completed.frontmatter.status, SpecStatus::Completed);
+
+        let incomplete = specs.iter().find(|s| s.id == "2026-01-26-003-ghi").unwrap();
+        assert_eq!(incomplete.frontmatter.status, SpecStatus::Pending);
+    }
+
+    #[test]
+    fn test_spec_not_ready_if_blocked() {
+        // Create a blocked spec
+        let blocked_spec = Spec::parse(
+            "2026-01-26-001-abc",
+            r#"---
+status: blocked
+---
+# Blocked spec
+"#,
+        )
+        .unwrap();
+
+        // A blocked spec should not be ready
+        assert!(!blocked_spec.is_ready(&[]));
+    }
+
+    #[test]
+    fn test_apply_blocked_status_only_to_pending_with_unmet_deps() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        // Create a completed spec with unmet dependency (should not change to blocked)
+        let completed_with_unmet = Spec {
+            id: "2026-01-26-001-abc".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                depends_on: Some(vec!["2026-01-26-002-def".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Completed with unmet".to_string()),
+            body: "# Completed\n\nBody.".to_string(),
+        };
+
+        // Create an incomplete dependency
+        let incomplete_dep = Spec {
+            id: "2026-01-26-002-def".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                ..Default::default()
+            },
+            title: Some("Incomplete dependency".to_string()),
+            body: "# Incomplete dependency\n\nBody.".to_string(),
+        };
+
+        // Save specs
+        completed_with_unmet
+            .save(&specs_dir.join("2026-01-26-001-abc.md"))
+            .unwrap();
+        incomplete_dep
+            .save(&specs_dir.join("2026-01-26-002-def.md"))
+            .unwrap();
+
+        // Load all specs
+        let specs = load_all_specs(specs_dir).unwrap();
+
+        // The completed spec should remain completed, not change to blocked
+        let completed = specs.iter().find(|s| s.id == "2026-01-26-001-abc").unwrap();
+        assert_eq!(completed.frontmatter.status, SpecStatus::Completed);
     }
 }

@@ -229,6 +229,9 @@ fn check_status_consistency(spec: &Spec, commit_exists: bool, unchecked: usize) 
                 CheckResult::pass("Status consistency")
             }
         }
+        SpecStatus::Blocked => {
+            CheckResult::pass_with_details("Status consistency", "Blocked by unmet dependencies")
+        }
     }
 }
 
