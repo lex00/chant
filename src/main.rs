@@ -503,9 +503,74 @@ fn cmd_init(
 ) -> Result<()> {
     let chant_dir = PathBuf::from(".chant");
 
+    // Detect if we're in wizard mode (no flags provided)
+    let is_wizard_mode = name.is_none() && !silent && !force && !minimal && agents.is_empty();
+
+    // Gather parameters - either from wizard or from flags
+    let (final_name, final_silent, final_minimal, final_agents) = if is_wizard_mode {
+        // Detect default project name for wizard
+        let detected_name = detect_project_name().unwrap_or_else(|| "my-project".to_string());
+
+        // Prompt for project name
+        let project_name = dialoguer::Input::new()
+            .with_prompt("Project name")
+            .default(detected_name.clone())
+            .interact_text()?;
+
+        // Prompt for prompt templates
+        let include_templates = dialoguer::Confirm::new()
+            .with_prompt("Include prompt templates?")
+            .default(true)
+            .interact()?;
+
+        // Prompt for silent mode
+        let enable_silent = dialoguer::Confirm::new()
+            .with_prompt("Keep .chant/ local only (gitignored)?")
+            .default(false)
+            .interact()?;
+
+        // Prompt for agent configuration
+        let agent_options = vec![
+            "None",
+            "Claude Code (CLAUDE.md)",
+            "Cursor (.cursorrules)",
+            "Amazon Q (.amazonq/rules.md)",
+            "Generic (.ai-instructions)",
+            "All of the above",
+        ];
+
+        let agent_selection = dialoguer::Select::new()
+            .with_prompt("Initialize agent configuration?")
+            .items(&agent_options)
+            .default(0)
+            .interact()?;
+
+        let selected_agents = match agent_selection {
+            0 => vec![], // None
+            1 => vec!["claude".to_string()],
+            2 => vec!["cursor".to_string()],
+            3 => vec!["amazonq".to_string()],
+            4 => vec!["generic".to_string()],
+            5 => vec!["all".to_string()],
+            _ => vec![],
+        };
+
+        (
+            project_name,
+            enable_silent,
+            !include_templates, // invert: minimal is "no templates"
+            selected_agents,
+        )
+    } else {
+        // Direct mode: use provided values
+        let project_name = name
+            .unwrap_or_else(|| detect_project_name().unwrap_or_else(|| "my-project".to_string()));
+        (project_name, silent, minimal, agents)
+    };
+
     // For silent mode: validate that .chant/ is not already tracked in git
     // Do this check BEFORE the exists check so we catch tracking issues even if dir exists
-    if silent {
+    if final_silent {
         let ls_output = std::process::Command::new("git")
             .args(["ls-files", "--error-unmatch", ".chant/config.md"])
             .output();
@@ -531,8 +596,7 @@ fn cmd_init(
     }
 
     // Detect project name
-    let project_name =
-        name.unwrap_or_else(|| detect_project_name().unwrap_or_else(|| "my-project".to_string()));
+    let project_name = final_name;
 
     // Create directory structure
     std::fs::create_dir_all(chant_dir.join("specs"))?;
@@ -561,7 +625,7 @@ Project initialized on {}.
     );
     std::fs::write(chant_dir.join("config.md"), config_content)?;
 
-    if !minimal {
+    if !final_minimal {
         // Create standard prompt
         let prompt_content = r#"---
 name: standard
@@ -682,7 +746,7 @@ Create as many members as needed (typically 3-5 for a medium spec).
     std::fs::write(chant_dir.join(".gitignore"), gitignore_content)?;
 
     // Handle silent mode: add .chant/ to .git/info/exclude
-    if silent {
+    if final_silent {
         // Get git common dir (supports worktrees)
         let output = std::process::Command::new("git")
             .args(["rev-parse", "--git-common-dir"])
@@ -710,7 +774,7 @@ Create as many members as needed (typically 3-5 for a medium spec).
     }
 
     // Handle agent configuration if specified
-    let parsed_agents = templates::parse_agent_providers(&agents)?;
+    let parsed_agents = templates::parse_agent_providers(&final_agents)?;
     if !parsed_agents.is_empty() {
         // Create agents directory
         std::fs::create_dir_all(chant_dir.join("agents"))?;
@@ -743,7 +807,7 @@ Create as many members as needed (typically 3-5 for a medium spec).
     }
 
     println!("{} .chant/config.md", "Created".green());
-    if !minimal {
+    if !final_minimal {
         println!("{} .chant/prompts/standard.md", "Created".green());
         println!("{} .chant/prompts/split.md", "Created".green());
     }
@@ -763,7 +827,7 @@ Create as many members as needed (typically 3-5 for a medium spec).
 
     println!("\nChant initialized for project: {}", project_name.cyan());
 
-    if silent {
+    if final_silent {
         println!(
             "{} Silent mode enabled - .chant/ is local-only (not tracked in git)",
             "ℹ".cyan()
@@ -778,7 +842,7 @@ Create as many members as needed (typically 3-5 for a medium spec).
             "--force".cyan()
         );
     }
-    if minimal {
+    if final_minimal {
         println!(
             "{} Minimal mode enabled - only config.md created",
             "ℹ".cyan()
@@ -795,6 +859,13 @@ Create as many members as needed (typically 3-5 for a medium spec).
             "{} Agent configuration created for: {}",
             "ℹ".cyan(),
             agent_names.cyan()
+        );
+    }
+
+    if is_wizard_mode {
+        println!(
+            "\n{} Run 'chant add \"description\"' to create your first spec.",
+            "Done!".green()
         );
     }
 
@@ -884,5 +955,128 @@ fn lookup_log_file(base_path: &std::path::Path, id: &str) -> anyhow::Result<LogL
             spec_id: spec.id,
             log_path,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    #[serial_test::serial]
+    fn test_init_direct_mode_with_name() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let orig_dir = std::env::current_dir().unwrap();
+
+        if std::env::set_current_dir(&temp_dir).is_ok() {
+            // Test direct mode with --name flag
+            let result = cmd_init(
+                Some("test-project".to_string()),
+                false,
+                false,
+                false,
+                vec![],
+            );
+
+            assert!(result.is_ok());
+            assert!(temp_dir.path().join(".chant/config.md").exists());
+            assert!(temp_dir.path().join(".chant/prompts/standard.md").exists());
+            assert!(temp_dir.path().join(".chant/specs").exists());
+
+            let _ = std::env::set_current_dir(orig_dir);
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_init_direct_mode_minimal() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let orig_dir = std::env::current_dir().unwrap();
+
+        if std::env::set_current_dir(&temp_dir).is_ok() {
+            // Test direct mode with --minimal flag
+            let result = cmd_init(
+                Some("minimal-project".to_string()),
+                false,
+                false,
+                true,
+                vec![],
+            );
+
+            assert!(result.is_ok());
+            assert!(temp_dir.path().join(".chant/config.md").exists());
+            // Minimal mode should not create prompt templates
+            assert!(!temp_dir.path().join(".chant/prompts/standard.md").exists());
+            assert!(temp_dir.path().join(".chant/specs").exists());
+
+            let _ = std::env::set_current_dir(orig_dir);
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_init_direct_mode_with_agent() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let orig_dir = std::env::current_dir().unwrap();
+
+        if std::env::set_current_dir(&temp_dir).is_ok() {
+            // Test direct mode with --agent flag
+            let result = cmd_init(
+                Some("agent-project".to_string()),
+                false,
+                false,
+                false,
+                vec!["claude".to_string()],
+            );
+
+            assert!(result.is_ok());
+            assert!(temp_dir.path().join(".chant/config.md").exists());
+            assert!(temp_dir.path().join("CLAUDE.md").exists());
+
+            let _ = std::env::set_current_dir(orig_dir);
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_init_prevents_duplicate() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let orig_dir = std::env::current_dir().unwrap();
+
+        if std::env::set_current_dir(&temp_dir).is_ok() {
+            // First init
+            let result1 = cmd_init(Some("test".to_string()), false, false, false, vec![]);
+            assert!(result1.is_ok());
+
+            // Verify files were created
+            assert!(temp_dir.path().join(".chant/config.md").exists());
+
+            // Second init without --force should gracefully exit (not fail)
+            let result2 = cmd_init(Some("test".to_string()), false, false, false, vec![]);
+            assert!(result2.is_ok()); // Should still be Ok, just skip re-initialization
+
+            // Third init with --force should succeed and reinitialize
+            let result3 = cmd_init(Some("test-force".to_string()), false, true, false, vec![]);
+            assert!(result3.is_ok());
+
+            let _ = std::env::set_current_dir(orig_dir);
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_detect_project_name_from_cargo_toml() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let orig_dir = std::env::current_dir().unwrap();
+
+        if std::env::set_current_dir(&temp_dir).is_ok() {
+            let _ = fs::write("Cargo.toml", "name = \"my-rust-project\"\n");
+
+            let detected = detect_project_name();
+            assert_eq!(detected, Some("my-rust-project".to_string()));
+
+            let _ = std::env::set_current_dir(orig_dir);
+        }
     }
 }
