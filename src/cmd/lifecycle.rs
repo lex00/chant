@@ -1487,7 +1487,7 @@ pub fn cmd_resume(
 
         // Use cmd_work to execute the spec
         cmd::work::cmd_work(
-            &[spec_id.clone()],
+            std::slice::from_ref(&spec_id),
             prompt,
             branch,
             false, // pr
@@ -1501,6 +1501,88 @@ pub fn cmd_resume(
             false, // cleanup
         )?;
     }
+
+    Ok(())
+}
+
+// ============================================================================
+// REPLAY
+// ============================================================================
+
+/// Replay a completed spec by executing it again with the same or updated options
+pub fn cmd_replay(
+    id: &str,
+    prompt: Option<&str>,
+    branch: Option<String>,
+    pr: bool,
+    force: bool,
+    dry_run: bool,
+) -> Result<()> {
+    let specs_dir = crate::cmd::ensure_initialized()?;
+
+    // Resolve the spec
+    let spec = spec::resolve_spec(&specs_dir, id)?;
+    let spec_id = spec.id.clone();
+
+    // Validate that spec exists and is completed
+    if spec.frontmatter.status != SpecStatus::Completed {
+        anyhow::bail!(
+            "Only completed specs can be replayed. Spec {} has status: {:?}",
+            spec_id,
+            spec.frontmatter.status
+        );
+    }
+
+    if dry_run {
+        println!("{} Would replay spec {}", "→".cyan(), spec_id.cyan());
+        println!("  Status: {}", "completed".green());
+        println!("  Options:");
+        if branch.is_some() {
+            println!(
+                "    {} Create feature branch{}",
+                "•".cyan(),
+                branch
+                    .as_ref()
+                    .map(|b| format!(" with prefix: {}", b))
+                    .unwrap_or_default()
+            );
+        }
+        if pr {
+            println!("    {} Create pull request", "•".cyan());
+        }
+        if force {
+            println!(
+                "    {} Skip validation of unchecked acceptance criteria",
+                "•".cyan()
+            );
+        }
+        if prompt.is_some() {
+            println!(
+                "    {} Use custom prompt: {}",
+                "•".cyan(),
+                prompt.unwrap_or("standard").cyan()
+            );
+        }
+        return Ok(());
+    }
+
+    println!("{} Replaying spec {}", "→".cyan(), spec_id.cyan());
+
+    // Execute the spec using cmd_work
+    cmd::work::cmd_work(
+        std::slice::from_ref(&spec_id),
+        prompt,
+        branch,
+        pr,
+        force,
+        false, // parallel
+        &[],   // label
+        false, // finalize
+        false, // allow_no_commits
+        None,  // max_parallel
+        false, // no_cleanup
+        false, // cleanup
+    )?;
 
     Ok(())
 }
