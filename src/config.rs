@@ -45,6 +45,15 @@ pub struct Config {
     pub providers: ProviderConfig,
     #[serde(default)]
     pub parallel: ParallelConfig,
+    #[serde(default)]
+    pub repos: Vec<RepoConfig>,
+}
+
+/// Configuration for a single repository in cross-repo dependency resolution
+#[derive(Debug, Clone, Deserialize)]
+pub struct RepoConfig {
+    pub name: String,
+    pub path: String,
 }
 
 /// Configuration for parallel execution with multiple agents
@@ -288,6 +297,7 @@ struct PartialConfig {
     pub defaults: Option<PartialDefaultsConfig>,
     pub git: Option<PartialGitConfig>,
     pub parallel: Option<ParallelConfig>,
+    pub repos: Option<Vec<RepoConfig>>,
 }
 
 #[allow(dead_code)]
@@ -389,6 +399,10 @@ impl PartialConfig {
             providers: Default::default(),
             // Parallel config: project overrides global, or use default
             parallel: project.parallel.or(self.parallel).unwrap_or_default(),
+            // Repos: project overrides global, or use default
+            repos: project
+                .repos
+                .unwrap_or_else(|| self.repos.unwrap_or_default()),
         }
     }
 }

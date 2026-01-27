@@ -159,6 +159,7 @@ mod tests {
             git: crate::config::GitConfig::default(),
             providers: crate::provider::ProviderConfig::default(),
             parallel: crate::config::ParallelConfig::default(),
+            repos: vec![],
         }
     }
 

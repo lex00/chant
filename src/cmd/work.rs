@@ -1649,6 +1649,7 @@ mod tests {
                 agents,
                 cleanup: chant::config::CleanupConfig::default(),
             },
+            repos: vec![],
         }
     }
 

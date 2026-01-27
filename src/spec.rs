@@ -311,6 +311,8 @@ impl Spec {
 
     /// Check if this spec has unmet dependencies that would block it.
     /// Returns true if the spec has dependencies pointing to incomplete specs.
+    /// Note: This only checks local dependencies. For cross-repo dependencies,
+    /// use the is_blocked method from the deps module.
     pub fn is_blocked(&self, all_specs: &[Spec]) -> bool {
         // Check dependencies are all completed
         if let Some(deps) = &self.frontmatter.depends_on {
@@ -393,10 +395,21 @@ fn extract_title(body: &str) -> Option<String> {
     None
 }
 
-/// Load all specs from a directory.
 /// Apply blocked status to specs with unmet dependencies.
 /// For pending specs that have incomplete dependencies, updates their status to blocked.
+/// This is a local-only version that only checks dependencies within the current repo.
 fn apply_blocked_status(specs: &mut [Spec]) {
+    apply_blocked_status_with_repos(specs, std::path::Path::new(".chant/specs"), &[]);
+}
+
+/// Apply blocked status considering both local and cross-repo dependencies.
+/// This version supports cross-repo dependency checking when repos config is available.
+#[allow(dead_code)]
+pub fn apply_blocked_status_with_repos(
+    specs: &mut [Spec],
+    specs_dir: &std::path::Path,
+    repos: &[crate::config::RepoConfig],
+) {
     // Build a reference list of specs for dependency checking
     let specs_snapshot = specs.to_vec();
 
@@ -406,8 +419,16 @@ fn apply_blocked_status(specs: &mut [Spec]) {
             continue;
         }
 
-        // Check if this spec has unmet dependencies
+        // Check if this spec has unmet dependencies (local only)
         if spec.is_blocked(&specs_snapshot) {
+            spec.frontmatter.status = SpecStatus::Blocked;
+            continue;
+        }
+
+        // Check cross-repo dependencies if repos config is available
+        if !repos.is_empty()
+            && crate::deps::is_blocked_by_dependencies(spec, &specs_snapshot, specs_dir, repos)
+        {
             spec.frontmatter.status = SpecStatus::Blocked;
         }
     }
