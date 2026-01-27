@@ -268,6 +268,8 @@ enum Commands {
         #[arg(long, short)]
         output: Option<String>,
     },
+    /// Show disk usage of chant artifacts
+    Disk,
 }
 
 fn main() -> Result<()> {
@@ -397,6 +399,7 @@ fn main() -> Result<()> {
             fields.as_deref(),
             output.as_deref(),
         ),
+        Commands::Disk => cmd::disk::cmd_disk(),
     }
 }
 
