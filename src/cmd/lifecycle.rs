@@ -831,8 +831,8 @@ fn migrate_flat_archive(archive_dir: &std::path::PathBuf) -> anyhow::Result<()> 
 
                         let dst = date_dir.join(file_name);
 
-                        // Move the file to the date subdirectory
-                        if let Err(e) = fs::rename(&file_path, &dst) {
+                        // Move the file to the date subdirectory using git mv when possible
+                        if let Err(e) = move_spec_file(&file_path, &dst, false) {
                             eprintln!(
                                 "Warning: Failed to migrate archive file {:?}: {}",
                                 file_path, e
