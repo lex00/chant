@@ -19,6 +19,7 @@ use chant::git;
 use chant::merge;
 use chant::paths::{ARCHIVE_DIR, PROMPTS_DIR};
 use chant::prompt;
+use chant::replay::ReplayContext;
 use chant::spec::{self, Spec, SpecFrontmatter, SpecStatus};
 
 use crate::cmd;
@@ -1636,6 +1637,11 @@ pub fn cmd_replay(
     // Reset spec status to in_progress before execution
     let spec_path = specs_dir.join(format!("{}.md", spec_id));
     let mut spec = spec::resolve_spec(&specs_dir, &spec_id)?;
+
+    // Capture original completion info for the replay context
+    let original_completion = spec.frontmatter.completed_at.clone();
+    let spec_title = spec.title.clone();
+
     spec.frontmatter.status = SpecStatus::InProgress;
     spec.save(&spec_path)?;
 
@@ -1658,6 +1664,29 @@ pub fn cmd_replay(
     );
 
     // Handle result: cmd_work will have set the status to completed or failed
+    if work_result.is_ok() {
+        // Replay completed successfully, create a replay transcript commit if we have the original completion date
+        if let Some(original_completed_at) = original_completion {
+            let replay_context = ReplayContext::new(
+                spec_id.clone(),
+                spec_title,
+                original_completed_at,
+                None, // Use default "manual" reason
+            );
+
+            // Create the replay transcript commit
+            if let Err(e) = cmd::git_ops::commit_replay(&spec_path, &replay_context) {
+                eprintln!(
+                    "{} Warning: Failed to create replay transcript commit: {}",
+                    "⚠".yellow(),
+                    e
+                );
+                // Don't fail the entire replay if the transcript commit fails
+                // The important thing is that the spec was replayed
+            }
+        }
+    }
+
     work_result
 }
 

@@ -5,6 +5,8 @@
 use anyhow::{Context, Result};
 use std::path::Path;
 
+use chant::replay::ReplayContext;
+
 /// Create a new branch or switch to an existing one.
 pub fn create_or_switch_branch(branch_name: &str) -> Result<()> {
     use std::process::Command;
@@ -89,6 +91,49 @@ pub fn commit_transcript(spec_id: &str, spec_path: &Path) -> Result<()> {
             return Ok(());
         }
         anyhow::bail!("Failed to commit transcript: {}", stderr);
+    }
+
+    Ok(())
+}
+
+/// Create a replay commit with special formatting for replay executions.
+///
+/// Uses the replay context to format the commit message with:
+/// - First line: `chant(<id>): replay - <title>`
+/// - Body: Original completion date and replay reason
+///
+/// The spec file should already be staged before calling this.
+pub fn commit_replay(spec_path: &Path, replay_context: &ReplayContext) -> Result<()> {
+    use std::process::Command;
+
+    // Stage the spec file
+    let output = Command::new("git")
+        .args(["add", &spec_path.to_string_lossy()])
+        .output()
+        .context("Failed to run git add for replay commit")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Failed to stage spec file for replay commit: {}", stderr);
+    }
+
+    // Format the commit message
+    let (first_line, body) = replay_context.format_commit_message();
+    let commit_message = format!("{}\n\n{}", first_line, body);
+
+    // Create commit with multi-line message
+    let output = Command::new("git")
+        .args(["commit", "-m", &commit_message])
+        .output()
+        .context("Failed to run git commit for replay")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        // It's ok if there's nothing to commit
+        if stderr.contains("nothing to commit") || stderr.contains("no changes added") {
+            return Ok(());
+        }
+        anyhow::bail!("Failed to commit replay: {}", stderr);
     }
 
     Ok(())

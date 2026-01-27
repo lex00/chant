@@ -59,6 +59,7 @@ pub mod id;
 pub mod merge;
 pub mod prompt;
 pub mod provider;
+pub mod replay;
 pub mod spec;
 pub mod spec_group;
 pub mod tools;
