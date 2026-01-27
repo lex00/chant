@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use chant::paths::SPECS_DIR;
 
 pub mod agent;
+pub mod agent_rotation;
 pub mod commits;
 pub mod config;
 pub mod disk;

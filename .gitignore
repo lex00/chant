@@ -25,3 +25,4 @@ Thumbs.db
 .chant/state/
 .chant/logs/
 .chant/locks/
+.chant/store/

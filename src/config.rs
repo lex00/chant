@@ -86,6 +86,13 @@ pub struct AgentConfig {
     /// Maximum concurrent instances for this agent
     #[serde(default = "default_max_concurrent")]
     pub max_concurrent: usize,
+    /// Weight for agent rotation selection (higher = more likely to be selected)
+    #[serde(default = "default_agent_weight")]
+    pub weight: usize,
+}
+
+fn default_agent_weight() -> usize {
+    1
 }
 
 fn default_agent_name() -> String {
@@ -106,6 +113,7 @@ impl Default for AgentConfig {
             name: default_agent_name(),
             command: default_agent_command(),
             max_concurrent: default_max_concurrent(),
+            weight: default_agent_weight(),
         }
     }
 }
@@ -178,6 +186,13 @@ pub struct DefaultsConfig {
     /// Default provider (claude, ollama, openai)
     #[serde(default)]
     pub provider: ProviderType,
+    /// Agent rotation strategy for single spec execution (none, random, round-robin)
+    #[serde(default = "default_rotation_strategy")]
+    pub rotation_strategy: String,
+}
+
+fn default_rotation_strategy() -> String {
+    "none".to_string()
 }
 
 fn default_prompt() -> String {
@@ -203,6 +218,7 @@ impl Default for DefaultsConfig {
             split_model: None,
             main_branch: default_main_branch(),
             provider: ProviderType::Claude,
+            rotation_strategy: default_rotation_strategy(),
         }
     }
 }
@@ -298,6 +314,7 @@ struct PartialDefaultsConfig {
     pub split_model: Option<String>,
     pub main_branch: Option<String>,
     pub provider: Option<ProviderType>,
+    pub rotation_strategy: Option<String>,
 }
 
 #[allow(dead_code)]
@@ -358,6 +375,10 @@ impl PartialConfig {
                     .provider
                     .or(global_defaults.provider)
                     .unwrap_or_default(),
+                rotation_strategy: project_defaults
+                    .rotation_strategy
+                    .or(global_defaults.rotation_strategy)
+                    .unwrap_or_else(default_rotation_strategy),
             },
             git: GitConfig {
                 provider: project_git
@@ -802,10 +823,58 @@ parallel:
 "#;
         let config = Config::parse(content).unwrap();
 
-        // Agent with only name should get default command and max_concurrent
+        // Agent with only name should get default command, max_concurrent, and weight
         assert_eq!(config.parallel.agents.len(), 1);
         assert_eq!(config.parallel.agents[0].name, "custom-agent");
         assert_eq!(config.parallel.agents[0].command, "claude");
         assert_eq!(config.parallel.agents[0].max_concurrent, 2);
+        assert_eq!(config.parallel.agents[0].weight, 1);
+    }
+
+    #[test]
+    fn test_parse_agent_weight() {
+        let content = r#"---
+project:
+  name: test-project
+parallel:
+  agents:
+    - name: main
+      command: claude
+      weight: 2
+    - name: alt1
+      command: claude-alt1
+      weight: 1
+---
+"#;
+        let config = Config::parse(content).unwrap();
+
+        assert_eq!(config.parallel.agents[0].weight, 2);
+        assert_eq!(config.parallel.agents[1].weight, 1);
+    }
+
+    #[test]
+    fn test_parse_rotation_strategy() {
+        let content = r#"---
+project:
+  name: test-project
+defaults:
+  rotation_strategy: round-robin
+---
+"#;
+        let config = Config::parse(content).unwrap();
+
+        assert_eq!(config.defaults.rotation_strategy, "round-robin");
+    }
+
+    #[test]
+    fn test_rotation_strategy_defaults_to_none() {
+        let content = r#"---
+project:
+  name: test-project
+---
+"#;
+        let config = Config::parse(content).unwrap();
+
+        assert_eq!(config.defaults.rotation_strategy, "none");
     }
 }

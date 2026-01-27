@@ -22,6 +22,91 @@ pub fn invoke_agent(
     invoke_agent_with_model(message, spec, prompt_name, config, None, None)
 }
 
+/// Invoke an agent with optional agent command override and return captured output
+pub fn invoke_agent_with_command_override(
+    message: &str,
+    spec: &Spec,
+    prompt_name: &str,
+    config: &Config,
+    agent_command: Option<&str>,
+) -> Result<String> {
+    use std::io::{BufRead, BufReader};
+    use std::process::{Command, Stdio};
+
+    // Use specified command or default to "claude"
+    let command = agent_command.unwrap_or("claude");
+
+    // Create streaming log writer before spawning agent
+    let mut log_writer = match StreamingLogWriter::new(&spec.id, prompt_name) {
+        Ok(writer) => Some(writer),
+        Err(e) => {
+            eprintln!("{} Failed to create agent log: {}", "⚠".yellow(), e);
+            None
+        }
+    };
+
+    // Set environment variables
+    let spec_file = std::fs::canonicalize(format!(".chant/specs/{}.md", spec.id))?;
+
+    // Get the model to use
+    let model = get_model_for_invocation(config.defaults.model.as_deref());
+
+    // Set CHANT_SPEC_ID and CHANT_SPEC_FILE env vars
+    std::env::set_var("CHANT_SPEC_ID", &spec.id);
+    std::env::set_var("CHANT_SPEC_FILE", &spec_file);
+
+    let mut cmd = Command::new(command);
+    cmd.arg("--print")
+        .arg("--output-format")
+        .arg("stream-json")
+        .arg("--verbose")
+        .arg("--model")
+        .arg(&model)
+        .arg("--dangerously-skip-permissions")
+        .arg(message)
+        .env("CHANT_SPEC_ID", &spec.id)
+        .env("CHANT_SPEC_FILE", &spec_file)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let mut child = cmd.spawn().with_context(|| {
+        format!(
+            "Failed to invoke agent '{}'. Is it installed and in PATH?",
+            command
+        )
+    })?;
+
+    // Collect output while streaming to terminal and log
+    let mut captured_output = String::new();
+
+    // Stream stdout to both terminal and log file
+    if let Some(stdout) = child.stdout.take() {
+        let reader = BufReader::new(stdout);
+        for line in reader.lines().map_while(Result::ok) {
+            for text in extract_text_from_stream_json(&line) {
+                for text_line in text.lines() {
+                    println!("{}", text_line);
+                    captured_output.push_str(text_line);
+                    captured_output.push('\n');
+                    if let Some(ref mut writer) = log_writer {
+                        if let Err(e) = writer.write_line(text_line) {
+                            eprintln!("{} Failed to write to agent log: {}", "⚠".yellow(), e);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let status = child.wait()?;
+
+    if !status.success() {
+        anyhow::bail!("Agent exited with status: {}", status);
+    }
+
+    Ok(captured_output)
+}
+
 /// Invoke an agent with a message and prefix output with spec ID
 /// Used for parallel execution of multiple specs
 #[allow(dead_code)]

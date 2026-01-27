@@ -275,8 +275,36 @@ pub fn cmd_work(
     // Assemble prompt
     let message = prompt::assemble(&spec, &prompt_path, &config)?;
 
+    // Select agent for single spec execution based on rotation strategy
+    let agent_command =
+        if config.defaults.rotation_strategy != "none" && !config.parallel.agents.is_empty() {
+            // Use rotation to select an agent
+            match cmd::agent_rotation::select_agent_for_work(
+                &config.defaults.rotation_strategy,
+                &config.parallel,
+            ) {
+                Ok(cmd) => Some(cmd),
+                Err(e) => {
+                    println!("{} Failed to select agent: {}", "⚠".yellow(), e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
     // Invoke agent
-    let result = cmd::agent::invoke_agent(&message, &spec, prompt_name, &config);
+    let result = if let Some(agent_cmd) = agent_command {
+        cmd::agent::invoke_agent_with_command_override(
+            &message,
+            &spec,
+            prompt_name,
+            &config,
+            Some(&agent_cmd),
+        )
+    } else {
+        cmd::agent::invoke_agent(&message, &spec, prompt_name, &config)
+    };
 
     match result {
         Ok(agent_output) => {
@@ -1492,6 +1520,7 @@ mod tests {
             name: "main".to_string(),
             command: "claude".to_string(),
             max_concurrent: 3,
+            weight: 1,
         }];
         let config = make_test_config_with_agents(agents);
 
@@ -1516,11 +1545,13 @@ mod tests {
                 name: "main".to_string(),
                 command: "claude".to_string(),
                 max_concurrent: 2,
+                weight: 1,
             },
             chant::config::AgentConfig {
                 name: "alt1".to_string(),
                 command: "claude-alt1".to_string(),
                 max_concurrent: 3,
+                weight: 1,
             },
         ];
         let config = make_test_config_with_agents(agents);
@@ -1556,11 +1587,13 @@ mod tests {
                 name: "main".to_string(),
                 command: "claude".to_string(),
                 max_concurrent: 5,
+                weight: 1,
             },
             chant::config::AgentConfig {
                 name: "alt1".to_string(),
                 command: "claude-alt1".to_string(),
                 max_concurrent: 5,
+                weight: 1,
             },
         ];
         let config = make_test_config_with_agents(agents);
@@ -1582,6 +1615,7 @@ mod tests {
             name: "main".to_string(),
             command: "claude".to_string(),
             max_concurrent: 10,
+            weight: 1,
         }];
         let config = make_test_config_with_agents(agents);
 
@@ -1603,11 +1637,13 @@ mod tests {
                 name: "small".to_string(),
                 command: "claude-small".to_string(),
                 max_concurrent: 1,
+                weight: 1,
             },
             chant::config::AgentConfig {
                 name: "large".to_string(),
                 command: "claude-large".to_string(),
                 max_concurrent: 4,
+                weight: 1,
             },
         ];
         let config = make_test_config_with_agents(agents);
