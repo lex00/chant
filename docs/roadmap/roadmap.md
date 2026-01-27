@@ -55,11 +55,11 @@ The system has a minimal core with optional layers built on top:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  Layer 7: Autonomy                              ❌ NOT STARTED  │
-│  Drift detection, replay, verification                          │
+│  Layer 7: Autonomy                              ⏳ PARTIAL      │
+│  Drift ✓ | Replay ❌, verify ❌                                 │
 ├─────────────────────────────────────────────────────────────────┤
 │  Layer 6: Scale                                 ⏳ PARTIAL      │
-│  Locks ✓, parallel ✓ | Daemon ❌, Tantivy ❌, queue ❌          │
+│  Locks ✓, parallel ✓, rotation ✓ | Daemon ❌, Tantivy ❌       │
 ├─────────────────────────────────────────────────────────────────┤
 │  Layer 5: Observability                         ✅ COMPLETE     │
 │  lint, status, log, diagnose commands                           │
@@ -111,14 +111,14 @@ The prompt does the heavy lifting. Core just orchestrates.
 | 3: Multi-Repo | ⏳ | Global config (cross-repo deps pending) |
 | 4: Structure | ✅ | `depends_on`, groups, labels, split |
 | 5: Observability | ✅ | lint, status, log, diagnose |
-| 6: Scale | ⏳ | Locks, parallel (daemon/search pending) |
-| 7: Autonomy | ❌ | Drift, replay, verify (not started) |
+| 6: Scale | ⏳ | Locks, parallel, agent rotation (daemon/Tantivy pending) |
+| 7: Autonomy | ⏳ | Drift detection (replay/verify pending) |
 
 ## Version Roadmap
 
-### Current Status: v0.1.10
+### Current Status: v0.1.13
 
-Development moved faster than the original phased plan. Most features from Phases 0-6 are implemented.
+Development moved faster than the original phased plan. Most features from Phases 0-8 are implemented.
 
 | Phase | Status | Features |
 |-------|--------|----------|
@@ -128,25 +128,29 @@ Development moved faster than the original phased plan. Most features from Phase
 | Phase 3: Multi-Repo | ⏳ Partial | Global config exists; cross-repo deps not yet |
 | Phase 4: Structure | ✅ Complete | `depends_on`, groups (`.N` suffix), labels, `split` command |
 | Phase 5: Observability | ✅ Complete | `lint`, `status`, `log`, `diagnose` commands |
-| Phase 6: Scale | ⏳ Partial | Locks, `--parallel`; NOT: daemon, Tantivy, queue |
-| Phase 7: Autonomy | ❌ Not started | Drift detection, replay, verification |
-| Phase 8: Polish | ⏳ Partial | `ready` command; NOT: notifications, approvals |
+| Phase 6: Scale | ⏳ Partial | Locks, `--parallel`, agent rotation; NOT: daemon, Tantivy |
+| Phase 7: Autonomy | ⏳ Partial | `drift` command; NOT: replay, verify |
+| Phase 8: Polish | ✅ Complete | Interactive wizards, export, cancel, config validation |
 
 ### Upcoming Releases
 
 | Version | Focus |
 |---------|-------|
-| v0.2.0 | Full-text search (Tantivy), spec types (`documentation`, `research`) |
-| v0.3.0 | Full multi-repo support |
-| v0.4.0 | Autonomy (drift, verify, replay) |
+| v0.2.0 | Complete autonomy (`verify`, `replay` commands) |
+| v0.3.0 | Full-text search (Tantivy indexing) |
+| v0.4.0 | Full multi-repo support (cross-repo deps) |
+| v0.5.0 | Daemon mode for background execution |
 | v1.0.0 | Stable API, complete documentation |
 
-### v0.2.0 Spec Types
+### Spec Types (Implemented)
 
-New spec types enable specialized workflows:
+Specialized spec types enable different workflows:
 
 | Type | Purpose | Key Fields |
 |------|---------|------------|
+| `code` | Implementation, bug fixes, refactoring | `target_files:` |
+| `task` | Manual work, research, planning | - |
+| `driver`/`group` | Orchestrate multiple specs | `members:` (auto-populated) |
 | `documentation` | Keep docs in sync with code | `tracks:` (drift trigger) |
 | `research` | Analysis, synthesis, investigation | `informed_by:`, `origin:`, `schedule:` |
 
@@ -221,32 +225,45 @@ See [observability.md](../scale/observability.md), [errors.md](../reference/erro
 - ✅ PID-based locking to prevent concurrent work
 - ✅ `--parallel` flag for concurrent spec execution
 - ✅ `chant archive` command
+- ✅ Agent rotation strategies (`none`, `random`, `round-robin`)
+- ✅ Multi-agent configuration with weighted selection
 
 **Not yet implemented:**
-- ❌ Daemon mode
-- ❌ Tantivy full-text search
+- ❌ Daemon mode (background service)
+- ❌ Tantivy full-text search indexing
 - ❌ Queue architecture
 
 See [scale.md](../scale/scale.md), [locks.md](../scale/locks.md).
 
-### Phase 7: Autonomy ❌ NOT STARTED
+### Phase 7: Autonomy ⏳ PARTIAL
 
-- ❌ `chant verify` command for drift detection
-- ❌ `chant replay` command
-- ❌ Specification verification
+**Implemented:**
+- ✅ `chant drift` command for detecting spec staleness
+
+**Not yet implemented:**
+- ❌ `chant verify` command for specification verification
+- ❌ `chant replay` command for re-executing specs
 
 See [autonomy.md](../concepts/autonomy.md).
 
-### Phase 8: Polish ⏳ PARTIAL
+### Phase 8: Polish ✅ COMPLETE
 
 **Implemented:**
 - ✅ `chant ready` shortcut command
-- ✅ `chant delete` command
+- ✅ `chant delete` command with `--cascade` flag
+- ✅ `chant cancel` command (soft-delete with status change)
+- ✅ `chant export` command (JSON, CSV, Markdown formats)
+- ✅ `chant config --validate` command
+- ✅ `chant search` interactive wizard
+- ✅ Interactive wizards for `work`, `export`, `merge` commands
+- ✅ `Blocked` status (auto-applied for unmet dependencies)
+- ✅ `Cancelled` status for soft-deleted specs
+- ✅ List filtering by `--status` (including blocked, cancelled)
 
 **Not yet implemented:**
-- ❌ Notifications
+- ❌ Notifications (webhooks, email, Slack)
 - ❌ Approvals workflow
-- ❌ Template registry
+- ❌ Template/prompt registry
 
 See [ecosystem.md](../guides/ecosystem.md), [approvals.md](../guides/approvals.md).
 
@@ -381,17 +398,21 @@ chant add "Fix: work command hangs on large files"
 # Implement fix
 chant work 001
 
-# Verify
-chant verify 001
+# Check for completed
+chant show 001  # status: completed
 
-# Detect drift in chant itself
+# Detect drift in documentation specs
 chant drift
 
-# Replay if needed
-chant replay 023
+# Resume failed specs
+chant resume 023 --work
 ```
 
 Chant maintains chant.
+
+**Future additions** (v0.2.0):
+- `chant verify` - Verify spec acceptance criteria still pass
+- `chant replay` - Re-execute a spec from scratch
 
 ## Non-Goals
 
