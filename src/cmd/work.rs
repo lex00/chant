@@ -318,7 +318,7 @@ pub fn cmd_work(
     }
 
     // Check if in progress
-    if spec.frontmatter.status == SpecStatus::InProgress {
+    if spec.frontmatter.status == SpecStatus::InProgress && !force {
         println!("{} Spec already in progress.", "⚠".yellow());
         return Ok(());
     }
