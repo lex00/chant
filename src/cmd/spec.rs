@@ -798,6 +798,114 @@ pub fn cmd_delete(
     Ok(())
 }
 
+/// Cancel a spec (soft-delete) by setting its status to cancelled.
+/// Preserves the spec file and git history.
+pub fn cmd_cancel(id: &str, force: bool, dry_run: bool, yes: bool) -> Result<()> {
+    let specs_dir = crate::cmd::ensure_initialized()?;
+
+    // Resolve the spec ID
+    let mut spec = spec::resolve_spec(&specs_dir, id)?;
+    let spec_id = &spec.id.clone();
+
+    // Check if this is a member spec - cancel is not allowed for members
+    if let Some(driver_id) = spec::extract_driver_id(spec_id) {
+        anyhow::bail!(
+            "Cannot cancel member spec '{}'. Cancel the driver spec '{}' instead.",
+            spec_id,
+            driver_id
+        );
+    }
+
+    // Check safety constraints
+    if !force {
+        match spec.frontmatter.status {
+            SpecStatus::Cancelled => {
+                anyhow::bail!("Spec '{}' is already cancelled.", spec_id);
+            }
+            SpecStatus::InProgress | SpecStatus::Failed | SpecStatus::NeedsAttention => {
+                anyhow::bail!(
+                    "Spec '{}' is {}. Use --force to cancel anyway.",
+                    spec_id,
+                    match spec.frontmatter.status {
+                        SpecStatus::InProgress => "in progress",
+                        SpecStatus::Failed => "failed",
+                        SpecStatus::NeedsAttention => "needs attention",
+                        _ => unreachable!(),
+                    }
+                );
+            }
+            _ => {}
+        }
+    }
+
+    // Check if this spec is a dependency for others
+    let all_specs = spec::load_all_specs(&specs_dir)?;
+    let mut dependents = Vec::new();
+    for other_spec in &all_specs {
+        if let Some(deps) = &other_spec.frontmatter.depends_on {
+            for dep_id in deps {
+                if dep_id == spec_id {
+                    dependents.push(other_spec.id.clone());
+                }
+            }
+        }
+    }
+
+    if !dependents.is_empty() && !force {
+        eprintln!(
+            "{} Spec '{}' is a dependency for: {}",
+            "⚠".yellow(),
+            spec_id,
+            dependents.join(", ")
+        );
+        anyhow::bail!("Use --force to cancel this spec and its dependents.");
+    }
+
+    // Display what will be cancelled
+    println!("{} Cancelling spec:", "→".cyan());
+    println!("  {} {}", "→".cyan(), spec_id);
+
+    if !dependents.is_empty() {
+        println!("{} Dependents will be blocked:", "⚠".yellow());
+        for dep in &dependents {
+            println!("  {} {}", "⚠".yellow(), dep);
+        }
+    }
+
+    if dry_run {
+        println!("{} {}", "→".cyan(), "(dry run, no changes made)".dimmed());
+        return Ok(());
+    }
+
+    // Ask for confirmation unless --yes
+    if !yes {
+        eprint!(
+            "{} Are you sure you want to cancel {}? [y/N] ",
+            "❓".cyan(),
+            spec_id
+        );
+        std::io::Write::flush(&mut std::io::stderr())?;
+
+        let mut response = String::new();
+        std::io::stdin().read_line(&mut response)?;
+        if !response.trim().eq_ignore_ascii_case("y") {
+            println!("{} Cancel cancelled.", "✗".red());
+            return Ok(());
+        }
+    }
+
+    // Update the spec status to Cancelled
+    spec.frontmatter.status = SpecStatus::Cancelled;
+
+    // Save the spec file with the new status
+    let spec_path = specs_dir.join(format!("{}.md", spec_id));
+    spec.save(&spec_path)?;
+
+    println!("{} Cancelled spec: {}", "✓".green(), spec_id);
+
+    Ok(())
+}
+
 /// Format a YAML value with semantic colors based on key and value type.
 /// - status: green (completed), yellow (in_progress/pending), red (failed)
 /// - commit: cyan

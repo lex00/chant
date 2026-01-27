@@ -247,6 +247,20 @@ enum Commands {
         #[arg(long, num_args = 0..=1, require_equals = true, value_name = "PREFIX")]
         branch: Option<String>,
     },
+    /// Cancel a spec (soft-delete with status change)
+    Cancel {
+        /// Spec ID (full or partial)
+        id: String,
+        /// Force cancel even if not pending
+        #[arg(long)]
+        force: bool,
+        /// Dry run - show what would be cancelled
+        #[arg(long)]
+        dry_run: bool,
+        /// Skip confirmation prompt
+        #[arg(long)]
+        yes: bool,
+    },
     /// Delete a spec and clean up artifacts
     Delete {
         /// Spec ID (full or partial)
@@ -432,6 +446,12 @@ fn main() -> Result<()> {
             prompt,
             branch,
         } => cmd::lifecycle::cmd_resume(&id, work, prompt.as_deref(), branch),
+        Commands::Cancel {
+            id,
+            force,
+            dry_run,
+            yes,
+        } => cmd::spec::cmd_cancel(&id, force, dry_run, yes),
         Commands::Delete {
             id,
             force,

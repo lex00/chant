@@ -232,9 +232,10 @@ fn check_status_consistency(spec: &Spec, commit_exists: bool, unchecked: usize) 
         SpecStatus::Blocked => {
             CheckResult::pass_with_details("Status consistency", "Blocked by unmet dependencies")
         }
-        SpecStatus::Cancelled => {
-            CheckResult::pass_with_details("Status consistency", "Marked as cancelled (preserved but excluded from list and work)")
-        }
+        SpecStatus::Cancelled => CheckResult::pass_with_details(
+            "Status consistency",
+            "Marked as cancelled (preserved but excluded from list and work)",
+        ),
     }
 }
 
