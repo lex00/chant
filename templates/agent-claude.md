@@ -122,6 +122,23 @@ Change `- [ ]` to `- [x]` as you complete each criterion.
 - ❌ **Never** edit files directly outside of spec execution
 - ❌ **Never** make ad-hoc changes to the repository outside of the spec system
 
+**Task Tool for Multi-Spec Parallelization:**
+- ❌ **Never** use the Task tool to parallelize spec execution across multiple specs
+- ❌ **Never** use the Task tool to invoke `chant work` on multiple specs in parallel
+- ❌ **Never** use the Task tool to orchestrate multiple spec executions
+
+**Why?** Chant has built-in orchestration for parallel execution:
+- Use `chant work --parallel` to execute all ready specs in parallel
+- Use `chant work --parallel --label <LABEL>` to execute labeled specs in parallel
+- Chant handles agent rotation, worktree management, and conflict resolution
+- Using Task to parallelize bypasses these safeguards and can cause conflicts
+
+**What IS allowed - Task tool within a single spec:**
+- ✅ **DO** use the Task tool to search/explore the codebase within a spec
+- ✅ **DO** use the Task tool with `subagent_type: Explore` for codebase analysis
+- ✅ **DO** use the Task tool with specialized agents for research within a single spec
+- ✅ **DO** use parallel tool calls within a single spec execution (e.g., reading multiple files in parallel)
+
 ### On Unexpected Errors
 
 If an unexpected error occurs during spec execution:
