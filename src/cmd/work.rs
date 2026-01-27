@@ -18,6 +18,7 @@ use chant::paths::PROMPTS_DIR;
 use chant::prompt;
 use chant::spec::{self, Spec, SpecStatus};
 use chant::worktree;
+use dialoguer::Select;
 
 use crate::cmd;
 use crate::cmd::commits::get_commits_for_spec;
@@ -30,6 +31,115 @@ use crate::cmd::model::get_model_name_with_default;
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
+
+/// Load all ready specs from the specs directory
+fn load_ready_specs(specs_dir: &Path) -> Result<Vec<Spec>> {
+    let all_specs = spec::load_all_specs(specs_dir)?;
+    let ready_specs: Vec<Spec> = all_specs
+        .iter()
+        .filter(|s| s.is_ready(&all_specs))
+        .cloned()
+        .collect();
+    Ok(ready_specs)
+}
+
+/// List all available prompts from the prompts directory
+fn list_available_prompts(prompts_dir: &Path) -> Result<Vec<String>> {
+    let mut prompts = Vec::new();
+    if prompts_dir.exists() && prompts_dir.is_dir() {
+        for entry in std::fs::read_dir(prompts_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_file() && path.extension().is_some_and(|ext| ext == "md") {
+                if let Some(stem) = path.file_stem() {
+                    prompts.push(stem.to_string_lossy().to_string());
+                }
+            }
+        }
+    }
+    prompts.sort();
+    Ok(prompts)
+}
+
+/// Run the interactive wizard for selecting a spec
+fn run_wizard(specs_dir: &Path, prompts_dir: &Path) -> Result<Option<WizardSelection>> {
+    // Load ready specs
+    let ready_specs = load_ready_specs(specs_dir)?;
+
+    if ready_specs.is_empty() {
+        println!("No ready specs to execute.");
+        return Ok(None);
+    }
+
+    // Build spec selection items
+    let spec_items: Vec<String> = ready_specs
+        .iter()
+        .map(|s| {
+            if let Some(title) = &s.title {
+                format!("{}  {}", s.id, title)
+            } else {
+                s.id.clone()
+            }
+        })
+        .collect();
+
+    // Add parallel option at the end
+    let mut all_items = spec_items.clone();
+    all_items.push("[Run all ready specs in parallel]".to_string());
+
+    // Show spec selection
+    let selection = Select::new()
+        .with_prompt("? Select spec to work")
+        .items(&all_items)
+        .default(0)
+        .interact()?;
+
+    // Check if parallel mode was selected
+    if selection == all_items.len() - 1 {
+        return Ok(Some(WizardSelection::Parallel));
+    }
+
+    let selected_spec = ready_specs[selection].clone();
+
+    // Show prompt selection
+    let available_prompts = list_available_prompts(prompts_dir)?;
+
+    if available_prompts.is_empty() {
+        anyhow::bail!("No prompts found in {}", prompts_dir.display());
+    }
+
+    let prompt_selection = Select::new()
+        .with_prompt("? Select prompt")
+        .items(&available_prompts)
+        .default(0)
+        .interact()?;
+
+    let selected_prompt = available_prompts[prompt_selection].clone();
+
+    // Show branch confirmation
+    let create_branch = dialoguer::Confirm::new()
+        .with_prompt("Create feature branch")
+        .default(false)
+        .interact()?;
+
+    Ok(Some(WizardSelection::SingleSpec {
+        spec_id: selected_spec.id,
+        prompt: selected_prompt,
+        create_branch,
+    }))
+}
+
+/// Result of the wizard selection
+enum WizardSelection {
+    /// Run a single spec
+    SingleSpec {
+        spec_id: String,
+        prompt: String,
+        create_branch: bool,
+    },
+    /// Run all ready specs in parallel
+    Parallel,
+}
 
 /// Auto-select a prompt based on spec type if the prompt file exists.
 /// Returns None if no auto-selected prompt is appropriate or available.
@@ -111,10 +221,34 @@ pub fn cmd_work(
         return cmd_work_parallel(&specs_dir, &prompts_dir, &config, options);
     }
 
-    // If no ID and not parallel, require an ID
-    let id = ids
-        .first()
-        .ok_or_else(|| anyhow::anyhow!("Spec ID required (or use --parallel)"))?;
+    // If no ID and not parallel, launch interactive wizard
+    let (final_id, final_prompt, final_branch) = if ids.is_empty() {
+        match run_wizard(&specs_dir, &prompts_dir)? {
+            Some(WizardSelection::SingleSpec {
+                spec_id,
+                prompt,
+                create_branch,
+            }) => (spec_id, Some(prompt), create_branch),
+            Some(WizardSelection::Parallel) => {
+                // User selected parallel mode via wizard
+                let options = ParallelOptions {
+                    max_override: max_parallel,
+                    no_cleanup,
+                    force_cleanup,
+                    labels,
+                    branch_prefix: cli_branch.as_deref(),
+                    prompt_name,
+                    specific_ids: &[],
+                };
+                return cmd_work_parallel(&specs_dir, &prompts_dir, &config, options);
+            }
+            None => return Ok(()),
+        }
+    } else {
+        (ids[0].clone(), None, false)
+    };
+
+    let id = &final_id;
 
     // Resolve spec
     let mut spec = spec::resolve_spec(&specs_dir, id)?;
@@ -236,11 +370,18 @@ pub fn cmd_work(
     }
 
     // CLI flags override config defaults
+    // Wizard selection overrides both config and CLI (when ids were empty)
     let create_pr = cli_pr || config.defaults.pr;
     let use_branch_prefix = cli_branch
         .as_deref()
         .unwrap_or(&config.defaults.branch_prefix);
-    let create_branch = cli_branch.is_some() || config.defaults.branch || create_pr;
+    let create_branch = if ids.is_empty() {
+        // Wizard mode: use wizard's branch selection
+        final_branch || cli_branch.is_some() || config.defaults.branch || create_pr
+    } else {
+        // Direct mode: use CLI flags and config
+        cli_branch.is_some() || config.defaults.branch || create_pr
+    };
 
     // Handle branch creation/switching if requested
     let branch_name = if create_branch {
@@ -253,18 +394,19 @@ pub fn cmd_work(
         None
     };
 
-    // Resolve prompt: explicit > frontmatter > auto-select by type > default
-    let prompt_name = prompt_name
-        .map(|s| s.to_string())
+    // Resolve prompt: CLI > wizard > frontmatter > auto-select by type > default
+    let resolved_prompt_name = prompt_name
+        .map(std::string::ToString::to_string)
+        .or(final_prompt)
         .or_else(|| spec.frontmatter.prompt.clone())
         .or_else(|| auto_select_prompt_for_type(&spec, &prompts_dir))
         .unwrap_or_else(|| config.defaults.prompt.clone());
 
-    let prompt_path = prompts_dir.join(format!("{}.md", prompt_name));
+    let prompt_path = prompts_dir.join(format!("{}.md", resolved_prompt_name));
     if !prompt_path.exists() {
-        anyhow::bail!("Prompt not found: {}", prompt_name);
+        anyhow::bail!("Prompt not found: {}", resolved_prompt_name);
     }
-    let prompt_name = prompt_name.as_str();
+    let prompt_name = resolved_prompt_name.as_str();
 
     // Update status to in_progress
     spec.frontmatter.status = SpecStatus::InProgress;
@@ -1769,5 +1911,83 @@ mod tests {
 
         // No failures, no stale worktrees = no pitfalls
         assert!(pitfalls.is_empty());
+    }
+
+    // =========================================================================
+    // WIZARD TESTS
+    // =========================================================================
+
+    #[test]
+    fn test_load_ready_specs_empty() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        // Empty specs directory - should succeed but return no specs
+        let result = load_ready_specs(specs_dir);
+
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+        assert_eq!(specs.len(), 0);
+    }
+
+    #[test]
+    fn test_list_available_prompts_empty() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let prompts_dir = temp_dir.path();
+
+        let result = list_available_prompts(prompts_dir).unwrap();
+
+        assert_eq!(result.len(), 0);
+    }
+
+    #[test]
+    fn test_list_available_prompts_finds_md_files() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let prompts_dir = temp_dir.path();
+
+        // Create some prompt files
+        std::fs::write(prompts_dir.join("standard.md"), "# Standard").unwrap();
+        std::fs::write(prompts_dir.join("tdd.md"), "# TDD").unwrap();
+        std::fs::write(prompts_dir.join("minimal.md"), "# Minimal").unwrap();
+        // Also create a non-markdown file to ensure it's ignored
+        std::fs::write(prompts_dir.join("readme.txt"), "# Not a prompt").unwrap();
+
+        let result = list_available_prompts(prompts_dir).unwrap();
+
+        assert_eq!(result.len(), 3);
+        assert!(result.contains(&"standard".to_string()));
+        assert!(result.contains(&"tdd".to_string()));
+        assert!(result.contains(&"minimal".to_string()));
+        // Should be sorted
+        assert_eq!(result[0], "minimal");
+        assert_eq!(result[1], "standard");
+        assert_eq!(result[2], "tdd");
+    }
+
+    #[test]
+    fn test_list_available_prompts_sorted() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let prompts_dir = temp_dir.path();
+
+        // Create prompt files in non-alphabetical order
+        std::fs::write(prompts_dir.join("zebra.md"), "# Z").unwrap();
+        std::fs::write(prompts_dir.join("alpha.md"), "# A").unwrap();
+        std::fs::write(prompts_dir.join("beta.md"), "# B").unwrap();
+
+        let result = list_available_prompts(prompts_dir).unwrap();
+
+        assert_eq!(result.len(), 3);
+        // Should be alphabetically sorted
+        assert_eq!(result[0], "alpha");
+        assert_eq!(result[1], "beta");
+        assert_eq!(result[2], "zebra");
     }
 }
