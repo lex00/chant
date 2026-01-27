@@ -1624,8 +1624,7 @@ pub fn cmd_replay(
 
     // Ask for confirmation unless --yes
     if !yes {
-        let confirmed =
-            prompt::confirm(&format!("Proceed with replaying spec {}?", spec_id))?;
+        let confirmed = prompt::confirm(&format!("Proceed with replaying spec {}?", spec_id))?;
         if !confirmed {
             println!("{} Replay cancelled.", "✗".yellow());
             return Ok(());
