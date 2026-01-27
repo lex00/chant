@@ -5,6 +5,7 @@
 //! when no query is provided.
 
 use anyhow::Result;
+use atty;
 use chrono::{Duration, Local, NaiveDate};
 use colored::Colorize;
 
@@ -12,6 +13,16 @@ use chant::paths::ARCHIVE_DIR;
 use chant::spec::{self, Spec};
 
 use crate::render;
+
+/// Print usage hint for search command in non-TTY contexts
+fn print_search_usage_hint() {
+    println!("Usage: chant search <QUERY>\n");
+    println!("Examples:");
+    println!("  chant search \"authentication\"");
+    println!("  chant search --status pending \"api\"");
+    println!("  chant search --label bugfix\n");
+    println!("Run 'chant search --help' for all options.");
+}
 
 /// Search options for filtering and display
 #[derive(Debug, Clone)]
@@ -449,8 +460,13 @@ fn perform_search(opts: &SearchOptions) -> Result<()> {
 
 /// Execute the search command with the given options
 pub fn cmd_search(opts: Option<SearchOptions>) -> Result<()> {
-    // If no options provided, run interactive wizard
+    // If no options provided, check for TTY
     if opts.is_none() {
+        // If not a TTY, print usage hint instead of launching wizard
+        if !atty::is(atty::Stream::Stdin) {
+            print_search_usage_hint();
+            return Ok(());
+        }
         return run_wizard();
     }
 

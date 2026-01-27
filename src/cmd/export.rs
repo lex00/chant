@@ -6,6 +6,7 @@
 //! When run without the --format flag, launches an interactive wizard to configure options.
 
 use anyhow::{Context, Result};
+use atty;
 use dialoguer::Select;
 use serde_json::json;
 use std::fs::File;
@@ -13,6 +14,17 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use chant::spec::{self, Spec};
+
+/// Print usage hint for export command in non-TTY contexts
+fn print_export_usage_hint() {
+    println!("Usage: chant export --format <FORMAT>\n");
+    println!("Formats: json, csv, markdown\n");
+    println!("Examples:");
+    println!("  chant export --format json");
+    println!("  chant export --format csv --output specs.csv");
+    println!("  chant export --format markdown --status completed\n");
+    println!("Run 'chant export --help' for all options.");
+}
 
 /// Holds the result of the interactive wizard
 struct WizardOptions {
@@ -47,8 +59,13 @@ pub fn cmd_export(
         && to_date.is_none()
         && output_file.is_none();
 
-    // If wizard mode, launch the interactive wizard
+    // If wizard mode, check for TTY
     let options = if is_wizard_mode {
+        // If not a TTY, print usage hint instead of launching wizard
+        if !atty::is(atty::Stream::Stdin) {
+            print_export_usage_hint();
+            return Ok(());
+        }
         run_wizard()?
     } else {
         // Direct mode: use provided values

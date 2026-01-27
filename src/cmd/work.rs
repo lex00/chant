@@ -8,6 +8,7 @@
 //! - Worktree management
 
 use anyhow::Result;
+use atty;
 use colored::Colorize;
 use std::path::{Path, PathBuf};
 
@@ -19,6 +20,16 @@ use chant::prompt;
 use chant::spec::{self, Spec, SpecStatus};
 use chant::worktree;
 use dialoguer::Select;
+
+/// Print usage hint for work command in non-TTY contexts
+fn print_work_usage_hint() {
+    println!("Usage: chant work <SPEC_ID>\n");
+    println!("Examples:");
+    println!("  chant work 2026-01-27-001-abc");
+    println!("  chant work 001-abc");
+    println!("  chant work --parallel\n");
+    println!("Run 'chant work --help' for all options.");
+}
 
 use crate::cmd;
 use crate::cmd::commits::get_commits_for_spec;
@@ -221,8 +232,13 @@ pub fn cmd_work(
         return cmd_work_parallel(&specs_dir, &prompts_dir, &config, options);
     }
 
-    // If no ID and not parallel, launch interactive wizard
+    // If no ID and not parallel, check for TTY
     let (final_id, final_prompt, final_branch) = if ids.is_empty() {
+        // If not a TTY, print usage hint instead of launching wizard
+        if !atty::is(atty::Stream::Stdin) {
+            print_work_usage_hint();
+            return Ok(());
+        }
         match run_wizard(&specs_dir, &prompts_dir)? {
             Some(WizardSelection::SingleSpec {
                 spec_id,
