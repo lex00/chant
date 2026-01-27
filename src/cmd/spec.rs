@@ -503,6 +503,22 @@ pub fn cmd_lint() -> Result<()> {
     }
 }
 
+pub fn cmd_export(
+    format: &str,
+    statuses: &[String],
+    type_: Option<&str>,
+    labels: &[String],
+    ready: bool,
+    from: Option<&str>,
+    to: Option<&str>,
+    fields: Option<&str>,
+    output: Option<&str>,
+) -> Result<()> {
+    crate::cmd::export::cmd_export(
+        format, statuses, type_, labels, ready, from, to, fields, output,
+    )
+}
+
 pub fn cmd_delete(
     id: &str,
     force: bool,

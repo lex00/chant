@@ -238,6 +238,36 @@ enum Commands {
         #[arg(long, short)]
         verbose: bool,
     },
+    /// Export specs to JSON, CSV, or Markdown format
+    Export {
+        /// Output format (json, csv, markdown)
+        #[arg(long, default_value = "json")]
+        format: String,
+        /// Filter by status (can be specified multiple times)
+        #[arg(long)]
+        status: Vec<String>,
+        /// Filter by type (code, task, driver, etc.)
+        #[arg(long)]
+        type_: Option<String>,
+        /// Filter by labels (can be specified multiple times, OR logic)
+        #[arg(long)]
+        label: Vec<String>,
+        /// Only export ready specs
+        #[arg(long)]
+        ready: bool,
+        /// Filter by date range (from date in YYYY-MM-DD format)
+        #[arg(long)]
+        from: Option<String>,
+        /// Filter by date range (to date in YYYY-MM-DD format)
+        #[arg(long)]
+        to: Option<String>,
+        /// Comma-separated fields to include (or 'all' for all fields)
+        #[arg(long)]
+        fields: Option<String>,
+        /// Output file (if not specified, prints to stdout)
+        #[arg(long, short)]
+        output: Option<String>,
+    },
 }
 
 fn main() -> Result<()> {
@@ -346,6 +376,27 @@ fn main() -> Result<()> {
             }
         }
         Commands::Version { verbose } => cmd_version(verbose),
+        Commands::Export {
+            format,
+            status,
+            type_,
+            label,
+            ready,
+            from,
+            to,
+            fields,
+            output,
+        } => cmd::spec::cmd_export(
+            &format,
+            &status,
+            type_.as_deref(),
+            &label,
+            ready,
+            from.as_deref(),
+            to.as_deref(),
+            fields.as_deref(),
+            output.as_deref(),
+        ),
     }
 }
 
