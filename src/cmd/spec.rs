@@ -81,10 +81,20 @@ pub fn validate_spec_complexity(spec: &Spec) -> Vec<String> {
 
 /// Validate spec for coupling - detect references to other spec IDs in body text.
 /// Specs should be self-contained; use depends_on for explicit dependencies.
+///
+/// Rules:
+/// - Drivers (type: driver/group): excluded from coupling check entirely
+/// - Member specs (.1, .2, etc): warned only for sibling references (same driver, different member)
+/// - Regular specs: warned for any spec ID reference
 pub fn validate_spec_coupling(spec: &Spec) -> Vec<String> {
     use regex::Regex;
 
     let mut warnings = Vec::new();
+
+    // Drivers are allowed to reference their members - skip check entirely
+    if spec.frontmatter.r#type == "driver" || spec.frontmatter.r#type == "group" {
+        return warnings;
+    }
 
     // Build regex for spec ID pattern
     let re = match Regex::new(SPEC_ID_PATTERN) {
@@ -109,12 +119,39 @@ pub fn validate_spec_coupling(spec: &Spec) -> Vec<String> {
     referenced_ids.sort();
     referenced_ids.dedup();
 
-    if !referenced_ids.is_empty() {
-        let ids_str = referenced_ids.join(", ");
-        warnings.push(format!(
-            "Spec references other spec ID(s) in body: {} - use depends_on for dependencies",
-            ids_str
-        ));
+    // Check if this is a member spec
+    if let Some(driver_id) = spec::extract_driver_id(&spec.id) {
+        // This is a member spec - only warn for sibling references
+        let sibling_refs: Vec<String> = referenced_ids
+            .into_iter()
+            .filter(|ref_id| {
+                // Check if referenced spec is a sibling (same driver, different member)
+                if let Some(ref_driver_id) = spec::extract_driver_id(ref_id) {
+                    if ref_driver_id == driver_id {
+                        // Same driver, so it's a sibling
+                        return true;
+                    }
+                }
+                false
+            })
+            .collect();
+
+        if !sibling_refs.is_empty() {
+            let ids_str = sibling_refs.join(", ");
+            warnings.push(format!(
+                "Spec references sibling spec(s): {} - member specs should be independent",
+                ids_str
+            ));
+        }
+    } else {
+        // Regular spec - warn on any spec ID reference
+        if !referenced_ids.is_empty() {
+            let ids_str = referenced_ids.join(", ");
+            warnings.push(format!(
+                "Spec references other spec ID(s) in body: {} - use depends_on for dependencies",
+                ids_str
+            ));
+        }
     }
 
     warnings
@@ -4669,6 +4706,91 @@ No coupling here.
 
         let warnings = super::validate_spec_coupling(&spec);
         assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn test_coupling_driver_excluded_from_check() {
+        let spec = Spec {
+            id: "2026-01-26-00a-xyz".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "driver".to_string(),
+                ..Default::default()
+            },
+            title: Some("Driver spec".to_string()),
+            body: "# Driver\n\nCoordinates: 2026-01-26-00a-xyz.1, 2026-01-26-00a-xyz.2, 2026-01-26-00a-xyz.3".to_string(),
+        };
+
+        let warnings = super::validate_spec_coupling(&spec);
+        assert!(
+            warnings.is_empty(),
+            "Drivers should not trigger coupling warnings"
+        );
+    }
+
+    #[test]
+    fn test_coupling_group_type_excluded_from_check() {
+        let spec = Spec {
+            id: "2026-01-26-00a-xyz".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "group".to_string(),
+                ..Default::default()
+            },
+            title: Some("Group spec".to_string()),
+            body: "# Group\n\nGroups: 2026-01-26-00a-xyz.1 and 2026-01-26-00a-xyz.2".to_string(),
+        };
+
+        let warnings = super::validate_spec_coupling(&spec);
+        assert!(
+            warnings.is_empty(),
+            "Group specs should not trigger coupling warnings"
+        );
+    }
+
+    #[test]
+    fn test_coupling_member_detects_sibling_reference() {
+        let spec = Spec {
+            id: "2026-01-26-00a-xyz.1".to_string(),
+            frontmatter: SpecFrontmatter::default(),
+            title: Some("Member 1".to_string()),
+            body: "# Member 1\n\nSee 2026-01-26-00a-xyz.2 for next step.".to_string(),
+        };
+
+        let warnings = super::validate_spec_coupling(&spec);
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("sibling"));
+        assert!(warnings[0].contains("2026-01-26-00a-xyz.2"));
+    }
+
+    #[test]
+    fn test_coupling_member_ignores_non_sibling_reference() {
+        let spec = Spec {
+            id: "2026-01-26-00a-xyz.1".to_string(),
+            frontmatter: SpecFrontmatter::default(),
+            title: Some("Member 1".to_string()),
+            body: "# Member 1\n\nRelated to 2026-01-26-00b-abc.".to_string(),
+        };
+
+        let warnings = super::validate_spec_coupling(&spec);
+        assert!(
+            warnings.is_empty(),
+            "Member should not warn about non-sibling references"
+        );
+    }
+
+    #[test]
+    fn test_coupling_member_multiple_siblings() {
+        let spec = Spec {
+            id: "2026-01-26-00a-xyz.1".to_string(),
+            frontmatter: SpecFrontmatter::default(),
+            title: Some("Member 1".to_string()),
+            body: "# Member 1\n\nRelated: 2026-01-26-00a-xyz.2 and 2026-01-26-00a-xyz.3"
+                .to_string(),
+        };
+
+        let warnings = super::validate_spec_coupling(&spec);
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("2026-01-26-00a-xyz.2"));
+        assert!(warnings[0].contains("2026-01-26-00a-xyz.3"));
     }
 
     // ========================================================================
