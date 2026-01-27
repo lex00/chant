@@ -1,5 +1,11 @@
 # Queue Architecture
 
+> **Status: Partially Implemented** ⚠️
+>
+> The daemon-free queue (Tiers 1-2) is implemented through file-based coordination.
+> Advanced queue backends (Tier 3+: Tantivy, PostgreSQL, Redis) are not yet implemented.
+> See [Roadmap](../roadmap/roadmap.md) - Phase 6 for queue tier details.
+
 ## Core Insight
 
 **Spec files ARE the queue.** The queue is derived, not stored separately.

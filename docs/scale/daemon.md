@@ -1,5 +1,11 @@
 # Daemon Mode
 
+> **Status: Not Implemented** ❌
+>
+> This is a planned feature for Phase 6 (Scale). Daemon mode is not currently implemented.
+> Chant works effectively in "daemon-free" mode using file-based coordination and PID locks.
+> See [Roadmap](../roadmap/roadmap.md) - Phase 6 "Daemon ❌, Tantivy ❌".
+
 ## Overview
 
 Daemon provides persistent services for scale deployments:

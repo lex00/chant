@@ -1,5 +1,10 @@
 # Metrics
 
+> **Status: Not Implemented** ❌
+>
+> Prometheus metrics require the Daemon to be implemented. Since daemon mode is not yet available,
+> metrics are not currently available. See [Roadmap](../roadmap/roadmap.md) - Phase 6 for implementation plans.
+
 ## Overview
 
 Daemon exposes Prometheus metrics for monitoring and Grafana dashboards.

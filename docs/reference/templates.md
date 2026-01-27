@@ -1,5 +1,11 @@
 # Templates
 
+> **Status: Partially Implemented** ⚠️
+>
+> Basic spec template substitution is implemented. Full Handlebars templating system
+> (conditionals, helpers, partials, inheritance) is not yet implemented.
+> See roadmap for future enhancements.
+
 ## Everything Has a Template
 
 Chant uses markdown templates throughout:

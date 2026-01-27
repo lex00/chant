@@ -1,5 +1,11 @@
 # Observability
 
+> **Status: Partially Implemented** ⚠️
+>
+> Local and Team observability tiers are fully implemented (`chant status`, `chant log`, `chant show`).
+> Scale tier features (Prometheus metrics, daemon-based monitoring, DAG visualization) are not yet implemented.
+> See [Roadmap](../roadmap/roadmap.md) - Phase 6 for planned features.
+
 ## Tiers of Observability
 
 | Tier | Daemon | Tools | Use Case |

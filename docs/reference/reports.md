@@ -1,6 +1,9 @@
-# Export (Planned)
+# Export
 
-> **Status: Planned** - The `chant export` command is on the roadmap but not yet implemented.
+> **Status: Implemented** ✅
+>
+> The `chant export` command is fully implemented as of v0.3.0.
+> You can export specs to JSON, CSV, and Markdown formats with filtering options.
 
 ## Philosophy
 

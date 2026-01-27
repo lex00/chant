@@ -1,5 +1,11 @@
 # Ecosystem Integration
 
+> **Status: Partially Implemented** ⚠️
+>
+> Model provider adapters are implemented (Claude, Ollama, OpenAI).
+> Prompt registry and package management are planned but not yet implemented.
+> See [Roadmap](../roadmap/roadmap.md) - Phase 8 "Template/prompt registry" for future plans.
+
 ## Philosophy
 
 Chant doesn't build walled gardens. It integrates with existing open source ecosystems.

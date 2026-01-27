@@ -1,5 +1,10 @@
 # Cost Tracking
 
+> **Status: Not Implemented** ❌
+>
+> Cost tracking and token usage monitoring are planned features.
+> They are not currently implemented. See [Roadmap](../roadmap/roadmap.md) - Phase 8 for future plans.
+
 ## Overview
 
 Track token usage and costs per spec. Enables budgeting and optimization.
