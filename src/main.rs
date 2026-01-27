@@ -74,8 +74,9 @@ enum Commands {
     },
     /// Execute a spec
     Work {
-        /// Spec ID (full or partial). If omitted with --parallel, executes all ready specs.
-        id: Option<String>,
+        /// Spec ID(s) (full or partial). If omitted with --parallel, executes all ready specs.
+        #[arg(value_name = "ID")]
+        ids: Vec<String>,
         /// Prompt to use
         #[arg(long)]
         prompt: Option<String>,
@@ -174,6 +175,12 @@ enum Commands {
         /// Skip confirmation prompt and proceed with merges
         #[arg(long)]
         yes: bool,
+        /// Rebase branches onto main before merging (enables sequential merge of parallel branches)
+        #[arg(long)]
+        rebase: bool,
+        /// Auto-resolve conflicts using agent (requires --rebase)
+        #[arg(long)]
+        auto: bool,
     },
     /// Diagnose spec execution issues
     Diagnose {
@@ -232,7 +239,7 @@ fn main() -> Result<()> {
         Commands::List { ready, label } => cmd::spec::cmd_list(ready, &label),
         Commands::Show { id, no_render } => cmd::spec::cmd_show(&id, no_render),
         Commands::Work {
-            id,
+            ids,
             prompt,
             branch,
             pr,
@@ -245,7 +252,7 @@ fn main() -> Result<()> {
             no_cleanup,
             cleanup,
         } => cmd::work::cmd_work(
-            id.as_deref(),
+            &ids,
             prompt.as_deref(),
             branch,
             pr,
@@ -283,7 +290,18 @@ fn main() -> Result<()> {
             delete_branch,
             continue_on_error,
             yes,
-        } => cmd::lifecycle::cmd_merge(&ids, all, dry_run, delete_branch, continue_on_error, yes),
+            rebase,
+            auto,
+        } => cmd::lifecycle::cmd_merge(
+            &ids,
+            all,
+            dry_run,
+            delete_branch,
+            continue_on_error,
+            yes,
+            rebase,
+            auto,
+        ),
         Commands::Diagnose { id } => cmd::lifecycle::cmd_diagnose(&id),
         Commands::Delete {
             id,

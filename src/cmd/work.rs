@@ -65,7 +65,7 @@ fn auto_select_prompt_for_type(spec: &Spec, prompts_dir: &Path) -> Option<String
 
 #[allow(clippy::too_many_arguments)]
 pub fn cmd_work(
-    id: Option<&str>,
+    ids: &[String],
     prompt_name: Option<&str>,
     cli_branch: Option<String>,
     cli_pr: bool,
@@ -97,8 +97,8 @@ pub fn cmd_work(
         );
     }
 
-    // Handle parallel execution mode
-    if parallel && id.is_none() {
+    // Handle parallel execution mode (with specific IDs or all ready specs)
+    if parallel {
         let options = ParallelOptions {
             max_override: max_parallel,
             no_cleanup,
@@ -106,12 +106,15 @@ pub fn cmd_work(
             labels,
             branch_prefix: cli_branch.as_deref(),
             prompt_name,
+            specific_ids: ids,
         };
         return cmd_work_parallel(&specs_dir, &prompts_dir, &config, options);
     }
 
     // If no ID and not parallel, require an ID
-    let id = id.ok_or_else(|| anyhow::anyhow!("Spec ID required (or use --parallel)"))?;
+    let id = ids
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("Spec ID required (or use --parallel)"))?;
 
     // Resolve spec
     let mut spec = spec::resolve_spec(&specs_dir, id)?;
@@ -413,6 +416,8 @@ pub struct ParallelOptions<'a> {
     pub branch_prefix: Option<&'a str>,
     /// Prompt name override
     pub prompt_name: Option<&'a str>,
+    /// Specific spec IDs to run (if empty, runs all ready specs)
+    pub specific_ids: &'a [String],
 }
 
 /// Assignment of a spec to an agent
@@ -482,27 +487,46 @@ pub fn cmd_work_parallel(
     use std::sync::mpsc;
     use std::thread;
 
-    // Load all specs and filter to ready ones
-    let all_specs = spec::load_all_specs(specs_dir)?;
-    let mut ready_specs: Vec<Spec> = all_specs
-        .iter()
-        .filter(|s| s.is_ready(&all_specs))
-        .cloned()
-        .collect();
-
-    // Filter by labels if specified
-    if !options.labels.is_empty() {
-        ready_specs.retain(|s| {
-            if let Some(spec_labels) = &s.frontmatter.labels {
-                options.labels.iter().any(|l| spec_labels.contains(l))
-            } else {
-                false
+    // Load specs: either specific IDs or all ready specs
+    let ready_specs: Vec<Spec> = if !options.specific_ids.is_empty() {
+        // Resolve specific IDs
+        let mut specs = Vec::new();
+        for id in options.specific_ids {
+            match spec::resolve_spec(specs_dir, id) {
+                Ok(s) => specs.push(s),
+                Err(e) => {
+                    println!("{} Failed to resolve spec '{}': {}", "✗".red(), id, e);
+                    return Err(e);
+                }
             }
-        });
-    }
+        }
+        specs
+    } else {
+        // Load all ready specs
+        let all_specs = spec::load_all_specs(specs_dir)?;
+        let mut specs: Vec<Spec> = all_specs
+            .iter()
+            .filter(|s| s.is_ready(&all_specs))
+            .cloned()
+            .collect();
+
+        // Filter by labels if specified
+        if !options.labels.is_empty() {
+            specs.retain(|s| {
+                if let Some(spec_labels) = &s.frontmatter.labels {
+                    options.labels.iter().any(|l| spec_labels.contains(l))
+                } else {
+                    false
+                }
+            });
+        }
+        specs
+    };
 
     if ready_specs.is_empty() {
-        if !options.labels.is_empty() {
+        if !options.specific_ids.is_empty() {
+            println!("No specs resolved from provided IDs.");
+        } else if !options.labels.is_empty() {
             println!("No ready specs with specified labels.");
         } else {
             println!("No ready specs to execute.");

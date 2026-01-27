@@ -693,7 +693,110 @@ fn migrate_flat_archive(archive_dir: &std::path::PathBuf) -> anyhow::Result<()> 
 // MERGING
 // ============================================================================
 
+/// Resolve merge conflicts using an agent
+fn resolve_conflicts_with_agent(
+    branch_name: &str,
+    onto_branch: &str,
+    conflicting_files: &[String],
+    config: &Config,
+) -> Result<()> {
+    use crate::cmd::agent;
+
+    // Get the merge-conflict prompt if it exists, otherwise use a default message
+    let prompts_dir = PathBuf::from(PROMPTS_DIR);
+    let conflict_prompt_path = prompts_dir.join("merge-conflict.md");
+
+    let message = if conflict_prompt_path.exists() {
+        // Load and assemble the conflict prompt
+        let prompt_content = std::fs::read_to_string(&conflict_prompt_path)
+            .context("Failed to read merge-conflict prompt")?;
+
+        // Get diff for conflicting files
+        let conflict_diff = get_conflict_diff(conflicting_files)?;
+
+        // Simple template substitution
+        prompt_content
+            .replace("{{branch_name}}", branch_name)
+            .replace("{{target_branch}}", onto_branch)
+            .replace("{{conflicting_files}}", &conflicting_files.join(", "))
+            .replace("{{conflict_diff}}", &conflict_diff)
+    } else {
+        // Default inline prompt
+        let conflict_diff = get_conflict_diff(conflicting_files)?;
+        format!(
+            r#"# Resolve Merge Conflict
+
+You are resolving a git conflict during rebase.
+
+## Context
+- Branch being rebased: {}
+- Rebasing onto: {}
+- Conflicting files: {}
+
+## Current Diff
+{}
+
+## Instructions
+1. Read each conflicting file to see the conflict markers (<<<<<<< ======= >>>>>>>)
+2. Edit the files to resolve the conflicts (usually include both changes for additive conflicts)
+3. After editing, stage each resolved file with a shell command: git add <file>
+4. When all conflicts are resolved, run: git rebase --continue
+
+IMPORTANT: Do NOT use git commit. Just resolve conflicts, stage files, and run git rebase --continue.
+"#,
+            branch_name,
+            onto_branch,
+            conflicting_files.join(", "),
+            conflict_diff
+        )
+    };
+
+    // Create a minimal spec for the agent invocation
+    let conflict_spec = Spec {
+        id: format!("conflict-{}", branch_name.replace('/', "-")),
+        frontmatter: SpecFrontmatter::default(),
+        title: Some(format!("Resolve conflict: {} → {}", branch_name, onto_branch)),
+        body: message.clone(),
+    };
+
+    // Invoke agent to resolve conflicts
+    agent::invoke_agent(&message, &conflict_spec, "merge-conflict", config)?;
+
+    // Check if conflicts were resolved
+    let remaining_conflicts = git::get_conflicting_files()?;
+    if !remaining_conflicts.is_empty() {
+        anyhow::bail!(
+            "Agent did not resolve all conflicts. Remaining: {}",
+            remaining_conflicts.join(", ")
+        );
+    }
+
+    Ok(())
+}
+
+/// Get diff output for conflicting files
+fn get_conflict_diff(files: &[String]) -> Result<String> {
+    use std::process::Command;
+
+    let mut diff_output = String::new();
+
+    for file in files {
+        let output = Command::new("git")
+            .args(["diff", file])
+            .output()
+            .context("Failed to run git diff")?;
+
+        if output.status.success() {
+            let diff = String::from_utf8_lossy(&output.stdout);
+            diff_output.push_str(&format!("### {}\n```diff\n{}\n```\n\n", file, diff));
+        }
+    }
+
+    Ok(diff_output)
+}
+
 /// Merge completed spec branches back to main
+#[allow(clippy::too_many_arguments)]
 pub fn cmd_merge(
     ids: &[String],
     all: bool,
@@ -701,6 +804,8 @@ pub fn cmd_merge(
     delete_branch: bool,
     continue_on_error: bool,
     yes: bool,
+    rebase: bool,
+    auto_resolve: bool,
 ) -> Result<()> {
     let specs_dir = crate::cmd::ensure_initialized()?;
 
@@ -786,11 +891,81 @@ pub fn cmd_merge(
     // Execute merges
     let mut merge_results: Vec<git::MergeResult> = Vec::new();
     let mut errors: Vec<(String, String)> = Vec::new();
+    let mut skipped_conflicts: Vec<(String, Vec<String>)> = Vec::new();
 
-    println!("{} Executing merges...", "→".cyan());
+    println!(
+        "{} Executing merges{}...",
+        "→".cyan(),
+        if rebase { " with rebase" } else { "" }
+    );
 
     for (spec_id, spec) in &sorted_specs {
         let branch_name = format!("{}{}", branch_prefix, spec_id);
+
+        // If rebase mode, rebase branch onto main first
+        if rebase {
+            println!("  {} Rebasing {} onto {}...", "→".cyan(), branch_name, main_branch);
+
+            match git::rebase_branch(&branch_name, &main_branch) {
+                Ok(rebase_result) => {
+                    if !rebase_result.success {
+                        // Rebase had conflicts
+                        if auto_resolve {
+                            // Try to resolve conflicts with agent
+                            println!(
+                                "    {} Conflict in: {}",
+                                "⚠".yellow(),
+                                rebase_result.conflicting_files.join(", ")
+                            );
+                            println!("    {} Invoking agent to resolve...", "→".cyan());
+
+                            match resolve_conflicts_with_agent(
+                                &branch_name,
+                                &main_branch,
+                                &rebase_result.conflicting_files,
+                                &config,
+                            ) {
+                                Ok(()) => {
+                                    println!("    {} Conflicts resolved", "✓".green());
+                                }
+                                Err(e) => {
+                                    let error_msg = format!("Auto-resolve failed: {}", e);
+                                    errors.push((spec_id.clone(), error_msg.clone()));
+                                    skipped_conflicts.push((spec_id.clone(), rebase_result.conflicting_files));
+                                    println!("    {} {}", "✗".red(), error_msg);
+                                    if !continue_on_error {
+                                        anyhow::bail!("Merge stopped at spec {}.", spec_id);
+                                    }
+                                    continue;
+                                }
+                            }
+                        } else {
+                            // No auto-resolve, skip this branch
+                            let error_msg = format!(
+                                "Rebase conflict in: {}",
+                                rebase_result.conflicting_files.join(", ")
+                            );
+                            errors.push((spec_id.clone(), error_msg.clone()));
+                            skipped_conflicts.push((spec_id.clone(), rebase_result.conflicting_files));
+                            println!("    {} {} (use --auto to resolve)", "✗".red(), error_msg);
+                            if !continue_on_error {
+                                anyhow::bail!("Merge stopped at spec {}. Use --auto to auto-resolve conflicts.", spec_id);
+                            }
+                            continue;
+                        }
+                    }
+                }
+                Err(e) => {
+                    let error_msg = format!("Rebase failed: {}", e);
+                    errors.push((spec_id.clone(), error_msg.clone()));
+                    println!("    {} {}", "✗".red(), error_msg);
+                    if !continue_on_error {
+                        anyhow::bail!("Merge stopped at spec {}.", spec_id);
+                    }
+                    continue;
+                }
+            }
+        }
 
         // Check if this is a driver spec
         let is_driver = merge::is_driver_spec(spec, &specs);

@@ -255,6 +255,113 @@ pub fn delete_branch(branch_name: &str, dry_run: bool) -> Result<()> {
     Ok(())
 }
 
+/// Result of a rebase operation
+#[derive(Debug)]
+pub struct RebaseResult {
+    /// Whether rebase succeeded
+    pub success: bool,
+    /// Files with conflicts (if any)
+    pub conflicting_files: Vec<String>,
+}
+
+/// Rebase a branch onto another branch.
+/// Returns RebaseResult with success status and any conflicting files.
+pub fn rebase_branch(spec_branch: &str, onto_branch: &str) -> Result<RebaseResult> {
+    // First checkout the spec branch
+    checkout_branch(spec_branch, false)?;
+
+    // Attempt rebase
+    let output = Command::new("git")
+        .args(["rebase", onto_branch])
+        .output()
+        .context("Failed to run git rebase")?;
+
+    if output.status.success() {
+        return Ok(RebaseResult {
+            success: true,
+            conflicting_files: vec![],
+        });
+    }
+
+    // Rebase failed - check for conflicts
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if stderr.contains("CONFLICT") || stderr.contains("conflict") {
+        // Get list of conflicting files
+        let conflicting_files = get_conflicting_files()?;
+
+        // Abort rebase to restore clean state
+        let _ = Command::new("git").args(["rebase", "--abort"]).output();
+
+        return Ok(RebaseResult {
+            success: false,
+            conflicting_files,
+        });
+    }
+
+    // Other rebase error
+    let _ = Command::new("git").args(["rebase", "--abort"]).output();
+    anyhow::bail!("Rebase failed: {}", stderr);
+}
+
+/// Get list of files with conflicts from git status
+pub fn get_conflicting_files() -> Result<Vec<String>> {
+    let output = Command::new("git")
+        .args(["status", "--porcelain"])
+        .output()
+        .context("Failed to run git status")?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut files = Vec::new();
+
+    for line in stdout.lines() {
+        // Conflict markers: UU, AA, DD, AU, UD, UA, DU
+        if line.len() >= 3 {
+            let status = &line[0..2];
+            if status.contains('U')
+                || status == "AA"
+                || status == "DD"
+            {
+                let file = line[3..].trim();
+                files.push(file.to_string());
+            }
+        }
+    }
+
+    Ok(files)
+}
+
+/// Continue a rebase after conflicts have been resolved
+pub fn rebase_continue() -> Result<bool> {
+    let output = Command::new("git")
+        .args(["rebase", "--continue"])
+        .env("GIT_EDITOR", "true") // Skip editor for commit message
+        .output()
+        .context("Failed to run git rebase --continue")?;
+
+    Ok(output.status.success())
+}
+
+/// Abort an in-progress rebase
+pub fn rebase_abort() -> Result<()> {
+    let _ = Command::new("git").args(["rebase", "--abort"]).output();
+    Ok(())
+}
+
+/// Stage a file for commit
+pub fn stage_file(file_path: &str) -> Result<()> {
+    let output = Command::new("git")
+        .args(["add", file_path])
+        .output()
+        .context("Failed to run git add")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Failed to stage file {}: {}", file_path, stderr);
+    }
+
+    Ok(())
+}
+
 /// Merge a single spec's branch into the main branch.
 ///
 /// This function:
