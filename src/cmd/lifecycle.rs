@@ -1536,11 +1536,11 @@ pub fn cmd_resume(
     let spec_path = specs_dir.join(format!("{}.md", spec.id));
     let spec_id = spec.id.clone();
 
-    // Check if spec is in failed state
-    if spec.frontmatter.status != SpecStatus::Failed {
+    // Check if spec is in failed or in_progress state
+    if spec.frontmatter.status != SpecStatus::Failed && spec.frontmatter.status != SpecStatus::InProgress {
         anyhow::bail!(
-            "Spec {} is not in failed state (current status: {:?}). \
-             Only failed specs can be resumed.",
+            "Spec {} is not in failed or in_progress state (current status: {:?}). \
+             Only failed or in_progress specs can be resumed.",
             spec_id,
             spec.frontmatter.status
         );
