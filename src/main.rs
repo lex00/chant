@@ -424,6 +424,11 @@ enum Commands {
         #[arg(long)]
         clean: bool,
     },
+    /// Finalize a completed spec - validate criteria, update status and model
+    Finalize {
+        /// Spec ID (full or partial)
+        id: String,
+    },
 }
 
 fn main() -> Result<()> {
@@ -643,6 +648,10 @@ fn main() -> Result<()> {
         Commands::Prep { id, clean } => {
             let specs_dir = cmd::ensure_initialized()?;
             cmd::prep::cmd_prep(&id, clean, &specs_dir)
+        }
+        Commands::Finalize { id } => {
+            let specs_dir = cmd::ensure_initialized()?;
+            cmd::lifecycle::cmd_finalize(&id, &specs_dir)
         }
     }
 }

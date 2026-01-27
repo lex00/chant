@@ -1740,6 +1740,68 @@ pub fn cmd_replay(
     work_result
 }
 
+/// Finalize a completed or in_progress spec
+/// Validates all acceptance criteria are checked, updates status to completed,
+/// and adds model information to frontmatter
+pub fn cmd_finalize(id: &str, specs_dir: &std::path::Path) -> Result<()> {
+    use crate::cmd::finalize;
+    use chant::spec;
+
+    // Resolve the spec
+    let spec = spec::resolve_spec(specs_dir, id)?;
+    let spec_id = spec.id.clone();
+    let spec_path = specs_dir.join(format!("{}.md", spec_id));
+
+    // Check if spec is in a valid state for finalization (completed or in_progress)
+    match spec.frontmatter.status {
+        SpecStatus::Completed | SpecStatus::InProgress => {
+            // These are valid for finalization
+        }
+        _ => {
+            anyhow::bail!(
+                "Spec '{}' must be in_progress or completed to finalize. Current status: {:?}",
+                spec_id,
+                spec.frontmatter.status
+            );
+        }
+    }
+
+    // Check for unchecked acceptance criteria
+    let unchecked = spec.count_unchecked_checkboxes();
+    if unchecked > 0 {
+        anyhow::bail!(
+            "Spec '{}' has {} unchecked acceptance criteria. All criteria must be checked before finalization.",
+            spec_id,
+            unchecked
+        );
+    }
+
+    // Load the config for model information
+    let config = Config::load()?;
+
+    // Perform finalization
+    let mut mut_spec = spec.clone();
+    finalize::re_finalize_spec(&mut mut_spec, &spec_path, &config, false)?;
+
+    println!("{} Spec {} finalized", "✓".green(), spec_id.green());
+    if let Some(model) = &mut_spec.frontmatter.model {
+        println!("  {} Model: {}", "•".cyan(), model);
+    }
+    if let Some(completed_at) = &mut_spec.frontmatter.completed_at {
+        println!("  {} Completed at: {}", "•".cyan(), completed_at);
+    }
+    if let Some(commits) = &mut_spec.frontmatter.commits {
+        println!(
+            "  {} {} commit{}",
+            "•".cyan(),
+            commits.len(),
+            if commits.len() == 1 { "" } else { "s" }
+        );
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

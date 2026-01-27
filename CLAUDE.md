@@ -117,6 +117,7 @@ When implementing a spec:
 - `chant log <spec-id>` - Show spec execution log
 - `chant split <spec-id>` - Split spec into member specs
 - `chant merge --all --rebase --auto` - Merge specs with conflict auto-resolution
+- `chant finalize <spec-id>` - Finalize a completed spec (validate criteria, update status and model)
 - `chant diagnose <spec-id>` - Diagnose spec execution issues
 - `chant drift [spec-id]` - Check for drift in documentation specs
 - `chant export` - Export specs with wizard or direct options
@@ -264,6 +265,11 @@ If an unexpected error occurs during spec execution:
 - Reference spec IDs in commit messages: `chant(2026-01-24-01m-q7e): implement feature X`
 - Use `target_files:` frontmatter to declare modified files
 - Mark acceptance criteria as complete by changing checkboxes to `[x]`
+- Use `chant finalize <spec-id>` to complete a spec:
+  - Validates all acceptance criteria are checked
+  - Updates status to `completed`
+  - Adds model and timestamp information to frontmatter
+  - Ensures clean, auditable spec completion
 
 ### Testing
 - Write tests that validate the spec's acceptance criteria
