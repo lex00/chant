@@ -60,8 +60,10 @@ Manual          Supervised        Autonomous
 
 ## Configuring Autonomy
 
+> **Note:** The autonomy configuration below describes the design vision. Currently implemented features are `chant verify`, `chant replay`, and `chant drift`. Auto-merge and autonomy levels are planned for future releases.
+
 ```yaml
-# config.md
+# config.md (planned)
 autonomy:
   level: supervised          # assisted | supervised | trusted | autonomous
 
@@ -403,55 +405,25 @@ Chain complete: 4 specs
 
 ## Monitoring Autonomous Work
 
-### Watch Mode
+### Current Monitoring
+
+Use existing commands to monitor work:
 
 ```bash
-$ chant watch --all
-Watching 3 agents...
-
-[001] ████████░░ 80% - Running tests
-[002] ██████████ Done - Merged
-[003] ██░░░░░░░░ 20% - Implementing
-
-Press q to quit, p to pause all, c to cancel spec
+$ chant status                    # Overview of all specs
+$ chant list --status in_progress # See what's running
+$ chant log <spec-id>             # Stream execution logs
+$ chant log <spec-id> --no-follow # View completed logs
 ```
 
-### Notifications
+### Planned Features (Not Yet Implemented)
 
-```yaml
-# config.md
-autonomy:
-  notifications:
-    on_complete: true
-    on_failure: true
-    on_review_needed: true
-    channel: slack           # slack | email | desktop
-```
+The following monitoring features are planned for future releases:
 
-### Daily Summary
-
-```bash
-$ chant summary --yesterday
-Autonomous Work Summary (2026-01-21)
-
-Completed: 23 specs
-Failed: 2 specs
-Pending review: 5 specs
-
-Auto-merged: 18 specs
-Human-merged: 5 specs
-
-Cost: $12.45
-Agent time: 4.2 hours
-
-Top failures:
-  - 015: Tests failed (auth edge case)
-  - 022: Merge conflict
-
-Review queue:
-  - 019: Security label, needs review
-  - 021: Large change (15 files)
-```
+- **Watch Mode** (`chant watch`) - Real-time progress dashboard
+- **Notifications** - Slack/email alerts on completion/failure
+- **Daily Summary** (`chant summary`) - Aggregate work reports
+- **Cost Tracking** - Per-spec and aggregate cost metrics
 
 ## Trust Building
 
@@ -703,26 +675,26 @@ Spec 001: VERIFIED
 
 ### Continuous Verification
 
-```yaml
-# config.md
-verification:
-  continuous: true
-  schedule: daily              # daily | weekly | on_commit
-  scope: completed             # completed | all
-  notify_on_drift: true
-```
+Run verification on a schedule using cron or CI:
 
 ```bash
-# Nightly cron
-$ chant verify --all --completed
+# Verify all completed specs
+$ chant verify --all
 Verifying 147 completed specs...
 
   145 verified
-  2 drifted:
+  2 failed:
     - 023: Rate limiting - tests now failing
     - 089: Auth middleware - file was deleted
 
-Drift report sent to team@company.com
+# Use --exit-code for CI integration
+$ chant verify --all --exit-code
+# Returns non-zero if any verification fails
+```
+
+Example cron job for nightly verification:
+```bash
+0 2 * * * cd /path/to/repo && chant verify --all --exit-code || notify-team
 ```
 
 ## Drift Detection
@@ -946,63 +918,40 @@ No changes made (dry-run).
 
 ## Audit Trail for Intent
 
-### Complete History
+### Current Tracking
 
-Every spec maintains full history:
+Specs track key events in frontmatter:
 
 ```yaml
 ---
 status: completed
-history:
-  - event: created
-    at: 2026-01-10T10:00:00Z
-    by: alex
+completed_at: 2026-01-10T15:30:00Z
+model: claude-haiku-4-5-20251001
 
-  - event: started
-    at: 2026-01-10T14:00:00Z
-    agent: provider/model-name
+# Verification tracking (after chant verify)
+last_verified: 2026-01-15T00:00:00Z
+verification_status: passed
 
-  - event: completed
-    at: 2026-01-10T15:30:00Z
-    commit: abc123
-
-  - event: verified
-    at: 2026-01-15T00:00:00Z
-    result: passed
-
-  - event: drift_detected
-    at: 2026-01-20T00:00:00Z
-    cause: file_deleted
-    blame_commit: def456
-
-  - event: replayed
-    at: 2026-01-22T10:00:00Z
-    commit: xyz789
-    by: alex
+# Replay tracking (after chant replay)
+replayed_at: 2026-01-22T10:00:00Z
+replay_count: 1
+original_completed_at: 2026-01-10T15:30:00Z
 ---
 ```
 
-### Tracing Drift to Cause
+### Viewing Spec History
+
+Use git to trace spec history:
 
 ```bash
-$ chant audit 023
-Spec 023: Add rate limiting
-
-Timeline:
-  2026-01-10  Created by alex
-  2026-01-10  Completed (commit abc123)
-  2026-01-15  Verified ✓
-  2026-01-18  Verified ✓
-  2026-01-20  DRIFT DETECTED
-              └── Cause: src/middleware/ratelimit.go deleted
-              └── Commit: def456 "refactor: clean up old middleware"
-              └── Author: alice
-              └── PR: #89 "Middleware cleanup"
-  2026-01-22  Replayed by alex (commit xyz789)
-  2026-01-22  Verified ✓
-
-Intent preserved: YES (after replay)
+$ git log --oneline -- .chant/specs/2026-01-10-001-abc.md
+xyz789 chant(001): replay - restore rate limiting
+abc123 chant(001): Add rate limiting to API
 ```
+
+### Planned: Full Audit Command
+
+A dedicated `chant audit` command for detailed timeline view is planned for a future release.
 
 ### Intent vs Implementation
 
@@ -1064,33 +1013,20 @@ drift:
 
 ### Pattern: Intent Documentation
 
-Use specs as living documentation:
+Use specs as living documentation by filtering with labels:
 
 ```bash
-$ chant intent auth
-Intent for 'auth' (label):
+$ chant list --label auth --status completed
+● 001-abc Add user model
+● 002-def Add registration
+● 003-ghi Add login
+● 004-jkl Add middleware
 
-Specs:
-  001: Add user model
-       "Users table with email, password_hash, created_at"
-       Status: verified ✓
-
-  002: Add registration
-       "POST /register creates user, returns JWT"
-       Status: verified ✓
-
-  003: Add login
-       "POST /login validates credentials, returns JWT"
-       Status: drifted ⚠ (endpoint returns session, not JWT)
-
-  004: Add middleware
-       "All /api/* routes require valid JWT"
-       Status: verified ✓
-
-Overall: 3/4 verified, 1 drifted
+$ chant verify --label auth
+# Verifies all auth-labeled specs
 ```
 
-This is living documentation that verifies itself.
+This approach uses specs as living documentation that can verify itself.
 
 ## Success Metrics
 
