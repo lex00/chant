@@ -116,7 +116,7 @@ The prompt does the heavy lifting. Core just orchestrates.
 
 ## Version Roadmap
 
-### Current Status: v0.2.0 (released)
+### Current Status: v0.3.0 (released)
 
 Development moved faster than the original phased plan. Most features from Phases 0-8 are implemented.
 
@@ -273,7 +273,7 @@ See [ecosystem.md](../guides/ecosystem.md), [approvals.md](../guides/approvals.m
 See [Testing Strategy](../reference/testing.md) for test specifications.
 
 Current test coverage:
-- 420+ tests (unit, integration, end-to-end)
+- 450+ tests (unit, integration, end-to-end)
 - Unit tests in `src/`
 - Integration tests in `tests/`
 
