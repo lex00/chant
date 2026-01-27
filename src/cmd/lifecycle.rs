@@ -1752,14 +1752,15 @@ pub fn cmd_finalize(id: &str, specs_dir: &std::path::Path) -> Result<()> {
     let spec_id = spec.id.clone();
     let spec_path = specs_dir.join(format!("{}.md", spec_id));
 
-    // Check if spec is in a valid state for finalization (completed or in_progress)
+    // Check if spec is in a valid state for finalization
+    // Allow failed too - agents often leave specs in failed state when they actually completed the work
     match spec.frontmatter.status {
-        SpecStatus::Completed | SpecStatus::InProgress => {
+        SpecStatus::Completed | SpecStatus::InProgress | SpecStatus::Failed => {
             // These are valid for finalization
         }
         _ => {
             anyhow::bail!(
-                "Spec '{}' must be in_progress or completed to finalize. Current status: {:?}",
+                "Spec '{}' must be in_progress, completed, or failed to finalize. Current status: {:?}",
                 spec_id,
                 spec.frontmatter.status
             );
