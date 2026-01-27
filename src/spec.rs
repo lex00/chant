@@ -78,6 +78,13 @@ pub struct SpecFrontmatter {
     pub blocked_specs: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub original_spec: Option<String>,
+    // Verification-specific fields
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_verified: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verification_status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verification_failures: Option<Vec<String>>,
 }
 
 fn default_type() -> String {
@@ -108,6 +115,9 @@ impl Default for SpecFrontmatter {
             conflicting_files: None,
             blocked_specs: None,
             original_spec: None,
+            last_verified: None,
+            verification_status: None,
+            verification_failures: None,
         }
     }
 }
@@ -1351,5 +1361,207 @@ status: blocked
         // The completed spec should remain completed, not change to blocked
         let completed = specs.iter().find(|s| s.id == "2026-01-26-001-abc").unwrap();
         assert_eq!(completed.frontmatter.status, SpecStatus::Completed);
+    }
+
+    #[test]
+    fn test_parse_spec_with_all_verification_fields() {
+        let content = r#"---
+type: code
+status: pending
+last_verified: 2026-01-26T10:30:00Z
+verification_status: passed
+verification_failures:
+  - test_case_1
+  - test_case_2
+---
+
+# Spec with verification fields
+
+Description here.
+"#;
+        let spec = Spec::parse("2026-01-26-001-abc", content).unwrap();
+        assert_eq!(
+            spec.frontmatter.last_verified,
+            Some("2026-01-26T10:30:00Z".to_string())
+        );
+        assert_eq!(
+            spec.frontmatter.verification_status,
+            Some("passed".to_string())
+        );
+        assert_eq!(
+            spec.frontmatter.verification_failures,
+            Some(vec!["test_case_1".to_string(), "test_case_2".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_parse_spec_without_verification_fields() {
+        let content = r#"---
+type: code
+status: pending
+---
+
+# Legacy spec without verification fields
+
+Description here.
+"#;
+        let spec = Spec::parse("2026-01-26-002-def", content).unwrap();
+        assert_eq!(spec.frontmatter.last_verified, None);
+        assert_eq!(spec.frontmatter.verification_status, None);
+        assert_eq!(spec.frontmatter.verification_failures, None);
+    }
+
+    #[test]
+    fn test_parse_spec_with_only_last_verified() {
+        let content = r#"---
+type: code
+status: pending
+last_verified: 2026-01-25T15:00:00Z
+---
+
+# Spec with only last_verified
+
+Description here.
+"#;
+        let spec = Spec::parse("2026-01-26-003-ghi", content).unwrap();
+        assert_eq!(
+            spec.frontmatter.last_verified,
+            Some("2026-01-25T15:00:00Z".to_string())
+        );
+        assert_eq!(spec.frontmatter.verification_status, None);
+        assert_eq!(spec.frontmatter.verification_failures, None);
+    }
+
+    #[test]
+    fn test_parse_spec_with_empty_verification_failures() {
+        let content = r#"---
+type: code
+status: pending
+verification_failures: []
+---
+
+# Spec with empty verification_failures
+
+Description here.
+"#;
+        let spec = Spec::parse("2026-01-26-004-jkl", content).unwrap();
+        assert_eq!(spec.frontmatter.verification_failures, Some(vec![]));
+    }
+
+    #[test]
+    fn test_spec_roundtrip_with_verification_fields() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let spec_path = temp_dir.path().join("test-verification.md");
+
+        let spec = Spec {
+            id: "2026-01-26-005-mno".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                last_verified: Some("2026-01-26T12:00:00Z".to_string()),
+                verification_status: Some("passed".to_string()),
+                verification_failures: Some(vec!["failure_1".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Verification test".to_string()),
+            body: "# Verification test\n\nBody content.".to_string(),
+        };
+
+        spec.save(&spec_path).unwrap();
+
+        let loaded_spec = Spec::load(&spec_path).unwrap();
+
+        assert_eq!(
+            loaded_spec.frontmatter.last_verified,
+            Some("2026-01-26T12:00:00Z".to_string())
+        );
+        assert_eq!(
+            loaded_spec.frontmatter.verification_status,
+            Some("passed".to_string())
+        );
+        assert_eq!(
+            loaded_spec.frontmatter.verification_failures,
+            Some(vec!["failure_1".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_spec_save_without_verification_fields() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let spec_path = temp_dir.path().join("test-no-verification.md");
+
+        let spec = Spec {
+            id: "2026-01-26-006-pqr".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                ..Default::default()
+            },
+            title: Some("No verification".to_string()),
+            body: "# No verification\n\nBody content.".to_string(),
+        };
+
+        spec.save(&spec_path).unwrap();
+
+        let saved_content = std::fs::read_to_string(&spec_path).unwrap();
+        assert!(!saved_content.contains("last_verified:"));
+        assert!(!saved_content.contains("verification_status:"));
+        assert!(!saved_content.contains("verification_failures:"));
+    }
+
+    #[test]
+    fn test_parse_spec_with_partial_verification_fields() {
+        let content = r#"---
+type: code
+status: pending
+verification_status: in_progress
+verification_failures:
+  - test_a
+---
+
+# Partial verification fields
+
+Description here.
+"#;
+        let spec = Spec::parse("2026-01-26-007-stu", content).unwrap();
+        assert_eq!(spec.frontmatter.last_verified, None);
+        assert_eq!(
+            spec.frontmatter.verification_status,
+            Some("in_progress".to_string())
+        );
+        assert_eq!(
+            spec.frontmatter.verification_failures,
+            Some(vec!["test_a".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_spec_includes_verification_fields_when_set() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let spec_path = temp_dir.path().join("test-verify-output.md");
+
+        let spec = Spec {
+            id: "2026-01-26-008-vwx".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                last_verified: Some("2026-01-26T14:30:00Z".to_string()),
+                verification_status: Some("passed".to_string()),
+                verification_failures: Some(vec![]),
+                ..Default::default()
+            },
+            title: Some("Verification output test".to_string()),
+            body: "# Verification output test\n\nBody.".to_string(),
+        };
+
+        spec.save(&spec_path).unwrap();
+
+        let saved_content = std::fs::read_to_string(&spec_path).unwrap();
+        assert!(saved_content.contains("last_verified: 2026-01-26T14:30:00Z"));
+        assert!(saved_content.contains("verification_status: passed"));
+        assert!(saved_content.contains("verification_failures:"));
     }
 }
