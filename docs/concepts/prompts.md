@@ -160,8 +160,8 @@ Focus on these files:
 
 | Prompt | Purpose |
 |--------|---------|
+| `bootstrap` | **(Default)** Minimal prompt that delegates to `chant prep` for instructions |
 | `standard` | Read → Plan → Implement → Verify → Commit |
-| `bootstrap` | Minimal prompt that delegates to `chant prep` for instructions |
 | `minimal` | Just do it, minimal ceremony |
 | `tdd` | Test first, then implement |
 | `security` | Extra verification for sensitive code |
@@ -174,27 +174,12 @@ Focus on these files:
 
 ## When to Use Each Prompt
 
-### standard.md (Default)
-
-**What it does:** Instructs the agent to thoroughly read relevant code, plan an approach, implement changes carefully, verify each acceptance criterion, and commit with a proper message.
-
-**When to use:**
-- Regular feature implementation
-- Bug fixes
-- Code refactoring
-- Default choice for most work
-
-**Command:**
-```bash
-chant work 2026-01-24-001-abc     # Uses standard by default
-chant work 2026-01-24-001-abc --prompt standard  # Explicit
-```
-
-### bootstrap.md
+### bootstrap.md (Default)
 
 **What it does:** Minimal prompt that tells the agent to run `chant prep {{spec.id}}` to get the actual spec content. Defers instruction to the prep command output instead of embedding full spec in the initial prompt.
 
 **When to use:**
+- Default for all spec execution (reduces API concurrency issues)
 - Reducing initial prompt size for very large specs (may help with rate limiting)
 - Replay/resume scenarios where the spec may contain stale agent conversations
 - Cleaner separation between spec content and agent instructions
@@ -206,7 +191,8 @@ chant work 2026-01-24-001-abc --prompt standard  # Explicit
 
 **Command:**
 ```bash
-chant work 2026-01-24-001-abc --prompt bootstrap
+chant work 2026-01-24-001-abc     # Uses bootstrap by default
+chant work 2026-01-24-001-abc --prompt bootstrap  # Explicit
 ```
 
 **Workflow:**
@@ -214,6 +200,21 @@ chant work 2026-01-24-001-abc --prompt bootstrap
 2. Agent calls `chant prep 2026-01-24-001-abc` (with `--clean` on replays)
 3. Prep command outputs cleaned spec content
 4. Agent processes the spec and executes it
+
+### standard.md
+
+**What it does:** Instructs the agent to thoroughly read relevant code, plan an approach, implement changes carefully, verify each acceptance criterion, and commit with a proper message.
+
+**When to use:**
+- Regular feature implementation requiring full spec context in initial prompt
+- Bug fixes
+- Code refactoring
+- Explicit choice when you want full spec upfront
+
+**Command:**
+```bash
+chant work 2026-01-24-001-abc --prompt standard  # Explicit use of standard
+```
 
 ### split.md
 

@@ -19,7 +19,7 @@ project:
   name: my-app
 
 defaults:
-  prompt: standard
+  prompt: bootstrap
   branch: false
   pr: false
   branch_prefix: "chant/"
@@ -40,7 +40,8 @@ explicitly requested per-spec.
 
 ## Prompts
 
-- `standard` - Default for most specs
+- `bootstrap` - Default (minimal prompt that fetches spec via chant prep)
+- `standard` - Full spec context upfront
 - `tdd` - Use for anything touching auth
 - `security-review` - Required for external API changes
 
@@ -81,7 +82,7 @@ project:
 
 # Optional - defaults shown
 defaults:
-  prompt: standard          # Default prompt
+  prompt: bootstrap         # Default prompt (bootstrap for minimal API concurrency)
   branch: false             # Create branches?
   pr: false                 # Create PRs?
   branch_prefix: "chant/"   # Branch name prefix

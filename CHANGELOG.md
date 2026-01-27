@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-01-27
+
+### Added
+
+- **Bootstrap prompt**: Minimal default prompt that fetches spec content via `chant prep`
+  - Reduces API concurrency issues by starting with minimal prompt
+  - Agent runs `chant prep {{spec.id}}` to get full spec and instructions
+  - Better support for replay/resume scenarios with `chant prep --clean`
+  - Cleaner separation between spec content and agent instructions
+
+- **`chant prep` command**: Fetch and output spec content for direct agent use
+  - Returns cleaned spec content with agent conversation sections removed (on replays)
+  - Used by bootstrap prompt to get instructions at execution time
+  - Supports `--clean` flag for replay scenarios
+
+- **Spawn jitter**: Configurable delay jitter for parallel agent spawning
+  - Reduces thundering herd in concurrent execution
+  - `stagger_jitter_ms` config option (default: 200ms, 20% of stagger delay)
+  - Prevents synchronized retries and API spike cascades
+
+### Changed
+
+- **Default prompt changed to bootstrap**
+  - Reduces initial prompt size and API load
+  - Improves handling of large specs and concurrent execution
+  - More robust for replay and resume scenarios
+  - Use `--prompt standard` explicitly if you prefer full spec upfront
+
 ## [0.1.2] - 2026-01-25
 
 ### Added

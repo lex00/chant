@@ -221,7 +221,7 @@ fn default_rotation_strategy() -> String {
 }
 
 fn default_prompt() -> String {
-    "standard".to_string()
+    "bootstrap".to_string()
 }
 
 fn default_branch_prefix() -> String {
@@ -457,7 +457,7 @@ project:
 "#;
         let config = Config::parse(content).unwrap();
         assert_eq!(config.project.name, "minimal");
-        assert_eq!(config.defaults.prompt, "standard"); // default
+        assert_eq!(config.defaults.prompt, "bootstrap"); // default
     }
 
     #[test]
