@@ -806,6 +806,96 @@ fn get_conflict_diff(files: &[String]) -> Result<String> {
     Ok(diff_output)
 }
 
+// ============================================================================
+// MERGE WIZARD
+// ============================================================================
+
+/// Run the interactive wizard for selecting specs to merge
+/// Returns (selected_spec_ids, delete_branch, rebase)
+fn run_merge_wizard(
+    all_specs: &[Spec],
+    branch_prefix: &str,
+    delete_branch: bool,
+    rebase: bool,
+) -> Result<(Vec<String>, bool, bool)> {
+    use dialoguer::{Confirm, MultiSelect};
+
+    // Get completed specs that have branches
+    let mergeable_specs: Vec<(String, &Spec)> = all_specs
+        .iter()
+        .filter(|spec| spec.frontmatter.status == SpecStatus::Completed)
+        .filter_map(|spec| {
+            let branch_name = format!("{}{}", branch_prefix, spec.id);
+            if git::branch_exists(&branch_name).unwrap_or(false) {
+                Some((spec.id.clone(), spec))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    // If no mergeable specs, show message and return early
+    if mergeable_specs.is_empty() {
+        println!("No specs to merge");
+        return Ok((Vec::new(), delete_branch, rebase));
+    }
+
+    // Build display items with ID, title, and branch name
+    let display_items: Vec<String> = mergeable_specs
+        .iter()
+        .map(|(spec_id, spec)| {
+            let title = spec.title.as_deref().unwrap_or("(no title)");
+            let branch_name = format!("{}{}", branch_prefix, spec_id);
+            format!("{}  {}  ({})", spec_id, title, branch_name)
+        })
+        .collect();
+
+    // Add "Select all" option at the end
+    let mut all_items = display_items.clone();
+    all_items.push("[Select all]".to_string());
+
+    // Show multi-select prompt
+    let selection = MultiSelect::new()
+        .with_prompt("Select specs to merge")
+        .items(&all_items)
+        .interact()?;
+
+    // Determine which specs were selected
+    let selected_spec_ids: Vec<String> =
+        if selection.len() == 1 && selection[0] == all_items.len() - 1 {
+            // "Select all" was the only selection
+            mergeable_specs.iter().map(|(id, _)| id.clone()).collect()
+        } else if selection.contains(&(all_items.len() - 1)) {
+            // "Select all" was selected along with other specs - treat as select all
+            mergeable_specs.iter().map(|(id, _)| id.clone()).collect()
+        } else {
+            // Regular selections
+            selection
+                .iter()
+                .map(|&idx| mergeable_specs[idx].0.clone())
+                .collect()
+        };
+
+    if selected_spec_ids.is_empty() {
+        println!("No specs selected");
+        return Ok((Vec::new(), delete_branch, rebase));
+    }
+
+    // Ask about rebase strategy
+    let use_rebase = Confirm::new()
+        .with_prompt("Use rebase strategy")
+        .default(false)
+        .interact()?;
+
+    // Ask about delete branches
+    let delete_after_merge = Confirm::new()
+        .with_prompt("Delete branches after merge")
+        .default(true)
+        .interact()?;
+
+    Ok((selected_spec_ids, delete_after_merge, use_rebase))
+}
+
 /// Merge completed spec branches back to main
 #[allow(clippy::too_many_arguments)]
 pub fn cmd_merge(
@@ -825,18 +915,25 @@ pub fn cmd_merge(
     let branch_prefix = &config.defaults.branch_prefix;
     let main_branch = merge::load_main_branch(&config);
 
-    // Validate arguments
-    if !all && ids.is_empty() {
+    // Load all specs first (needed for wizard and validation)
+    let all_specs = spec::load_all_specs(&specs_dir)?;
+
+    // Handle wizard mode when no arguments provided
+    let (final_ids, final_delete_branch, final_rebase) = if !all && ids.is_empty() {
+        run_merge_wizard(&all_specs, branch_prefix, delete_branch, rebase)?
+    } else {
+        (ids.to_vec(), delete_branch, rebase)
+    };
+
+    // Validate arguments after wizard
+    if !all && final_ids.is_empty() {
         anyhow::bail!(
             "Please specify one or more spec IDs, or use --all to merge all completed specs"
         );
     }
 
-    // Load all specs
-    let specs = spec::load_all_specs(&specs_dir)?;
-
     // Get specs to merge using the merge module function
-    let mut specs_to_merge = merge::get_specs_to_merge(ids, all, &specs)?;
+    let mut specs_to_merge = merge::get_specs_to_merge(&final_ids, all, &all_specs)?;
 
     // Filter to only those with branches that exist (unless dry-run)
     if !dry_run {
@@ -914,7 +1011,7 @@ pub fn cmd_merge(
         let branch_name = format!("{}{}", branch_prefix, spec_id);
 
         // If rebase mode, rebase branch onto main first
-        if rebase {
+        if final_rebase {
             println!(
                 "  {} Rebasing {} onto {}...",
                 "→".cyan(),
@@ -988,22 +1085,27 @@ pub fn cmd_merge(
         }
 
         // Check if this is a driver spec
-        let is_driver = merge::is_driver_spec(spec, &specs);
+        let is_driver = merge::is_driver_spec(spec, &all_specs);
 
         let merge_op_result = if is_driver {
             // Merge driver and its members
             merge::merge_driver_spec(
                 spec,
-                &specs,
+                &all_specs,
                 branch_prefix,
                 &main_branch,
-                delete_branch,
+                final_delete_branch,
                 false,
             )
         } else {
             // Merge single spec
-            match git::merge_single_spec(spec_id, &branch_name, &main_branch, delete_branch, false)
-            {
+            match git::merge_single_spec(
+                spec_id,
+                &branch_name,
+                &main_branch,
+                final_delete_branch,
+                false,
+            ) {
                 Ok(result) => Ok(vec![result]),
                 Err(e) => Err(e),
             }
@@ -1046,7 +1148,7 @@ pub fn cmd_merge(
             println!("    - {}: {}", spec_id, error_msg);
         }
     }
-    if delete_branch {
+    if final_delete_branch {
         let deleted_count = merge_results.iter().filter(|r| r.branch_deleted).count();
         println!("  {} Branches deleted: {}", "✓".green(), deleted_count);
     }

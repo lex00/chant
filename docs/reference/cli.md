@@ -291,6 +291,7 @@ chant ready                           # Show ready specs
 Merge completed spec branches back to main:
 
 ```bash
+chant merge                           # Interactive wizard to select specs
 chant merge 001                       # Merge single spec branch
 chant merge 001 002 003               # Merge multiple specs
 chant merge --all                     # Merge all completed spec branches
@@ -298,6 +299,31 @@ chant merge --all --dry-run           # Preview what would be merged
 chant merge --all --delete-branch     # Delete branches after merge
 chant merge --all --yes               # Skip confirmation prompt
 ```
+
+### Interactive Wizard
+
+When you run `chant merge` without arguments, an interactive wizard guides you through the merge process:
+
+```
+? Select specs to merge:
+  [x] 2026-01-26-001-abc  Add user authentication (chant/001-abc)
+  [x] 2026-01-26-002-def  Fix login bug (chant/002-def)
+  [ ] 2026-01-26-003-ghi  Update API docs (chant/003-ghi)
+  [Select all]
+? Use rebase strategy? No
+? Delete branches after merge? Yes
+
+→ Will merge 2 spec(s):
+  · chant/001-abc → main Add user authentication
+  · chant/002-def → main Fix login bug
+```
+
+The wizard:
+1. Loads all completed specs that have associated branches
+2. Shows a multi-select list with spec ID, title, and branch name
+3. Prompts for rebase strategy (default: no)
+4. Prompts for branch deletion (default: yes)
+5. Executes the merge with your selections
 
 ### Rebase Before Merge
 
