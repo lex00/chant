@@ -672,22 +672,93 @@ fn cmd_init(
             println!("{}", "Chant already initialized.".yellow());
             return Ok(());
         }
-        // force flag: remove existing .chant directory
+        // force flag: preserve specs and config, but reinitialize agent files
+        // This allows updating agent instructions without losing existing specs/config
+        let specs_backup = chant_dir.join("specs");
+        let config_backup = chant_dir.join("config.md");
+        let prompts_backup = chant_dir.join("prompts");
+        let gitignore_backup = chant_dir.join(".gitignore");
+        let locks_backup = chant_dir.join(".locks");
+        let store_backup = chant_dir.join(".store");
+
+        // Check which directories exist before deletion
+        let has_specs = specs_backup.exists();
+        let has_config = config_backup.exists();
+        let has_prompts = prompts_backup.exists();
+        let has_gitignore = gitignore_backup.exists();
+        let has_locks = locks_backup.exists();
+        let has_store = store_backup.exists();
+
+        // Temporarily move important files
+        let temp_dir = PathBuf::from(".chant_temp_backup");
+        std::fs::create_dir_all(&temp_dir)?;
+
+        if has_specs {
+            std::fs::rename(&specs_backup, temp_dir.join("specs"))?;
+        }
+        if has_config {
+            std::fs::rename(&config_backup, temp_dir.join("config.md"))?;
+        }
+        if has_prompts {
+            std::fs::rename(&prompts_backup, temp_dir.join("prompts"))?;
+        }
+        if has_gitignore {
+            std::fs::rename(&gitignore_backup, temp_dir.join(".gitignore"))?;
+        }
+        if has_locks {
+            std::fs::rename(&locks_backup, temp_dir.join(".locks"))?;
+        }
+        if has_store {
+            std::fs::rename(&store_backup, temp_dir.join(".store"))?;
+        }
+
+        // Remove the old .chant directory
         std::fs::remove_dir_all(&chant_dir)?;
+
+        // Create fresh directory structure
+        std::fs::create_dir_all(chant_dir.join("specs"))?;
+        std::fs::create_dir_all(chant_dir.join("prompts"))?;
+        std::fs::create_dir_all(chant_dir.join(".locks"))?;
+        std::fs::create_dir_all(chant_dir.join(".store"))?;
+
+        // Restore backed-up files
+        if has_specs {
+            std::fs::rename(temp_dir.join("specs"), chant_dir.join("specs"))?;
+        }
+        if has_config {
+            std::fs::rename(temp_dir.join("config.md"), chant_dir.join("config.md"))?;
+        }
+        if has_prompts {
+            std::fs::rename(temp_dir.join("prompts"), chant_dir.join("prompts"))?;
+        }
+        if has_gitignore {
+            std::fs::rename(temp_dir.join(".gitignore"), chant_dir.join(".gitignore"))?;
+        }
+        if has_locks {
+            std::fs::rename(temp_dir.join(".locks"), chant_dir.join(".locks"))?;
+        }
+        if has_store {
+            std::fs::rename(temp_dir.join(".store"), chant_dir.join(".store"))?;
+        }
+
+        // Clean up temp directory
+        let _ = std::fs::remove_dir(&temp_dir);
     }
 
     // Detect project name
     let project_name = final_name;
 
-    // Create directory structure
+    // Create directory structure (only if not already created during force/restore)
     std::fs::create_dir_all(chant_dir.join("specs"))?;
     std::fs::create_dir_all(chant_dir.join("prompts"))?;
     std::fs::create_dir_all(chant_dir.join(".locks"))?;
     std::fs::create_dir_all(chant_dir.join(".store"))?;
 
-    // Create config.md
-    let config_content = format!(
-        r#"---
+    // Create config.md only if it doesn't exist (preserve during --force)
+    let config_path = chant_dir.join("config.md");
+    if !config_path.exists() {
+        let config_content = format!(
+            r#"---
 project:
   name: {}
 
@@ -701,14 +772,17 @@ defaults:
 
 Project initialized on {}.
 "#,
-        project_name,
-        chrono::Local::now().format("%Y-%m-%d")
-    );
-    std::fs::write(chant_dir.join("config.md"), config_content)?;
+            project_name,
+            chrono::Local::now().format("%Y-%m-%d")
+        );
+        std::fs::write(&config_path, config_content)?;
+    }
 
     if !final_minimal {
-        // Create standard prompt
-        let prompt_content = r#"---
+        // Create standard prompt (only if it doesn't exist)
+        let standard_path = chant_dir.join("prompts/standard.md");
+        if !standard_path.exists() {
+            let prompt_content = r#"---
 name: standard
 purpose: Default execution prompt
 ---
@@ -737,10 +811,13 @@ You are implementing a spec for {{project.name}}.
 - Follow existing code patterns
 - Do not refactor unrelated code
 "#;
-        std::fs::write(chant_dir.join("prompts/standard.md"), prompt_content)?;
+            std::fs::write(&standard_path, prompt_content)?;
+        }
 
-        // Create split prompt
-        let split_prompt_content = r#"---
+        // Create split prompt (only if it doesn't exist)
+        let split_path = chant_dir.join("prompts/split.md");
+        if !split_path.exists() {
+            let split_prompt_content = r#"---
 name: split
 purpose: Split a driver spec into members with detailed acceptance criteria
 ---
@@ -819,10 +896,13 @@ If no files are identified, you can omit the Affected Files section.
 
 Create as many members as needed (typically 3-5 for a medium spec).
 "#;
-        std::fs::write(chant_dir.join("prompts/split.md"), split_prompt_content)?;
+            std::fs::write(&split_path, split_prompt_content)?;
+        }
 
-        // Create verify prompt
-        let verify_prompt_content = r#"---
+        // Create verify prompt (only if it doesn't exist)
+        let verify_path = chant_dir.join("prompts/verify.md");
+        if !verify_path.exists() {
+            let verify_prompt_content = r#"---
 name: verify
 purpose: Verify that acceptance criteria are met
 ---
@@ -882,12 +962,16 @@ Overall status: PASS/FAIL/MIXED
 - Focus on verification only
 - Be objective; don't assume intent
 "#;
-        std::fs::write(chant_dir.join("prompts/verify.md"), verify_prompt_content)?;
+            std::fs::write(&verify_path, verify_prompt_content)?;
+        }
     }
 
-    // Create .gitignore
-    let gitignore_content = "# Local state (not shared)\n.locks/\n.store/\n";
-    std::fs::write(chant_dir.join(".gitignore"), gitignore_content)?;
+    // Create .gitignore (only if it doesn't exist)
+    let gitignore_path = chant_dir.join(".gitignore");
+    if !gitignore_path.exists() {
+        let gitignore_content = "# Local state (not shared)\n.locks/\n.store/\n";
+        std::fs::write(&gitignore_path, gitignore_content)?;
+    }
 
     // Handle silent mode: add .chant/ to .git/info/exclude
     if final_silent {
@@ -1220,6 +1304,82 @@ mod tests {
 
             let detected = detect_project_name();
             assert_eq!(detected, Some("my-rust-project".to_string()));
+
+            let _ = std::env::set_current_dir(orig_dir);
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_init_force_preserves_specs_and_config() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let orig_dir = std::env::current_dir().unwrap();
+
+        if std::env::set_current_dir(&temp_dir).is_ok() {
+            // First init
+            let result1 = cmd_init(Some("test".to_string()), false, false, false, vec![]);
+            assert!(result1.is_ok());
+            assert!(temp_dir.path().join(".chant/config.md").exists());
+
+            // Create a dummy spec file
+            let specs_dir = temp_dir.path().join(".chant/specs");
+            let spec_file = specs_dir.join("2026-01-25-abc-def.md");
+            let _ = fs::write(
+                &spec_file,
+                "---\ntype: code\nstatus: pending\n---\n# Test Spec\n",
+            );
+            assert!(spec_file.exists());
+
+            // Second init with --force should preserve specs
+            let result2 = cmd_init(Some("test-force".to_string()), false, true, false, vec![]);
+            assert!(result2.is_ok());
+
+            // Verify spec was preserved
+            assert!(spec_file.exists());
+            // Verify config was preserved
+            assert!(temp_dir.path().join(".chant/config.md").exists());
+            // Verify directory structure exists
+            assert!(specs_dir.exists());
+
+            let _ = std::env::set_current_dir(orig_dir);
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_init_force_reinstalls_agents() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let orig_dir = std::env::current_dir().unwrap();
+
+        if std::env::set_current_dir(&temp_dir).is_ok() {
+            // First init with Claude agent
+            let result1 = cmd_init(
+                Some("test".to_string()),
+                false,
+                false,
+                false,
+                vec!["claude".to_string()],
+            );
+            assert!(result1.is_ok());
+            assert!(temp_dir.path().join("CLAUDE.md").exists());
+
+            // Get original file content
+            let original_content = fs::read_to_string("CLAUDE.md").unwrap();
+
+            // Second init with --force should recreate agent files
+            let result2 = cmd_init(
+                Some("test".to_string()),
+                false,
+                true,
+                false,
+                vec!["claude".to_string()],
+            );
+            assert!(result2.is_ok());
+            assert!(temp_dir.path().join("CLAUDE.md").exists());
+
+            // Verify content is still the same (agent files are updated)
+            let new_content = fs::read_to_string("CLAUDE.md").unwrap();
+            assert_eq!(original_content, new_content);
 
             let _ = std::env::set_current_dir(orig_dir);
         }
