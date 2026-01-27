@@ -120,6 +120,14 @@ pub fn cmd_work(
     let mut spec = spec::resolve_spec(&specs_dir, id)?;
     let spec_path = specs_dir.join(format!("{}.md", spec.id));
 
+    // Reject cancelled specs
+    if spec.frontmatter.status == SpecStatus::Cancelled {
+        anyhow::bail!(
+            "Cannot work on cancelled spec '{}'. Cancelled specs are not eligible for execution.",
+            spec.id
+        );
+    }
+
     // Handle re-finalization mode
     if finalize {
         // Re-finalize flag requires the spec to be in_progress or completed
@@ -534,7 +542,7 @@ pub fn cmd_work_parallel(
         let all_specs = spec::load_all_specs(specs_dir)?;
         let mut specs: Vec<Spec> = all_specs
             .iter()
-            .filter(|s| s.is_ready(&all_specs))
+            .filter(|s| s.frontmatter.status != SpecStatus::Cancelled && s.is_ready(&all_specs))
             .cloned()
             .collect();
 

@@ -27,6 +27,7 @@ pub fn status_icon(status: &SpecStatus) -> ColoredString {
         SpecStatus::NeedsAttention => "⚠".yellow(),
         SpecStatus::Ready => "◕".cyan(),
         SpecStatus::Blocked => "⊗".red(),
+        SpecStatus::Cancelled => "✓".dimmed(),
     }
 }
 

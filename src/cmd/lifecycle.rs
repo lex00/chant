@@ -46,6 +46,7 @@ pub fn cmd_diagnose(id: &str) -> Result<()> {
         SpecStatus::NeedsAttention => "needs_attention".yellow(),
         SpecStatus::Ready => "ready".cyan(),
         SpecStatus::Blocked => "blocked".red(),
+        SpecStatus::Cancelled => "cancelled".dimmed(),
     };
     println!("Status: {}", status_str);
 
@@ -169,6 +170,9 @@ pub fn cmd_split(id: &str, override_model: Option<&str>, force: bool) -> Result<
             }
             SpecStatus::Blocked => {
                 anyhow::bail!("Cannot split blocked spec");
+            }
+            SpecStatus::Cancelled => {
+                anyhow::bail!("Cannot split cancelled spec");
             }
             SpecStatus::Pending | SpecStatus::Ready => {
                 // Allowed to split

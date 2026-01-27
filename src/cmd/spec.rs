@@ -268,6 +268,9 @@ pub fn cmd_list(
     let mut specs = spec::load_all_specs(&specs_dir)?;
     specs.sort_by(|a, b| a.id.cmp(&b.id));
 
+    // Exclude cancelled specs
+    specs.retain(|s| s.frontmatter.status != spec::SpecStatus::Cancelled);
+
     if ready_only {
         let all_specs = specs.clone();
         specs.retain(|s| s.is_ready(&all_specs));
@@ -404,6 +407,9 @@ pub fn cmd_status() -> Result<()> {
             SpecStatus::Completed => completed += 1,
             SpecStatus::Failed => failed += 1,
             SpecStatus::NeedsAttention => failed += 1,
+            SpecStatus::Cancelled => {
+                // Cancelled specs are not counted in the summary
+            }
         }
     }
 
