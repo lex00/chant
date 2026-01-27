@@ -67,8 +67,8 @@ The system has a minimal core with optional layers built on top:
 │  Layer 4: Structure                             ✅ COMPLETE     │
 │  Dependencies, groups, labels, split                            │
 ├─────────────────────────────────────────────────────────────────┤
-│  Layer 3: Multi-Repo                            ⏳ PARTIAL      │
-│  Global config ✓ | Cross-repo deps ❌                           │
+│  Layer 3: Multi-Repo                            ✅ COMPLETE     │
+│  Global config ✓, Cross-repo deps ✓, Global visibility ✓       │
 ├─────────────────────────────────────────────────────────────────┤
 │  Layer 2: MCP + Providers                       ✅ COMPLETE     │
 │  MCP server, Claude/Ollama/OpenAI providers                     │
@@ -108,7 +108,7 @@ The prompt does the heavy lifting. Core just orchestrates.
 | 0: Core | ✅ | Spec CRUD, state machine, prompts, agent execution |
 | 1: Git+ | ✅ | `--branch`, `--pr`, worktree isolation, merge |
 | 2: MCP + Providers | ✅ | MCP server, Claude/Ollama/OpenAI |
-| 3: Multi-Repo | ⏳ | Global config (cross-repo deps pending) |
+| 3: Multi-Repo | ✅ | Global config, cross-repo deps, `--global` flag |
 | 4: Structure | ✅ | `depends_on`, groups, labels, split |
 | 5: Observability | ✅ | lint, status, log, diagnose |
 | 6: Scale | ⏳ | Locks, parallel, agent rotation (daemon/Tantivy pending) |
@@ -125,7 +125,7 @@ Development moved faster than the original phased plan. Most features from Phase
 | Phase 0: Core | ✅ Complete | Spec CRUD, state machine, prompts, agent invocation, git commits |
 | Phase 1: Git+ | ✅ Complete | `--branch`, `--pr`, worktree isolation, merge command |
 | Phase 2: MCP + Providers | ✅ Complete | MCP server, Claude/Ollama/OpenAI providers |
-| Phase 3: Multi-Repo | ⏳ Partial | Global config exists; cross-repo deps not yet |
+| Phase 3: Multi-Repo | ✅ Complete | Global config, cross-repo deps, `--global` visibility |
 | Phase 4: Structure | ✅ Complete | `depends_on`, groups (`.N` suffix), labels, `split` command |
 | Phase 5: Observability | ✅ Complete | `lint`, `status`, `log`, `diagnose` commands |
 | Phase 6: Scale | ⏳ Partial | Locks, `--parallel`, agent rotation; NOT: daemon, Tantivy |
@@ -137,8 +137,8 @@ Development moved faster than the original phased plan. Most features from Phase
 | Version | Focus |
 |---------|-------|
 | v0.2.0 | ✅ Released - Autonomy layer (`drift`, `verify`, `replay` commands) |
-| v0.3.0 | Full-text search (Tantivy indexing) |
-| v0.4.0 | Full multi-repo support (cross-repo deps) |
+| v0.3.0 | ✅ Released - Multi-repo support (cross-repo deps, `--global` flag) |
+| v0.4.0 | Full-text search (Tantivy indexing) |
 | v0.5.0 | Daemon mode for background execution |
 | v1.0.0 | Stable API, complete documentation |
 
@@ -191,11 +191,14 @@ See [git.md](../reference/git.md) and [isolation.md](../scale/isolation.md).
 
 See [mcp.md](../reference/mcp.md) and [protocol.md](../architecture/protocol.md).
 
-### Phase 3: Multi-Repo ⏳ PARTIAL
+### Phase 3: Multi-Repo ✅ COMPLETE
 
 - ✅ Global config at `~/.config/chant/`
-- ❌ `repo:` prefix parsing for cross-repo specs
-- ❌ Cross-repo dependencies
+- ✅ `repo:` prefix parsing for cross-repo specs
+- ✅ Cross-repo dependencies with `depends_on: repo:spec-id`
+- ✅ `--global` flag for list, status, search, ready commands
+- ✅ `--repo` flag to filter by repository
+- ✅ `chant show repo:spec-id` to view cross-repo specs
 
 See [multi-project.md](../scale/multi-project.md).
 
