@@ -161,6 +161,7 @@ mod tests {
             ],
             cleanup: chant::config::CleanupConfig::default(),
             stagger_delay_ms: 1000,
+            stagger_jitter_ms: 200,
         };
 
         let result = select_agent_for_work("none", &config).unwrap();
@@ -173,6 +174,7 @@ mod tests {
             agents: vec![],
             cleanup: chant::config::CleanupConfig::default(),
             stagger_delay_ms: 1000,
+            stagger_jitter_ms: 200,
         };
 
         let result = select_agent_for_work("none", &config).unwrap();
@@ -188,6 +190,7 @@ mod tests {
             ],
             cleanup: chant::config::CleanupConfig::default(),
             stagger_delay_ms: 1000,
+            stagger_jitter_ms: 200,
         };
 
         // Run multiple times to check that both agents can be selected
@@ -218,6 +221,7 @@ mod tests {
             ],
             cleanup: chant::config::CleanupConfig::default(),
             stagger_delay_ms: 1000,
+            stagger_jitter_ms: 200,
         };
 
         // Just verify round-robin selection returns valid agents
@@ -238,6 +242,7 @@ mod tests {
             ],
             cleanup: chant::config::CleanupConfig::default(),
             stagger_delay_ms: 1000,
+            stagger_jitter_ms: 200,
         };
 
         // Verify round-robin respects weights by returning valid agents
@@ -257,6 +262,7 @@ mod tests {
             ],
             cleanup: chant::config::CleanupConfig::default(),
             stagger_delay_ms: 1000,
+            stagger_jitter_ms: 200,
         };
 
         let result = select_agent_for_work("unknown-strategy", &config).unwrap();
@@ -275,6 +281,7 @@ mod tests {
             ],
             cleanup: chant::config::CleanupConfig::default(),
             stagger_delay_ms: 1000,
+            stagger_jitter_ms: 200,
         };
 
         // Verify the function returns valid results

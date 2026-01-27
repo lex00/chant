@@ -107,6 +107,8 @@ parallel:
     - name: main            # Display name
       command: claude       # Shell command
       max_concurrent: 2     # Max concurrent for this agent
+  stagger_delay_ms: 1000    # Delay between spawning agents (ms), default 1000
+  stagger_jitter_ms: 200    # Jitter for spawn delays (ms), default 200 (20% of delay)
   rotation:                 # Agent rotation for single spec execution
     strategy: none          # none | random | round-robin
   cleanup:

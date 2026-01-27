@@ -10,6 +10,7 @@
 use anyhow::Result;
 use atty;
 use colored::Colorize;
+use rand::Rng;
 use std::path::{Path, PathBuf};
 
 use chant::config::Config;
@@ -1020,9 +1021,22 @@ pub fn cmd_work_parallel(
 
         handles.push(handle);
 
-        // Apply stagger delay between spawning agents to avoid API rate limiting
+        // Apply stagger delay with jitter between spawning agents to avoid API rate limiting
         if config.parallel.stagger_delay_ms > 0 {
-            thread::sleep(Duration::from_millis(config.parallel.stagger_delay_ms));
+            let mut rng = rand::thread_rng();
+            let jitter = if config.parallel.stagger_jitter_ms > 0 {
+                // Generate random jitter from -jitter to +jitter
+                rng.gen_range(
+                    -(config.parallel.stagger_jitter_ms as i64)
+                        ..=(config.parallel.stagger_jitter_ms as i64),
+                )
+            } else {
+                0
+            };
+
+            // Calculate actual delay: base_delay + jitter, but ensure it's non-negative
+            let delay_ms = (config.parallel.stagger_delay_ms as i64 + jitter).max(0) as u64;
+            thread::sleep(Duration::from_millis(delay_ms));
         }
     }
 
@@ -1671,6 +1685,7 @@ mod tests {
                 agents,
                 cleanup: chant::config::CleanupConfig::default(),
                 stagger_delay_ms: 1000,
+                stagger_jitter_ms: 200,
             },
             repos: vec![],
         }

@@ -210,6 +210,22 @@ chant split 001 --model claude-opus-4-5    # Use specific model for analysis
 
 The split command analyzes the spec content and creates numbered member specs (`.1`, `.2`, etc.) that break down the work into smaller pieces.
 
+### Prep
+
+Output cleaned spec content for agent preparation:
+
+```bash
+chant prep 2026-01-22-001-x7m              # Output spec content
+chant prep 001 --clean                     # Strip agent conversation sections
+```
+
+The prep command is useful for:
+- Getting the spec content ready for the agent to process
+- Removing stale agent conversation sections from replayed specs (with `--clean`)
+- Preparing specs for the bootstrap prompt workflow
+
+By default, `chant prep` outputs the spec body. With the `--clean` flag, it removes any "## Agent Conversation", "## Execution Result", or similar sections that may have been added during previous runs, ensuring a clean slate for replay scenarios.
+
 ### Skipping Acceptance Criteria Validation
 
 Use `--force` to skip validation of unchecked acceptance criteria:

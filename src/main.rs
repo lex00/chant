@@ -413,6 +413,14 @@ enum Commands {
         #[arg(long)]
         prompt: Option<String>,
     },
+    /// Output cleaned spec content for agent preparation
+    Prep {
+        /// Spec ID (full or partial)
+        id: String,
+        /// Strip agent conversation sections from spec body
+        #[arg(long)]
+        clean: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -628,6 +636,10 @@ fn main() -> Result<()> {
             dry_run,
             prompt.as_deref(),
         ),
+        Commands::Prep { id, clean } => {
+            let specs_dir = cmd::ensure_initialized()?;
+            cmd::prep::cmd_prep(&id, clean, &specs_dir)
+        }
     }
 }
 

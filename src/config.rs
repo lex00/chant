@@ -68,6 +68,9 @@ pub struct ParallelConfig {
     /// Delay in milliseconds between spawning each agent to avoid API rate limiting
     #[serde(default = "default_stagger_delay_ms")]
     pub stagger_delay_ms: u64,
+    /// Jitter in milliseconds for spawn delays (default: 20% of stagger_delay_ms)
+    #[serde(default = "default_stagger_jitter_ms")]
+    pub stagger_jitter_ms: u64,
 }
 
 impl ParallelConfig {
@@ -83,6 +86,7 @@ impl Default for ParallelConfig {
             agents: vec![AgentConfig::default()],
             cleanup: CleanupConfig::default(),
             stagger_delay_ms: default_stagger_delay_ms(),
+            stagger_jitter_ms: default_stagger_jitter_ms(),
         }
     }
 }
@@ -147,6 +151,10 @@ pub struct CleanupConfig {
 
 fn default_stagger_delay_ms() -> u64 {
     1000 // Default 1 second between agent spawns
+}
+
+fn default_stagger_jitter_ms() -> u64 {
+    200 // Default 20% of stagger_delay_ms (200ms is 20% of 1000ms)
 }
 
 fn default_cleanup_enabled() -> bool {
