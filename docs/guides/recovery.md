@@ -180,20 +180,25 @@ Conflicting changes:
 **Recovery options:**
 
 ```bash
-# Option 1: Manual resolution
-$ cd .chant/.clones/001
-$ git merge main
+# Option 1: Auto-resolve with agent (recommended)
+$ chant merge 001 --rebase --auto
+# Agent resolves conflicts automatically
+
+# Option 2: Rebase without auto-resolve
+$ chant merge 001 --rebase
+# If conflicts: rebase is aborted, spec skipped
+# Manually resolve, then retry
+
+# Option 3: Resume failed spec and re-run
+$ chant resume 001 --work
+# Resets to pending and re-executes on current main
+
+# Option 4: Manual resolution
+$ git checkout chant/001
+$ git rebase main
 # ... resolve conflicts ...
-$ git commit
-$ chant merge 001 --continue
-
-# Option 2: Rebase and re-run
-$ chant retry 001
-# Re-runs agent on current main
-
-# Option 3: Accept one side
-$ chant merge 001 --ours    # Keep spec changes
-$ chant merge 001 --theirs  # Keep main changes
+$ git checkout main
+$ git merge --ff-only chant/001
 ```
 
 ### 6. Agent Failure (Non-Crash)

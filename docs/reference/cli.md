@@ -48,6 +48,7 @@ chant work 2026-01-22-001-x7m --prompt tdd # Execute with specific prompt
 chant work 2026-01-22-001-x7m --force      # Replay a completed spec
 chant work --parallel                      # Execute all ready specs in parallel
 chant work --parallel --label auth         # Execute ready specs with label
+chant work 001 002 003 --parallel          # Execute specific specs in parallel
 ```
 
 ### Split Spec
@@ -103,6 +104,9 @@ Execute multiple ready specs concurrently:
 # Execute all ready specs in parallel
 chant work --parallel
 
+# Execute specific specs in parallel (selective)
+chant work 001 002 003 --parallel
+
 # Filter by label
 chant work --parallel --label auth
 chant work --parallel --label feature --label urgent
@@ -119,6 +123,20 @@ chant work --parallel --no-cleanup
 # Force cleanup prompt even on success
 chant work --parallel --cleanup
 ```
+
+**Selective Parallel Execution:**
+
+When you specify multiple spec IDs, only those specs are executed in parallel (regardless of their ready status):
+
+```bash
+# Run exactly these 4 specs in parallel
+chant work 00e 00i 00j 00k --parallel
+
+# Combine with other options
+chant work 001 002 --parallel --prompt tdd --max 2
+```
+
+This is useful when you want to control exactly which specs run together, rather than running all ready specs.
 
 **Multi-Account Support:**
 
@@ -218,6 +236,155 @@ The log file header (spec ID, timestamp, prompt name) is written before the agen
 ```bash
 chant status                          # Overview
 chant ready                           # Show ready specs
+```
+
+## Merge
+
+Merge completed spec branches back to main:
+
+```bash
+chant merge 001                       # Merge single spec branch
+chant merge 001 002 003               # Merge multiple specs
+chant merge --all                     # Merge all completed spec branches
+chant merge --all --dry-run           # Preview what would be merged
+chant merge --all --delete-branch     # Delete branches after merge
+chant merge --all --yes               # Skip confirmation prompt
+```
+
+### Rebase Before Merge
+
+When multiple specs run in parallel, their branches diverge from main. Use `--rebase` to rebase each branch onto current main before the fast-forward merge:
+
+```bash
+chant merge --all --rebase            # Rebase each branch before ff-merge
+chant merge --all --rebase --yes      # Skip confirmation
+chant merge 001 002 --rebase          # Rebase specific specs
+```
+
+### Auto-Resolve Conflicts
+
+Use `--auto` with `--rebase` for agent-assisted conflict resolution:
+
+```bash
+chant merge --all --rebase --auto     # Auto-resolve conflicts with agent
+```
+
+When conflicts occur during rebase, chant invokes an agent with the `merge-conflict` prompt to resolve them. The agent:
+1. Reads the conflicting files
+2. Analyzes the conflict markers
+3. Edits files to resolve conflicts
+4. Stages resolved files
+5. Continues the rebase
+
+If `--auto` is not specified and conflicts occur, the rebase is aborted and the spec is skipped.
+
+## Resume
+
+Retry failed specs by resetting them to pending:
+
+```bash
+chant resume 001                      # Reset failed spec to pending
+chant resume 001 --work               # Reset and immediately re-execute
+chant resume 001 --work --prompt tdd  # Reset and re-execute with specific prompt
+chant resume 001 --work --branch      # Reset and re-execute with feature branch
+```
+
+The resume command:
+1. Validates the spec is in `failed` status
+2. Resets status to `pending`
+3. Optionally re-executes with `--work`
+
+## Drift
+
+Detect when documentation and research specs have stale inputs:
+
+```bash
+chant drift                           # Check all completed specs for drift
+chant drift 001                       # Check specific spec
+```
+
+Drift detection checks:
+- `tracks` field: Source files being documented
+- `origin` field: Research spec origins
+- `informed_by` field: Reference materials
+
+A spec has "drifted" when any tracked file was modified after the spec was completed. This indicates the documentation or research may be outdated.
+
+**Example output:**
+
+```
+⚠ Drifted Specs (inputs changed since completion)
+──────────────────────────────────────────────────
+● 2026-01-24-005-abc (documentation)
+  Completed: 2026-01-24
+  Changed files:
+    - src/api/handler.rs (modified: 2026-01-25)
+
+✓ Up-to-date Specs (no input changes)
+──────────────────────────────────────────────────
+● 2026-01-24-003-xyz (research)
+```
+
+## Export
+
+Export spec data in various formats:
+
+```bash
+chant export                          # Export all specs as JSON (default)
+chant export --format csv             # Export as CSV
+chant export --format markdown        # Export as Markdown table
+chant export --output specs.json      # Write to file instead of stdout
+```
+
+### Filtering
+
+```bash
+chant export --status completed       # Filter by status
+chant export --status pending --status ready  # Multiple statuses (OR)
+chant export --type code              # Filter by spec type
+chant export --label feature          # Filter by label
+chant export --ready                  # Only ready specs
+chant export --from 2026-01-20        # Specs from date
+chant export --to 2026-01-25          # Specs until date
+```
+
+### Field Selection
+
+```bash
+chant export --fields id,status,title # Select specific fields
+chant export --fields all             # Include all fields
+```
+
+Default fields: `id`, `type`, `status`, `title`, `labels`, `model`, `completed_at`
+
+## Disk
+
+Show disk usage of chant artifacts:
+
+```bash
+chant disk                            # Show disk usage summary
+```
+
+**Example output:**
+
+```
+Chant Disk Usage
+
+.chant/ directory breakdown:
+  Specs:               92.0 KB
+  Prompts:             44.0 KB
+  Logs:                1.1 MB
+  Archive:             1.2 MB
+  Locks:               0 B
+  Store:               0 B
+  .chant/ Total:       2.5 MB
+
+Worktrees in /tmp:
+  Count:               25 worktrees
+  Total Size:          5.8 GB
+
+Grand Total:
+  5.8 GB
 ```
 
 ## DAG Visualization (Planned)

@@ -168,6 +168,8 @@ Focus on these files:
 | `documentation` | Read tracked code, write documentation |
 | `research-synthesis` | Synthesize sources into findings |
 | `research-analysis` | Analyze data, generate insights |
+| `merge-conflict` | Resolve git conflicts during rebase |
+| `parallel-cleanup` | Clean up after parallel execution issues |
 
 ## When to Use Each Prompt
 
@@ -228,6 +230,18 @@ chant work 2026-01-24-001-abc --prompt split
 **research-synthesis.md:** Used for research specs to synthesize findings from multiple sources into cohesive insights.
 
 **research-analysis.md:** Used for research specs to analyze data and generate insights.
+
+### Utility Prompts
+
+**merge-conflict.md:** Used by `chant merge --rebase --auto` for agent-assisted conflict resolution. The agent receives:
+- Branch name being rebased
+- Target branch (usually main)
+- List of conflicting files
+- Git diff showing conflicts
+
+The agent resolves conflicts, stages files, and continues the rebase.
+
+**parallel-cleanup.md:** Used after parallel execution to clean up issues like orphaned worktrees or failed specs.
 
 ## Prompt Selection
 
