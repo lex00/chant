@@ -280,23 +280,32 @@ fn get_model_provider(
     match provider_type {
         provider::ProviderType::Claude => Ok(Box::new(provider::ClaudeCliProvider)),
         provider::ProviderType::Ollama => {
-            let endpoint = config
-                .providers
-                .ollama
-                .as_ref()
+            let ollama_config = config.providers.ollama.as_ref();
+            let endpoint = ollama_config
                 .map(|c| c.endpoint.clone())
                 .unwrap_or_else(|| "http://localhost:11434/v1".to_string());
-            Ok(Box::new(provider::OllamaProvider { endpoint }))
+            let max_retries = ollama_config.map(|c| c.max_retries).unwrap_or(3);
+            let retry_delay_ms = ollama_config.map(|c| c.retry_delay_ms).unwrap_or(1000);
+            Ok(Box::new(provider::OllamaProvider {
+                endpoint,
+                max_retries,
+                retry_delay_ms,
+            }))
         }
         provider::ProviderType::Openai => {
-            let endpoint = config
-                .providers
-                .openai
-                .as_ref()
+            let openai_config = config.providers.openai.as_ref();
+            let endpoint = openai_config
                 .map(|c| c.endpoint.clone())
                 .unwrap_or_else(|| "https://api.openai.com/v1".to_string());
             let api_key = std::env::var("OPENAI_API_KEY").ok();
-            Ok(Box::new(provider::OpenaiProvider { endpoint, api_key }))
+            let max_retries = openai_config.map(|c| c.max_retries).unwrap_or(3);
+            let retry_delay_ms = openai_config.map(|c| c.retry_delay_ms).unwrap_or(1000);
+            Ok(Box::new(provider::OpenaiProvider {
+                endpoint,
+                api_key,
+                max_retries,
+                retry_delay_ms,
+            }))
         }
     }
 }

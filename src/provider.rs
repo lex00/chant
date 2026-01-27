@@ -36,16 +36,36 @@ pub struct ProviderConfig {
 pub struct OllamaConfig {
     #[serde(default = "default_ollama_endpoint")]
     pub endpoint: String,
+    /// Maximum number of retry attempts for throttled requests
+    #[serde(default = "default_max_retries")]
+    pub max_retries: u32,
+    /// Initial delay in milliseconds before first retry
+    #[serde(default = "default_retry_delay_ms")]
+    pub retry_delay_ms: u64,
 }
 
 fn default_ollama_endpoint() -> String {
     "http://localhost:11434/v1".to_string()
 }
 
+fn default_max_retries() -> u32 {
+    3
+}
+
+fn default_retry_delay_ms() -> u64 {
+    1000 // 1 second
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct OpenaiConfig {
     #[serde(default = "default_openai_endpoint")]
     pub endpoint: String,
+    /// Maximum number of retry attempts for throttled requests
+    #[serde(default = "default_max_retries")]
+    pub max_retries: u32,
+    /// Initial delay in milliseconds before first retry
+    #[serde(default = "default_retry_delay_ms")]
+    pub retry_delay_ms: u64,
 }
 
 fn default_openai_endpoint() -> String {
@@ -121,6 +141,8 @@ impl ModelProvider for ClaudeCliProvider {
 /// Ollama provider (OpenAI-compatible API with agent runtime)
 pub struct OllamaProvider {
     pub endpoint: String,
+    pub max_retries: u32,
+    pub retry_delay_ms: u64,
 }
 
 impl ModelProvider for OllamaProvider {
@@ -135,12 +157,14 @@ impl ModelProvider for OllamaProvider {
             return Err(anyhow!("Invalid endpoint URL: {}", self.endpoint));
         }
 
-        crate::agent::run_agent(
+        crate::agent::run_agent_with_retries(
             &self.endpoint,
             model,
             "",
             message,
             callback,
+            self.max_retries,
+            self.retry_delay_ms,
         )
         .map_err(|e| {
             let err_str = e.to_string();
@@ -161,6 +185,8 @@ impl ModelProvider for OllamaProvider {
 pub struct OpenaiProvider {
     pub endpoint: String,
     pub api_key: Option<String>,
+    pub max_retries: u32,
+    pub retry_delay_ms: u64,
 }
 
 impl ModelProvider for OpenaiProvider {
@@ -194,31 +220,86 @@ impl ModelProvider for OpenaiProvider {
             "stream": true,
         });
 
-        // Create HTTP agent and send request
-        let agent = Agent::new();
-        let response = agent
-            .post(&url)
-            .set("Content-Type", "application/json")
-            .set("Authorization", &format!("Bearer {}", api_key))
-            .send_json(&request_body)
-            .map_err(|e| anyhow!("HTTP request failed: {}", e))?;
+        // Retry loop with exponential backoff
+        let mut attempt = 0;
+        loop {
+            attempt += 1;
 
-        // Check response status
-        if response.status() == 401 {
-            return Err(anyhow!(
-                "Authentication failed. Check OPENAI_API_KEY env var"
-            ));
+            // Create HTTP agent and send request
+            let agent = Agent::new();
+            let response = agent
+                .post(&url)
+                .set("Content-Type", "application/json")
+                .set("Authorization", &format!("Bearer {}", api_key))
+                .send_json(&request_body)
+                .map_err(|e| anyhow!("HTTP request failed: {}", e))?;
+
+            let status = response.status();
+
+            // Check response status
+            if status == 401 {
+                return Err(anyhow!(
+                    "Authentication failed. Check OPENAI_API_KEY env var"
+                ));
+            }
+
+            // Check for throttle/error conditions (429 or 400+ errors)
+            let is_retryable =
+                status == 429 || status == 500 || status == 502 || status == 503 || status == 504;
+
+            if status == 200 {
+                // Success - process response
+                return self.process_response(response, callback);
+            } else if is_retryable && attempt <= self.max_retries {
+                // Retryable error - wait and retry
+                let delay_ms = self.calculate_backoff(attempt);
+                callback(&format!(
+                    "[Retry {}] HTTP {} - waiting {}ms before retry",
+                    attempt, status, delay_ms
+                ))?;
+                std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+                continue;
+            } else {
+                // Non-retryable error or max retries exceeded
+                return Err(anyhow!(
+                    "HTTP {}: {} (after {} attempt{})",
+                    status,
+                    response.status_text(),
+                    attempt,
+                    if attempt == 1 { "" } else { "s" }
+                ));
+            }
         }
+    }
 
-        if response.status() != 200 {
-            return Err(anyhow!(
-                "HTTP {}: {}",
-                response.status(),
-                response.status_text()
-            ));
+    fn name(&self) -> &'static str {
+        "openai"
+    }
+}
+
+impl OpenaiProvider {
+    /// Calculate exponential backoff delay with jitter
+    fn calculate_backoff(&self, attempt: u32) -> u64 {
+        let base_delay = self.retry_delay_ms;
+        let exponential = 2u64.saturating_pow(attempt - 1);
+        let delay = base_delay.saturating_mul(exponential);
+        // Add jitter: ±10% of delay to avoid thundering herd
+        let jitter = (delay / 10).saturating_mul(
+            ((attempt as u64).wrapping_mul(7)) % 21 / 10, // Deterministic pseudo-random jitter
+        );
+        if attempt.is_multiple_of(2) {
+            delay.saturating_add(jitter)
+        } else {
+            delay.saturating_sub(jitter)
         }
+    }
 
-        // Stream response body - buffer tokens until we have complete lines
+    /// Process successful API response
+    fn process_response(
+        &self,
+        response: ureq::Response,
+        callback: &mut dyn FnMut(&str) -> Result<()>,
+    ) -> Result<String> {
         let reader = std::io::BufReader::new(response.into_reader());
         let mut captured_output = String::new();
         let mut line_buffer = String::new();
@@ -265,10 +346,6 @@ impl ModelProvider for OpenaiProvider {
         }
 
         Ok(captured_output)
-    }
-
-    fn name(&self) -> &'static str {
-        "openai"
     }
 }
 
@@ -325,6 +402,8 @@ mod tests {
     fn test_ollama_provider_name() {
         let provider = OllamaProvider {
             endpoint: "http://localhost:11434/v1".to_string(),
+            max_retries: 3,
+            retry_delay_ms: 1000,
         };
         assert_eq!(provider.name(), "ollama");
     }
@@ -334,6 +413,8 @@ mod tests {
         let provider = OpenaiProvider {
             endpoint: "https://api.openai.com/v1".to_string(),
             api_key: None,
+            max_retries: 3,
+            retry_delay_ms: 1000,
         };
         assert_eq!(provider.name(), "openai");
     }

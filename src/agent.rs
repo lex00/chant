@@ -12,6 +12,21 @@ use crate::tools;
 const MAX_ITERATIONS: usize = 50;
 const DEFAULT_OLLAMA_ENDPOINT: &str = "http://localhost:11434";
 
+/// Calculate exponential backoff delay with jitter
+fn calculate_backoff(attempt: u32, base_delay_ms: u64) -> u64 {
+    let exponential = 2u64.saturating_pow(attempt - 1);
+    let delay = base_delay_ms.saturating_mul(exponential);
+    // Add jitter: ±10% of delay to avoid thundering herd
+    let jitter = (delay / 10).saturating_mul(
+        ((attempt as u64).wrapping_mul(7)) % 21 / 10, // Deterministic pseudo-random jitter
+    );
+    if attempt.is_multiple_of(2) {
+        delay.saturating_add(jitter)
+    } else {
+        delay.saturating_sub(jitter)
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct ChatRequest {
     model: String,
@@ -72,6 +87,27 @@ pub fn run_agent(
     user_message: &str,
     callback: &mut dyn FnMut(&str) -> Result<()>,
 ) -> Result<String> {
+    run_agent_with_retries(
+        endpoint,
+        model,
+        system_prompt,
+        user_message,
+        callback,
+        3,
+        1000,
+    )
+}
+
+/// Run an agent loop with configurable retry policy
+pub fn run_agent_with_retries(
+    endpoint: &str,
+    model: &str,
+    system_prompt: &str,
+    user_message: &str,
+    callback: &mut dyn FnMut(&str) -> Result<()>,
+    max_retries: u32,
+    retry_delay_ms: u64,
+) -> Result<String> {
     // Parse endpoint to get base URL
     // Use const for fallback to avoid nested unwrap
     let url = Url::parse(endpoint).unwrap_or_else(|_| {
@@ -127,17 +163,82 @@ pub fn run_agent(
             stream: false,
         };
 
-        // Send request
-        let client = ureq::Agent::new();
-        let response = client
-            .post(&chat_url)
-            .set("Content-Type", "application/json")
-            .send_json(&request)
-            .map_err(|e| anyhow!("HTTP request failed: {}", e))?;
+        // Send request with retry logic
+        let mut attempt = 0;
+        let chat_response = loop {
+            attempt += 1;
 
-        let response_text = response.into_string()?;
-        let chat_response: ChatResponse = serde_json::from_str(&response_text)
-            .map_err(|e| anyhow!("Failed to parse response: {} - body: {}", e, response_text))?;
+            let client = ureq::Agent::new();
+            let response = client
+                .post(&chat_url)
+                .set("Content-Type", "application/json")
+                .send_json(&request);
+
+            match response {
+                Ok(resp) => {
+                    let status = resp.status();
+
+                    // Check for retryable HTTP errors
+                    let is_retryable = status == 429
+                        || status == 500
+                        || status == 502
+                        || status == 503
+                        || status == 504;
+
+                    if status == 200 {
+                        // Success
+                        let response_text = resp.into_string()?;
+                        match serde_json::from_str::<ChatResponse>(&response_text) {
+                            Ok(parsed) => break parsed,
+                            Err(e) => {
+                                return Err(anyhow!(
+                                    "Failed to parse response: {} - body: {}",
+                                    e,
+                                    response_text
+                                ))
+                            }
+                        }
+                    } else if is_retryable && attempt <= max_retries {
+                        // Retryable error - wait and retry
+                        let delay_ms = calculate_backoff(attempt, retry_delay_ms);
+                        callback(&format!(
+                            "[Retry {}] HTTP {} - waiting {}ms before retry",
+                            attempt, status, delay_ms
+                        ))?;
+                        std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+                        continue;
+                    } else {
+                        // Non-retryable error or max retries exceeded
+                        return Err(anyhow!(
+                            "HTTP request failed with status {}: {} (after {} attempt{})",
+                            status,
+                            resp.status_text(),
+                            attempt,
+                            if attempt == 1 { "" } else { "s" }
+                        ));
+                    }
+                }
+                Err(e) => {
+                    // Network error - check if retryable
+                    let error_str = e.to_string();
+                    let is_retryable = error_str.contains("Connection")
+                        || error_str.contains("timeout")
+                        || error_str.contains("reset");
+
+                    if is_retryable && attempt <= max_retries {
+                        let delay_ms = calculate_backoff(attempt, retry_delay_ms);
+                        callback(&format!(
+                            "[Retry {}] Network error - waiting {}ms before retry: {}",
+                            attempt, delay_ms, error_str
+                        ))?;
+                        std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+                        continue;
+                    } else {
+                        return Err(anyhow!("HTTP request failed: {}", e));
+                    }
+                }
+            }
+        };
 
         // Check if model requested tool calls
         if chat_response.message.tool_calls.is_empty() {
