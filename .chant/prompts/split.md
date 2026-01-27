@@ -33,6 +33,18 @@ You are analyzing a driver specification for the {{project.name}} project and pr
    - List of affected files (if identifiable from the spec)
    - Clear "done" conditions that can be verified
 
+## Complexity Thresholds (Linting-Aware)
+
+Each resulting member spec should meet these thresholds to pass linting:
+- **Acceptance Criteria:** ≤ 5 items (allows haiku to verify completion)
+- **Target Files:** ≤ 5 files (keeps scope focused, minimal coupling)
+- **Description Length:** ≤ 200 words (haiku-friendly, clear intent)
+
+These thresholds ensure the split produces specs that are:
+- **Independently executable** by Claude Haiku
+- **Verifiable** with clear, specific acceptance criteria
+- **Self-contained** without cross-references
+
 ## Why Thorough Acceptance Criteria?
 
 These member specs will be executed by Claude Haiku, a capable but smaller model. A strong model (Opus/Sonnet) doing the split should think through edge cases and requirements thoroughly. Each member must have:
@@ -41,8 +53,18 @@ These member specs will be executed by Claude Haiku, a capable but smaller model
 - **Edge case callouts** to prevent oversights
 - **Test scenarios** to clarify expected behavior
 - **Clear success metrics** so Haiku knows when it's done
+- **Within complexity thresholds** so the spec stays manageable for haiku
 
 This way, Haiku has a detailed specification to follow and won't miss important aspects.
+
+## Preventing Cross-References
+
+Resulting member specs must be independent and not reference each other:
+- **No spec ID cross-references** in member descriptions (no mentions of `.1`, `.2`, etc.)
+- **Separate target_files** whenever possible (avoid coupling through shared files)
+- **Each spec self-contained** with clear acceptance criteria (no implicit dependencies beyond the dependency chain)
+
+This ensures members can be executed in parallel where dependencies allow.
 
 ## Output Format
 

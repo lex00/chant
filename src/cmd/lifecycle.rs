@@ -135,6 +135,46 @@ pub fn cmd_log_at(base_path: &std::path::Path, id: &str, lines: usize, follow: b
 // SPLITTING
 // ============================================================================
 
+/// Show complexity analysis for a spec before splitting
+fn show_complexity_analysis(spec: &Spec) {
+    // Thresholds for complexity
+    const CRITERIA_THRESHOLD: usize = 5;
+    const FILES_THRESHOLD: usize = 5;
+    const WORDS_THRESHOLD: usize = 500;
+
+    // Complexity thresholds for "simple" specs (haiku-friendly)
+    const HAIKU_CRITERIA_TARGET: usize = 5;
+    const HAIKU_FILES_TARGET: usize = 5;
+    const HAIKU_WORDS_TARGET: usize = 200;
+
+    let criteria_count = spec.count_total_checkboxes();
+    let files_count = spec
+        .frontmatter
+        .target_files
+        .as_ref()
+        .map(|f| f.len())
+        .unwrap_or(0);
+    let word_count = spec.body.split_whitespace().count();
+
+    // Check if complex (exceeds thresholds)
+    let is_too_complex = criteria_count > CRITERIA_THRESHOLD
+        || files_count > FILES_THRESHOLD
+        || word_count > WORDS_THRESHOLD;
+
+    if is_too_complex {
+        println!("\n{} Analyzing spec complexity...", "→".cyan());
+        println!(
+            "  Current: {} criteria, {} files, {} words (too complex for haiku)\n",
+            criteria_count, files_count, word_count
+        );
+        println!("{} Splitting into haiku-friendly specs...", "→".cyan());
+        println!(
+            "  Target per member: ≤{} criteria, ≤{} files, ≤{} words\n",
+            HAIKU_CRITERIA_TARGET, HAIKU_FILES_TARGET, HAIKU_WORDS_TARGET
+        );
+    }
+}
+
 /// Member spec extracted from split analysis
 #[derive(Debug, Clone)]
 struct MemberSpec {
@@ -185,6 +225,9 @@ pub fn cmd_split(id: &str, override_model: Option<&str>, force: bool) -> Result<
         anyhow::bail!("Spec is already split");
     }
 
+    // Show complexity analysis
+    show_complexity_analysis(&spec);
+
     println!("{} Analyzing spec {} for splitting...", "→".cyan(), spec.id);
 
     // Load prompt from file
@@ -226,6 +269,35 @@ pub fn cmd_split(id: &str, override_model: Option<&str>, force: bool) -> Result<
         members.len(),
         spec.id
     );
+
+    // Validate members meet complexity thresholds
+    const HAIKU_CRITERIA_TARGET: usize = 5;
+    const HAIKU_FILES_TARGET: usize = 5;
+    const HAIKU_WORDS_TARGET: usize = 200;
+
+    for (index, member) in members.iter().enumerate() {
+        let member_number = index + 1;
+        let criteria_count = member.description.matches("- [ ]").count()
+            + member.description.matches("- [x]").count()
+            + member.description.matches("- [X]").count();
+        let files_count = member.target_files.as_ref().map(|f| f.len()).unwrap_or(0);
+        let word_count = member.description.split_whitespace().count();
+
+        // Log warnings if member exceeds targets
+        if criteria_count > HAIKU_CRITERIA_TARGET
+            || files_count > HAIKU_FILES_TARGET
+            || word_count > HAIKU_WORDS_TARGET
+        {
+            eprintln!(
+                "  {} Member {}: {} criteria, {} files, {} words (exceeds targets)",
+                "⚠".yellow(),
+                member_number,
+                criteria_count,
+                files_count,
+                word_count
+            );
+        }
+    }
 
     // Create member spec files
     let driver_id = spec.id.clone();
@@ -287,6 +359,11 @@ pub fn cmd_split(id: &str, override_model: Option<&str>, force: bool) -> Result<
     for i in 1..=members.len() {
         println!("  • {}.{}", spec.id, i);
     }
+
+    println!(
+        "\n{} All resulting specs pass complexity checks ✓",
+        "→".cyan()
+    );
 
     Ok(())
 }

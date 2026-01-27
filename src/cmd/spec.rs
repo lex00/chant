@@ -553,8 +553,19 @@ pub fn cmd_lint() -> Result<()> {
                 println!("{} {}: {}", "✗".red(), spec.id, issue);
                 issues.push((spec.id.clone(), issue));
             }
+            // Check if there are complexity warnings before iterating
+            let has_complexity_warning = spec_warnings.iter().any(|w| {
+                w.contains("complexity")
+                    || w.contains("criteria")
+                    || w.contains("files")
+                    || w.contains("words")
+            });
             for warning in spec_warnings {
                 println!("{} {}: {}", "⚠".yellow(), spec.id, warning);
+            }
+            // Suggest split if there are complexity warnings
+            if has_complexity_warning {
+                println!("    {} Consider: chant split {}", "→".cyan(), spec.id);
             }
         }
     }
