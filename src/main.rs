@@ -100,6 +100,15 @@ enum Commands {
         /// Allow spec to complete without matching commits (uses HEAD as fallback). Use only in special cases.
         #[arg(long)]
         allow_no_commits: bool,
+        /// Override maximum parallel agents (for --parallel)
+        #[arg(long = "max")]
+        max_parallel: Option<usize>,
+        /// Skip cleanup prompt after parallel execution
+        #[arg(long)]
+        no_cleanup: bool,
+        /// Force cleanup prompt even on success
+        #[arg(long)]
+        cleanup: bool,
     },
     /// Start MCP server (Model Context Protocol)
     Mcp,
@@ -226,6 +235,9 @@ fn main() -> Result<()> {
             label,
             finalize,
             allow_no_commits,
+            max_parallel,
+            no_cleanup,
+            cleanup,
         } => cmd::work::cmd_work(
             id.as_deref(),
             prompt.as_deref(),
@@ -236,6 +248,9 @@ fn main() -> Result<()> {
             &label,
             finalize,
             allow_no_commits,
+            max_parallel,
+            no_cleanup,
+            cleanup,
         ),
         Commands::Mcp => mcp::run_server(),
         Commands::Status => cmd::spec::cmd_status(),

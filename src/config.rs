@@ -43,6 +43,104 @@ pub struct Config {
     pub git: GitConfig,
     #[serde(default)]
     pub providers: ProviderConfig,
+    #[serde(default)]
+    pub parallel: ParallelConfig,
+}
+
+/// Configuration for parallel execution with multiple agents
+#[derive(Debug, Deserialize, Clone)]
+pub struct ParallelConfig {
+    /// List of available agents (Claude accounts/commands)
+    #[serde(default)]
+    pub agents: Vec<AgentConfig>,
+    /// Maximum total concurrent agents across all accounts
+    #[serde(default = "default_total_max")]
+    pub total_max: usize,
+    /// Cleanup configuration
+    #[serde(default)]
+    pub cleanup: CleanupConfig,
+}
+
+fn default_total_max() -> usize {
+    8
+}
+
+impl Default for ParallelConfig {
+    fn default() -> Self {
+        Self {
+            agents: vec![AgentConfig::default()],
+            total_max: default_total_max(),
+            cleanup: CleanupConfig::default(),
+        }
+    }
+}
+
+/// Configuration for a single agent (Claude account/command)
+#[derive(Debug, Deserialize, Clone)]
+pub struct AgentConfig {
+    /// Name of the agent (for display and attribution)
+    #[serde(default = "default_agent_name")]
+    pub name: String,
+    /// Shell command to invoke this agent (e.g., "claude", "claude-alt1")
+    #[serde(default = "default_agent_command")]
+    pub command: String,
+    /// Maximum concurrent instances for this agent
+    #[serde(default = "default_max_concurrent")]
+    pub max_concurrent: usize,
+}
+
+fn default_agent_name() -> String {
+    "main".to_string()
+}
+
+fn default_agent_command() -> String {
+    "claude".to_string()
+}
+
+fn default_max_concurrent() -> usize {
+    2
+}
+
+impl Default for AgentConfig {
+    fn default() -> Self {
+        Self {
+            name: default_agent_name(),
+            command: default_agent_command(),
+            max_concurrent: default_max_concurrent(),
+        }
+    }
+}
+
+/// Configuration for post-parallel cleanup
+#[derive(Debug, Deserialize, Clone)]
+pub struct CleanupConfig {
+    /// Whether cleanup is enabled
+    #[serde(default = "default_cleanup_enabled")]
+    pub enabled: bool,
+    /// Prompt to use for cleanup agent
+    #[serde(default = "default_cleanup_prompt")]
+    pub prompt: String,
+    /// Whether to automatically run cleanup without confirmation
+    #[serde(default)]
+    pub auto_run: bool,
+}
+
+fn default_cleanup_enabled() -> bool {
+    true
+}
+
+fn default_cleanup_prompt() -> String {
+    "parallel-cleanup".to_string()
+}
+
+impl Default for CleanupConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_cleanup_enabled(),
+            prompt: default_cleanup_prompt(),
+            auto_run: false,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -174,6 +272,7 @@ struct PartialConfig {
     pub project: Option<PartialProjectConfig>,
     pub defaults: Option<PartialDefaultsConfig>,
     pub git: Option<PartialGitConfig>,
+    pub parallel: Option<ParallelConfig>,
 }
 
 #[allow(dead_code)]
@@ -268,6 +367,8 @@ impl PartialConfig {
                     .unwrap_or_default(),
             },
             providers: Default::default(),
+            // Parallel config: project overrides global, or use default
+            parallel: project.parallel.or(self.parallel).unwrap_or_default(),
         }
     }
 }
@@ -630,5 +731,83 @@ defaults:
         let config = Config::load_merged_from(Some(&global_path), &project_path).unwrap();
         // Project model overrides global
         assert_eq!(config.defaults.model, Some("claude-sonnet-4".to_string()));
+    }
+
+    // =========================================================================
+    // PARALLEL CONFIG TESTS
+    // =========================================================================
+
+    #[test]
+    fn test_parse_parallel_config() {
+        let content = r#"---
+project:
+  name: test-project
+parallel:
+  agents:
+    - name: main
+      command: claude
+      max_concurrent: 2
+    - name: alt1
+      command: claude-alt1
+      max_concurrent: 3
+  total_max: 5
+  cleanup:
+    enabled: true
+    prompt: custom-cleanup
+    auto_run: true
+---
+"#;
+        let config = Config::parse(content).unwrap();
+
+        assert_eq!(config.parallel.agents.len(), 2);
+        assert_eq!(config.parallel.agents[0].name, "main");
+        assert_eq!(config.parallel.agents[0].command, "claude");
+        assert_eq!(config.parallel.agents[0].max_concurrent, 2);
+        assert_eq!(config.parallel.agents[1].name, "alt1");
+        assert_eq!(config.parallel.agents[1].command, "claude-alt1");
+        assert_eq!(config.parallel.agents[1].max_concurrent, 3);
+        assert_eq!(config.parallel.total_max, 5);
+        assert!(config.parallel.cleanup.enabled);
+        assert_eq!(config.parallel.cleanup.prompt, "custom-cleanup");
+        assert!(config.parallel.cleanup.auto_run);
+    }
+
+    #[test]
+    fn test_parallel_config_defaults() {
+        let content = r#"---
+project:
+  name: test-project
+---
+"#;
+        let config = Config::parse(content).unwrap();
+
+        // Should have default values
+        assert_eq!(config.parallel.agents.len(), 1);
+        assert_eq!(config.parallel.agents[0].name, "main");
+        assert_eq!(config.parallel.agents[0].command, "claude");
+        assert_eq!(config.parallel.agents[0].max_concurrent, 2);
+        assert_eq!(config.parallel.total_max, 8);
+        assert!(config.parallel.cleanup.enabled);
+        assert_eq!(config.parallel.cleanup.prompt, "parallel-cleanup");
+        assert!(!config.parallel.cleanup.auto_run);
+    }
+
+    #[test]
+    fn test_parallel_config_partial_agent() {
+        let content = r#"---
+project:
+  name: test-project
+parallel:
+  agents:
+    - name: custom-agent
+---
+"#;
+        let config = Config::parse(content).unwrap();
+
+        // Agent with only name should get default command and max_concurrent
+        assert_eq!(config.parallel.agents.len(), 1);
+        assert_eq!(config.parallel.agents[0].name, "custom-agent");
+        assert_eq!(config.parallel.agents[0].command, "claude");
+        assert_eq!(config.parallel.agents[0].max_concurrent, 2);
     }
 }

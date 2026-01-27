@@ -74,6 +74,9 @@ pub fn cmd_work(
     labels: &[String],
     finalize: bool,
     allow_no_commits: bool,
+    max_parallel: Option<usize>,
+    no_cleanup: bool,
+    force_cleanup: bool,
 ) -> Result<()> {
     let specs_dir = crate::cmd::ensure_initialized()?;
     let prompts_dir = PathBuf::from(PROMPTS_DIR);
@@ -96,14 +99,15 @@ pub fn cmd_work(
 
     // Handle parallel execution mode
     if parallel && id.is_none() {
-        return cmd_work_parallel(
-            &specs_dir,
-            &prompts_dir,
-            &config,
-            prompt_name,
+        let options = ParallelOptions {
+            max_override: max_parallel,
+            no_cleanup,
+            force_cleanup,
             labels,
-            cli_branch.as_deref(),
-        );
+            branch_prefix: cli_branch.as_deref(),
+            prompt_name,
+        };
+        return cmd_work_parallel(&specs_dir, &prompts_dir, &config, options);
     }
 
     // If no ID and not parallel, require an ID
@@ -394,13 +398,86 @@ struct ParallelResult {
     agent_completed: bool, // Whether agent work completed (separate from merge status)
 }
 
+/// Options for parallel execution
+#[derive(Default)]
+pub struct ParallelOptions<'a> {
+    /// Override maximum total concurrent agents
+    pub max_override: Option<usize>,
+    /// Skip cleanup prompt after execution
+    pub no_cleanup: bool,
+    /// Force cleanup prompt even on success
+    pub force_cleanup: bool,
+    /// Labels to filter specs
+    pub labels: &'a [String],
+    /// CLI branch prefix override
+    pub branch_prefix: Option<&'a str>,
+    /// Prompt name override
+    pub prompt_name: Option<&'a str>,
+}
+
+/// Assignment of a spec to an agent
+#[derive(Debug, Clone)]
+struct AgentAssignment {
+    spec_id: String,
+    agent_name: String,
+    agent_command: String,
+}
+
+/// Distribute specs across agents respecting per-agent and total limits
+fn distribute_specs_to_agents(
+    specs: &[Spec],
+    config: &Config,
+    max_override: Option<usize>,
+) -> Vec<AgentAssignment> {
+    use chant::config::AgentConfig;
+
+    let agents = if config.parallel.agents.is_empty() {
+        vec![AgentConfig::default()]
+    } else {
+        config.parallel.agents.clone()
+    };
+
+    let total_max = max_override.unwrap_or(config.parallel.total_max);
+
+    // Track current allocation per agent
+    let mut agent_allocations: Vec<usize> = vec![0; agents.len()];
+    let mut assignments = Vec::new();
+
+    for spec in specs {
+        if assignments.len() >= total_max {
+            break;
+        }
+
+        // Find agent with most remaining capacity (least-loaded-first strategy)
+        let mut best_agent_idx = None;
+        let mut best_remaining_capacity = 0;
+
+        for (idx, agent) in agents.iter().enumerate() {
+            let remaining = agent.max_concurrent.saturating_sub(agent_allocations[idx]);
+            if remaining > best_remaining_capacity {
+                best_remaining_capacity = remaining;
+                best_agent_idx = Some(idx);
+            }
+        }
+
+        if let Some(idx) = best_agent_idx {
+            agent_allocations[idx] += 1;
+            assignments.push(AgentAssignment {
+                spec_id: spec.id.clone(),
+                agent_name: agents[idx].name.clone(),
+                agent_command: agents[idx].command.clone(),
+            });
+        }
+    }
+
+    assignments
+}
+
 pub fn cmd_work_parallel(
     specs_dir: &Path,
     prompts_dir: &Path,
     config: &Config,
-    prompt_name: Option<&str>,
-    labels: &[String],
-    cli_branch_prefix: Option<&str>,
+    options: ParallelOptions,
 ) -> Result<()> {
     use std::sync::mpsc;
     use std::thread;
@@ -414,10 +491,10 @@ pub fn cmd_work_parallel(
         .collect();
 
     // Filter by labels if specified
-    if !labels.is_empty() {
+    if !options.labels.is_empty() {
         ready_specs.retain(|s| {
             if let Some(spec_labels) = &s.frontmatter.labels {
-                labels.iter().any(|l| spec_labels.contains(l))
+                options.labels.iter().any(|l| spec_labels.contains(l))
             } else {
                 false
             }
@@ -425,7 +502,7 @@ pub fn cmd_work_parallel(
     }
 
     if ready_specs.is_empty() {
-        if !labels.is_empty() {
+        if !options.labels.is_empty() {
             println!("No ready specs with specified labels.");
         } else {
             println!("No ready specs to execute.");
@@ -433,11 +510,34 @@ pub fn cmd_work_parallel(
         return Ok(());
     }
 
+    // Distribute specs across configured agents
+    let assignments = distribute_specs_to_agents(&ready_specs, config, options.max_override);
+
+    if assignments.len() < ready_specs.len() {
+        println!(
+            "{} Warning: Only {} of {} ready specs will be executed (capacity limit)",
+            "⚠".yellow(),
+            assignments.len(),
+            ready_specs.len()
+        );
+    }
+
+    // Show agent distribution
     println!(
         "{} Starting {} specs in parallel...\n",
         "→".cyan(),
-        ready_specs.len()
+        assignments.len()
     );
+
+    // Group assignments by agent for display
+    let mut agent_counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    for assignment in &assignments {
+        *agent_counts.entry(&assignment.agent_name).or_insert(0) += 1;
+    }
+    for (agent_name, count) in &agent_counts {
+        println!("  {} {}: {} specs", "•".dimmed(), agent_name, count);
+    }
+    println!();
 
     // Resolve prompt name for all specs
     let default_prompt = &config.defaults.prompt;
@@ -445,12 +545,22 @@ pub fn cmd_work_parallel(
     // Create channels for collecting results
     let (tx, rx) = mpsc::channel::<ParallelResult>();
 
-    // Spawn threads for each spec
+    // Spawn threads for each assignment
     let mut handles = Vec::new();
 
-    for spec in ready_specs.iter() {
+    // Create a map of spec_id to spec for quick lookup
+    let spec_map: std::collections::HashMap<&str, &Spec> =
+        ready_specs.iter().map(|s| (s.id.as_str(), s)).collect();
+
+    for assignment in assignments.iter() {
+        let spec = match spec_map.get(assignment.spec_id.as_str()) {
+            Some(s) => *s,
+            None => continue,
+        };
+
         // Determine prompt for this spec: explicit > frontmatter > auto-select by type > default
-        let spec_prompt = prompt_name
+        let spec_prompt = options
+            .prompt_name
             .map(|s| s.to_string())
             .or_else(|| spec.frontmatter.prompt.clone())
             .or_else(|| auto_select_prompt_for_type(spec, prompts_dir))
@@ -477,7 +587,12 @@ pub fn cmd_work_parallel(
             continue;
         }
 
-        println!("[{}] Working with prompt '{}'", spec.id.cyan(), spec_prompt);
+        println!(
+            "[{}] Working with prompt '{}' via {}",
+            spec.id.cyan(),
+            spec_prompt,
+            assignment.agent_name.dimmed()
+        );
 
         // Assemble the prompt message
         let message = match prompt::assemble(&spec_clone, &prompt_path, config) {
@@ -496,7 +611,7 @@ pub fn cmd_work_parallel(
         // Determine branch mode
         // Priority: CLI --branch flag > spec frontmatter.branch > config defaults.branch
         // IMPORTANT: Parallel execution forces branch mode internally for isolation
-        let (is_direct_mode, branch_prefix) = if let Some(cli_prefix) = cli_branch_prefix {
+        let (is_direct_mode, branch_prefix) = if let Some(cli_prefix) = options.branch_prefix {
             // CLI --branch specified with explicit prefix
             (false, cli_prefix.to_string())
         } else if let Some(spec_branch) = &spec.frontmatter.branch {
@@ -559,14 +674,16 @@ pub fn cmd_work_parallel(
         let worktree_path_clone = worktree_path.clone();
         let branch_for_cleanup_clone = branch_for_cleanup.clone();
         let is_direct_mode_clone = is_direct_mode;
+        let agent_command = assignment.agent_command.clone();
 
         let handle = thread::spawn(move || {
-            let result = cmd::agent::invoke_agent_with_prefix(
+            let result = cmd::agent::invoke_agent_with_command(
                 &message,
                 &spec_id,
                 &prompt_name_clone,
                 config_model.as_deref(),
                 worktree_path_clone.as_deref(),
+                &agent_command,
             );
             let (success, commits, error, agent_completed) = match result {
                 Ok(_) => {
@@ -888,11 +1005,167 @@ pub fn cmd_work_parallel(
         );
     }
 
+    // Detect parallel pitfalls
+    let pitfalls = detect_parallel_pitfalls(&all_results, specs_dir);
+
+    // Offer cleanup if issues found (and cleanup is enabled)
+    let should_offer_cleanup = if options.force_cleanup {
+        true
+    } else if options.no_cleanup {
+        false
+    } else {
+        config.parallel.cleanup.enabled && !pitfalls.is_empty()
+    };
+
+    if should_offer_cleanup && !pitfalls.is_empty() {
+        println!("\n{} Issues detected:", "→".yellow());
+        for pitfall in &pitfalls {
+            let severity_icon = match pitfall.severity {
+                PitfallSeverity::High => "✗".red(),
+                PitfallSeverity::Medium => "⚠".yellow(),
+                PitfallSeverity::Low => "→".dimmed(),
+            };
+            if let Some(ref spec_id) = pitfall.spec_id {
+                println!("  {} [{}] {}", severity_icon, spec_id, pitfall.message);
+            } else {
+                println!("  {} {}", severity_icon, pitfall.message);
+            }
+        }
+
+        if config.parallel.cleanup.auto_run {
+            println!("\n{} Running cleanup agent...", "→".cyan());
+            // Auto-run cleanup would be implemented here
+        } else {
+            println!(
+                "\n{} Run {} to analyze and resolve issues.",
+                "→".cyan(),
+                "chant cleanup".bold()
+            );
+        }
+    }
+
     if failed > 0 {
         std::process::exit(1);
     }
 
     Ok(())
+}
+
+// ============================================================================
+// PARALLEL PITFALL DETECTION
+// ============================================================================
+
+/// Severity level for parallel execution pitfalls
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PitfallSeverity {
+    High,
+    Medium,
+    Low,
+}
+
+/// A detected pitfall from parallel execution
+#[derive(Debug, Clone)]
+pub struct Pitfall {
+    pub spec_id: Option<String>,
+    pub message: String,
+    pub severity: PitfallSeverity,
+    #[allow(dead_code)]
+    pub pitfall_type: PitfallType,
+}
+
+/// Types of parallel execution pitfalls
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
+pub enum PitfallType {
+    ApiConcurrencyError,
+    MergeConflict,
+    PartialFailure,
+    UncommittedChanges,
+    StaleWorktree,
+    AgentError,
+}
+
+/// Detect pitfalls from parallel execution results
+fn detect_parallel_pitfalls(results: &[ParallelResult], specs_dir: &Path) -> Vec<Pitfall> {
+    let mut pitfalls = Vec::new();
+
+    // Check for failures
+    for result in results {
+        if !result.success {
+            let error_msg = result.error.as_deref().unwrap_or("Unknown error");
+
+            // Check for API concurrency errors
+            if error_msg.contains("429")
+                || error_msg.contains("concurrency")
+                || error_msg.contains("rate limit")
+            {
+                pitfalls.push(Pitfall {
+                    spec_id: Some(result.spec_id.clone()),
+                    message: format!("API concurrency error (retryable): {}", error_msg),
+                    severity: PitfallSeverity::High,
+                    pitfall_type: PitfallType::ApiConcurrencyError,
+                });
+            } else {
+                pitfalls.push(Pitfall {
+                    spec_id: Some(result.spec_id.clone()),
+                    message: format!("Agent error: {}", error_msg),
+                    severity: PitfallSeverity::High,
+                    pitfall_type: PitfallType::AgentError,
+                });
+            }
+        }
+
+        // Check for worktrees that weren't cleaned up
+        if let Some(ref path) = result.worktree_path {
+            if path.exists() {
+                pitfalls.push(Pitfall {
+                    spec_id: Some(result.spec_id.clone()),
+                    message: format!("Worktree not cleaned up: {}", path.display()),
+                    severity: PitfallSeverity::Low,
+                    pitfall_type: PitfallType::StaleWorktree,
+                });
+            }
+        }
+    }
+
+    // Check for merge conflict indicators in specs
+    if let Ok(all_specs) = spec::load_all_specs(specs_dir) {
+        for spec in &all_specs {
+            if spec.frontmatter.status == SpecStatus::NeedsAttention {
+                // Check if it's a conflict resolution spec
+                let title_lower = spec
+                    .title
+                    .as_ref()
+                    .map(|t| t.to_lowercase())
+                    .unwrap_or_default();
+                if title_lower.contains("conflict") || title_lower.contains("merge") {
+                    pitfalls.push(Pitfall {
+                        spec_id: Some(spec.id.clone()),
+                        message: "Merge conflict requires resolution".to_string(),
+                        severity: PitfallSeverity::High,
+                        pitfall_type: PitfallType::MergeConflict,
+                    });
+                }
+            }
+        }
+    }
+
+    // Check for partial failure (some succeeded, some failed)
+    let succeeded = results.iter().filter(|r| r.success).count();
+    let failed_count = results.iter().filter(|r| !r.success).count();
+    if succeeded > 0 && failed_count > 0 {
+        pitfalls.push(Pitfall {
+            spec_id: None,
+            message: format!(
+                "Partial failure: {} succeeded, {} failed",
+                succeeded, failed_count
+            ),
+            severity: PitfallSeverity::Medium,
+            pitfall_type: PitfallType::PartialFailure,
+        });
+    }
+
+    pitfalls
 }
 
 // ============================================================================
@@ -1153,5 +1426,279 @@ mod tests {
 
         let result = auto_select_prompt_for_type(&spec, prompts_dir);
         assert_eq!(result, Some("research-analysis".to_string()));
+    }
+
+    // =========================================================================
+    // DISTRIBUTION LOGIC TESTS
+    // =========================================================================
+
+    fn make_test_config_with_agents(agents: Vec<chant::config::AgentConfig>) -> Config {
+        Config {
+            project: chant::config::ProjectConfig {
+                name: "test".to_string(),
+                prefix: None,
+            },
+            defaults: chant::config::DefaultsConfig::default(),
+            git: chant::config::GitConfig::default(),
+            providers: chant::provider::ProviderConfig::default(),
+            parallel: chant::config::ParallelConfig {
+                agents,
+                total_max: 8,
+                cleanup: chant::config::CleanupConfig::default(),
+            },
+        }
+    }
+
+    fn make_test_spec_for_parallel(id: &str) -> Spec {
+        Spec {
+            id: id.to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Ready,
+                ..Default::default()
+            },
+            title: Some(format!("Spec {}", id)),
+            body: "# Test".to_string(),
+        }
+    }
+
+    #[test]
+    fn test_distribute_specs_single_agent() {
+        let agents = vec![chant::config::AgentConfig {
+            name: "main".to_string(),
+            command: "claude".to_string(),
+            max_concurrent: 3,
+        }];
+        let config = make_test_config_with_agents(agents);
+
+        let specs: Vec<Spec> = (1..=5)
+            .map(|i| make_test_spec_for_parallel(&format!("spec-{}", i)))
+            .collect();
+
+        let assignments = distribute_specs_to_agents(&specs, &config, None);
+
+        // Should assign 3 specs (agent max) to "main"
+        assert_eq!(assignments.len(), 3);
+        for assignment in &assignments {
+            assert_eq!(assignment.agent_name, "main");
+            assert_eq!(assignment.agent_command, "claude");
+        }
+    }
+
+    #[test]
+    fn test_distribute_specs_multiple_agents() {
+        let agents = vec![
+            chant::config::AgentConfig {
+                name: "main".to_string(),
+                command: "claude".to_string(),
+                max_concurrent: 2,
+            },
+            chant::config::AgentConfig {
+                name: "alt1".to_string(),
+                command: "claude-alt1".to_string(),
+                max_concurrent: 3,
+            },
+        ];
+        let config = make_test_config_with_agents(agents);
+
+        let specs: Vec<Spec> = (1..=5)
+            .map(|i| make_test_spec_for_parallel(&format!("spec-{}", i)))
+            .collect();
+
+        let assignments = distribute_specs_to_agents(&specs, &config, None);
+
+        // Should assign all 5 specs (2 + 3 = 5)
+        assert_eq!(assignments.len(), 5);
+
+        // Check distribution
+        let main_count = assignments
+            .iter()
+            .filter(|a| a.agent_name == "main")
+            .count();
+        let alt1_count = assignments
+            .iter()
+            .filter(|a| a.agent_name == "alt1")
+            .count();
+
+        assert_eq!(main_count, 2);
+        assert_eq!(alt1_count, 3);
+    }
+
+    #[test]
+    fn test_distribute_specs_respects_total_max() {
+        let agents = vec![
+            chant::config::AgentConfig {
+                name: "main".to_string(),
+                command: "claude".to_string(),
+                max_concurrent: 5,
+            },
+            chant::config::AgentConfig {
+                name: "alt1".to_string(),
+                command: "claude-alt1".to_string(),
+                max_concurrent: 5,
+            },
+        ];
+        let mut config = make_test_config_with_agents(agents);
+        config.parallel.total_max = 4; // Override total max
+
+        let specs: Vec<Spec> = (1..=10)
+            .map(|i| make_test_spec_for_parallel(&format!("spec-{}", i)))
+            .collect();
+
+        let assignments = distribute_specs_to_agents(&specs, &config, None);
+
+        // Should assign only 4 specs (total_max)
+        assert_eq!(assignments.len(), 4);
+    }
+
+    #[test]
+    fn test_distribute_specs_with_max_override() {
+        let agents = vec![chant::config::AgentConfig {
+            name: "main".to_string(),
+            command: "claude".to_string(),
+            max_concurrent: 10,
+        }];
+        let mut config = make_test_config_with_agents(agents);
+        config.parallel.total_max = 10;
+
+        let specs: Vec<Spec> = (1..=10)
+            .map(|i| make_test_spec_for_parallel(&format!("spec-{}", i)))
+            .collect();
+
+        // Override with --max 3
+        let assignments = distribute_specs_to_agents(&specs, &config, Some(3));
+
+        assert_eq!(assignments.len(), 3);
+    }
+
+    #[test]
+    fn test_distribute_specs_least_loaded_first() {
+        // Agents with different capacities - should use least-loaded-first
+        let agents = vec![
+            chant::config::AgentConfig {
+                name: "small".to_string(),
+                command: "claude-small".to_string(),
+                max_concurrent: 1,
+            },
+            chant::config::AgentConfig {
+                name: "large".to_string(),
+                command: "claude-large".to_string(),
+                max_concurrent: 4,
+            },
+        ];
+        let config = make_test_config_with_agents(agents);
+
+        let specs: Vec<Spec> = (1..=3)
+            .map(|i| make_test_spec_for_parallel(&format!("spec-{}", i)))
+            .collect();
+
+        let assignments = distribute_specs_to_agents(&specs, &config, None);
+
+        assert_eq!(assignments.len(), 3);
+
+        // First spec should go to "large" (more capacity)
+        assert_eq!(assignments[0].agent_name, "large");
+    }
+
+    // =========================================================================
+    // PITFALL DETECTION TESTS
+    // =========================================================================
+
+    fn make_parallel_result(spec_id: &str, success: bool, error: Option<&str>) -> ParallelResult {
+        ParallelResult {
+            spec_id: spec_id.to_string(),
+            success,
+            commits: None,
+            error: error.map(|s| s.to_string()),
+            worktree_path: None,
+            branch_name: None,
+            is_direct_mode: false,
+            agent_completed: success,
+        }
+    }
+
+    #[test]
+    fn test_detect_pitfalls_api_concurrency_error() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        let results = vec![make_parallel_result(
+            "spec-001",
+            false,
+            Some("Error 429: Rate limit exceeded"),
+        )];
+
+        let pitfalls = detect_parallel_pitfalls(&results, specs_dir);
+
+        assert_eq!(pitfalls.len(), 1);
+        assert_eq!(pitfalls[0].pitfall_type, PitfallType::ApiConcurrencyError);
+        assert_eq!(pitfalls[0].severity, PitfallSeverity::High);
+    }
+
+    #[test]
+    fn test_detect_pitfalls_partial_failure() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        let results = vec![
+            make_parallel_result("spec-001", true, None),
+            make_parallel_result("spec-002", false, Some("Agent error")),
+            make_parallel_result("spec-003", true, None),
+        ];
+
+        let pitfalls = detect_parallel_pitfalls(&results, specs_dir);
+
+        // Should have 2 pitfalls: 1 AgentError + 1 PartialFailure
+        assert!(pitfalls.len() >= 2);
+        assert!(pitfalls
+            .iter()
+            .any(|p| p.pitfall_type == PitfallType::PartialFailure));
+        assert!(pitfalls
+            .iter()
+            .any(|p| p.pitfall_type == PitfallType::AgentError));
+    }
+
+    #[test]
+    fn test_detect_pitfalls_stale_worktree() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        // Create a worktree path that exists
+        let worktree_path = temp_dir.path().join("worktree");
+        std::fs::create_dir(&worktree_path).unwrap();
+
+        let mut result = make_parallel_result("spec-001", true, None);
+        result.worktree_path = Some(worktree_path);
+
+        let results = vec![result];
+
+        let pitfalls = detect_parallel_pitfalls(&results, specs_dir);
+
+        assert!(pitfalls
+            .iter()
+            .any(|p| p.pitfall_type == PitfallType::StaleWorktree));
+    }
+
+    #[test]
+    fn test_detect_pitfalls_no_issues_on_success() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        let results = vec![
+            make_parallel_result("spec-001", true, None),
+            make_parallel_result("spec-002", true, None),
+        ];
+
+        let pitfalls = detect_parallel_pitfalls(&results, specs_dir);
+
+        // No failures, no stale worktrees = no pitfalls
+        assert!(pitfalls.is_empty());
     }
 }

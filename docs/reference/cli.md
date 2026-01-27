@@ -109,22 +109,66 @@ chant work --parallel --label feature --label urgent
 
 # Specify prompt for all specs
 chant work --parallel --prompt tdd
+
+# Override maximum concurrent agents
+chant work --parallel --max 4
+
+# Skip cleanup prompt after execution
+chant work --parallel --no-cleanup
+
+# Force cleanup prompt even on success
+chant work --parallel --cleanup
+```
+
+**Multi-Account Support:**
+
+Configure multiple Claude accounts in `.chant/config.md` for distributed execution:
+
+```yaml
+parallel:
+  agents:
+    - name: main
+      command: claude
+      max_concurrent: 2
+    - name: alt1
+      command: claude-alt1
+      max_concurrent: 3
+  total_max: 8
 ```
 
 Example output:
 
 ```
-→ Starting 3 specs in parallel...
+→ Starting 5 specs in parallel...
 
-[00m-khh] Working with prompt 'standard'
-[00n-1nl] Working with prompt 'standard'
-[00o-6w7] Working with prompt 'standard'
+  • main: 2 specs
+  • alt1: 3 specs
+
+[00m-khh] Working with prompt 'standard' via main
+[00n-1nl] Working with prompt 'standard' via alt1
+[00o-6w7] Working with prompt 'standard' via alt1
 
 [00m-khh] ✓ Completed (commit: abc1234)
 [00n-1nl] ✓ Completed (commit: def5678)
 [00o-6w7] ✓ Completed (commit: ghi9012)
 
-Summary: 3 completed, 0 failed
+════════════════════════════════════════════════════════════
+Parallel execution complete:
+  ✓ 5 specs completed work
+  ✓ 5 branches merged to main
+════════════════════════════════════════════════════════════
+```
+
+**Pitfall Detection:**
+
+After parallel execution, chant detects and reports issues:
+
+```
+→ Issues detected:
+  ✗ [spec-002] API concurrency error (retryable): Error 429
+  ⚠ [spec-003] Worktree not cleaned up: /path/to/worktree
+
+→ Run chant cleanup to analyze and resolve issues.
 ```
 
 ## Search (Planned)

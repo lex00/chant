@@ -101,6 +101,18 @@ providers:
   openai:
     endpoint: https://api.openai.com/v1  # OpenAI API endpoint
 
+# Optional - parallel execution settings
+parallel:
+  agents:                   # List of available agents
+    - name: main            # Display name
+      command: claude       # Shell command
+      max_concurrent: 2     # Max concurrent for this agent
+  total_max: 8              # Max total concurrent agents
+  cleanup:
+    enabled: true           # Offer cleanup after parallel execution
+    prompt: parallel-cleanup # Cleanup prompt to use
+    auto_run: false         # Run cleanup automatically
+
 # Optional - schema validation (Planned)
 # Note: Schema validation is on the roadmap but not yet implemented
 schema:
@@ -349,6 +361,97 @@ defaults:
 ```
 
 If `split_model` is not specified, it defaults to `sonnet` (for Claude).
+
+## Parallel Execution
+
+Configure multiple Claude agents for parallel spec execution. Useful when you have multiple Claude accounts to distribute work across.
+
+### Example Configuration
+
+```markdown
+# .chant/config.md
+---
+project:
+  name: my-project
+
+parallel:
+  agents:
+    - name: main
+      command: claude           # Shell alias or path
+      max_concurrent: 2         # Limited - may have active session
+    - name: alt1
+      command: claude-alt1      # Shell alias for alternate account
+      max_concurrent: 3
+    - name: alt2
+      command: claude-alt2
+      max_concurrent: 3
+
+  total_max: 8                  # Never exceed this many concurrent agents
+
+  cleanup:
+    enabled: true
+    prompt: parallel-cleanup    # Prompt for agent-assisted recovery
+    auto_run: false             # Require confirmation before cleanup
+---
+```
+
+### Configuration Options
+
+**agents** - List of available agents (Claude accounts/commands)
+- `name`: Display name for the agent (used in logs and attribution)
+- `command`: Shell command to invoke the agent (default: `claude`)
+- `max_concurrent`: Maximum concurrent instances for this agent (default: 2)
+
+**total_max** - Maximum total concurrent agents across all accounts (default: 8)
+
+**cleanup** - Post-execution cleanup settings
+- `enabled`: Whether to offer cleanup after parallel execution (default: true)
+- `prompt`: Prompt to use for cleanup agent (default: `parallel-cleanup`)
+- `auto_run`: Run cleanup automatically without confirmation (default: false)
+
+### Setting Up Multiple Accounts
+
+Create shell aliases for each Claude account:
+
+```bash
+# ~/.bashrc or ~/.zshrc
+
+# Main account (default)
+alias claude='ANTHROPIC_API_KEY=sk-ant-xxx... claude'
+
+# Alternate accounts
+alias claude-alt1='ANTHROPIC_API_KEY=sk-ant-yyy... claude'
+alias claude-alt2='ANTHROPIC_API_KEY=sk-ant-zzz... claude'
+```
+
+### Distribution Strategy
+
+When `chant work --parallel` runs, specs are distributed using a least-loaded-first strategy:
+
+1. Gather available capacity from all configured agents
+2. Respect per-agent `max_concurrent` limits
+3. Distribute to agents with most remaining capacity first
+4. Stop when `total_max` is reached
+
+Example distribution with 5 specs:
+```
+main:  spec-001, spec-004
+alt1:  spec-002, spec-005
+alt2:  spec-003
+```
+
+### Pitfall Detection
+
+After parallel execution, chant detects common issues:
+
+| Issue | Detection | Severity |
+|-------|-----------|----------|
+| API errors (429, rate limit) | Exit code, stderr | High |
+| Merge conflicts | Git status on branches | High |
+| Partial failures | Some specs failed | Medium |
+| Stale worktrees | Worktrees not cleaned up | Low |
+
+Issues are reported in the execution summary, and cleanup can be offered if enabled.
 
 ### Override Per Spec
 

@@ -24,12 +24,26 @@ pub fn invoke_agent(
 
 /// Invoke an agent with a message and prefix output with spec ID
 /// Used for parallel execution of multiple specs
+#[allow(dead_code)]
 pub fn invoke_agent_with_prefix(
     message: &str,
     spec_id: &str,
     prompt_name: &str,
     config_model: Option<&str>,
     cwd: Option<&Path>,
+) -> Result<()> {
+    invoke_agent_with_command(message, spec_id, prompt_name, config_model, cwd, "claude")
+}
+
+/// Invoke an agent with a custom command and prefix output with spec ID
+/// Used for parallel execution with multiple Claude accounts
+pub fn invoke_agent_with_command(
+    message: &str,
+    spec_id: &str,
+    prompt_name: &str,
+    config_model: Option<&str>,
+    cwd: Option<&Path>,
+    agent_command: &str,
 ) -> Result<()> {
     use std::io::{BufRead, BufReader};
     use std::process::{Command, Stdio};
@@ -54,7 +68,7 @@ pub fn invoke_agent_with_prefix(
     // Get the model to use
     let model = get_model_for_invocation(config_model);
 
-    let mut cmd = Command::new("claude");
+    let mut cmd = Command::new(agent_command);
     cmd.arg("--print")
         .arg("--output-format")
         .arg("stream-json")
@@ -73,9 +87,12 @@ pub fn invoke_agent_with_prefix(
         cmd.current_dir(path);
     }
 
-    let mut child = cmd
-        .spawn()
-        .context("Failed to invoke claude CLI. Is it installed and in PATH?")?;
+    let mut child = cmd.spawn().with_context(|| {
+        format!(
+            "Failed to invoke agent '{}'. Is it installed and in PATH?",
+            agent_command
+        )
+    })?;
 
     // Stream stdout with prefix to both terminal and log file
     if let Some(stdout) = child.stdout.take() {
