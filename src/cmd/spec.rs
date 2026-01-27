@@ -491,9 +491,45 @@ pub fn cmd_list(
 }
 
 pub fn cmd_show(id: &str, no_render: bool) -> Result<()> {
-    let specs_dir = crate::cmd::ensure_initialized()?;
+    let spec = if id.contains(':') {
+        // Cross-repo spec ID format: "repo:spec-id"
+        let parts: Vec<&str> = id.splitn(2, ':').collect();
+        if parts.len() != 2 {
+            anyhow::bail!("Invalid spec ID format. Use 'repo:spec-id' for cross-repo specs");
+        }
 
-    let spec = spec::resolve_spec(&specs_dir, id)?;
+        let repo_name = parts[0];
+        let spec_id = parts[1];
+
+        // Load from global config repos
+        let config = Config::load_merged()?;
+        if !config.repos.iter().any(|r| r.name == repo_name) {
+            anyhow::bail!(
+                "Repository '{}' not found in global config. Available repos: {}",
+                repo_name,
+                config
+                    .repos
+                    .iter()
+                    .map(|r| r.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
+
+        let repo_config = config.repos.iter().find(|r| r.name == repo_name).unwrap();
+        let repo_path = shellexpand::tilde(&repo_config.path).to_string();
+        let repo_path = PathBuf::from(repo_path);
+        let specs_dir = repo_path.join(".chant/specs");
+
+        let mut resolved = spec::resolve_spec(&specs_dir, spec_id)?;
+        // Keep the full cross-repo ID format
+        resolved.id = format!("{}:{}", repo_name, resolved.id);
+        resolved
+    } else {
+        // Local spec ID
+        let specs_dir = crate::cmd::ensure_initialized()?;
+        spec::resolve_spec(&specs_dir, id)?
+    };
 
     // Print ID (not from frontmatter)
     println!("{}: {}", "ID".bold(), spec.id.cyan());
@@ -539,47 +575,127 @@ pub fn cmd_show(id: &str, no_render: bool) -> Result<()> {
     Ok(())
 }
 
-pub fn cmd_status() -> Result<()> {
-    let specs_dir = crate::cmd::ensure_initialized()?;
+pub fn cmd_status(global: bool, repo_filter: Option<&str>) -> Result<()> {
+    let specs = if global || repo_filter.is_some() {
+        // Load specs from multiple repos
+        load_specs_from_repos(repo_filter)?
+    } else {
+        // Load specs from local repo
+        let specs_dir = crate::cmd::ensure_initialized()?;
+        spec::load_all_specs(&specs_dir)?
+    };
 
-    let specs = spec::load_all_specs(&specs_dir)?;
+    if global || repo_filter.is_some() {
+        // Multi-repo status output
+        let mut per_repo_stats: std::collections::HashMap<String, (usize, usize, usize, usize)> =
+            std::collections::HashMap::new();
 
-    // Count by status
-    let mut pending = 0;
-    let mut in_progress = 0;
-    let mut completed = 0;
-    let mut failed = 0;
+        for spec in &specs {
+            // Extract repo prefix from spec ID (format: "repo:spec-id")
+            let repo_name = if let Some(idx) = spec.id.find(':') {
+                spec.id[..idx].to_string()
+            } else {
+                "local".to_string()
+            };
 
-    for spec in &specs {
-        match spec.frontmatter.status {
-            SpecStatus::Pending | SpecStatus::Ready | SpecStatus::Blocked => pending += 1,
-            SpecStatus::InProgress => in_progress += 1,
-            SpecStatus::Completed => completed += 1,
-            SpecStatus::Failed => failed += 1,
-            SpecStatus::NeedsAttention => failed += 1,
-            SpecStatus::Cancelled => {
-                // Cancelled specs are not counted in the summary
+            let entry = per_repo_stats.entry(repo_name).or_insert((0, 0, 0, 0));
+            match spec.frontmatter.status {
+                SpecStatus::Pending | SpecStatus::Ready | SpecStatus::Blocked => entry.0 += 1,
+                SpecStatus::InProgress => entry.1 += 1,
+                SpecStatus::Completed => entry.2 += 1,
+                SpecStatus::Failed | SpecStatus::NeedsAttention => entry.3 += 1,
+                SpecStatus::Cancelled => {
+                    // Cancelled specs are not counted in the summary
+                }
             }
         }
-    }
 
-    let total = specs.len();
+        println!("{}", "Chant Status (Global)".bold());
+        println!("====================");
 
-    println!("{}", "Chant Status".bold());
-    println!("============");
-    println!("  {:<12} {}", "Pending:", pending);
-    println!("  {:<12} {}", "In Progress:", in_progress);
-    println!("  {:<12} {}", "Completed:", completed);
-    println!("  {:<12} {}", "Failed:", failed);
-    println!("  ─────────────");
-    println!("  {:<12} {}", "Total:", total);
+        // Sort repos by name for consistent output
+        let mut repos: Vec<_> = per_repo_stats.into_iter().collect();
+        repos.sort_by(|a, b| a.0.cmp(&b.0));
 
-    // Show silent mode indicator if enabled
-    if is_silent_mode() {
+        let mut total_pending = 0;
+        let mut total_in_progress = 0;
+        let mut total_completed = 0;
+        let mut total_failed = 0;
+
+        for (repo_name, (pending, in_progress, completed, failed)) in repos {
+            println!("\n{}: {}", "Repository".bold(), repo_name.cyan());
+            println!(
+                "  {:<18} {} | {:<18} {} | {:<18} {} | {:<18} {}",
+                "Pending",
+                pending,
+                "In Progress",
+                in_progress,
+                "Completed",
+                completed,
+                "Failed",
+                failed
+            );
+
+            total_pending += pending;
+            total_in_progress += in_progress;
+            total_completed += completed;
+            total_failed += failed;
+        }
+
+        let total = total_pending + total_in_progress + total_completed + total_failed;
+        println!("\n{}", "Total".bold());
+        println!("─────");
         println!(
-            "\n{} Silent mode enabled - specs are local-only",
-            "ℹ".cyan()
+            "  {:<18} {} | {:<18} {} | {:<18} {} | {:<18} {}",
+            "Pending",
+            total_pending,
+            "In Progress",
+            total_in_progress,
+            "Completed",
+            total_completed,
+            "Failed",
+            total_failed
         );
+        println!("  {:<18} {}", "Overall Total:", total);
+    } else {
+        // Single repo status output
+        // Count by status
+        let mut pending = 0;
+        let mut in_progress = 0;
+        let mut completed = 0;
+        let mut failed = 0;
+
+        for spec in &specs {
+            match spec.frontmatter.status {
+                SpecStatus::Pending | SpecStatus::Ready | SpecStatus::Blocked => pending += 1,
+                SpecStatus::InProgress => in_progress += 1,
+                SpecStatus::Completed => completed += 1,
+                SpecStatus::Failed => failed += 1,
+                SpecStatus::NeedsAttention => failed += 1,
+                SpecStatus::Cancelled => {
+                    // Cancelled specs are not counted in the summary
+                }
+            }
+        }
+
+        let total = specs.len();
+
+        println!("{}", "Chant Status".bold());
+        println!("============");
+        println!("  {:<12} {}", "Pending:", pending);
+        println!("  {:<12} {}", "In Progress:", in_progress);
+        println!("  {:<12} {}", "Completed:", completed);
+        println!("  {:<12} {}", "Failed:", failed);
+        println!("  ─────────────");
+        println!("  {:<12} {}", "Total:", total);
+
+        // Show silent mode indicator if enabled
+        if is_silent_mode() {
+            println!(
+                "\n{} Silent mode enabled - specs are local-only",
+                "ℹ".cyan()
+            );
+        }
     }
 
     Ok(())

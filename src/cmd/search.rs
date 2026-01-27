@@ -27,6 +27,8 @@ pub struct SearchOptions {
     pub until: Option<NaiveDate>,
     pub active_only: bool,
     pub archived_only: bool,
+    pub global: bool,
+    pub repo: Option<String>,
 }
 
 /// Parse a date specification string
@@ -275,6 +277,8 @@ fn run_wizard() -> Result<()> {
         // include_archived=false means active only
         active_only: !include_archived,
         archived_only: false,
+        global: false,
+        repo: None,
     };
 
     perform_search(&opts)
@@ -282,21 +286,110 @@ fn run_wizard() -> Result<()> {
 
 /// Perform the actual search and display results
 fn perform_search(opts: &SearchOptions) -> Result<()> {
-    let specs_dir = crate::cmd::ensure_initialized()?;
-
     let mut all_specs = Vec::new();
+    let specs_dir = std::path::PathBuf::from(".");
 
-    // Load active specs
-    if !opts.archived_only {
-        all_specs.extend(spec::load_all_specs(&specs_dir)?);
-    }
+    if opts.global || opts.repo.is_some() {
+        // Load specs from multiple repos
+        use chant::config::Config;
+        use std::path::PathBuf;
 
-    // Load archived specs
-    if !opts.active_only {
-        let archive_path = std::path::PathBuf::from(ARCHIVE_DIR);
-        if archive_path.exists() {
-            let mut archived = spec::load_all_specs(&archive_path)?;
-            all_specs.append(&mut archived);
+        let config = Config::load_merged()?;
+
+        if config.repos.is_empty() {
+            anyhow::bail!(
+                "No repos configured in global config. \
+                 Please add repos to ~/.config/chant/config.md or use local mode without --global/--repo"
+            );
+        }
+
+        // If repo filter is specified, validate it exists
+        if let Some(repo_name) = &opts.repo {
+            if !config.repos.iter().any(|r| &r.name == repo_name) {
+                anyhow::bail!(
+                    "Repository '{}' not found in global config. Available repos: {}",
+                    repo_name,
+                    config
+                        .repos
+                        .iter()
+                        .map(|r| r.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+            }
+        }
+
+        for repo_config in &config.repos {
+            // Skip if filtering by repo and this isn't it
+            if let Some(filter) = &opts.repo {
+                if &repo_config.name != filter {
+                    continue;
+                }
+            }
+
+            // Expand path
+            let repo_path = shellexpand::tilde(&repo_config.path).to_string();
+            let repo_path = PathBuf::from(repo_path);
+
+            let active_specs_dir = repo_path.join(".chant/specs");
+            let archive_specs_dir = repo_path.join(".chant/archive");
+
+            // Load active specs
+            if !opts.archived_only && active_specs_dir.exists() {
+                match spec::load_all_specs(&active_specs_dir) {
+                    Ok(mut repo_specs) => {
+                        for spec in &mut repo_specs {
+                            spec.id = format!("{}:{}", repo_config.name, spec.id);
+                        }
+                        all_specs.extend(repo_specs);
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "{} Failed to load specs from repo '{}': {}",
+                            "⚠".yellow(),
+                            repo_config.name,
+                            e
+                        );
+                    }
+                }
+            }
+
+            // Load archived specs
+            if !opts.active_only && archive_specs_dir.exists() {
+                match spec::load_all_specs(&archive_specs_dir) {
+                    Ok(mut repo_specs) => {
+                        for spec in &mut repo_specs {
+                            spec.id = format!("{}:{}", repo_config.name, spec.id);
+                        }
+                        all_specs.extend(repo_specs);
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "{} Failed to load archived specs from repo '{}': {}",
+                            "⚠".yellow(),
+                            repo_config.name,
+                            e
+                        );
+                    }
+                }
+            }
+        }
+    } else {
+        // Load local specs
+        let specs_dir = crate::cmd::ensure_initialized()?;
+
+        // Load active specs
+        if !opts.archived_only {
+            all_specs.extend(spec::load_all_specs(&specs_dir)?);
+        }
+
+        // Load archived specs
+        if !opts.active_only {
+            let archive_path = std::path::PathBuf::from(ARCHIVE_DIR);
+            if archive_path.exists() {
+                let mut archived = spec::load_all_specs(&archive_path)?;
+                all_specs.append(&mut archived);
+            }
         }
     }
 
@@ -305,7 +398,13 @@ fn perform_search(opts: &SearchOptions) -> Result<()> {
         .iter()
         .filter(|s| matches_search(s, opts))
         .map(|s| {
-            let is_archived = !specs_dir.join(format!("{}.md", s.id)).exists();
+            // For global search, always treat as potentially archived
+            // (we can't easily check if a cross-repo spec is archived without more context)
+            let is_archived = if opts.global || opts.repo.is_some() {
+                s.id.contains("archive")
+            } else {
+                !specs_dir.join(format!("{}.md", s.id)).exists()
+            };
             (is_archived, s)
         })
         .collect();
@@ -372,6 +471,8 @@ pub fn build_search_options(
     until: Option<String>,
     active_only: bool,
     archived_only: bool,
+    global: bool,
+    repo: Option<&str>,
 ) -> Result<Option<SearchOptions>> {
     if query.is_none() {
         return Ok(None);
@@ -390,6 +491,8 @@ pub fn build_search_options(
         until: until.as_deref().and_then(|s| parse_date_spec(s).ok()),
         active_only,
         archived_only,
+        global,
+        repo: repo.map(|s| s.to_string()),
     }))
 }
 
@@ -458,6 +561,8 @@ mod tests {
             until: None,
             active_only: false,
             archived_only: false,
+            global: false,
+            repo: None,
         };
 
         assert!(matches_search(&spec, &opts));
@@ -491,6 +596,8 @@ mod tests {
             until: None,
             active_only: false,
             archived_only: false,
+            global: false,
+            repo: None,
         };
 
         assert!(matches_search(&spec, &opts));
@@ -525,6 +632,8 @@ mod tests {
             until: None,
             active_only: false,
             archived_only: false,
+            global: false,
+            repo: None,
         };
 
         assert!(matches_search(&spec, &opts));
@@ -561,6 +670,8 @@ mod tests {
             until: None,
             active_only: false,
             archived_only: false,
+            global: false,
+            repo: None,
         };
 
         assert!(matches_search(&spec, &opts));

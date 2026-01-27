@@ -81,7 +81,7 @@ enum Commands {
     },
     /// Show spec details
     Show {
-        /// Spec ID (full or partial)
+        /// Spec ID (full or partial) or repo:spec-id for cross-repo specs
         id: String,
         /// Disable markdown rendering
         #[arg(long)]
@@ -121,6 +121,12 @@ enum Commands {
         /// Search archived specs only
         #[arg(long)]
         archived_only: bool,
+        /// Search across all configured repos
+        #[arg(long)]
+        global: bool,
+        /// Filter to specific repository (implies --global)
+        #[arg(long)]
+        repo: Option<String>,
     },
     /// Execute a spec
     Work {
@@ -164,9 +170,23 @@ enum Commands {
     /// Start MCP server (Model Context Protocol)
     Mcp,
     /// Show project status summary
-    Status,
+    Status {
+        /// Show status across all configured repos
+        #[arg(long)]
+        global: bool,
+        /// Filter to specific repository (implies --global)
+        #[arg(long)]
+        repo: Option<String>,
+    },
     /// Show ready specs (shortcut for `list --ready`)
-    Ready,
+    Ready {
+        /// Show ready specs across all configured repos
+        #[arg(long)]
+        global: bool,
+        /// Filter to specific repository (implies --global)
+        #[arg(long)]
+        repo: Option<String>,
+    },
     /// Validate all specs for common issues
     Lint,
     /// Show log for a spec
@@ -434,6 +454,8 @@ fn main() -> Result<()> {
             until,
             active_only,
             archived_only,
+            global,
+            repo,
         } => {
             let opts = cmd::search::build_search_options(
                 query,
@@ -447,6 +469,8 @@ fn main() -> Result<()> {
                 until,
                 active_only,
                 archived_only,
+                global,
+                repo.as_deref(),
             )?;
             cmd::search::cmd_search(opts)
         }
@@ -478,8 +502,10 @@ fn main() -> Result<()> {
             cleanup,
         ),
         Commands::Mcp => mcp::run_server(),
-        Commands::Status => cmd::spec::cmd_status(),
-        Commands::Ready => cmd::spec::cmd_list(true, &[], None, None, false, None, None),
+        Commands::Status { global, repo } => cmd::spec::cmd_status(global, repo.as_deref()),
+        Commands::Ready { global, repo } => {
+            cmd::spec::cmd_list(true, &[], None, None, global, repo.as_deref(), None)
+        }
         Commands::Lint => cmd::spec::cmd_lint(),
         Commands::Log {
             id,
