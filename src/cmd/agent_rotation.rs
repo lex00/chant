@@ -36,6 +36,10 @@ impl RotationState {
         if path.exists() {
             let content =
                 fs::read_to_string(&path).context("Failed to read rotation state file")?;
+            // Handle empty or whitespace-only files
+            if content.trim().is_empty() {
+                return Ok(RotationState { last_index: 0 });
+            }
             serde_json::from_str(&content).context("Failed to parse rotation state file")
         } else {
             Ok(RotationState { last_index: 0 })
