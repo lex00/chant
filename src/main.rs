@@ -30,6 +30,9 @@ struct Cli {
 enum Commands {
     /// Initialize chant in the current directory
     Init {
+        /// Optional subcommand: 'prompts' to install/update prompts on existing projects
+        #[arg(value_name = "SUBCOMMAND")]
+        subcommand: Option<String>,
         /// Override detected project name
         #[arg(long)]
         name: Option<String>,
@@ -428,12 +431,13 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::Init {
+            subcommand,
             name,
             silent,
             force,
             minimal,
             agent,
-        } => cmd_init(name, silent, force, minimal, agent),
+        } => cmd_init(subcommand.as_deref(), name, silent, force, minimal, agent),
         Commands::Add {
             description,
             prompt,
@@ -644,12 +648,24 @@ fn main() -> Result<()> {
 }
 
 fn cmd_init(
+    subcommand: Option<&str>,
     name: Option<String>,
     silent: bool,
     force: bool,
     minimal: bool,
     agents: Vec<String>,
 ) -> Result<()> {
+    // Handle 'prompts' subcommand for upgrading prompts on existing projects
+    if let Some("prompts") = subcommand {
+        let chant_dir = PathBuf::from(".chant");
+        if !chant_dir.exists() {
+            anyhow::bail!("Chant not initialized. Run 'chant init' first.");
+        }
+        write_bundled_prompts(&chant_dir)?;
+        println!("{} Prompts updated.", "Done!".green());
+        return Ok(());
+    }
+
     let chant_dir = PathBuf::from(".chant");
 
     // Detect if we're in wizard mode (no flags provided)
@@ -926,191 +942,9 @@ Project initialized on {}.
     }
 
     if !final_minimal {
-        // Create standard prompt (only if it doesn't exist)
-        let standard_path = chant_dir.join("prompts/standard.md");
-        if !standard_path.exists() {
-            let prompt_content = r#"---
-name: standard
-purpose: Default execution prompt
----
-
-# Execute Spec
-
-You are implementing a spec for {{project.name}}.
-
-## Your Spec
-
-**{{spec.title}}**
-
-{{spec.description}}
-
-## Instructions
-
-1. **Read** the relevant code first
-2. **Plan** your approach before coding
-3. **Implement** the changes
-4. **Verify** the implementation works
-5. **Commit** with message: `chant({{spec.id}}): <description>`
-
-## Constraints
-
-- Only modify files related to this spec
-- Follow existing code patterns
-- Do not refactor unrelated code
-"#;
-            std::fs::write(&standard_path, prompt_content)?;
-        }
-
-        // Create split prompt (only if it doesn't exist)
-        let split_path = chant_dir.join("prompts/split.md");
-        if !split_path.exists() {
-            let split_prompt_content = r#"---
-name: split
-purpose: Split a driver spec into members with detailed acceptance criteria
----
-
-# Split Driver Specification into Member Specs
-
-You are analyzing a driver specification for the {{project.name}} project and proposing how to split it into smaller, ordered member specs.
-
-## Driver Specification to Split
-
-**ID:** {{spec.id}}
-**Title:** {{spec.title}}
-
-{{spec.description}}
-
-## Your Task
-
-1. Analyze the specification and its acceptance criteria
-2. Propose a sequence of member specs where:
-   - Each member leaves code in a compilable state
-   - Each member is independently testable and valuable
-   - Dependencies are minimized (parallelize where possible)
-   - Common patterns are respected (add new alongside old → update callers → remove old)
-3. For each member, provide:
-   - A clear, concise title
-   - Description of what should be implemented
-   - Explicit acceptance criteria with checkboxes for verification
-   - Edge cases that should be considered
-   - Example test cases where applicable
-   - List of affected files (if identifiable from the spec)
-   - Clear "done" conditions that can be verified
-
-## Why Thorough Acceptance Criteria?
-
-These member specs will be executed by Claude Haiku, a capable but smaller model. A strong model (Opus/Sonnet) doing the split should think through edge cases and requirements thoroughly. Each member must have:
-
-- **Specific checkboxes** for each piece of work (not just "implement it")
-- **Edge case callouts** to prevent oversights
-- **Test scenarios** to clarify expected behavior
-- **Clear success metrics** so Haiku knows when it's done
-
-This way, Haiku has a detailed specification to follow and won't miss important aspects.
-
-## Output Format
-
-For each member, output exactly this format:
-
-```
-## Member N: <title>
-
-<description of what this member accomplishes>
-
-### Acceptance Criteria
-
-- [ ] Specific criterion 1
-- [ ] Specific criterion 2
-- [ ] Specific criterion 3
-
-### Edge Cases
-
-- Edge case 1: Describe what should happen and how to test it
-- Edge case 2: Describe what should happen and how to test it
-
-### Example Test Cases
-
-For this feature, verify:
-- Case 1: Input X should produce Y
-- Case 2: Input A should produce B
-
-**Affected Files:**
-- file1.rs
-- file2.rs
-```
-
-If no files are identified, you can omit the Affected Files section.
-
-Create as many members as needed (typically 3-5 for a medium spec).
-"#;
-            std::fs::write(&split_path, split_prompt_content)?;
-        }
-
-        // Create verify prompt (only if it doesn't exist)
-        let verify_path = chant_dir.join("prompts/verify.md");
-        if !verify_path.exists() {
-            let verify_prompt_content = r#"---
-name: verify
-purpose: Verify that acceptance criteria are met
----
-
-# Verify Acceptance Criteria
-
-You are verifying that a spec for {{project.name}} meets its acceptance criteria.
-
-## Your Spec
-
-**{{spec.title}}**
-
-{{spec.description}}
-
-## Your Task
-
-Review each acceptance criterion and determine if it is met. Use the three-status system below:
-
-- **PASS**: The criterion is demonstrably satisfied (you verified code, tests, output, etc.)
-- **FAIL**: The criterion is not satisfied or there is evidence it's broken
-- **SKIP**: The criterion's status cannot be determined (ambiguous, no source to check, or requires manual review)
-
-## Reporting Format
-
-For each criterion, provide exactly one status. When you SKIP a criterion, explain why briefly.
-
-Output format:
-
-```
-## Verification Summary
-
-- [x] Criterion 1: PASS
-- [ ] Criterion 2: FAIL
-- [x] Criterion 3: SKIP — Unable to verify without running the full system
-
-Overall status: PASS/FAIL/MIXED
-```
-
-## How to Verify
-
-1. **Read the target files** if they exist
-2. **Check the spec file** for acceptance criteria checkboxes
-3. **Review code changes** to confirm the work was done
-4. **Run tests** if applicable
-5. **Look for evidence**: commits, file contents, test results
-
-## Edge Cases
-
-- **Ambiguous criterion**: Document your interpretation. Use SKIP if the criterion is too vague to verify.
-- **No clear source**: If you can't access the code or output to verify, use SKIP with explanation.
-- **Multiple interpretations**: Report the most conservative result (closer to FAIL than PASS).
-
-## Constraints
-
-- Do not modify any files
-- Do not make commits
-- Focus on verification only
-- Be objective; don't assume intent
-"#;
-            std::fs::write(&verify_path, verify_prompt_content)?;
-        }
+        // Write bundled prompts to .chant/prompts/ (only if they don't exist)
+        // This ensures existing customizations are preserved
+        write_bundled_prompts(&chant_dir)?;
     }
 
     // Create .gitignore (only if it doesn't exist)
@@ -1270,6 +1104,24 @@ Overall status: PASS/FAIL/MIXED
     Ok(())
 }
 
+/// Write bundled prompts to .chant/prompts/ directory
+///
+/// Only writes prompts that don't already exist, preserving any user customizations.
+fn write_bundled_prompts(chant_dir: &std::path::Path) -> Result<()> {
+    use chant::prompts;
+
+    for prompt in prompts::all_bundled_prompts() {
+        let prompt_path = chant_dir.join("prompts").join(format!("{}.md", prompt.name));
+
+        // Only write if the file doesn't exist (preserve user customizations)
+        if !prompt_path.exists() {
+            std::fs::write(&prompt_path, prompt.content)?;
+        }
+    }
+
+    Ok(())
+}
+
 fn detect_project_name() -> Option<String> {
     // Try package.json
     if let Ok(content) = std::fs::read_to_string("package.json") {
@@ -1370,6 +1222,7 @@ mod tests {
         if std::env::set_current_dir(&temp_dir).is_ok() {
             // Test direct mode with --name flag
             let result = cmd_init(
+                None,
                 Some("test-project".to_string()),
                 false,
                 false,
@@ -1395,6 +1248,7 @@ mod tests {
         if std::env::set_current_dir(&temp_dir).is_ok() {
             // Test direct mode with --minimal flag
             let result = cmd_init(
+                None,
                 Some("minimal-project".to_string()),
                 false,
                 false,
@@ -1421,6 +1275,7 @@ mod tests {
         if std::env::set_current_dir(&temp_dir).is_ok() {
             // Test direct mode with --agent flag
             let result = cmd_init(
+                None,
                 Some("agent-project".to_string()),
                 false,
                 false,
@@ -1444,18 +1299,18 @@ mod tests {
 
         if std::env::set_current_dir(&temp_dir).is_ok() {
             // First init
-            let result1 = cmd_init(Some("test".to_string()), false, false, false, vec![]);
+            let result1 = cmd_init(None, Some("test".to_string()), false, false, false, vec![]);
             assert!(result1.is_ok());
 
             // Verify files were created
             assert!(temp_dir.path().join(".chant/config.md").exists());
 
             // Second init without --force should gracefully exit (not fail)
-            let result2 = cmd_init(Some("test".to_string()), false, false, false, vec![]);
+            let result2 = cmd_init(None, Some("test".to_string()), false, false, false, vec![]);
             assert!(result2.is_ok()); // Should still be Ok, just skip re-initialization
 
             // Third init with --force should succeed and reinitialize
-            let result3 = cmd_init(Some("test-force".to_string()), false, true, false, vec![]);
+            let result3 = cmd_init(None, Some("test-force".to_string()), false, true, false, vec![]);
             assert!(result3.is_ok());
 
             let _ = std::env::set_current_dir(orig_dir);
@@ -1486,7 +1341,7 @@ mod tests {
 
         if std::env::set_current_dir(&temp_dir).is_ok() {
             // First init
-            let result1 = cmd_init(Some("test".to_string()), false, false, false, vec![]);
+            let result1 = cmd_init(None, Some("test".to_string()), false, false, false, vec![]);
             assert!(result1.is_ok());
             assert!(temp_dir.path().join(".chant/config.md").exists());
 
@@ -1500,7 +1355,7 @@ mod tests {
             assert!(spec_file.exists());
 
             // Second init with --force should preserve specs
-            let result2 = cmd_init(Some("test-force".to_string()), false, true, false, vec![]);
+            let result2 = cmd_init(None, Some("test-force".to_string()), false, true, false, vec![]);
             assert!(result2.is_ok());
 
             // Verify spec was preserved
@@ -1523,6 +1378,7 @@ mod tests {
         if std::env::set_current_dir(&temp_dir).is_ok() {
             // First init with Claude agent
             let result1 = cmd_init(
+                None,
                 Some("test".to_string()),
                 false,
                 false,
@@ -1537,6 +1393,7 @@ mod tests {
 
             // Second init with --force should recreate agent files
             let result2 = cmd_init(
+                None,
                 Some("test".to_string()),
                 false,
                 true,
