@@ -271,8 +271,10 @@ fn run_wizard() -> Result<()> {
         label_filters: vec![],
         since: since_opt.as_deref().and_then(|s| parse_date_spec(s).ok()),
         until: until_opt.as_deref().and_then(|s| parse_date_spec(s).ok()),
+        // include_archived=true means search both (neither flag set)
+        // include_archived=false means active only
         active_only: !include_archived,
-        archived_only: include_archived,
+        archived_only: false,
     };
 
     perform_search(&opts)
