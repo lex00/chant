@@ -39,6 +39,16 @@ pub struct CriterionResult {
     pub note: Option<String>,
 }
 
+/// Result of verifying a single spec
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct SpecVerificationResult {
+    pub spec_id: String,
+    pub spec_title: Option<String>,
+    pub passed: bool,
+    pub total_criteria: usize,
+}
+
 /// Parse verification response from the agent
 fn parse_verification_response(
     response: &str,
@@ -140,6 +150,40 @@ fn parse_verification_response(
     }
 
     Ok((overall_status, criteria_results))
+}
+
+/// Display a summary of verification results for multiple specs
+fn display_verification_summary(results: &[SpecVerificationResult]) {
+    let passed_count = results.iter().filter(|r| r.passed).count();
+    let failed_count = results.len() - passed_count;
+
+    println!("\n{}", "━".repeat(60).cyan());
+    if failed_count == 0 {
+        println!(
+            "{} Verified {} spec{}: {} {}",
+            "✓".green(),
+            results.len(),
+            if results.len() == 1 { "" } else { "s" },
+            passed_count,
+            "passed".green()
+        );
+    } else {
+        println!(
+            "{} Verified {} spec{}: {} {}, {} {}",
+            if failed_count > 0 {
+                "✗".red()
+            } else {
+                "✓".green()
+            },
+            results.len(),
+            if results.len() == 1 { "" } else { "s" },
+            passed_count,
+            "passed".green(),
+            failed_count,
+            "failed".red()
+        );
+    }
+    println!("{}", "━".repeat(60).cyan());
 }
 
 /// Extract acceptance criteria section from spec body
@@ -290,19 +334,21 @@ pub fn cmd_verify(
     // Load config for agent invocation
     let config = Config::load().context("Failed to load config. Have you run `chant init`?")?;
 
-    // Verify each spec
-    let mut any_failed = false;
+    // Verify each spec and track results
+    let mut verification_results = Vec::new();
 
     for spec in specs_to_verify {
-        verify_spec(&spec, &config, prompt)?;
-
-        // Check verification status in frontmatter
-        if let Some(status) = &spec.frontmatter.verification_status {
-            if status == "FAIL" {
-                any_failed = true;
-            }
-        }
+        let result = verify_spec(&spec, &config, prompt)?;
+        verification_results.push(result);
     }
+
+    // Display summary if multiple specs were verified
+    if verification_results.len() > 1 {
+        display_verification_summary(&verification_results);
+    }
+
+    // Determine if any failed for exit code handling
+    let any_failed = verification_results.iter().any(|r| !r.passed);
 
     // Exit with appropriate code if requested
     if exit_code && any_failed {
@@ -313,8 +359,13 @@ pub fn cmd_verify(
 }
 
 /// Verify a single spec by invoking the agent
-fn verify_spec(spec: &Spec, config: &Config, custom_prompt: Option<&str>) -> Result<()> {
-    println!("\n{} {}", "Verifying:".cyan(), spec.id);
+fn verify_spec(
+    spec: &Spec,
+    config: &Config,
+    custom_prompt: Option<&str>,
+) -> Result<SpecVerificationResult> {
+    let title = spec.title.as_deref().unwrap_or("(no title)");
+    println!("\n{} {} - {}", "Verifying:".cyan(), spec.id.cyan(), title);
 
     // Check if spec has acceptance criteria
     let ac_section = extract_acceptance_criteria(spec);
@@ -323,7 +374,12 @@ fn verify_spec(spec: &Spec, config: &Config, custom_prompt: Option<&str>) -> Res
             "  {} No acceptance criteria found in spec. Skipping verification.",
             "⚠".yellow()
         );
-        return Ok(());
+        return Ok(SpecVerificationResult {
+            spec_id: spec.id.clone(),
+            spec_title: spec.title.clone(),
+            passed: false,
+            total_criteria: 0,
+        });
     }
 
     // Determine which prompt to use
@@ -355,38 +411,53 @@ fn verify_spec(spec: &Spec, config: &Config, custom_prompt: Option<&str>) -> Res
     // Parse the response
     match parse_verification_response(&response) {
         Ok((overall_status, criteria)) => {
-            // Display results
-            println!("  {} Verification Result: {}", "→".cyan(), overall_status);
+            let total_criteria = criteria.len();
+            let passed = overall_status == VerificationStatus::Pass;
 
-            for (i, criterion) in criteria.iter().enumerate() {
-                let status_icon = match criterion.status.as_str() {
-                    "PASS" => "✓".green(),
-                    "FAIL" => "✗".red(),
-                    "SKIP" => "⊘".yellow(),
-                    _ => "?".bright_yellow(),
-                };
+            // Display criteria with icons
+            if criteria.is_empty() {
+                println!("  {} No criteria to verify", "⚠".yellow());
+            } else {
+                for (i, criterion) in criteria.iter().enumerate() {
+                    let status_icon = match criterion.status.as_str() {
+                        "PASS" => "✓".green(),
+                        "FAIL" => "✗".red(),
+                        "SKIP" => "~".yellow(),
+                        _ => "?".bright_yellow(),
+                    };
 
-                print!("    {} {}: {}", status_icon, i + 1, criterion.criterion);
-                if let Some(note) = &criterion.note {
-                    print!(" — {}", note);
+                    print!("  {} {}: {}", status_icon, i + 1, criterion.criterion);
+                    if let Some(note) = &criterion.note {
+                        print!(" — {}", note);
+                    }
+                    println!();
                 }
-                println!();
             }
 
-            println!(
-                "  {} Overall: {}",
-                "→".cyan(),
-                match overall_status {
-                    VerificationStatus::Pass => "✓ PASS".green(),
-                    VerificationStatus::Fail => "✗ FAIL".red(),
-                    VerificationStatus::Mixed => "⊘ MIXED".yellow(),
+            // Display overall result
+            let overall_label = match overall_status {
+                VerificationStatus::Pass => {
+                    format!("{}", "✓ VERIFIED".green())
                 }
-            );
+                VerificationStatus::Fail => {
+                    format!("{}", "✗ FAILED".red())
+                }
+                VerificationStatus::Mixed => {
+                    format!("{}", "~ PARTIAL".yellow())
+                }
+            };
+
+            println!("  {} Overall: {}", "→".cyan(), overall_label);
 
             // Update spec frontmatter with verification results
             update_spec_with_verification_results(spec, overall_status, &criteria)?;
 
-            Ok(())
+            Ok(SpecVerificationResult {
+                spec_id: spec.id.clone(),
+                spec_title: spec.title.clone(),
+                passed,
+                total_criteria,
+            })
         }
         Err(e) => {
             println!(
