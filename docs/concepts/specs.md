@@ -104,6 +104,17 @@ model: claude-opus-4-5            # AI model that executed the spec
 # Execution
 prompt: standard               # Optional, defaults to config
 decisions: document            # autonomous | document | pause | fail
+
+# Verification
+last_verified: 2026-01-22T15:00:00Z  # Timestamp of last verification
+verification_status: passed   # passed | partial | failed (after verify)
+verification_failures:        # List of failed acceptance criteria
+  - "Criterion description"
+
+# Replay
+replayed_at: 2026-01-22T16:00:00Z    # Timestamp of last replay
+replay_count: 1               # Number of times replayed
+original_completed_at: 2026-01-15T14:30:00Z  # Preserved from first completion
 ---
 ```
 
@@ -114,6 +125,7 @@ See [spec-types.md](spec-types.md) for field usage by type.
 ```
 waiting → pending → in_progress → completed
                   ↘             ↘ failed
+                   blocked
                    cancelled
 ```
 
@@ -122,9 +134,10 @@ waiting → pending → in_progress → completed
 - **in_progress**: Agent currently executing
 - **completed**: Work done, committed
 - **failed**: Execution failed, needs attention
-- **cancelled**: Work was cancelled before completion *(Planned)*
+- **blocked**: Spec has unmet dependencies or is waiting for something
+- **cancelled**: Work was cancelled before completion
 
-> **Note**: The `waiting` and `cancelled` states are planned but not yet implemented. Currently only `pending`, `in_progress`, `completed`, and `failed` are supported.
+> **Note**: The `waiting` state is planned but not yet implemented. Currently supported: `pending`, `in_progress`, `completed`, `failed`, `blocked`, and `cancelled`.
 
 ## Drift Detection
 
@@ -160,20 +173,31 @@ target_files:
 | `documentation` | `tracks:` | Tracked source code changes |
 | `research` | `origin:`, `informed_by:` | Input files change |
 
-### Checking for Drift (Planned)
+### Checking for Drift
 
-> **Status: Planned** - The `chant verify` command is on the roadmap but not yet implemented.
+Use `chant verify` to re-check acceptance criteria and detect drift:
 
 ```bash
-$ chant verify --docs
-Checking documentation specs...
+$ chant verify 001
+Verifying spec 001: Add rate limiting
 
-doc-001: API Reference
-  Origin: src/api/handler.go
-  Last verified: 2026-01-22
-  Code changed: 2026-01-25  ← DRIFT
+Checking acceptance criteria...
+  ✓ Rate limiter middleware exists
+  ✓ Returns 429 with Retry-After header
+  ✓ Tests verify rate limiting works
 
-  Recommendation: Re-run doc spec
+Spec 001: VERIFIED
+```
+
+For documentation and research specs, use `chant drift` to detect input file changes:
+
+```bash
+$ chant drift
+⚠ Drifted Specs (inputs changed)
+  2026-01-24-005-abc (documentation)
+    src/api/handler.rs (modified: 2026-01-25)
+
+$ chant replay 005  # Re-run to update documentation
 ```
 
 See [autonomy.md](autonomy.md) for more on drift and replay.
@@ -198,77 +222,53 @@ No `driver` field needed. The `.N` suffix establishes group membership.
 
 A driver with incomplete members cannot be marked complete. See [groups.md](groups.md).
 
-## Spec Cancellation (Planned)
+## Spec Cancellation
 
-> **Status: Planned** - This feature is on the roadmap but not yet implemented.
+Soft-delete a spec by marking it cancelled. The spec file is preserved but excluded from execution.
 
-### Cancelling a Pending Spec
-
-```bash
-$ chant cancel 001
-Spec 001 cancelled.
-```
-
-Sets `status: cancelled`. Spec won't be picked up by `chant work`.
-
-### Cancelling an In-Progress Spec
+### Cancelling a Spec
 
 ```bash
-$ chant cancel 001
-Spec 001 is in_progress (PID 12345)
-
-Options:
-  [G] Graceful - signal agent to stop, wait for cleanup
-  [F] Force - kill immediately, may leave uncommitted work
-  [A] Abort - don't cancel
-
-Choice: G
-
-Sending SIGTERM to agent...
-Agent stopped.
-Cleaning up clone...
-Spec 001 cancelled.
+$ chant cancel 001                # Cancel with confirmation
+$ chant cancel 001 --yes          # Skip confirmation
+$ chant cancel 001 --dry-run      # Preview what would be cancelled
+$ chant cancel 001 --force        # Force cancellation (skip safety checks)
 ```
 
-**Graceful cancellation:**
-1. Send SIGTERM to agent
-2. Agent receives signal, commits partial work (if configured)
-3. Agent exits cleanly
-4. CLI releases lock, updates status
+**Safety Checks:**
+- Cannot cancel specs that are in-progress or failed (unless `--force`)
+- Cannot cancel member specs (cancel the driver instead)
+- Cannot cancel already-cancelled specs
+- Warns if other specs depend on this spec (unless `--force`)
 
-**Force cancellation:**
-1. Send SIGKILL to agent
-2. Clone may have uncommitted changes
-3. Lock released, status set to `cancelled`
-4. Warning about potential uncommitted work
+### What Happens When Cancelled
+
+1. Spec status changed to `Cancelled` in frontmatter
+2. File is preserved in `.chant/specs/`
+3. Cancelled specs excluded from `chant list` and `chant work`
+4. Can still view with `chant show` or `chant list --status cancelled`
+5. All git history preserved
 
 ### Cancelled State
 
 ```yaml
 ---
 status: cancelled
-cancelled_at: 2026-01-22T15:00:00Z
-cancelled_by: alex
-reason: "Requirements changed"  # Optional
-partial_commit: def456          # If agent committed partial work
 ---
 ```
 
-### Resuming Cancelled Specs (Planned)
+### Difference from Delete
 
-> **Status: Planned** - This feature is on the roadmap but not yet implemented.
+- `cancel`: Changes status to Cancelled, preserves files and history
+- `delete`: Removes spec file, logs, and worktree artifacts
 
-```bash
-$ chant resume 001
-Spec 001 was cancelled.
-Resume as new attempt? [y/N]
-```
+### Re-opening Cancelled Specs
 
-Or re-open:
+To resume work on a cancelled spec, manually edit the status back to pending:
 
 ```bash
-$ chant reopen 001
-Spec 001 reopened (status: pending)
+# Edit the spec file and change status: cancelled to status: pending
+chant work 001  # Resume execution
 ```
 
 ## Spec Amendments

@@ -107,6 +107,8 @@ parallel:
     - name: main            # Display name
       command: claude       # Shell command
       max_concurrent: 2     # Max concurrent for this agent
+  rotation:                 # Agent rotation for single spec execution
+    strategy: none          # none | random | round-robin
   cleanup:
     enabled: true           # Offer cleanup after parallel execution
     prompt: parallel-cleanup # Cleanup prompt to use

@@ -210,26 +210,21 @@ chant split 001 --model claude-opus-4-5    # Use specific model for analysis
 
 The split command analyzes the spec content and creates numbered member specs (`.1`, `.2`, etc.) that break down the work into smaller pieces.
 
-### Replaying Completed Specs
+### Skipping Acceptance Criteria Validation
 
-Use `--force` to replay a spec that has already been completed:
+Use `--force` to skip validation of unchecked acceptance criteria:
 
 ```bash
-# Replay a completed spec to verify implementation
+# Complete spec without all criteria checked
 chant work 001 --force
 ```
 
-When replaying, the agent will:
-1. Detect the implementation already exists
-2. Verify acceptance criteria are met
-3. Append a new Agent Output section to the spec
-4. Not create duplicate commits (replay is idempotent)
+The `--force` flag allows completing a spec even if some acceptance criteria checkboxes are not marked as complete. Use this when:
+- Requirements changed after spec was created
+- A criterion is no longer applicable
+- You want to complete with manual verification
 
-**When to use `--force`:**
-- Verification: Re-check that acceptance criteria are still satisfied
-- Prompt changes: Re-run after updating the prompt template
-- Testing: Validate agent behavior on known implementations
-- Skip validation: Complete a spec with unchecked acceptance criteria
+**Note:** For re-executing completed specs, use `chant replay` instead of `--force`.
 
 ### Acceptance Criteria Validation
 
@@ -335,14 +330,50 @@ After parallel execution, chant detects and reports issues:
 → Run chant cleanup to analyze and resolve issues.
 ```
 
-## Search (Planned)
+## Search
 
-> **Status: Planned** - This feature is on the roadmap but not yet implemented.
+Search and filter specs interactively or with direct queries:
 
 ```bash
-chant search "auth"                   # Search archive
+chant search                          # Interactive wizard
+chant search "auth"                   # Search by keyword
 chant search "label:feature"          # Search by label
+chant search "status:ready"           # Search by status
 ```
+
+### Interactive Wizard
+
+When you run `chant search` without arguments, an interactive wizard guides you through filtering:
+
+```
+? Search query (keyword, label, status, type):
+auth
+
+? Filter by status:
+  [x] Pending
+  [x] Ready
+  [x] In Progress
+  [x] Completed
+  [ ] Failed
+  [ ] Blocked
+  [ ] Cancelled
+
+? Filter by type:
+  [x] All types
+  [ ] Code
+  [ ] Task
+  [ ] Documentation
+  [ ] Driver
+  [ ] Research
+
+Results: 15 specs matching "auth"
+```
+
+The wizard lets you:
+1. Enter a search query (keyword, or `label:name`, `status:name`, `type:name`)
+2. Filter results by status
+3. Filter results by type
+4. View and select specs from results
 
 ## Lint
 
@@ -398,6 +429,142 @@ Validation Summary:
 ```
 
 Exit code: 0 (all valid) or 1 (errors found)
+
+## Verify
+
+Re-check acceptance criteria on completed specs to detect drift:
+
+```bash
+chant verify                          # Interactive wizard
+chant verify 001                      # Verify single spec
+chant verify --all                    # Verify all completed specs
+chant verify --all --exit-code        # Exit with code if verification fails (CI/CD)
+chant verify --all --dry-run          # Preview verification without updating
+chant verify --label auth             # Verify by label
+chant verify --prompt custom          # Use custom prompt
+```
+
+### Interactive Wizard
+
+When you run `chant verify` without arguments, an interactive wizard guides you:
+
+```
+? Verify which specs:
+  [x] All completed specs
+  [ ] Specific spec ID(s)
+  [ ] By label
+
+? Exit with code on failure? No
+? Dry run (no updates)? No
+
+→ Verifying 12 completed specs...
+
+✓ 2026-01-24-001-abc: Rate limiting - PASSED
+✓ 2026-01-24-002-def: Auth middleware - PASSED
+⚠ 2026-01-24-003-ghi: API docs - PARTIAL (1 criterion skipped)
+✗ 2026-01-24-004-jkl: Logging - FAILED (2 criteria failed)
+
+Verification Summary:
+  Passed: 10
+  Partial: 1
+  Failed: 1
+```
+
+### What Verification Does
+
+For each spec, the agent:
+1. Reads the spec's acceptance criteria
+2. Checks the current codebase against each criterion
+3. Reports: ✓ PASS, ⚠ SKIP (not applicable), ✗ FAIL
+
+### Output Stored in Frontmatter
+
+After verification, the spec's frontmatter is updated:
+
+```yaml
+---
+status: completed
+last_verified: 2026-01-22T15:00:00Z
+verification_status: passed          # passed | partial | failed
+verification_failures:
+  - "Rate limiter tests disabled"
+  - "Configuration file missing"
+---
+```
+
+### Exit Code for CI/CD
+
+Use `--exit-code` to integrate with CI pipelines:
+
+```bash
+# In GitHub Actions or other CI
+chant verify --all --exit-code
+# Exit code: 0 (all passed), 1 (any failed)
+```
+
+### Use Cases
+
+- **Verify Before Deploy**: Ensure acceptance criteria still hold before shipping
+- **Detect Drift**: Find when reality diverges from original intent
+- **Scheduled Checks**: Run nightly to catch regressions
+- **Continuous Verification**: Gate deployments on spec verification
+
+## Replay
+
+Re-execute a completed spec's intent against the current codebase:
+
+```bash
+chant replay 001                      # Re-execute spec
+chant replay 001 --dry-run            # Preview changes without executing
+chant replay 001 --yes                # Skip confirmation prompts
+chant replay 001 --branch             # Create feature branch
+chant replay 001 --pr                 # Create pull request
+chant replay 001 --prompt custom      # Use custom prompt
+```
+
+### What Replay Does
+
+Replay re-executes a completed spec's intent:
+
+```
+Original (2 months ago):  Spec → Agent → Code
+Replay (now):             Spec → Agent → Current Code
+```
+
+The agent:
+1. Reads the original spec
+2. Analyzes the current codebase
+3. Re-implements the spec's intent (may differ from original implementation)
+4. Creates new commits with changes
+
+### Replay vs Retry
+
+| | Replay | Retry |
+|------|--------|-------|
+| **For** | Completed specs | Failed specs |
+| **Against** | Current codebase | Where it left off |
+| **Purpose** | Fix drift, verify intent | Fix failure, complete work |
+| **Command** | `chant replay` | `chant resume --work` |
+
+### Use Cases
+
+- **Fix Drift**: Re-apply intent after code changes deleted original implementation
+- **Verify Intent**: Ensure spec would still succeed with current codebase
+- **Update Patterns**: Re-implement using new patterns or frameworks
+- **One-off Fixes**: Quickly reapply specification when needed
+
+### Frontmatter Updates
+
+When a spec is replayed, these fields are updated:
+
+```yaml
+---
+status: completed
+replayed_at: 2026-01-22T16:00:00Z
+replay_count: 1
+original_completed_at: 2026-01-15T14:30:00Z   # Preserved from original
+---
+```
 
 ## Logs
 

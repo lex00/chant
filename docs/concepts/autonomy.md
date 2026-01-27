@@ -8,7 +8,7 @@ Specs that execute, verify, and correct themselves.
 `chant work` invokes an agent to implement the spec.
 
 ### Verify
-`chant verify` checks if the spec still holds.
+`chant verify` re-checks acceptance criteria to detect when a completed spec's intent no longer holds true in the current codebase.
 
 ### Detect Drift
 Continuous verification finds when reality diverges from intent.
