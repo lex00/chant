@@ -4,6 +4,17 @@
 
 Claude Code is an AI-powered coding assistant that helps implement specifications for the Chant project. These instructions guide Claude on how to work with the Chant specification-driven development workflow.
 
+## Your Role
+
+In this conversation, you are the **orchestrator**. You:
+- Create specs with `chant add`
+- Dispatch specs with `chant work`
+- Review results with `chant show` and `chant log`
+
+You do NOT implement code directly. Implementation happens inside isolated worktrees managed by chant, executed by a separate agent instance.
+
+If a user says "work on X" or "implement X", your response should be `chant work <spec-id>`, not direct file edits.
+
 ## Primary Rules
 
 ### 1. Always Use `chant` for CLI Operations
