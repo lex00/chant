@@ -15,18 +15,18 @@ use crate::render;
 
 /// Search options for filtering and display
 #[derive(Debug, Clone)]
-struct SearchOptions {
-    query: String,
-    title_only: bool,
-    body_only: bool,
-    case_sensitive: bool,
-    status_filter: Option<String>,
-    type_filter: Option<String>,
-    label_filters: Vec<String>,
-    since: Option<NaiveDate>,
-    until: Option<NaiveDate>,
-    active_only: bool,
-    archived_only: bool,
+pub struct SearchOptions {
+    pub query: String,
+    pub title_only: bool,
+    pub body_only: bool,
+    pub case_sensitive: bool,
+    pub status_filter: Option<String>,
+    pub type_filter: Option<String>,
+    pub label_filters: Vec<String>,
+    pub since: Option<NaiveDate>,
+    pub until: Option<NaiveDate>,
+    pub active_only: bool,
+    pub archived_only: bool,
 }
 
 /// Parse a date specification string
@@ -348,8 +348,19 @@ fn perform_search(opts: &SearchOptions) -> Result<()> {
     Ok(())
 }
 
-/// Execute the search command
-pub fn cmd_search(
+/// Execute the search command with the given options
+pub fn cmd_search(opts: Option<SearchOptions>) -> Result<()> {
+    // If no options provided, run interactive wizard
+    if opts.is_none() {
+        return run_wizard();
+    }
+
+    perform_search(&opts.unwrap())
+}
+
+/// Build search options from command-line arguments
+#[allow(clippy::too_many_arguments)]
+pub fn build_search_options(
     query: Option<String>,
     title_only: bool,
     body_only: bool,
@@ -361,15 +372,13 @@ pub fn cmd_search(
     until: Option<String>,
     active_only: bool,
     archived_only: bool,
-) -> Result<()> {
-    // If no query provided, run interactive wizard
+) -> Result<Option<SearchOptions>> {
     if query.is_none() {
-        return run_wizard();
+        return Ok(None);
     }
 
     let query = query.unwrap();
-
-    let opts = SearchOptions {
+    Ok(Some(SearchOptions {
         query,
         title_only,
         body_only,
@@ -381,9 +390,7 @@ pub fn cmd_search(
         until: until.as_deref().and_then(|s| parse_date_spec(s).ok()),
         active_only,
         archived_only,
-    };
-
-    perform_search(&opts)
+    }))
 }
 
 #[cfg(test)]

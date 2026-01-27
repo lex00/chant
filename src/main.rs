@@ -414,19 +414,22 @@ fn main() -> Result<()> {
             until,
             active_only,
             archived_only,
-        } => cmd::search::cmd_search(
-            query,
-            title_only,
-            body_only,
-            case_sensitive,
-            status,
-            type_,
-            label,
-            since,
-            until,
-            active_only,
-            archived_only,
-        ),
+        } => {
+            let opts = cmd::search::build_search_options(
+                query,
+                title_only,
+                body_only,
+                case_sensitive,
+                status,
+                type_,
+                label,
+                since,
+                until,
+                active_only,
+                archived_only,
+            )?;
+            cmd::search::cmd_search(opts)
+        }
         Commands::Work {
             ids,
             prompt,

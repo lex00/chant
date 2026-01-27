@@ -95,7 +95,7 @@ fn select_random_agent(parallel_config: &ParallelConfig) -> Result<String> {
         use std::hash::BuildHasher;
 
         let hash = RandomState::new().hash_one(
-            &std::time::SystemTime::now()
+            std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default(),
         );
