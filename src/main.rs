@@ -334,6 +334,27 @@ enum Commands {
         #[arg(long)]
         yes: bool,
     },
+    /// Verify specs meet their acceptance criteria
+    Verify {
+        /// Spec ID to verify (full or partial). If omitted, verifies all specs.
+        #[arg(value_name = "ID")]
+        id: Option<String>,
+        /// Verify all specs
+        #[arg(long)]
+        all: bool,
+        /// Filter by label (can be specified multiple times)
+        #[arg(long)]
+        label: Vec<String>,
+        /// Exit with code 1 if any spec fails verification
+        #[arg(long)]
+        exit_code: bool,
+        /// Show what would be verified without making changes
+        #[arg(long)]
+        dry_run: bool,
+        /// Prompt to use for verification
+        #[arg(long)]
+        prompt: Option<String>,
+    },
 }
 
 fn main() -> Result<()> {
@@ -501,6 +522,21 @@ fn main() -> Result<()> {
         ),
         Commands::Disk => cmd::disk::cmd_disk(),
         Commands::Cleanup { dry_run, yes } => cmd::cleanup::cmd_cleanup(dry_run, yes),
+        Commands::Verify {
+            id,
+            all,
+            label,
+            exit_code,
+            dry_run,
+            prompt,
+        } => cmd::verify::cmd_verify(
+            id.as_deref(),
+            all,
+            &label,
+            exit_code,
+            dry_run,
+            prompt.as_deref(),
+        ),
     }
 }
 

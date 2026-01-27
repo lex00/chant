@@ -18,6 +18,7 @@ pub mod lifecycle;
 pub mod model;
 pub mod search;
 pub mod spec;
+pub mod verify;
 pub mod work;
 
 /// Ensure chant is initialized and return the specs directory path.
