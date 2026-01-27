@@ -214,7 +214,10 @@ mod tests {
             first_line
         );
         // Title should be truncated (shown by "..." at end)
-        assert!(first_line.ends_with("..."), "Long title should be truncated");
+        assert!(
+            first_line.ends_with("..."),
+            "Long title should be truncated"
+        );
     }
 
     #[test]

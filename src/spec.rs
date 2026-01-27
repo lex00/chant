@@ -85,6 +85,13 @@ pub struct SpecFrontmatter {
     pub verification_status: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub verification_failures: Option<Vec<String>>,
+    // Replay tracking fields
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub replayed_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub replay_count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub original_completed_at: Option<String>,
 }
 
 fn default_type() -> String {
@@ -118,6 +125,9 @@ impl Default for SpecFrontmatter {
             last_verified: None,
             verification_status: None,
             verification_failures: None,
+            replayed_at: None,
+            replay_count: None,
+            original_completed_at: None,
         }
     }
 }
@@ -1563,5 +1573,174 @@ Description here.
         assert!(saved_content.contains("last_verified: 2026-01-26T14:30:00Z"));
         assert!(saved_content.contains("verification_status: passed"));
         assert!(saved_content.contains("verification_failures:"));
+    }
+
+    #[test]
+    fn test_parse_spec_with_replay_fields() {
+        let content = r#"---
+type: code
+status: completed
+completed_at: 2026-01-20T10:00:00Z
+original_completed_at: 2026-01-20T10:00:00Z
+replayed_at: 2026-01-26T14:00:00Z
+replay_count: 2
+---
+
+# Spec with replay tracking
+
+Description here.
+"#;
+        let spec = Spec::parse("2026-01-26-001-abc", content).unwrap();
+        assert_eq!(
+            spec.frontmatter.replayed_at,
+            Some("2026-01-26T14:00:00Z".to_string())
+        );
+        assert_eq!(spec.frontmatter.replay_count, Some(2));
+        assert_eq!(
+            spec.frontmatter.original_completed_at,
+            Some("2026-01-20T10:00:00Z".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_spec_without_replay_fields() {
+        let content = r#"---
+type: code
+status: completed
+completed_at: 2026-01-20T10:00:00Z
+---
+
+# Spec without replay tracking
+
+Description here.
+"#;
+        let spec = Spec::parse("2026-01-26-002-def", content).unwrap();
+        assert_eq!(spec.frontmatter.replayed_at, None);
+        assert_eq!(spec.frontmatter.replay_count, None);
+        assert_eq!(spec.frontmatter.original_completed_at, None);
+    }
+
+    #[test]
+    fn test_spec_roundtrip_with_replay_fields() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let spec_path = temp_dir.path().join("test-replay.md");
+
+        let spec = Spec {
+            id: "2026-01-26-003-ghi".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                completed_at: Some("2026-01-20T10:00:00Z".to_string()),
+                original_completed_at: Some("2026-01-20T10:00:00Z".to_string()),
+                replayed_at: Some("2026-01-26T14:00:00Z".to_string()),
+                replay_count: Some(1),
+                ..Default::default()
+            },
+            title: Some("Replay test".to_string()),
+            body: "# Replay test\n\nBody content.".to_string(),
+        };
+
+        spec.save(&spec_path).unwrap();
+        let loaded_spec = Spec::load(&spec_path).unwrap();
+
+        assert_eq!(
+            loaded_spec.frontmatter.replayed_at,
+            Some("2026-01-26T14:00:00Z".to_string())
+        );
+        assert_eq!(loaded_spec.frontmatter.replay_count, Some(1));
+        assert_eq!(
+            loaded_spec.frontmatter.original_completed_at,
+            Some("2026-01-20T10:00:00Z".to_string())
+        );
+    }
+
+    #[test]
+    fn test_spec_save_without_replay_fields() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let spec_path = temp_dir.path().join("test-no-replay.md");
+
+        let spec = Spec {
+            id: "2026-01-26-004-jkl".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                completed_at: Some("2026-01-20T10:00:00Z".to_string()),
+                ..Default::default()
+            },
+            title: Some("No replay".to_string()),
+            body: "# No replay\n\nBody content.".to_string(),
+        };
+
+        spec.save(&spec_path).unwrap();
+
+        let saved_content = std::fs::read_to_string(&spec_path).unwrap();
+        assert!(!saved_content.contains("replayed_at:"));
+        assert!(!saved_content.contains("replay_count:"));
+        assert!(!saved_content.contains("original_completed_at:"));
+    }
+
+    #[test]
+    fn test_spec_includes_replay_fields_when_set() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let spec_path = temp_dir.path().join("test-replay-output.md");
+
+        let spec = Spec {
+            id: "2026-01-26-005-mno".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                completed_at: Some("2026-01-26T14:00:00Z".to_string()),
+                original_completed_at: Some("2026-01-20T10:00:00Z".to_string()),
+                replayed_at: Some("2026-01-26T14:00:00Z".to_string()),
+                replay_count: Some(1),
+                ..Default::default()
+            },
+            title: Some("Replay output test".to_string()),
+            body: "# Replay output test\n\nBody.".to_string(),
+        };
+
+        spec.save(&spec_path).unwrap();
+
+        let saved_content = std::fs::read_to_string(&spec_path).unwrap();
+        assert!(saved_content.contains("replayed_at: 2026-01-26T14:00:00Z"));
+        assert!(saved_content.contains("replay_count: 1"));
+        assert!(saved_content.contains("original_completed_at: 2026-01-20T10:00:00Z"));
+    }
+
+    #[test]
+    fn test_parse_spec_with_only_replay_count() {
+        let content = r#"---
+type: code
+status: completed
+replay_count: 3
+---
+
+# Spec with only replay_count
+
+Description here.
+"#;
+        let spec = Spec::parse("2026-01-26-006-pqr", content).unwrap();
+        assert_eq!(spec.frontmatter.replay_count, Some(3));
+        assert_eq!(spec.frontmatter.replayed_at, None);
+        assert_eq!(spec.frontmatter.original_completed_at, None);
+    }
+
+    #[test]
+    fn test_parse_spec_with_empty_replay_count() {
+        let content = r#"---
+type: code
+status: completed
+replay_count: 0
+---
+
+# Spec with zero replay count
+
+Description here.
+"#;
+        let spec = Spec::parse("2026-01-26-007-stu", content).unwrap();
+        assert_eq!(spec.frontmatter.replay_count, Some(0));
     }
 }

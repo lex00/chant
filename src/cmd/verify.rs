@@ -104,10 +104,7 @@ pub fn cmd_verify(
     // Display specs to verify
     println!("Specs to verify:");
     for spec in &specs_to_verify {
-        let title = spec
-            .title
-            .as_deref()
-            .unwrap_or("(no title)");
+        let title = spec.title.as_deref().unwrap_or("(no title)");
         println!("  {} - {}", spec.id.cyan(), title);
     }
 
@@ -137,8 +134,7 @@ mod tests {
             body: "# Test Spec\n\nBody content.".to_string(),
         };
 
-        spec.save(&specs_dir.join("2026-01-26-001-abc.md"))
-            .unwrap();
+        spec.save(&specs_dir.join("2026-01-26-001-abc.md")).unwrap();
 
         // Load and filter - should find completed spec
         let all_specs = load_all_specs(specs_dir).unwrap();
@@ -164,8 +160,7 @@ mod tests {
             body: "# Pending Spec\n\nBody content.".to_string(),
         };
 
-        spec.save(&specs_dir.join("2026-01-26-002-def.md"))
-            .unwrap();
+        spec.save(&specs_dir.join("2026-01-26-002-def.md")).unwrap();
 
         // Load and filter - should find pending spec but it should not be in completed filter
         let all_specs = load_all_specs(specs_dir).unwrap();
@@ -318,8 +313,7 @@ mod tests {
             body: "# Pending Spec\n\nBody.".to_string(),
         };
 
-        spec.save(&specs_dir.join("2026-01-26-001-abc.md"))
-            .unwrap();
+        spec.save(&specs_dir.join("2026-01-26-001-abc.md")).unwrap();
 
         // Load and filter for completed only
         let all_specs = load_all_specs(specs_dir).unwrap();
@@ -360,8 +354,7 @@ mod tests {
             body: "# Other Label\n\nBody.".to_string(),
         };
 
-        spec.save(&specs_dir.join("2026-01-26-001-abc.md"))
-            .unwrap();
+        spec.save(&specs_dir.join("2026-01-26-001-abc.md")).unwrap();
 
         // Load and filter by non-matching label
         let all_specs = load_all_specs(specs_dir).unwrap();

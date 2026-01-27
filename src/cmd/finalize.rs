@@ -246,6 +246,110 @@ pub fn confirm_re_finalize(spec_id: &str, force_flag: bool) -> Result<bool> {
     Ok(input.trim().eq_ignore_ascii_case("y"))
 }
 
+/// Finalize a replayed spec with audit trail tracking
+/// Preserves original_completed_at from first completion and tracks replay metadata
+/// Increments replay_count and sets replayed_at timestamp
+#[allow(dead_code)]
+pub fn replay_finalize_spec(
+    spec: &mut Spec,
+    spec_path: &Path,
+    config: &Config,
+    allow_no_commits: bool,
+) -> Result<()> {
+    // First, get the commits
+    let commits = if allow_no_commits {
+        get_commits_for_spec_allow_no_commits(&spec.id)?
+    } else {
+        get_commits_for_spec(&spec.id)?
+    };
+
+    // Store the original completed_at if this is the first replay
+    let should_preserve_original = spec.frontmatter.original_completed_at.is_none();
+    if should_preserve_original {
+        if let Some(completed_at) = &spec.frontmatter.completed_at {
+            spec.frontmatter.original_completed_at = Some(completed_at.clone());
+        } else {
+            // If no completed_at exists, this shouldn't happen if validation works,
+            // but handle gracefully by using current time as original
+            spec.frontmatter.original_completed_at = Some(
+                chrono::Local::now()
+                    .format("%Y-%m-%dT%H:%M:%SZ")
+                    .to_string(),
+            );
+        }
+    }
+
+    // Update replay tracking
+    let current_time = chrono::Local::now()
+        .format("%Y-%m-%dT%H:%M:%SZ")
+        .to_string();
+
+    spec.frontmatter.replayed_at = Some(current_time);
+
+    // Increment replay_count (starts at 1 for first replay)
+    spec.frontmatter.replay_count = Some(spec.frontmatter.replay_count.unwrap_or(0) + 1);
+
+    // Update status, commits, completed_at, and model
+    spec.frontmatter.status = SpecStatus::Completed;
+    spec.frontmatter.commits = if commits.is_empty() {
+        None
+    } else {
+        Some(commits)
+    };
+    spec.frontmatter.completed_at = Some(
+        chrono::Local::now()
+            .format("%Y-%m-%dT%H:%M:%SZ")
+            .to_string(),
+    );
+    spec.frontmatter.model = get_model_name(Some(config));
+
+    // Save the spec - this must not fail silently
+    spec.save(spec_path)
+        .context("Failed to save replayed spec")?;
+
+    // Validation 1: Verify that replay fields were set
+    anyhow::ensure!(
+        spec.frontmatter.replayed_at.is_some(),
+        "replayed_at timestamp was not set"
+    );
+
+    anyhow::ensure!(
+        spec.frontmatter.replay_count.is_some(),
+        "replay_count was not set"
+    );
+
+    anyhow::ensure!(
+        spec.frontmatter.original_completed_at.is_some(),
+        "original_completed_at was not preserved"
+    );
+
+    // Validation 2: Verify that spec was actually saved (reload and check)
+    let saved_spec =
+        Spec::load(spec_path).context("Failed to reload spec from disk to verify persistence")?;
+
+    anyhow::ensure!(
+        saved_spec.frontmatter.status == SpecStatus::Completed,
+        "Persisted spec status is not Completed - save may have failed"
+    );
+
+    anyhow::ensure!(
+        saved_spec.frontmatter.replayed_at.is_some(),
+        "Persisted spec is missing replayed_at - save may have failed"
+    );
+
+    anyhow::ensure!(
+        saved_spec.frontmatter.replay_count.is_some(),
+        "Persisted spec is missing replay_count - save may have failed"
+    );
+
+    anyhow::ensure!(
+        saved_spec.frontmatter.original_completed_at.is_some(),
+        "Persisted spec is missing original_completed_at - save may have failed"
+    );
+
+    Ok(())
+}
+
 /// Append agent output to the spec body, truncating if too long.
 pub fn append_agent_output(spec: &mut Spec, output: &str) {
     let timestamp = chrono::Local::now()
