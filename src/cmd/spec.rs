@@ -443,6 +443,31 @@ status: pending
         spec.save(&filepath)?;
     }
 
+    // Auto-commit the spec file to git
+    let output = Command::new("git")
+        .args(["add", &filepath.to_string_lossy()])
+        .output()
+        .context("Failed to run git add for spec file")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Failed to stage spec file {}: {}", id, stderr);
+    }
+
+    let commit_message = format!("chant: Add spec {}", id);
+    let output = Command::new("git")
+        .args(["commit", "-m", &commit_message])
+        .output()
+        .context("Failed to run git commit for spec file")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        // It's ok if there's nothing to commit (shouldn't happen but be safe)
+        if !stderr.contains("nothing to commit") && !stderr.contains("no changes added") {
+            anyhow::bail!("Failed to commit spec file {}: {}", id, stderr);
+        }
+    }
+
     println!("{} {}", "Created".green(), id.cyan());
     println!("Edit: {}", filepath.display());
 
