@@ -31,6 +31,21 @@ pub enum SpecStatus {
     Cancelled,
 }
 
+/// Represents a dependency that is blocking a spec from being ready.
+#[derive(Debug, Clone)]
+pub struct BlockingDependency {
+    /// The spec ID of the blocking dependency.
+    pub spec_id: String,
+    /// The title of the blocking dependency, if available.
+    pub title: Option<String>,
+    /// The current status of the blocking dependency.
+    pub status: SpecStatus,
+    /// When the dependency was completed, if applicable.
+    pub completed_at: Option<String>,
+    /// Whether this is a sibling dependency (from group ordering).
+    pub is_sibling: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpecFrontmatter {
     #[serde(default = "default_type")]
@@ -413,6 +428,112 @@ impl Spec {
         }
 
         true
+    }
+
+    /// Get the list of dependencies that are blocking this spec.
+    ///
+    /// This method reloads each dependency spec from disk to get the most current status,
+    /// falling back to the in-memory spec data if the file cannot be read.
+    ///
+    /// Returns a list of blocking dependencies with their current status information.
+    pub fn get_blocking_dependencies(
+        &self,
+        all_specs: &[Spec],
+        specs_dir: &Path,
+    ) -> Vec<BlockingDependency> {
+        let mut blockers = Vec::new();
+
+        // Check explicit depends_on dependencies
+        if let Some(deps) = &self.frontmatter.depends_on {
+            for dep_id in deps {
+                // Try to reload from disk for fresh status
+                let spec_path = specs_dir.join(format!("{}.md", dep_id));
+                let dep_spec = if spec_path.exists() {
+                    Spec::load(&spec_path).ok()
+                } else {
+                    None
+                };
+
+                // Fall back to in-memory spec if disk load fails
+                let dep_spec =
+                    dep_spec.or_else(|| all_specs.iter().find(|s| s.id == *dep_id).cloned());
+
+                if let Some(spec) = dep_spec {
+                    // Only add if not completed
+                    if spec.frontmatter.status != SpecStatus::Completed {
+                        blockers.push(BlockingDependency {
+                            spec_id: spec.id.clone(),
+                            title: spec.title.clone(),
+                            status: spec.frontmatter.status.clone(),
+                            completed_at: spec.frontmatter.completed_at.clone(),
+                            is_sibling: false,
+                        });
+                    } else if spec.frontmatter.status == SpecStatus::Completed {
+                        // Dependency is complete but spec still shows as blocked - flag this
+                        blockers.push(BlockingDependency {
+                            spec_id: spec.id.clone(),
+                            title: spec.title.clone(),
+                            status: spec.frontmatter.status.clone(),
+                            completed_at: spec.frontmatter.completed_at.clone(),
+                            is_sibling: false,
+                        });
+                    }
+                } else {
+                    // Dependency not found
+                    blockers.push(BlockingDependency {
+                        spec_id: dep_id.clone(),
+                        title: None,
+                        status: SpecStatus::Pending, // Unknown status, use Pending
+                        completed_at: None,
+                        is_sibling: false,
+                    });
+                }
+            }
+        }
+
+        // Check prior siblings for member specs
+        if let Some(driver_id) = extract_driver_id(&self.id) {
+            if let Some(member_num) = extract_member_number(&self.id) {
+                for i in 1..member_num {
+                    let sibling_id = format!("{}.{}", driver_id, i);
+
+                    // Try to reload from disk for fresh status
+                    let spec_path = specs_dir.join(format!("{}.md", sibling_id));
+                    let sibling_spec = if spec_path.exists() {
+                        Spec::load(&spec_path).ok()
+                    } else {
+                        None
+                    };
+
+                    // Fall back to in-memory spec
+                    let sibling_spec = sibling_spec
+                        .or_else(|| all_specs.iter().find(|s| s.id == sibling_id).cloned());
+
+                    if let Some(spec) = sibling_spec {
+                        if spec.frontmatter.status != SpecStatus::Completed {
+                            blockers.push(BlockingDependency {
+                                spec_id: spec.id.clone(),
+                                title: spec.title.clone(),
+                                status: spec.frontmatter.status.clone(),
+                                completed_at: spec.frontmatter.completed_at.clone(),
+                                is_sibling: true,
+                            });
+                        }
+                    } else {
+                        // Sibling not found
+                        blockers.push(BlockingDependency {
+                            spec_id: sibling_id,
+                            title: None,
+                            status: SpecStatus::Pending,
+                            completed_at: None,
+                            is_sibling: true,
+                        });
+                    }
+                }
+            }
+        }
+
+        blockers
     }
 
     /// Check if the spec's frontmatter contains a specific field.
@@ -2211,5 +2332,254 @@ original_completed_at: 2026-01-27T12:00:00Z
             SpecStatus::Blocked,
             "A should still be blocked since B is only pending"
         );
+    }
+
+    #[test]
+    fn test_get_blocking_dependencies_with_pending_dependency() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        // Create a pending dependency
+        let dep_spec = Spec {
+            id: "2026-01-27-001-abc".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                ..Default::default()
+            },
+            title: Some("Pending dependency".to_string()),
+            body: "# Pending dependency\n\nBody.".to_string(),
+        };
+
+        // Create a spec that depends on the above
+        let dependent_spec = Spec {
+            id: "2026-01-27-002-def".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                depends_on: Some(vec!["2026-01-27-001-abc".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Dependent spec".to_string()),
+            body: "# Dependent spec\n\nBody.".to_string(),
+        };
+
+        // Save specs to disk
+        dep_spec
+            .save(&specs_dir.join("2026-01-27-001-abc.md"))
+            .unwrap();
+        dependent_spec
+            .save(&specs_dir.join("2026-01-27-002-def.md"))
+            .unwrap();
+
+        let all_specs = vec![dep_spec.clone()];
+        let blockers = dependent_spec.get_blocking_dependencies(&all_specs, specs_dir);
+
+        assert_eq!(blockers.len(), 1);
+        assert_eq!(blockers[0].spec_id, "2026-01-27-001-abc");
+        assert_eq!(blockers[0].title, Some("Pending dependency".to_string()));
+        assert_eq!(blockers[0].status, SpecStatus::Pending);
+        assert!(!blockers[0].is_sibling);
+    }
+
+    #[test]
+    fn test_get_blocking_dependencies_with_completed_dependency() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        // Create a completed dependency
+        let dep_spec = Spec {
+            id: "2026-01-27-001-abc".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                completed_at: Some("2026-01-27T10:00:00Z".to_string()),
+                ..Default::default()
+            },
+            title: Some("Completed dependency".to_string()),
+            body: "# Completed dependency\n\nBody.".to_string(),
+        };
+
+        // Create a spec that depends on the above (but is still marked as blocked)
+        let dependent_spec = Spec {
+            id: "2026-01-27-002-def".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Blocked,
+                depends_on: Some(vec!["2026-01-27-001-abc".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Dependent spec".to_string()),
+            body: "# Dependent spec\n\nBody.".to_string(),
+        };
+
+        // Save specs to disk
+        dep_spec
+            .save(&specs_dir.join("2026-01-27-001-abc.md"))
+            .unwrap();
+
+        let all_specs = vec![dep_spec.clone()];
+        let blockers = dependent_spec.get_blocking_dependencies(&all_specs, specs_dir);
+
+        // Should still return the completed dependency to flag potential bug
+        assert_eq!(blockers.len(), 1);
+        assert_eq!(blockers[0].spec_id, "2026-01-27-001-abc");
+        assert_eq!(blockers[0].status, SpecStatus::Completed);
+        assert_eq!(
+            blockers[0].completed_at,
+            Some("2026-01-27T10:00:00Z".to_string())
+        );
+    }
+
+    #[test]
+    fn test_get_blocking_dependencies_with_missing_dependency() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        // Create a spec that depends on a non-existent spec
+        let dependent_spec = Spec {
+            id: "2026-01-27-002-def".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                depends_on: Some(vec!["2026-01-27-001-missing".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Dependent spec".to_string()),
+            body: "# Dependent spec\n\nBody.".to_string(),
+        };
+
+        let all_specs: Vec<Spec> = vec![];
+        let blockers = dependent_spec.get_blocking_dependencies(&all_specs, specs_dir);
+
+        assert_eq!(blockers.len(), 1);
+        assert_eq!(blockers[0].spec_id, "2026-01-27-001-missing");
+        assert_eq!(blockers[0].title, None);
+        assert_eq!(blockers[0].status, SpecStatus::Pending); // Default for unknown
+    }
+
+    #[test]
+    fn test_get_blocking_dependencies_with_sibling() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        // Create a pending sibling .1
+        let sibling_spec = Spec {
+            id: "2026-01-27-001-abc.1".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::InProgress,
+                ..Default::default()
+            },
+            title: Some("First sibling".to_string()),
+            body: "# First sibling\n\nBody.".to_string(),
+        };
+
+        // Create sibling .2 that depends on .1
+        let member_spec = Spec {
+            id: "2026-01-27-001-abc.2".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                ..Default::default()
+            },
+            title: Some("Second sibling".to_string()),
+            body: "# Second sibling\n\nBody.".to_string(),
+        };
+
+        // Save sibling spec to disk
+        sibling_spec
+            .save(&specs_dir.join("2026-01-27-001-abc.1.md"))
+            .unwrap();
+
+        let all_specs = vec![sibling_spec.clone()];
+        let blockers = member_spec.get_blocking_dependencies(&all_specs, specs_dir);
+
+        assert_eq!(blockers.len(), 1);
+        assert_eq!(blockers[0].spec_id, "2026-01-27-001-abc.1");
+        assert_eq!(blockers[0].title, Some("First sibling".to_string()));
+        assert_eq!(blockers[0].status, SpecStatus::InProgress);
+        assert!(blockers[0].is_sibling);
+    }
+
+    #[test]
+    fn test_get_blocking_dependencies_reloads_from_disk() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        // Create a pending dependency in memory
+        let dep_spec_in_memory = Spec {
+            id: "2026-01-27-001-abc".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                ..Default::default()
+            },
+            title: Some("In-memory status".to_string()),
+            body: "# Dependency\n\nBody.".to_string(),
+        };
+
+        // But save it to disk as completed with a different title in the body
+        let dep_spec_on_disk = Spec {
+            id: "2026-01-27-001-abc".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                completed_at: Some("2026-01-27T12:00:00Z".to_string()),
+                ..Default::default()
+            },
+            title: Some("On-disk status".to_string()),
+            body: "# On-disk status\n\nBody.".to_string(),
+        };
+
+        dep_spec_on_disk
+            .save(&specs_dir.join("2026-01-27-001-abc.md"))
+            .unwrap();
+
+        // Create a spec that depends on the above
+        let dependent_spec = Spec {
+            id: "2026-01-27-002-def".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                depends_on: Some(vec!["2026-01-27-001-abc".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Dependent spec".to_string()),
+            body: "# Dependent spec\n\nBody.".to_string(),
+        };
+
+        // Pass the in-memory version (which has Pending status)
+        let all_specs = vec![dep_spec_in_memory];
+        let blockers = dependent_spec.get_blocking_dependencies(&all_specs, specs_dir);
+
+        // Should prefer the disk version which is Completed
+        assert_eq!(blockers.len(), 1);
+        assert_eq!(blockers[0].status, SpecStatus::Completed);
+        assert_eq!(blockers[0].title, Some("On-disk status".to_string()));
+    }
+
+    #[test]
+    fn test_get_blocking_dependencies_no_blockers() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        // Create a spec with no dependencies
+        let spec = Spec {
+            id: "2026-01-27-001-abc".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                ..Default::default()
+            },
+            title: Some("No dependencies".to_string()),
+            body: "# No dependencies\n\nBody.".to_string(),
+        };
+
+        let all_specs: Vec<Spec> = vec![];
+        let blockers = spec.get_blocking_dependencies(&all_specs, specs_dir);
+
+        assert!(blockers.is_empty());
     }
 }
