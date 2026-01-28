@@ -896,31 +896,11 @@ pub fn cmd_lint() -> Result<()> {
         // Model waste validation (expensive model on simple spec)
         let model_warnings = validate_model_waste(spec);
 
-        // Unchecked acceptance criteria validation
-        // Warn if spec is completed/in_progress but has unchecked criteria
-        let unchecked_warnings = if matches!(
-            spec.frontmatter.status,
-            SpecStatus::Completed | SpecStatus::InProgress
-        ) {
-            let unchecked = spec.count_unchecked_checkboxes();
-            if unchecked > 0 {
-                vec![format!(
-                    "Spec has {} unchecked acceptance criteria",
-                    unchecked
-                )]
-            } else {
-                vec![]
-            }
-        } else {
-            vec![]
-        };
-
         // Combine all warnings
         let mut spec_warnings = type_warnings;
         spec_warnings.extend(complexity_warnings);
         spec_warnings.extend(coupling_warnings);
         spec_warnings.extend(model_warnings);
-        spec_warnings.extend(unchecked_warnings);
 
         if spec_issues.is_empty() && spec_warnings.is_empty() {
             println!("{} {}", "✓".green(), spec.id);

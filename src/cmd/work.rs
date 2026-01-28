@@ -39,6 +39,7 @@ use crate::cmd::finalize::{
 };
 use crate::cmd::git_ops::{commit_transcript, create_or_switch_branch, push_branch};
 use crate::cmd::model::get_model_name_with_default;
+use crate::cmd::spec as spec_cmd;
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -478,9 +479,46 @@ pub fn cmd_work(
             // Reload spec (it may have been modified by the agent)
             let mut spec = spec::resolve_spec(&specs_dir, &spec.id)?;
 
-            // Check for unchecked acceptance criteria
+            // Auto-finalize logic after agent exits:
+            // 1. Check if agent made a commit (indicates work was done)
+            // 2. Run lint checks on the spec
+            // 3. If all criteria checked, auto-finalize
+            // 4. If criteria unchecked, fail with clear message
+
+            // Check for commits
+            match if allow_no_commits {
+                cmd::commits::get_commits_for_spec_allow_no_commits(&spec.id)
+            } else {
+                cmd::commits::get_commits_for_spec(&spec.id)
+            } {
+                Ok(commits) => {
+                    if commits.is_empty() {
+                        println!("\n{} No commits found - agent did not make any changes.", "⚠".yellow());
+                        // Mark as failed since no work was done
+                        spec.frontmatter.status = SpecStatus::Failed;
+                        spec.save(&spec_path)?;
+                        anyhow::bail!("Cannot complete spec without commits - did the agent make any changes?");
+                    }
+                }
+                Err(e) => {
+                    if allow_no_commits {
+                        println!("\n{} No matching commits found, using HEAD as fallback.", "→".cyan());
+                    } else {
+                        println!("\n{} {}", "⚠".yellow(), e);
+                        // Mark as failed since we need commits
+                        spec.frontmatter.status = SpecStatus::Failed;
+                        spec.save(&spec_path)?;
+                        return Err(e);
+                    }
+                }
+            };
+
+            // Run lint on the spec to check acceptance criteria and get warnings
+            let lint_result = spec_cmd::lint_specific_specs(&specs_dir, &[spec.id.clone()])?;
+
+            // Check if all acceptance criteria are checked
             let unchecked_count = spec.count_unchecked_checkboxes();
-            if unchecked_count > 0 && !force {
+            if unchecked_count > 0 {
                 println!(
                     "\n{} Found {} unchecked acceptance {}.",
                     "⚠".yellow(),
@@ -491,17 +529,31 @@ pub fn cmd_work(
                         "criteria"
                     }
                 );
+
+                // Show which criteria are unchecked
+                println!("Please check off all acceptance criteria before completing.");
                 println!("Use {} to skip this validation.", "--force".cyan());
+
                 // Mark as failed since we can't complete with unchecked items
                 spec.frontmatter.status = SpecStatus::Failed;
                 spec.save(&spec_path)?;
                 anyhow::bail!(
-                    "Cannot complete spec with {} unchecked acceptance criteria",
+                    "Cannot auto-finalize spec with {} unchecked acceptance criteria",
                     unchecked_count
                 );
             }
 
-            // Finalize the spec (set status, commits, completed_at, model)
+            // Show lint warnings if any (but allow finalization if criteria are checked)
+            if lint_result.warned > 0 {
+                println!(
+                    "\n{} Lint check found {} warning(s), but criteria are all checked - proceeding with finalization.",
+                    "→".cyan(),
+                    lint_result.warned
+                );
+            }
+
+            // All criteria are checked, auto-finalize the spec
+            println!("\n{} Auto-finalizing spec (all acceptance criteria checked)...", "→".cyan());
             let all_specs = spec::load_all_specs(&specs_dir)?;
             finalize_spec(&mut spec, &spec_path, &config, &all_specs, allow_no_commits)?;
 
