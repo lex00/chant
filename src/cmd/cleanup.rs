@@ -193,13 +193,103 @@ fn confirm_cleanup() -> Result<bool> {
     Ok(response.is_empty() || response == "y" || response == "yes")
 }
 
+/// Cleanup only worktrees (used with --worktrees flag)
+fn cleanup_worktrees_only(orphans: &[&WorktreeInfo], dry_run: bool, yes: bool) -> Result<()> {
+    if orphans.is_empty() {
+        println!("{}", "No orphan worktrees found.".green());
+        return Ok(());
+    }
+
+    // Display what would be cleaned
+    println!("{}", "Scanning for orphan worktrees...".cyan());
+    println!();
+    println!(
+        "Found {} orphan worktree{}:",
+        orphans.len().to_string().yellow(),
+        if orphans.len() == 1 { "" } else { "s" }
+    );
+
+    for worktree in orphans {
+        println!(
+            "  {} ({}, {})",
+            worktree.name.bold(),
+            worktree.format_size().yellow(),
+            worktree.format_age().dimmed()
+        );
+    }
+
+    let total: u64 = orphans.iter().map(|wt| wt.size).sum();
+    println!();
+    println!("Total: {}", format_bytes(total).bold().yellow());
+    println!();
+
+    // Handle dry-run
+    if dry_run {
+        println!("{}", "(dry-run - no changes made)".dimmed());
+        return Ok(());
+    }
+
+    // Confirm unless --yes is specified
+    if !yes && !confirm_cleanup()? {
+        println!("{}", "Cancelled.".dimmed());
+        return Ok(());
+    }
+
+    println!();
+
+    // Remove each worktree
+    let mut removed = 0;
+    for worktree in orphans {
+        print!("Removing {}... ", worktree.name);
+        std::io::stdout().flush()?;
+
+        // Try to remove the git worktree entry first
+        let _ = Command::new("git")
+            .args(["worktree", "remove", &worktree.path.to_string_lossy()])
+            .output();
+
+        // Force remove the directory
+        if let Err(e) = fs::remove_dir_all(&worktree.path) {
+            println!("{}", "failed".red());
+            eprintln!("Error removing {}: {}", worktree.name, e);
+        } else {
+            println!("{}", "done".green());
+            removed += 1;
+        }
+    }
+
+    // Run git worktree prune
+    println!("Running git worktree prune... ");
+    match run_git_prune() {
+        Ok(_) => println!("{}", "done".green()),
+        Err(e) => {
+            eprintln!("Warning: git worktree prune failed: {}", e);
+        }
+    }
+
+    println!();
+    println!(
+        "Cleaned up {} worktree{}, {} reclaimed",
+        removed.to_string().green(),
+        if removed == 1 { "" } else { "s" },
+        format_bytes(total).green()
+    );
+
+    Ok(())
+}
+
 /// Execute the cleanup command
-pub fn cmd_cleanup(dry_run: bool, yes: bool) -> Result<()> {
+pub fn cmd_cleanup(dry_run: bool, yes: bool, worktrees_only: bool) -> Result<()> {
     // Find all worktrees
     let all_worktrees = find_orphan_worktrees()?;
 
     // Filter to only orphans
     let orphans = filter_orphans(&all_worktrees);
+
+    // If --worktrees flag is specified, skip other cleanup operations
+    if worktrees_only {
+        return cleanup_worktrees_only(&orphans, dry_run, yes);
+    }
 
     if orphans.is_empty() {
         println!("{}", "No orphan worktrees found.".green());

@@ -394,6 +394,9 @@ enum Commands {
         /// Skip confirmation prompt and proceed with cleanup
         #[arg(long)]
         yes: bool,
+        /// Only cleanup worktrees (skip other cleanup operations)
+        #[arg(long)]
+        worktrees: bool,
     },
     /// Verify specs meet their acceptance criteria
     Verify {
@@ -640,7 +643,11 @@ fn main() -> Result<()> {
             output.as_deref(),
         ),
         Commands::Disk => cmd::disk::cmd_disk(),
-        Commands::Cleanup { dry_run, yes } => cmd::cleanup::cmd_cleanup(dry_run, yes),
+        Commands::Cleanup {
+            dry_run,
+            yes,
+            worktrees,
+        } => cmd::cleanup::cmd_cleanup(dry_run, yes, worktrees),
         Commands::Verify {
             id,
             all,
