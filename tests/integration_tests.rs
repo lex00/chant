@@ -2834,3 +2834,122 @@ fn test_force_flag_bypasses_dependency_check() {
     let _ = std::env::set_current_dir(&original_dir);
     let _ = cleanup_test_repo(&repo_dir);
 }
+
+/// Test that completing a spec automatically reports unblocked dependents
+#[test]
+#[serial]
+fn test_dependency_chain_updates_after_completion() {
+    static CHANT_BINARY: OnceLock<PathBuf> = OnceLock::new();
+    let chant_binary = CHANT_BINARY.get_or_init(|| {
+        let output = Command::new("cargo")
+            .args(["build", "--bin", "chant"])
+            .output()
+            .expect("Failed to build chant");
+        assert!(output.status.success(), "Failed to build chant");
+        PathBuf::from("target/debug/chant")
+    });
+
+    // Get current directory to restore later
+    let original_dir = std::env::current_dir().expect("Failed to get current dir");
+
+    // Setup test repo
+    let repo_dir = PathBuf::from("/tmp/test-dependency-chain");
+    let _ = cleanup_test_repo(&repo_dir);
+    setup_test_repo(&repo_dir).expect("Failed to setup test repo");
+
+    // Change to repo directory
+    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
+
+    // Initialize chant (skip config prompt with stdin)
+    let init_output = Command::new(chant_binary)
+        .arg("init")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("Failed to run chant init");
+    assert!(
+        init_output.status.success(),
+        "chant init failed: {}",
+        String::from_utf8_lossy(&init_output.stderr)
+    );
+
+    // Create dependency chain: A -> B -> C
+    let specs_dir = repo_dir.join(".chant/specs");
+    fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+
+    let spec_a = "2026-01-27-chain-a";
+    let spec_b = "2026-01-27-chain-b";
+    let spec_c = "2026-01-27-chain-c";
+
+    create_spec_with_dependencies(&specs_dir, spec_a, &[]).expect("Failed to create spec A");
+    create_spec_with_dependencies(&specs_dir, spec_b, &[spec_a]).expect("Failed to create spec B");
+    create_spec_with_dependencies(&specs_dir, spec_c, &[spec_b]).expect("Failed to create spec C");
+
+    // Manually complete spec A (simulating what the agent would do)
+    let spec_a_path = specs_dir.join(format!("{}.md", spec_a));
+    let spec_a_content = fs::read_to_string(&spec_a_path).expect("Failed to read spec A");
+    let updated_content = spec_a_content.replace("status: pending", "status: completed");
+    fs::write(&spec_a_path, updated_content).expect("Failed to write spec A");
+
+    // Add completed_at timestamp manually
+    let spec_a_content = fs::read_to_string(&spec_a_path).expect("Failed to read spec A");
+    let updated_content = spec_a_content.replace(
+        "status: completed",
+        "status: completed\ncompleted_at: 2026-01-27T10:00:00Z",
+    );
+    fs::write(&spec_a_path, updated_content).expect("Failed to write spec A");
+
+    // Use chant list to verify B is now ready (not blocked)
+    let list_output = Command::new(chant_binary)
+        .args(["list"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant list");
+
+    let stdout = String::from_utf8_lossy(&list_output.stdout);
+    assert!(list_output.status.success(), "chant list should succeed");
+
+    // B should now be ready (shown with ○) not blocked (⊗)
+    // C should still be blocked because B is not completed yet
+    assert!(
+        stdout.contains(spec_b),
+        "Spec B should appear in list. Output: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains(spec_c),
+        "Spec C should appear in list. Output: {}",
+        stdout
+    );
+
+    // Now manually complete spec B
+    let spec_b_path = specs_dir.join(format!("{}.md", spec_b));
+    let spec_b_content = fs::read_to_string(&spec_b_path).expect("Failed to read spec B");
+    let updated_content = spec_b_content.replace("status: pending", "status: completed");
+    fs::write(&spec_b_path, updated_content).expect("Failed to write spec B");
+
+    let spec_b_content = fs::read_to_string(&spec_b_path).expect("Failed to read spec B");
+    let updated_content = spec_b_content.replace(
+        "status: completed",
+        "status: completed\ncompleted_at: 2026-01-27T11:00:00Z",
+    );
+    fs::write(&spec_b_path, updated_content).expect("Failed to write spec B");
+
+    // Use chant ready to verify C is now ready
+    let ready_output = Command::new(chant_binary)
+        .args(["ready"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant ready");
+
+    let stdout = String::from_utf8_lossy(&ready_output.stdout);
+    assert!(ready_output.status.success(), "chant ready should succeed");
+    assert!(
+        stdout.contains(spec_c),
+        "Spec C should be ready after B is completed. Output: {}",
+        stdout
+    );
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}

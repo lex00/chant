@@ -8,7 +8,7 @@ use colored::Colorize;
 use std::path::Path;
 
 use chant::config::Config;
-use chant::spec::{self, Spec, SpecStatus};
+use chant::spec::{self, load_all_specs, Spec, SpecStatus};
 
 use crate::cmd::commits::{get_commits_for_spec, get_commits_for_spec_allow_no_commits};
 use crate::cmd::model::get_model_name;
@@ -125,6 +125,22 @@ pub fn finalize_spec(
         }
         _ => {
             anyhow::bail!("Persisted commits don't match memory - save may have failed");
+        }
+    }
+
+    // Check what this spec unblocked
+    let specs_dir = spec_path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("Cannot determine specs directory"))?;
+    let unblocked = find_dependent_specs(&spec.id, specs_dir)?;
+    if !unblocked.is_empty() {
+        println!(
+            "{} Unblocked {} dependent spec(s):",
+            "✓".green(),
+            unblocked.len()
+        );
+        for dependent_id in unblocked {
+            println!("  - {}", dependent_id);
         }
     }
 
@@ -384,4 +400,287 @@ pub fn append_agent_output(spec: &mut Spec, output: &str) {
     );
 
     spec.body.push_str(&agent_section);
+}
+
+/// Find specs that depend on the completed spec and are now ready.
+/// Returns a list of spec IDs that were unblocked by completing this spec.
+pub fn find_dependent_specs(completed_spec_id: &str, specs_dir: &Path) -> Result<Vec<String>> {
+    // Load all specs to check dependencies
+    let all_specs = load_all_specs(specs_dir)?;
+    let mut unblocked = Vec::new();
+
+    for spec in &all_specs {
+        // Check if this spec depends on the completed spec
+        if let Some(deps) = &spec.frontmatter.depends_on {
+            if deps.contains(&completed_spec_id.to_string()) {
+                // This spec depends on the one we just completed
+                // Check if it's now ready (all dependencies met)
+                if spec.is_ready(&all_specs) {
+                    unblocked.push(spec.id.clone());
+                }
+            }
+        }
+    }
+
+    Ok(unblocked)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chant::spec::SpecFrontmatter;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_find_dependent_specs_single_dependency() {
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        // Create a completed spec
+        let completed_spec = Spec {
+            id: "2026-01-27-001-abc".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                completed_at: Some("2026-01-27T10:00:00Z".to_string()),
+                ..Default::default()
+            },
+            title: Some("Completed".to_string()),
+            body: "# Completed\n\nBody.".to_string(),
+        };
+
+        // Create a spec that depends on the completed one
+        let dependent_spec = Spec {
+            id: "2026-01-27-002-def".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                depends_on: Some(vec!["2026-01-27-001-abc".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Dependent".to_string()),
+            body: "# Dependent\n\nBody.".to_string(),
+        };
+
+        // Save both specs
+        completed_spec
+            .save(&specs_dir.join("2026-01-27-001-abc.md"))
+            .unwrap();
+        dependent_spec
+            .save(&specs_dir.join("2026-01-27-002-def.md"))
+            .unwrap();
+
+        // Find dependent specs
+        let unblocked = find_dependent_specs("2026-01-27-001-abc", specs_dir).unwrap();
+
+        // Should find the dependent spec
+        assert_eq!(unblocked.len(), 1);
+        assert_eq!(unblocked[0], "2026-01-27-002-def");
+    }
+
+    #[test]
+    fn test_find_dependent_specs_multiple_dependencies() {
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        // Create two completed specs
+        let completed_1 = Spec {
+            id: "2026-01-27-001-abc".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                completed_at: Some("2026-01-27T10:00:00Z".to_string()),
+                ..Default::default()
+            },
+            title: Some("Completed 1".to_string()),
+            body: "# Completed 1\n\nBody.".to_string(),
+        };
+
+        let completed_2 = Spec {
+            id: "2026-01-27-002-def".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                completed_at: Some("2026-01-27T10:00:00Z".to_string()),
+                ..Default::default()
+            },
+            title: Some("Completed 2".to_string()),
+            body: "# Completed 2\n\nBody.".to_string(),
+        };
+
+        // Create a spec that depends on BOTH completed specs
+        let dependent_spec = Spec {
+            id: "2026-01-27-003-ghi".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                depends_on: Some(vec![
+                    "2026-01-27-001-abc".to_string(),
+                    "2026-01-27-002-def".to_string(),
+                ]),
+                ..Default::default()
+            },
+            title: Some("Dependent".to_string()),
+            body: "# Dependent\n\nBody.".to_string(),
+        };
+
+        // Save all specs
+        completed_1
+            .save(&specs_dir.join("2026-01-27-001-abc.md"))
+            .unwrap();
+        completed_2
+            .save(&specs_dir.join("2026-01-27-002-def.md"))
+            .unwrap();
+        dependent_spec
+            .save(&specs_dir.join("2026-01-27-003-ghi.md"))
+            .unwrap();
+
+        // Find dependents when completing the second spec
+        let unblocked = find_dependent_specs("2026-01-27-002-def", specs_dir).unwrap();
+
+        // Should find the dependent spec (both dependencies are now met)
+        assert_eq!(unblocked.len(), 1);
+        assert_eq!(unblocked[0], "2026-01-27-003-ghi");
+    }
+
+    #[test]
+    fn test_find_dependent_specs_partial_dependencies() {
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        // Create one completed spec
+        let completed = Spec {
+            id: "2026-01-27-001-abc".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                completed_at: Some("2026-01-27T10:00:00Z".to_string()),
+                ..Default::default()
+            },
+            title: Some("Completed".to_string()),
+            body: "# Completed\n\nBody.".to_string(),
+        };
+
+        // Create one incomplete spec
+        let incomplete = Spec {
+            id: "2026-01-27-002-def".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                ..Default::default()
+            },
+            title: Some("Incomplete".to_string()),
+            body: "# Incomplete\n\nBody.".to_string(),
+        };
+
+        // Create a spec that depends on BOTH (one complete, one incomplete)
+        let dependent_spec = Spec {
+            id: "2026-01-27-003-ghi".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                depends_on: Some(vec![
+                    "2026-01-27-001-abc".to_string(),
+                    "2026-01-27-002-def".to_string(),
+                ]),
+                ..Default::default()
+            },
+            title: Some("Dependent".to_string()),
+            body: "# Dependent\n\nBody.".to_string(),
+        };
+
+        // Save all specs
+        completed
+            .save(&specs_dir.join("2026-01-27-001-abc.md"))
+            .unwrap();
+        incomplete
+            .save(&specs_dir.join("2026-01-27-002-def.md"))
+            .unwrap();
+        dependent_spec
+            .save(&specs_dir.join("2026-01-27-003-ghi.md"))
+            .unwrap();
+
+        // Find dependents when completing the first spec
+        let unblocked = find_dependent_specs("2026-01-27-001-abc", specs_dir).unwrap();
+
+        // Should NOT find the dependent spec (still has unmet dependency on 002-def)
+        assert_eq!(unblocked.len(), 0);
+    }
+
+    #[test]
+    fn test_find_dependent_specs_cascade() {
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        // Create a chain: A -> B -> C
+        let spec_a = Spec {
+            id: "2026-01-27-001-abc".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                completed_at: Some("2026-01-27T10:00:00Z".to_string()),
+                ..Default::default()
+            },
+            title: Some("A".to_string()),
+            body: "# A\n\nBody.".to_string(),
+        };
+
+        let spec_b = Spec {
+            id: "2026-01-27-002-def".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                completed_at: Some("2026-01-27T10:00:00Z".to_string()),
+                depends_on: Some(vec!["2026-01-27-001-abc".to_string()]),
+                ..Default::default()
+            },
+            title: Some("B".to_string()),
+            body: "# B\n\nBody.".to_string(),
+        };
+
+        let spec_c = Spec {
+            id: "2026-01-27-003-ghi".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                depends_on: Some(vec!["2026-01-27-002-def".to_string()]),
+                ..Default::default()
+            },
+            title: Some("C".to_string()),
+            body: "# C\n\nBody.".to_string(),
+        };
+
+        // Save all specs
+        spec_a
+            .save(&specs_dir.join("2026-01-27-001-abc.md"))
+            .unwrap();
+        spec_b
+            .save(&specs_dir.join("2026-01-27-002-def.md"))
+            .unwrap();
+        spec_c
+            .save(&specs_dir.join("2026-01-27-003-ghi.md"))
+            .unwrap();
+
+        // Complete B should unblock C
+        let unblocked = find_dependent_specs("2026-01-27-002-def", specs_dir).unwrap();
+        assert_eq!(unblocked.len(), 1);
+        assert_eq!(unblocked[0], "2026-01-27-003-ghi");
+    }
+
+    #[test]
+    fn test_find_dependent_specs_no_dependents() {
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        // Create a completed spec with no dependents
+        let completed = Spec {
+            id: "2026-01-27-001-abc".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                completed_at: Some("2026-01-27T10:00:00Z".to_string()),
+                ..Default::default()
+            },
+            title: Some("Completed".to_string()),
+            body: "# Completed\n\nBody.".to_string(),
+        };
+
+        completed
+            .save(&specs_dir.join("2026-01-27-001-abc.md"))
+            .unwrap();
+
+        // Find dependents
+        let unblocked = find_dependent_specs("2026-01-27-001-abc", specs_dir).unwrap();
+
+        // Should find no dependents
+        assert_eq!(unblocked.len(), 0);
+    }
 }
