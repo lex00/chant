@@ -604,11 +604,18 @@ pub fn cmd_show(id: &str, no_render: bool) -> Result<()> {
         println!("{}: {}", "Title".bold(), title);
     }
 
+    // Get list of derived fields for marking
+    let derived_fields = spec
+        .frontmatter
+        .derived_fields
+        .as_deref()
+        .unwrap_or_default();
+
     // Convert frontmatter to YAML value and iterate over fields
     let frontmatter_value = serde_yaml::to_value(&spec.frontmatter)?;
     if let serde_yaml::Value::Mapping(map) = frontmatter_value {
         for (key, value) in map {
-            // Skip null values
+            // Skip null values and the derived_fields field itself
             if value.is_null() {
                 continue;
             }
@@ -618,10 +625,22 @@ pub fn cmd_show(id: &str, no_render: bool) -> Result<()> {
                 _ => continue,
             };
 
+            // Skip displaying the derived_fields field itself (internal tracking)
+            if key_str == "derived_fields" {
+                continue;
+            }
+
             let display_key = key_to_title_case(&key_str);
             let formatted_value = format_yaml_value(&key_str, &value);
 
-            println!("{}: {}", display_key.bold(), formatted_value);
+            // Add [derived] indicator if this field was auto-derived
+            let indicator = if derived_fields.contains(&key_str) {
+                " [derived]".dimmed()
+            } else {
+                "".normal()
+            };
+
+            println!("{}{}: {}", display_key.bold(), indicator, formatted_value);
         }
     }
 

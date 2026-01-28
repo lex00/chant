@@ -2312,3 +2312,179 @@ This spec should pass even without required fields since none are configured.
     let _ = std::env::set_current_dir(&original_dir);
     let _ = cleanup_test_repo(&repo_dir);
 }
+
+#[test]
+#[serial]
+fn test_show_displays_derived_field_indicators() {
+    let repo_dir = PathBuf::from("/tmp/test-chant-show-derived");
+    let _ = cleanup_test_repo(&repo_dir);
+
+    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
+    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
+
+    // Create a spec with derived_fields tracking
+    let spec_id = "2026-01-27-show-derived";
+    let specs_dir = repo_dir.join(".chant/specs");
+    fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+
+    let spec_content = r#"---
+type: code
+status: completed
+labels:
+  - feature-derived
+derived_fields:
+  - labels
+---
+
+# Test Spec with Derived Fields
+
+This is a test spec to verify derived field indicators in show command.
+
+## Acceptance Criteria
+
+- [x] Derived fields tracked
+"#;
+
+    fs::write(specs_dir.join(format!("{}.md", spec_id)), spec_content)
+        .expect("Failed to write spec");
+
+    // Run chant show and capture output (use locally built binary)
+    let chant_binary = env!("CARGO_BIN_EXE_chant");
+    let output = Command::new(chant_binary)
+        .args(["show", spec_id])
+        .output()
+        .expect("Failed to run chant show");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let output_text = format!("{}{}", stdout, stderr);
+
+    // Verify that the derived indicator appears in output
+    assert!(
+        output_text.contains("[derived]"),
+        "Output should contain [derived] indicator for derived fields. Output: {}",
+        output_text
+    );
+
+    // Verify the labels field is shown
+    assert!(
+        output_text.contains("Labels"),
+        "Output should contain 'Labels' field. Output: {}",
+        output_text
+    );
+
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}
+
+#[test]
+#[serial]
+fn test_export_includes_derived_fields_metadata() {
+    let repo_dir = PathBuf::from("/tmp/test-chant-export-derived");
+    let _ = cleanup_test_repo(&repo_dir);
+
+    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
+    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
+
+    // Create specs dir and initialize chant
+    let specs_dir = repo_dir.join(".chant/specs");
+    fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+
+    // Create config file to initialize chant
+    let config_dir = repo_dir.join(".chant");
+    let config_path = config_dir.join("config.md");
+    fs::create_dir_all(&config_dir).expect("Failed to create config dir");
+
+    let config_content = r#"---
+project:
+  name: test-project
+
+defaults:
+  prompt: standard
+---
+
+# Chant Configuration
+"#;
+    fs::write(&config_path, config_content).expect("Failed to write config");
+
+    // Create a spec with derived_fields
+    let spec_id = "2026-01-27-export-derived";
+    let spec_content = r#"---
+type: code
+status: completed
+labels:
+  - feature
+derived_fields:
+  - labels
+---
+
+# Export Test Spec
+
+Test spec for export with derived fields.
+
+## Acceptance Criteria
+
+- [x] Export includes derived fields
+"#;
+
+    fs::write(specs_dir.join(format!("{}.md", spec_id)), spec_content)
+        .expect("Failed to write spec");
+
+    // Run chant export with JSON format and derived_fields (use locally built binary)
+    let chant_binary = env!("CARGO_BIN_EXE_chant");
+    let output = Command::new(chant_binary)
+        .args([
+            "export",
+            "--format",
+            "json",
+            "--fields",
+            "id,status,derived_fields",
+        ])
+        .output()
+        .expect("Failed to run chant export");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    // Verify export succeeded
+    assert!(
+        output.status.success(),
+        "Export command should succeed. stderr: {}",
+        stderr
+    );
+
+    // Parse the JSON output and verify derived_fields is present
+    if let Ok(json_array) = serde_json::from_str::<Vec<serde_json::Value>>(&stdout) {
+        if let Some(spec_obj) = json_array.first() {
+            // Verify the spec contains derived_fields
+            assert!(
+                spec_obj.get("derived_fields").is_some(),
+                "JSON export should include derived_fields field"
+            );
+
+            // Verify the derived_fields contains the label array
+            if let Some(derived) = spec_obj.get("derived_fields") {
+                if let serde_json::Value::Array(fields) = derived {
+                    assert!(
+                        fields.iter().any(|f| f.as_str() == Some("labels")),
+                        "derived_fields should contain 'labels'"
+                    );
+                }
+            }
+        }
+    } else {
+        // If parsing fails, at least verify the string contains "derived_fields"
+        assert!(
+            stdout.contains("derived_fields"),
+            "JSON export should contain derived_fields field. Output: {}",
+            stdout
+        );
+    }
+
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}

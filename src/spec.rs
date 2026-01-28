@@ -92,6 +92,9 @@ pub struct SpecFrontmatter {
     pub replay_count: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub original_completed_at: Option<String>,
+    // Derivation tracking - which fields were automatically derived
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub derived_fields: Option<Vec<String>>,
 }
 
 fn default_type() -> String {
@@ -128,6 +131,7 @@ impl Default for SpecFrontmatter {
             replayed_at: None,
             replay_count: None,
             original_completed_at: None,
+            derived_fields: None,
         }
     }
 }
@@ -312,7 +316,12 @@ impl Spec {
     /// Add derived fields to the spec's frontmatter.
     /// Updates the frontmatter with the provided derived fields.
     pub fn add_derived_fields(&mut self, fields: std::collections::HashMap<String, String>) {
+        let mut derived_field_names = Vec::new();
+
         for (key, value) in fields {
+            // Track which fields were derived
+            derived_field_names.push(key.clone());
+
             // Map frontmatter field names - we need to be careful with reserved names
             // For now, we'll set generic custom fields
             // In practice, derived fields might map to existing frontmatter fields or custom ones
@@ -345,6 +354,11 @@ impl Spec {
                     }
                 }
             }
+        }
+
+        // Update the derived_fields tracking
+        if !derived_field_names.is_empty() {
+            self.frontmatter.derived_fields = Some(derived_field_names);
         }
     }
 

@@ -313,6 +313,7 @@ fn get_field_list(fields: Option<&str>) -> Vec<String> {
             "informed_by".to_string(),
             "origin".to_string(),
             "schedule".to_string(),
+            "derived_fields".to_string(),
         ],
         Some(field_str) => field_str.split(',').map(|f| f.trim().to_string()).collect(),
     }
@@ -336,6 +337,7 @@ fn get_field_value(spec: &Spec, field: &str) -> serde_json::Value {
         "informed_by" => json!(spec.frontmatter.informed_by),
         "origin" => json!(spec.frontmatter.origin),
         "schedule" => json!(spec.frontmatter.schedule),
+        "derived_fields" => json!(spec.frontmatter.derived_fields),
         _ => json!(null),
     }
 }
