@@ -208,17 +208,53 @@ fn checkout_branch(branch: &str, dry_run: bool) -> Result<()> {
     Ok(())
 }
 
-/// Merge a branch using fast-forward only.
+/// Check if branches have diverged (i.e., fast-forward is not possible).
+///
+/// Returns true if branches have diverged (fast-forward not possible).
+/// Returns false if a fast-forward merge is possible.
+///
+/// Fast-forward is possible when HEAD is an ancestor of or equal to spec_branch.
+/// Branches have diverged when HEAD has commits not in spec_branch.
+fn branches_have_diverged(spec_branch: &str) -> Result<bool> {
+    let output = Command::new("git")
+        .args(["merge-base", "--is-ancestor", "HEAD", spec_branch])
+        .output()
+        .context("Failed to check if branches have diverged")?;
+
+    // merge-base --is-ancestor returns 0 if HEAD is ancestor of spec_branch (fast-forward possible)
+    // Returns non-zero if HEAD is not ancestor of spec_branch (branches have diverged)
+    Ok(!output.status.success())
+}
+
+/// Merge a branch using appropriate strategy based on divergence.
+///
+/// Strategy:
+/// 1. Check if branches have diverged
+/// 2. If diverged: Use --no-ff to create a merge commit
+/// 3. If clean fast-forward possible: Use fast-forward merge
+/// 4. If conflicts exist: Return false
+///
 /// Returns true if successful, false if there are conflicts.
 fn merge_branch_ff_only(spec_branch: &str, dry_run: bool) -> Result<bool> {
     if dry_run {
         return Ok(true);
     }
 
-    let output = Command::new("git")
-        .args(["merge", "--ff-only", spec_branch])
-        .output()
-        .context("Failed to run git merge")?;
+    // Check if branches have diverged
+    let diverged = branches_have_diverged(spec_branch)?;
+
+    let merge_message = format!("Merge {}", spec_branch);
+
+    let mut cmd = Command::new("git");
+    if diverged {
+        // Branches have diverged - use --no-ff to create a merge commit
+        cmd.args(["merge", "--no-ff", spec_branch, "-m", &merge_message]);
+    } else {
+        // Can do fast-forward merge
+        cmd.args(["merge", "--ff-only", spec_branch]);
+    }
+
+    let output = cmd.output().context("Failed to run git merge")?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -229,7 +265,7 @@ fn merge_branch_ff_only(spec_branch: &str, dry_run: bool) -> Result<bool> {
             return Ok(false);
         }
 
-        // Non-ff failure - branches have diverged
+        // For non-diverged branches, this shouldn't happen, but handle gracefully
         anyhow::bail!(
             "{}",
             crate::merge_errors::fast_forward_conflict(
@@ -844,5 +880,133 @@ mod tests {
         let summary = format_merge_summary(&result);
         assert!(summary.contains("✗"));
         assert!(summary.contains("Failed to merge"));
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_branches_have_diverged_no_divergence() -> Result<()> {
+        let temp_dir = setup_test_repo()?;
+        let repo_path = temp_dir.path();
+        let original_dir = std::env::current_dir()?;
+
+        std::env::set_current_dir(repo_path)?;
+
+        // Create a spec branch that's ahead of main
+        Command::new("git")
+            .args(["checkout", "-b", "spec-no-diverge"])
+            .output()?;
+
+        // Make a change on spec branch
+        let file_path = repo_path.join("diverge-test.txt");
+        fs::write(&file_path, "spec content")?;
+        Command::new("git")
+            .args(["add", "diverge-test.txt"])
+            .output()?;
+        Command::new("git")
+            .args(["commit", "-m", "Add diverge-test"])
+            .output()?;
+
+        // Go back to main
+        Command::new("git").args(["checkout", "main"]).output()?;
+
+        // Test divergence check - spec branch is ancestor of main, so no divergence
+        let diverged = branches_have_diverged("spec-no-diverge")?;
+        assert!(!diverged, "Fast-forward merge should be possible");
+
+        std::env::set_current_dir(original_dir)?;
+        Ok(())
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_branches_have_diverged_with_divergence() -> Result<()> {
+        let temp_dir = setup_test_repo()?;
+        let repo_path = temp_dir.path();
+        let original_dir = std::env::current_dir()?;
+
+        std::env::set_current_dir(repo_path)?;
+
+        // Create a spec branch from main
+        Command::new("git")
+            .args(["checkout", "-b", "spec-diverge"])
+            .output()?;
+
+        // Make a change on spec branch
+        let file_path = repo_path.join("spec-file.txt");
+        fs::write(&file_path, "spec content")?;
+        Command::new("git")
+            .args(["add", "spec-file.txt"])
+            .output()?;
+        Command::new("git")
+            .args(["commit", "-m", "Add spec-file"])
+            .output()?;
+
+        // Go back to main and make a different change
+        Command::new("git").args(["checkout", "main"]).output()?;
+        let main_file = repo_path.join("main-file.txt");
+        fs::write(&main_file, "main content")?;
+        Command::new("git")
+            .args(["add", "main-file.txt"])
+            .output()?;
+        Command::new("git")
+            .args(["commit", "-m", "Add main-file"])
+            .output()?;
+
+        // Test divergence check - branches have diverged
+        let diverged = branches_have_diverged("spec-diverge")?;
+        assert!(diverged, "Branches should have diverged");
+
+        std::env::set_current_dir(original_dir)?;
+        Ok(())
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_merge_single_spec_with_diverged_branches() -> Result<()> {
+        let temp_dir = setup_test_repo()?;
+        let repo_path = temp_dir.path();
+        let original_dir = std::env::current_dir()?;
+
+        std::env::set_current_dir(repo_path)?;
+
+        // Create a spec branch from main
+        Command::new("git")
+            .args(["checkout", "-b", "spec-diverged"])
+            .output()?;
+
+        // Make a change on spec branch
+        let file_path = repo_path.join("spec-change.txt");
+        fs::write(&file_path, "spec content")?;
+        Command::new("git")
+            .args(["add", "spec-change.txt"])
+            .output()?;
+        Command::new("git")
+            .args(["commit", "-m", "Add spec-change"])
+            .output()?;
+
+        // Go back to main and make a different change
+        Command::new("git").args(["checkout", "main"]).output()?;
+        let main_file = repo_path.join("main-change.txt");
+        fs::write(&main_file, "main content")?;
+        Command::new("git")
+            .args(["add", "main-change.txt"])
+            .output()?;
+        Command::new("git")
+            .args(["commit", "-m", "Add main-change"])
+            .output()?;
+
+        // Merge with diverged branches - should use --no-ff automatically
+        let result = merge_single_spec("spec-diverged", "spec-diverged", "main", false, false)?;
+
+        assert!(result.success, "Merge should succeed with --no-ff");
+        assert_eq!(result.spec_id, "spec-diverged");
+        assert_eq!(result.merged_to, "main");
+
+        // Verify we're back on main
+        let current = get_current_branch()?;
+        assert_eq!(current, "main");
+
+        std::env::set_current_dir(original_dir)?;
+        Ok(())
     }
 }
