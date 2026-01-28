@@ -114,6 +114,9 @@ When implementing a spec:
 
 ### Additional Tools
 
+- `chant refresh` - Refresh dependency status for all specs
+  - Reloads specs and recalculates ready/blocked status
+  - Use `--verbose` for detailed list of ready and blocked specs
 - `chant log <spec-id>` - Show spec execution log
 - `chant split <spec-id>` - Split spec into member specs
 - `chant merge --all --rebase --auto` - Merge specs with conflict auto-resolution
