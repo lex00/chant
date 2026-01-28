@@ -1901,7 +1901,6 @@ mod tests {
         }
     }
 
-
     #[test]
     fn test_auto_select_prompt_documentation() {
         use tempfile::TempDir;
@@ -1992,7 +1991,6 @@ mod tests {
         let result = auto_select_prompt_for_type(&spec, prompts_dir);
         assert_eq!(result, None);
     }
-
 
     // =========================================================================
     // DISTRIBUTION LOGIC TESTS
