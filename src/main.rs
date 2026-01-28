@@ -103,6 +103,21 @@ enum Commands {
         /// Filter to specific project within repository
         #[arg(long)]
         project: Option<String>,
+        /// Filter by approval status (pending, approved, rejected)
+        #[arg(long)]
+        approval: Option<String>,
+        /// Filter by spec creator name (from git log)
+        #[arg(long)]
+        created_by: Option<String>,
+        /// Filter by recent activity (e.g., "2h", "1d", "1w")
+        #[arg(long)]
+        activity_since: Option<String>,
+        /// Filter specs mentioning a person in approval discussion
+        #[arg(long)]
+        mentions: Option<String>,
+        /// Show only count of matching specs
+        #[arg(long)]
+        count: bool,
     },
     /// Show spec details
     Show {
@@ -519,6 +534,11 @@ fn main() -> Result<()> {
             global,
             repo,
             project,
+            approval,
+            created_by,
+            activity_since,
+            mentions,
+            count,
         } => cmd::spec::cmd_list(
             ready,
             &label,
@@ -527,6 +547,11 @@ fn main() -> Result<()> {
             global,
             repo.as_deref(),
             project.as_deref(),
+            approval.as_deref(),
+            created_by.as_deref(),
+            activity_since.as_deref(),
+            mentions.as_deref(),
+            count,
         ),
         Commands::Show { id, no_render } => cmd::spec::cmd_show(&id, no_render),
         Commands::Search {
@@ -592,9 +617,20 @@ fn main() -> Result<()> {
         ),
         Commands::Mcp => mcp::run_server(),
         Commands::Status { global, repo } => cmd::spec::cmd_status(global, repo.as_deref()),
-        Commands::Ready { global, repo } => {
-            cmd::spec::cmd_list(true, &[], None, None, global, repo.as_deref(), None)
-        }
+        Commands::Ready { global, repo } => cmd::spec::cmd_list(
+            true,
+            &[],
+            None,
+            None,
+            global,
+            repo.as_deref(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            false,
+        ),
         Commands::Refresh { verbose } => cmd::refresh::cmd_refresh(verbose),
         Commands::Lint => cmd::spec::cmd_lint(),
         Commands::Log {

@@ -552,6 +552,138 @@ fn validate_committer(name: &str) -> Result<bool> {
     Ok(is_valid)
 }
 
+/// Get the creator of a file from git log (first commit author)
+fn get_file_creator(file_path: &Path) -> Option<String> {
+    let output = Command::new("git")
+        .args(["log", "--diff-filter=A", "--format=%an", "--follow", "--"])
+        .arg(file_path)
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let output_str = String::from_utf8_lossy(&output.stdout);
+    // Get the last line (first commit) since git log shows newest first
+    output_str.lines().last().map(|s| s.to_string())
+}
+
+/// Get the last modification time of a file from git log
+fn get_file_last_modified(file_path: &Path) -> Option<chrono::DateTime<chrono::Local>> {
+    let output = Command::new("git")
+        .args(["log", "-1", "--format=%aI", "--"])
+        .arg(file_path)
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let output_str = String::from_utf8_lossy(&output.stdout);
+    let timestamp_str = output_str.trim();
+    chrono::DateTime::parse_from_rfc3339(timestamp_str)
+        .ok()
+        .map(|dt| dt.with_timezone(&chrono::Local))
+}
+
+/// Format a duration as a relative time string (e.g., "2h", "3d", "1w")
+fn format_relative_time(datetime: chrono::DateTime<chrono::Local>) -> String {
+    let now = chrono::Local::now();
+    let duration = now.signed_duration_since(datetime);
+
+    if duration.num_minutes() < 1 {
+        "now".to_string()
+    } else if duration.num_minutes() < 60 {
+        format!("{}m", duration.num_minutes())
+    } else if duration.num_hours() < 24 {
+        format!("{}h", duration.num_hours())
+    } else if duration.num_days() < 7 {
+        format!("{}d", duration.num_days())
+    } else if duration.num_weeks() < 4 {
+        format!("{}w", duration.num_weeks())
+    } else {
+        format!("{}mo", duration.num_days() / 30)
+    }
+}
+
+/// Parse a duration string like "2h", "1d", "1w" into a chrono::Duration
+fn parse_duration(s: &str) -> Option<chrono::Duration> {
+    let s = s.trim().to_lowercase();
+    if s.is_empty() {
+        return None;
+    }
+
+    let (num_str, unit) = if s.ends_with("mo") {
+        (&s[..s.len() - 2], "mo")
+    } else {
+        let unit_char = s.chars().last()?;
+        (
+            &s[..s.len() - 1],
+            match unit_char {
+                'm' => "m",
+                'h' => "h",
+                'd' => "d",
+                'w' => "w",
+                _ => return None,
+            },
+        )
+    };
+
+    let num: i64 = num_str.parse().ok()?;
+    match unit {
+        "m" => Some(chrono::Duration::minutes(num)),
+        "h" => Some(chrono::Duration::hours(num)),
+        "d" => Some(chrono::Duration::days(num)),
+        "w" => Some(chrono::Duration::weeks(num)),
+        "mo" => Some(chrono::Duration::days(num * 30)),
+        _ => None,
+    }
+}
+
+/// Count comments in the approval discussion section
+fn count_approval_comments(body: &str) -> usize {
+    let discussion_header = "## Approval Discussion";
+
+    if let Some(pos) = body.find(discussion_header) {
+        let section_start = pos + discussion_header.len();
+        let rest = &body[section_start..];
+        // Find the next section heading or end of body
+        let section_end = rest.find("\n## ").unwrap_or(rest.len());
+        let section = &rest[..section_end];
+
+        // Count entries that start with **name** pattern (bold names indicate comments)
+        section
+            .lines()
+            .filter(|line| {
+                let trimmed = line.trim();
+                trimmed.starts_with("**") && trimmed.contains("** -")
+            })
+            .count()
+    } else {
+        0
+    }
+}
+
+/// Check if a name is mentioned in the approval discussion section
+fn mentions_person(body: &str, name: &str) -> bool {
+    let discussion_header = "## Approval Discussion";
+    let name_lower = name.to_lowercase();
+
+    if let Some(pos) = body.find(discussion_header) {
+        let section_start = pos + discussion_header.len();
+        let rest = &body[section_start..];
+        // Find the next section heading or end of body
+        let section_end = rest.find("\n## ").unwrap_or(rest.len());
+        let section = &rest[..section_end].to_lowercase();
+
+        section.contains(&name_lower)
+    } else {
+        false
+    }
+}
+
 /// Append a message to the Approval Discussion section in the spec body.
 /// Creates the section if it doesn't exist.
 fn append_to_approval_discussion(spec: &mut Spec, message: &str) {
@@ -772,16 +904,27 @@ pub fn cmd_list(
     global: bool,
     repo: Option<&str>,
     project: Option<&str>,
+    approval_filter: Option<&str>,
+    created_by_filter: Option<&str>,
+    activity_since_filter: Option<&str>,
+    mentions_filter: Option<&str>,
+    count_only: bool,
 ) -> Result<()> {
     let is_multi_repo = global || repo.is_some();
+
+    // Get specs_dir for file path resolution
+    let specs_dir = if is_multi_repo {
+        None
+    } else {
+        Some(crate::cmd::ensure_initialized()?)
+    };
 
     let mut specs = if is_multi_repo {
         // Load specs from multiple repos
         load_specs_from_repos(repo)?
     } else {
         // Load specs from current repo only (existing behavior)
-        let specs_dir = crate::cmd::ensure_initialized()?;
-        spec::load_all_specs(&specs_dir)?
+        spec::load_all_specs(specs_dir.as_ref().unwrap())?
     };
 
     specs.sort_by(|a, b| a.id.cmp(&b.id));
@@ -839,6 +982,76 @@ pub fn cmd_list(
         });
     }
 
+    // Filter by approval status if specified
+    if let Some(approval_val) = approval_filter {
+        let approval_lower = approval_val.to_lowercase();
+        specs.retain(|s| {
+            if let Some(ref approval) = s.frontmatter.approval {
+                match approval_lower.as_str() {
+                    "pending" => approval.status == spec::ApprovalStatus::Pending,
+                    "approved" => approval.status == spec::ApprovalStatus::Approved,
+                    "rejected" => approval.status == spec::ApprovalStatus::Rejected,
+                    _ => false,
+                }
+            } else {
+                // Specs without approval section only match "pending" if they require approval
+                approval_lower == "pending" && false // No approval section means not in approval workflow
+            }
+        });
+    }
+
+    // Filter by creator if specified
+    if let Some(creator) = created_by_filter {
+        let creator_lower = creator.to_lowercase();
+        specs.retain(|s| {
+            if let Some(ref dir) = specs_dir {
+                let spec_path = dir.join(format!("{}.md", s.id));
+                if let Some(file_creator) = get_file_creator(&spec_path) {
+                    file_creator.to_lowercase().contains(&creator_lower)
+                } else {
+                    false
+                }
+            } else {
+                false // Multi-repo mode doesn't support creator filter for now
+            }
+        });
+    }
+
+    // Filter by activity since if specified
+    if let Some(duration_str) = activity_since_filter {
+        if let Some(duration) = parse_duration(duration_str) {
+            let cutoff = chrono::Local::now() - duration;
+            specs.retain(|s| {
+                if let Some(ref dir) = specs_dir {
+                    let spec_path = dir.join(format!("{}.md", s.id));
+                    if let Some(last_modified) = get_file_last_modified(&spec_path) {
+                        last_modified >= cutoff
+                    } else {
+                        false
+                    }
+                } else {
+                    false // Multi-repo mode doesn't support activity filter for now
+                }
+            });
+        } else {
+            anyhow::bail!(
+                "Invalid duration format: '{}'. Valid formats: 2h, 1d, 1w, 2mo",
+                duration_str
+            );
+        }
+    }
+
+    // Filter by mentions in approval discussion if specified
+    if let Some(name) = mentions_filter {
+        specs.retain(|s| mentions_person(&s.body, name));
+    }
+
+    // Handle count-only mode
+    if count_only {
+        println!("{}", specs.len());
+        return Ok(());
+    }
+
     if specs.is_empty() {
         if ready_only && !labels.is_empty() {
             println!("No ready specs with specified labels.");
@@ -859,11 +1072,69 @@ pub fn cmd_list(
             render::status_icon(&spec.frontmatter.status)
         };
 
+        // Build approval status marker
+        let approval_marker = if let Some(ref approval) = spec.frontmatter.approval {
+            match approval.status {
+                spec::ApprovalStatus::Pending if approval.required => {
+                    format!(" {}", "[needs approval]".yellow())
+                }
+                spec::ApprovalStatus::Rejected => {
+                    format!(" {}", "[rejected]".red())
+                }
+                spec::ApprovalStatus::Approved => {
+                    format!(" {}", "[approved]".green())
+                }
+                _ => String::new(),
+            }
+        } else {
+            String::new()
+        };
+
+        // Build visual indicators
+        let mut indicators: Vec<String> = Vec::new();
+
+        // Created by indicator (from git log)
+        if let Some(ref dir) = specs_dir {
+            let spec_path = dir.join(format!("{}.md", spec.id));
+            if let Some(creator) = get_file_creator(&spec_path) {
+                indicators.push(format!("👤 {}", creator.dimmed()));
+            }
+
+            // Last activity indicator
+            if let Some(last_modified) = get_file_last_modified(&spec_path) {
+                let relative = format_relative_time(last_modified);
+                indicators.push(format!("↩ {}", relative.dimmed()));
+            }
+        }
+
+        // Comment count in approval discussion
+        let comment_count = count_approval_comments(&spec.body);
+        if comment_count > 0 {
+            indicators.push(format!("💬 {}", comment_count.to_string().dimmed()));
+        }
+
+        // Approved by indicator (from frontmatter)
+        if let Some(ref approval) = spec.frontmatter.approval {
+            if approval.status == spec::ApprovalStatus::Approved {
+                if let Some(ref by) = approval.by {
+                    indicators.push(format!("✓ {}", by.green()));
+                }
+            }
+        }
+
+        let indicators_str = if indicators.is_empty() {
+            String::new()
+        } else {
+            format!(" {}", indicators.join(" "))
+        };
+
         println!(
-            "{} {} {}",
+            "{} {}{}{}{}",
             icon,
             spec.id.cyan(),
-            spec.title.as_deref().unwrap_or("(no title)")
+            approval_marker,
+            format!(" {}", spec.title.as_deref().unwrap_or("(no title)")),
+            indicators_str
         );
     }
 
