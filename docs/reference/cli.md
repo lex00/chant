@@ -391,6 +391,78 @@ The wizard lets you:
 3. Filter results by type
 4. View and select specs from results
 
+## Derive
+
+Manually trigger field derivation for existing specs:
+
+```bash
+chant derive 2026-01-22-001-x7m   # Derive fields for one spec
+chant derive --all                 # Derive fields for all specs
+chant derive --all --dry-run       # Preview without modifying
+```
+
+### What Derivation Does
+
+Automatically extracts and populates fields from enterprise configuration:
+
+- Reads derivation rules from `.chant/config.md`
+- Applies patterns to sources (branch, path, env, git_user)
+- Validates values against enum rules (warnings only)
+- Updates spec frontmatter with derived values
+- Tracks which fields were derived in `derived_fields` list
+
+### Use Cases
+
+- **Backfill** - Add derivation rules and re-populate existing specs
+- **Update values** - Re-derive if branch names or paths changed
+- **Fix invalid values** - Update specs with incorrect derived values
+
+### Examples
+
+Add derivation rules to `.chant/config.md`:
+
+```yaml
+enterprise:
+  derived:
+    team:
+      from: path
+      pattern: "teams/(\\w+)/"
+    jira_key:
+      from: branch
+      pattern: "([A-Z]+-\\d+)"
+```
+
+Then backfill all specs:
+
+```bash
+$ chant derive --all --dry-run
+Preview: Would update 12 specs with derived fields
+
+2026-01-22-001-x7m: team=platform, jira_key=PROJ-123
+2026-01-22-002-y8n: team=frontend, jira_key=PROJ-124
+...
+
+$ chant derive --all
+Derived 12 specs successfully
+```
+
+### Dry-Run Mode
+
+Preview changes without modifying files:
+
+```bash
+$ chant derive --all --dry-run
+Preview: Would update 12 specs
+  • 2026-01-22-001-x7m: +team, +jira_key
+  • 2026-01-22-002-y8n: +team, +jira_key
+  (showing first 10 of 12)
+```
+
+Dry-run is useful for:
+- Testing new derivation rules
+- Validating patterns before updating
+- Verifying the impact of changes
+
 ## Lint
 
 Validate specs for structural issues and best practices:

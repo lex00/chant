@@ -42,6 +42,9 @@ For detailed implementation status of each phase, see [Roadmap](roadmap/roadmap.
 | Interactive Wizards | [cli.md](reference/cli.md) | ✅ Complete | v0.3.0 |
 | Prompts | [prompts.md](concepts/prompts.md) | ✅ Complete | v0.0.0 |
 | Data Lifecycle | [lifecycle.md](concepts/lifecycle.md) | ✅ Complete | v0.2.0 |
+| Derived Fields | [enterprise.md](enterprise/enterprise.md) | ✅ Complete | v0.3.0 |
+| Required Fields | [enterprise.md](enterprise/enterprise.md) | ✅ Complete | v0.3.0 |
+| Chant Derive Command | [cli.md](reference/cli.md) | ✅ Complete | v0.3.0 |
 
 ## Partially Implemented ⚠️
 
@@ -104,6 +107,7 @@ chant search        ✅ Interactive search
 chant export        ✅ Export to JSON/CSV/Markdown
 chant config        ✅ Configuration management
 chant mcp           ✅ MCP server
+chant derive        ✅ Manual field derivation
 ```
 
 ### Planned but Not Implemented ❌
@@ -187,7 +191,7 @@ chant costs         ❌ Planned for v0.4.0+
 - `observability.md` - ⚠️ Partially implemented (updated with status)
 
 ### Enterprise
-- `enterprise.md` - ⚠️ Largely aspirational, features not implemented
+- `enterprise.md` - ✅ Implemented (derived frontmatter, required fields, audit trail)
 - `security.md` - ✅ Current
 
 ### Roadmap

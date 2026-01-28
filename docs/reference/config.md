@@ -587,6 +587,147 @@ CHANT_BRANCH=true chant work 2026-01-22-001-x7m
 CHANT_PROMPT=tdd chant work 2026-01-22-001-x7m
 ```
 
+## Enterprise Configuration
+
+Configure automatic field derivation and enforcement for enterprise workflows.
+
+### Derived Fields
+
+Automatically extract metadata from conventions (branch names, paths, environment):
+
+```markdown
+---
+enterprise:
+  derived:
+    # Extract sprint from branch name
+    sprint:
+      from: branch
+      pattern: "sprint/(\\d{4}-Q\\d-W\\d)"
+
+    # Extract Jira ticket from branch
+    jira_key:
+      from: branch
+      pattern: "([A-Z]+-\\d+)"
+
+    # Extract team from spec path
+    team:
+      from: path
+      pattern: "teams/(\\w+)/"
+      validate:
+        type: enum
+        values: [platform, frontend, backend, infra]
+
+    # Extract from environment variable
+    environment:
+      from: env
+      pattern: DEPLOY_ENV
+
+    # Extract from git user
+    author_email:
+      from: git_user
+      pattern: ".*"              # email or username
+---
+```
+
+**Derivation Sources:**
+- `branch` - Current git branch name
+- `path` - Spec file path relative to repository root
+- `env` - Environment variable name (omits `$`)
+- `git_user` - Git user name or email
+
+**Pattern Syntax:**
+- Standard regex with capture groups
+- First capture group becomes the field value
+- If pattern doesn't match → field omitted (graceful failure)
+
+**Validation:**
+- `type: enum` with `values: [...]` list
+- Case-sensitive matching
+- Invalid values: field included but warning logged
+- Validation never blocks derivation
+
+### Required Fields
+
+Enforce presence of fields for compliance:
+
+```markdown
+---
+enterprise:
+  required:
+    - team
+    - jira_key
+    - environment
+---
+```
+
+When enforced:
+- `chant lint` validates all specs have these fields
+- Fields can be derived or explicitly set
+- Failure blocks spec operations
+- Shows enterprise policy in error messages
+
+### How Derivation Works
+
+Derivation runs automatically:
+1. **During spec completion** - Auto-populates fields, tracked in `derived_fields` list
+2. **Manual re-derivation** - Use `chant derive` to update existing specs
+3. **Conflict handling** - Existing explicit values are preserved
+
+**Example flow:**
+
+```yaml
+# Before completion
+---
+status: pending
+---
+
+# After completion (with derivation rules configured)
+---
+status: completed
+completed_at: 2026-01-22T15:30:00Z
+
+# Auto-populated from branch: sprint/2026-Q1-W4/PROJ-123-task
+sprint: 2026-Q1-W4    [derived]
+jira_key: PROJ-123    [derived]
+
+# Tracking
+derived_fields: [sprint, jira_key]
+---
+```
+
+### Common Patterns
+
+**Jira Integration:**
+```yaml
+jira_key:
+  from: branch
+  pattern: "([A-Z]+-\\d+)"
+  validate:
+    type: enum
+    values: [PROJ, AUTH, API, WEB]  # Your project prefixes
+```
+
+**Team Ownership:**
+```yaml
+team:
+  from: path
+  pattern: "teams/(\\w+)/"
+```
+
+**Component Tracking:**
+```yaml
+component:
+  from: path
+  pattern: "src/(\\w+)/"
+```
+
+**Multi-Environment:**
+```yaml
+environment:
+  from: branch
+  pattern: "^(dev|staging|prod)"
+```
+
 ## Precedence
 
 1. Spec frontmatter (highest)
