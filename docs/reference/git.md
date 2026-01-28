@@ -1,23 +1,21 @@
 # Git Integration
 
-## Explicit Flags
+## Configuration
 
-Git behavior is controlled by explicit boolean flags, not named presets.
+Git behavior is controlled by explicit boolean flags in `.chant/config.md`:
 
 ```yaml
-# .chant/config.md frontmatter
 defaults:
   branch: false      # Create a branch for each spec?
   pr: false          # Create a PR on completion?
   branch_prefix: "chant/"
 ```
 
-## Provider Configuration
+### Provider Configuration
 
-Chant supports multiple git hosting providers for PR/MR creation:
+Chant supports multiple git hosting providers:
 
 ```yaml
-# .chant/config.md frontmatter
 git:
   provider: github   # github (default), gitlab, or bitbucket
 ```
@@ -28,17 +26,15 @@ git:
 | `gitlab` | `glab` | Merge Request |
 | `bitbucket` | `bb` | Pull Request |
 
-Each provider requires its respective CLI tool to be installed and authenticated.
-
-## Spec Override
+### Spec Override
 
 Individual specs can override defaults:
 
 ```yaml
-# Spec frontmatter (filename: 2026-01-22-001-x7m.md)
+# Spec frontmatter
 ---
-branch: true         # Override: this spec needs a branch
-pr: true             # Override: this spec needs a PR
+branch: true         # This spec needs a branch
+pr: true             # This spec needs a PR
 ---
 ```
 
@@ -66,6 +62,169 @@ pr: true             # Override: this spec needs a PR
    └── git commit -m "chant: mark 2026-01-22-001-x7m complete"
 ```
 
-Two commits per spec completion:
-1. The work (by agent)
-2. The metadata update (by CLI)
+---
+
+## Git Hooks
+
+> **Status: Partially Implemented**
+>
+> Basic git hook scripts can be manually set up. The `chant hooks generate/install/remove` CLI commands are not yet implemented.
+
+### Philosophy
+
+Git hooks enhance the workflow but are **optional** - no Chant feature depends on them.
+
+### Available Hooks
+
+| Hook | Purpose | Chant Use |
+|------|---------|-----------|
+| `pre-commit` | Validate before commit | Lint spec files |
+| `commit-msg` | Validate commit message | Enforce `chant(id): msg` format |
+| `post-commit` | After commit completes | Update spec status |
+| `pre-push` | Before push to remote | Warn about incomplete specs |
+| `post-merge` | After merge/pull | Rebuild index |
+
+### Hook Implementations
+
+#### pre-commit
+
+```bash
+#!/bin/sh
+# .git/hooks/pre-commit
+
+staged_specs=$(git diff --cached --name-only -- '.chant/specs/*.md')
+
+if [ -n "$staged_specs" ]; then
+    echo "$staged_specs" | xargs chant lint --files
+    if [ $? -ne 0 ]; then
+        echo "Spec validation failed. Fix errors or use --no-verify"
+        exit 1
+    fi
+fi
+```
+
+#### commit-msg
+
+```bash
+#!/bin/sh
+# .git/hooks/commit-msg
+
+msg=$(cat "$1")
+
+if echo "$msg" | grep -qE '^chant\([a-z0-9-]+\):'; then
+    spec_id=$(echo "$msg" | sed -E 's/^chant\(([a-z0-9-]+)\):.*/\1/')
+    if ! chant show "$spec_id" >/dev/null 2>&1; then
+        echo "Warning: Spec $spec_id not found"
+    fi
+fi
+
+exit 0
+```
+
+#### post-commit
+
+```bash
+#!/bin/sh
+# .git/hooks/post-commit
+
+msg=$(git log -1 --format=%s)
+
+if echo "$msg" | grep -qE '^chant\([a-z0-9-]+\):'; then
+    spec_id=$(echo "$msg" | sed -E 's/^chant\(([a-z0-9-]+)\):.*/\1/')
+    commit=$(git rev-parse HEAD)
+    chant update "$spec_id" --commit "$commit" 2>/dev/null || true
+fi
+```
+
+#### pre-push
+
+```bash
+#!/bin/sh
+# .git/hooks/pre-push
+
+branch=$(git rev-parse --abbrev-ref HEAD)
+
+if echo "$branch" | grep -qE '^chant/'; then
+    spec_id=$(echo "$branch" | sed 's/^chant\///')
+    status=$(chant show "$spec_id" --format status 2>/dev/null)
+    if [ "$status" != "completed" ]; then
+        echo "Warning: Spec $spec_id is not completed (status: $status)"
+        echo "Push anyway? [y/N]"
+        read -r response
+        if [ "$response" != "y" ]; then
+            exit 1
+        fi
+    fi
+fi
+
+exit 0
+```
+
+### What Hooks Don't Do
+
+Hooks are convenience, not enforcement:
+
+| Feature | With Hooks | Without Hooks |
+|---------|------------|---------------|
+| Spec validation | Automatic on commit | `chant lint` manually |
+| Commit recording | Automatic | `chant update --commit` manually |
+| Status updates | Automatic | Explicit state changes |
+
+### Team Setup
+
+For teams, commit hook scripts to the repository and use a hook manager:
+
+```bash
+# Example with Lefthook (manual setup)
+# Create lefthook.yml with chant-lint commands
+# Team members run: lefthook install
+```
+
+### Skipping Hooks
+
+```bash
+git commit --no-verify -m "wip: checkpoint"
+git push --no-verify
+```
+
+---
+
+## Custom Merge Driver
+
+Chant includes a custom git merge driver that automatically resolves frontmatter conflicts in spec files.
+
+### What It Does
+
+When merging spec branches back to main, frontmatter conflicts commonly occur. The merge driver:
+
+- Intelligently merges status, completed_at, and model fields
+- Preserves implementation content
+- Prefers "completed" status over "in_progress"
+- Merges lists (commits, labels, target_files) with deduplication
+
+### Installation
+
+**Automatic:**
+```bash
+chant init --install-merge-driver
+```
+
+**Manual:**
+
+1. Add to `.gitattributes`:
+   ```
+   .chant/specs/*.md merge=chant-spec
+   ```
+
+2. Configure git:
+   ```bash
+   git config merge.chant-spec.driver "chant merge-driver %O %A %B"
+   git config merge.chant-spec.name "Chant spec merge driver"
+   ```
+
+### Verification
+
+```bash
+git config --get merge.chant-spec.driver
+grep chant-spec .gitattributes
+```

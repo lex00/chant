@@ -28,16 +28,11 @@
 # Architecture
 
 - [Overview](architecture/architecture.md)
-- [Technology Stack](architecture/stack.md)
 - [Agent Protocol](architecture/protocol.md)
-- [Agent Invocation](architecture/invoke.md)
-- [Storage & Indexing](architecture/storage.md)
 
 # Guides
 
-- [Prompt Authoring](guides/prompt-authoring.md)
-- [Prompt Examples](guides/prompt-examples.md)
-- [Advanced Prompting](guides/prompt-advanced.md)
+- [Prompt Guide](guides/prompts.md)
 - [Research Workflows](guides/research.md)
 - [Example Configurations](guides/examples.md)
 - [Ecosystem](guides/ecosystem.md)
@@ -51,7 +46,6 @@
 - [Errors](reference/errors.md)
 - [Search Syntax](reference/search.md)
 - [Git Integration](reference/git.md)
-- [Git Hooks](reference/git-hooks.md)
 - [Templates](reference/templates.md)
 - [Schema & Validation](reference/schema.md)
 - [Notifications](reference/notifications.md)
