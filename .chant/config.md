@@ -6,7 +6,7 @@ defaults:
   prompt: standard
   branch: false
   pr: false
-  model: haiku
+  model: opus
   rotation_strategy: round-robin
 
 parallel:
