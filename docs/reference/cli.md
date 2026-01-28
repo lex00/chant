@@ -691,19 +691,47 @@ If `--auto` is not specified and conflicts occur, the rebase is aborted and the 
 
 ## Resume
 
-Retry failed specs by resetting them to pending:
+Resume failed or stuck specs by resetting them to pending:
 
 ```bash
-chant resume 001                      # Reset failed spec to pending
+chant resume 001                      # Reset spec to pending
 chant resume 001 --work               # Reset and immediately re-execute
 chant resume 001 --work --prompt tdd  # Reset and re-execute with specific prompt
 chant resume 001 --work --branch      # Reset and re-execute with feature branch
 ```
 
 The resume command:
-1. Validates the spec is in `failed` status
+1. Validates the spec is in `failed` or `in_progress` status
 2. Resets status to `pending`
 3. Optionally re-executes with `--work`
+
+**Use cases:**
+- Retry after agent failure
+- Resume specs stuck in `in_progress` (e.g., agent crashed)
+- Re-attempt with different prompt or branch strategy
+
+## Finalize
+
+Manually finalize specs that weren't properly completed:
+
+```bash
+chant finalize 001                    # Finalize spec (records commits, timestamp, model)
+chant finalize 001 --force            # Skip confirmation prompt
+chant finalize 001 --allow-no-commits # Allow finalization without commits
+```
+
+The finalize command:
+1. Validates all acceptance criteria are checked
+2. Records commit SHAs from git history
+3. Sets `completed_at` timestamp and `model` in frontmatter
+4. Changes status to `completed`
+
+**When to use:**
+- Agent exited without calling finalize
+- Spec marked failed but work was actually done
+- Manual intervention needed after auto-finalize failure
+
+**Note:** `chant work` now auto-finalizes specs when all acceptance criteria are checked. Manual finalize is only needed for recovery scenarios.
 
 ## Drift
 

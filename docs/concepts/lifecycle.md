@@ -86,11 +86,13 @@ Cancelled (any status)  ← chant cancel
 ### Completed
 - Spec execution completed successfully
 - All acceptance criteria were checked
-- Commit hash recorded in frontmatter
+- Commit hash, timestamp, and model recorded in frontmatter
+- Auto-finalized by `chant work` when criteria pass
 
 ### Failed
 - Spec execution failed (agent error or acceptance criteria unchecked)
 - Can be retried with `chant resume {spec-id} --work`
+- Can be manually finalized with `chant finalize {spec-id}` if work was done
 - Use `chant log {spec-id}` to view agent output
 
 ### Cancelled
@@ -302,9 +304,7 @@ chant cleanup branches --merged
 chant cleanup branches --dry-run
 ```
 
-## Disk Usage (Planned)
-
-> **Status: Planned** - The `chant disk` command is on the roadmap but not yet implemented.
+## Disk Usage
 
 ```bash
 $ chant disk

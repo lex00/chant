@@ -36,15 +36,23 @@ The agent reads `standard.md`, sees your spec, and executes.
 
 Chant comes with ready-to-use prompts for different workflows:
 
+### bootstrap.md (Default)
+A minimal prompt that tells the agent to run `chant prep <spec-id>` to get the actual spec content. This:
+- Reduces initial prompt size (helps with API rate limits)
+- Supports replay/resume scenarios cleanly
+- Separates spec content from agent instructions
+
+**Used when:** `chant work <spec-id>` (no prompt specified)
+
 ### standard.md
-The default prompt for implementing specs. It instructs the agent to:
+The full prompt for implementing specs. It instructs the agent to:
 - Read relevant code first
 - Plan the approach
 - Implement changes
 - Verify the implementation works
 - Commit with a proper message
 
-**Used when:** `chant work <spec-id>` (no prompt specified)
+**Used when:** `chant work <spec-id> --prompt standard`
 
 ### split.md
 A specialized prompt for analyzing driver specs and proposing how to break them down into smaller member specs. It:

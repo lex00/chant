@@ -82,9 +82,13 @@ chant work          ✅ Execute spec
 chant work --pr     ✅ Execute and create PR
 chant work --branch ✅ Execute with feature branch
 chant work --parallel ✅ Execute multiple specs
-chant resume        ✅ Resume failed spec
+chant resume        ✅ Resume failed/in_progress spec
+chant finalize      ✅ Manually finalize spec
+chant prep          ✅ Output spec for agent
 chant ready         ✅ Show ready specs
 chant lint          ✅ Validate specs
+chant disk          ✅ Show disk usage
+chant cleanup       ✅ Remove orphan worktrees
 chant status        ✅ Project status summary
 chant log           ✅ Show execution logs
 chant diagnose      ✅ Troubleshoot issues
@@ -211,7 +215,8 @@ This document addresses the issues identified in the spec:
 
 | Version | Status | Notes |
 |---------|--------|-------|
-| v0.3.0 | Current | Most Phase 0-5 features complete; Phase 6 Scale partial; Phase 7 Autonomy complete; Phase 8 Polish mostly complete |
+| v0.3.6 | Current | Auto-finalize, bundled prompts, bootstrap default, prep command, finalize command, disk usage, cleanup |
+| v0.3.0 | Released | Most Phase 0-5 features complete; Phase 6 Scale partial; Phase 7 Autonomy complete; Phase 8 Polish mostly complete |
 | v0.4.0 | Planned | Target: Full-text search (Tantivy), cost tracking, notifications (possibly) |
 | v0.5.0 | Planned | Target: Daemon mode, queue tier 3+, Prometheus metrics |
 | v1.0.0 | Planned | Stable API, complete documentation, all Phase 0-8 features |

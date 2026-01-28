@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.6] - 2026-01-28
+
+### Fixed
+
+- **Commits now reliably recorded in frontmatter**: Fixed bug where commits were found during validation but not recorded
+  - Previously `get_commits_for_spec` was called twice (once to validate, once in finalize)
+  - Now commits are fetched once and passed directly to `finalize_spec`
+  - Eliminates race condition that could cause commits to be lost
+
 ## [0.3.5] - 2026-01-27
 
 ### Added
