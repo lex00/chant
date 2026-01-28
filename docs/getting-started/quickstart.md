@@ -4,7 +4,7 @@
 
 **Prompts define what agents do.**
 
-Everything else (specs, git, daemon) is infrastructure. Prompts are the behavior.
+Everything else (specs, git, CLI) is infrastructure. Prompts are the behavior.
 
 ```
 .chant/prompts/

@@ -44,8 +44,7 @@ The same skill works for any project. The same prompts work for chant and custom
 Same flow whether you use the skill or the binary. The binary adds:
 - Better CLI ergonomics
 - Parallel execution
-- Search and indexing
-- Daemon mode
+- Search and filtering
 
 But the model—specs in, work out—is identical.
 

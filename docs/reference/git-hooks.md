@@ -1,35 +1,18 @@
 # Git Hooks
 
+> **Status: Partially Implemented** ⚠️
+>
+> Basic git hook scripts (pre-commit, commit-msg, post-commit) can be manually set up.
+> The `chant hooks generate/install/remove/run/list` CLI commands are not yet implemented.
+> Daemon-based git watching is also not implemented. See [Roadmap](../roadmap/roadmap.md) for future plans.
+
 ## Philosophy
 
 Git hooks enhance the Chant workflow. They are **optional** - no Chant feature depends on them.
 
 ```
 With hooks:    Automated validation, status updates, can block
-With daemon:   Same automation, cannot block, no setup
-Without both:  Manual validation, explicit commands, still works
-```
-
-## Daemon vs Hooks
-
-The daemon provides most hook functionality automatically. See [daemon.md](../scale/daemon.md#git-integration).
-
-| Want to... | Use |
-|------------|-----|
-| Auto-record commits | Daemon (automatic) or hooks |
-| Rebuild index on merge | Daemon (automatic) or hooks |
-| Validate on save | Daemon (automatic) |
-| **Block bad commits** | Hooks only |
-| **Block pushes** | Hooks only |
-
-**Use hooks when you need to block operations.** Otherwise, daemon handles it.
-
-```yaml
-# If you have daemon, you probably don't need hooks
-scale:
-  daemon:
-    git_watch:
-      enabled: true   # Handles most hook functionality
+Without hooks: Manual validation, explicit commands, still works
 ```
 
 ## Useful Hooks
@@ -141,179 +124,21 @@ exit 0
 
 ### post-merge / post-checkout
 
-Rebuild index after changes:
+Re-validate specs after changes:
 
 ```bash
 #!/bin/sh
 # .git/hooks/post-merge (or post-checkout)
 
-# Only if daemon is running
-if chant daemon status >/dev/null 2>&1; then
-    chant daemon reindex
-fi
+# Re-lint specs after merge/checkout
+chant lint 2>/dev/null || true
 ```
 
-## Hook Managers
+## Hook Manager Integration (Planned)
 
-Chant generates configs for popular hook managers.
+> **Status: Planned** - The `chant hooks generate/install/remove/run/list` CLI commands are on the roadmap but not yet implemented. For now, set up git hooks manually using the scripts in the [Hook Implementations](#hook-implementations) section above.
 
-### Husky (Node.js)
-
-```bash
-chant hooks generate --manager husky
-```
-
-Creates `.husky/` directory:
-
-```
-.husky/
-  pre-commit
-  commit-msg
-  post-commit
-```
-
-And updates `package.json`:
-
-```json
-{
-  "scripts": {
-    "prepare": "husky install"
-  }
-}
-```
-
-### Lefthook (Go)
-
-```bash
-chant hooks generate --manager lefthook
-```
-
-Creates `lefthook.yml`:
-
-```yaml
-pre-commit:
-  commands:
-    chant-lint:
-      glob: ".chant/specs/*.md"
-      run: chant lint --files {staged_files}
-
-commit-msg:
-  commands:
-    chant-verify:
-      run: |
-        msg=$(cat {1})
-        if echo "$msg" | grep -qE '^chant\([a-z0-9-]+\):'; then
-          spec_id=$(echo "$msg" | sed -E 's/^chant\(([a-z0-9-]+)\):.*/\1/')
-          chant show "$spec_id" >/dev/null 2>&1 || echo "Warning: Spec not found"
-        fi
-
-post-commit:
-  commands:
-    chant-record:
-      run: |
-        msg=$(git log -1 --format=%s)
-        if echo "$msg" | grep -qE '^chant\([a-z0-9-]+\):'; then
-          spec_id=$(echo "$msg" | sed -E 's/^chant\(([a-z0-9-]+)\):.*/\1/')
-          commit=$(git rev-parse HEAD)
-          chant update "$spec_id" --commit "$commit" 2>/dev/null || true
-        fi
-```
-
-### pre-commit (Python)
-
-```bash
-chant hooks generate --manager pre-commit
-```
-
-Creates `.pre-commit-config.yaml`:
-
-```yaml
-repos:
-  - repo: local
-    hooks:
-      - id: chant-lint
-        name: Chant spec validation
-        entry: chant lint --files
-        language: system
-        files: '^\.chant/specs/.*\.md$'
-        pass_filenames: true
-```
-
-### Native Git Hooks
-
-```bash
-chant hooks generate --manager native
-```
-
-Creates `.git/hooks/` scripts directly (not recommended for teams - not version controlled).
-
-### Overcommit (Ruby)
-
-```bash
-chant hooks generate --manager overcommit
-```
-
-Creates `.overcommit.yml`:
-
-```yaml
-PreCommit:
-  ChantLint:
-    enabled: true
-    command: ['chant', 'lint', '--files']
-    include: '.chant/specs/*.md'
-
-CommitMsg:
-  ChantVerify:
-    enabled: true
-    command: ['chant', 'hooks', 'verify-commit-msg']
-```
-
-## CLI Commands
-
-```bash
-# Generate hook configs
-chant hooks generate --manager husky
-chant hooks generate --manager lefthook
-chant hooks generate --manager pre-commit
-chant hooks generate --manager native
-
-# Install hooks (runs manager's install)
-chant hooks install
-
-# Remove hooks
-chant hooks remove
-
-# Run hook manually (for testing)
-chant hooks run pre-commit
-chant hooks run commit-msg "chant(001): fix bug"
-
-# List available hooks
-chant hooks list
-```
-
-## Configuration
-
-```yaml
-# config.md
-hooks:
-  manager: lefthook        # husky, lefthook, pre-commit, native, none
-
-  pre_commit:
-    enabled: true
-    lint: true             # Validate spec files
-
-  commit_msg:
-    enabled: true
-    verify_task: true      # Warn if spec ID not found
-
-  post_commit:
-    enabled: true
-    record_commit: true    # Update spec with commit hash
-
-  pre_push:
-    enabled: false         # Off by default (can be annoying)
-    warn_incomplete: true
-```
+When implemented, chant will generate configs for popular hook managers (Husky, Lefthook, pre-commit, Overcommit) and provide CLI commands for hook management. See [Roadmap](../roadmap/roadmap.md) for details.
 
 ## What Hooks Don't Do
 
@@ -329,31 +154,12 @@ Hooks are convenience, not enforcement:
 
 ## Team Setup
 
-For teams, commit the hook manager config:
+For teams, commit hook scripts to the repository and use a hook manager like Lefthook or Husky:
 
 ```bash
-# Generate and commit
-chant hooks generate --manager lefthook
-git add lefthook.yml
-git commit -m "chore: add chant git hooks"
-
-# Team members run once
-lefthook install   # or: npm run prepare (husky)
-```
-
-## Custom Hooks
-
-Add your own alongside chant hooks:
-
-```yaml
-# lefthook.yml
-pre-commit:
-  commands:
-    chant-lint:
-      # ... chant's hook
-
-    your-linter:
-      run: your-custom-linter {staged_files}
+# Example with Lefthook (manual setup)
+# Create lefthook.yml with chant-lint commands
+# Team members run: lefthook install
 ```
 
 ## Skipping Hooks
@@ -367,21 +173,11 @@ git push --no-verify
 
 Hooks should help, not block. Warning > error for most cases.
 
-## Summary: When to Use What
+## Summary
 
 | Setup | Best For |
 |-------|----------|
-| **Daemon only** | Solo dev, small teams. Automatic, no setup, warns but doesn't block. |
-| **Hooks only** | CI enforcement, strict teams. Blocks bad commits/pushes. Requires setup per machine. |
-| **Both** | Enterprise. Daemon for convenience, hooks for enforcement. |
-| **Neither** | Quick projects. Manual `chant lint`, explicit commands. |
+| **Hooks** | CI enforcement, strict teams. Blocks bad commits/pushes. Requires setup per machine. |
+| **No hooks** | Quick projects. Manual `chant lint`, explicit commands. |
 
-```
-Daemon running?
-  │
-  ├─ Yes → Git integration automatic
-  │         └─ Want to BLOCK? → Also install hooks
-  │
-  └─ No → Install hooks for automation
-           └─ Or just use manual commands
-```
+**No Chant feature requires hooks.** Everything works with explicit commands.

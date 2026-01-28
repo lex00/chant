@@ -367,7 +367,9 @@ logging:
       env: production
 ```
 
-## DAG Visualization
+## DAG Visualization (Planned)
+
+> **Status: Not Implemented** ❌ — The `chant dag` command and DAG visualization features are planned but not yet implemented. See [Roadmap](../roadmap/roadmap.md).
 
 ### CLI Visualization
 

@@ -10,25 +10,25 @@
 
 Chant uses markdown templates throughout:
 
-| Thing | Template Location |
-|-------|-------------------|
-| Specs | `.chant/templates/spec.md` |
-| Prompts | `.chant/templates/prompt.md` |
-| Config | `.chant/templates/config.md` |
-| Notifications | `.chant/templates/notification.md` |
-| Hooks | `.chant/templates/hook.md` |
+| Thing | Template Location | Status |
+|-------|-------------------|--------|
+| Specs | `.chant/templates/spec.md` | ✅ Basic substitution |
+| Prompts | `.chant/templates/prompt.md` | ✅ Basic substitution |
+| Config | `.chant/templates/config.md` | ✅ Basic substitution |
 
 ## Template Engine
 
 Handlebars-style with simple extensions:
 
 ```handlebars
-{{variable}}                  # Variable substitution
-{{#if condition}}...{{/if}}   # Conditional
-{{#each items}}...{{/each}}   # Iteration
-{{> partial}}                 # Include partial
-${ENV_VAR}                    # Environment variable
+{{variable}}                  # Variable substitution ✅ Implemented
+{{#if condition}}...{{/if}}   # Conditional (planned)
+{{#each items}}...{{/each}}   # Iteration (planned)
+{{> partial}}                 # Include partial (planned)
+${ENV_VAR}                    # Environment variable ✅ Implemented
 ```
+
+> **Note:** Currently only `{{variable}}` substitution and `${ENV_VAR}` expansion are implemented. Conditionals, iteration, and partials are planned for the full Handlebars system.
 
 ## Spec Template
 
@@ -113,7 +113,9 @@ templates:
   prompt: .chant/templates/my-prompt.md
 ```
 
-## Template Inheritance
+## Template Inheritance (Planned)
+
+> **Status: Not Implemented** — Template inheritance (`extends:`) is part of the full Handlebars system that is not yet implemented.
 
 Extend base templates:
 
@@ -166,11 +168,13 @@ chant add "Login fails on Safari" --template spec-bug
 | `{{name}}` | Prompt name |
 | `{{project}}` | Project name |
 
-### Notification Templates
+### Notification Templates (Planned)
 
-See [notifications.md](notifications.md) for notification-specific variables.
+> Notification templates are not yet implemented. See [notifications.md](notifications.md) for the planned design.
 
-## Partials
+## Partials (Planned)
+
+> **Status: Not Implemented** — Template partials (`{{> partial}}`) are part of the full Handlebars system that is not yet implemented.
 
 Reusable template fragments:
 
@@ -196,7 +200,9 @@ status: pending
 {{> criteria}}
 ```
 
-## Conditional Templates
+## Conditional Templates (Planned)
+
+> **Status: Not Implemented** — Conditional template selection via path patterns is not yet implemented.
 
 Project-specific templates via path patterns:
 
@@ -210,7 +216,9 @@ templates:
       "packages/api/**": .chant/templates/spec-api.md
 ```
 
-## Template Validation
+## Template Validation (Planned)
+
+> **Status: Not Implemented** — Template-specific validation (`chant lint --templates`) is not yet implemented. Use `chant lint` for general spec validation.
 
 Chant validates templates at init and runtime:
 
