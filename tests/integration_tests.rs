@@ -6,7 +6,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::OnceLock;
 
 // Import serial_test for marking tests that must run serially
 use serial_test::serial;
@@ -1358,37 +1357,9 @@ fn test_new_user_workflow_ollama() {
 // SILENT MODE TESTS
 // ============================================================================
 
-// Thread-local storage for the chant binary path
-thread_local! {
-    static CHANT_BINARY: OnceLock<PathBuf> = OnceLock::new();
-}
-
-/// Get the path to the chant binary
+/// Get the path to the chant binary (absolute path via Cargo)
 fn get_chant_binary() -> PathBuf {
-    CHANT_BINARY.with(|cell| {
-        cell.get_or_init(|| {
-            // Start from the test executable's current directory
-            let mut current = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
-
-            // Walk up the directory tree to find target/debug/chant
-            for _ in 0..15 {
-                let chant_path = current.join("target/debug/chant");
-                if chant_path.exists() {
-                    return chant_path;
-                }
-
-                if let Some(parent) = current.parent() {
-                    current = parent.to_path_buf();
-                } else {
-                    break;
-                }
-            }
-
-            // Fallback: assume we're in the chant repo root
-            PathBuf::from("./target/debug/chant")
-        })
-        .clone()
-    })
+    PathBuf::from(env!("CARGO_BIN_EXE_chant"))
 }
 
 /// Helper function to run chant binary in a given directory
@@ -3004,15 +2975,7 @@ fn test_force_flag_shows_skipped_dependencies() {
 #[test]
 #[serial]
 fn test_dependency_chain_updates_after_completion() {
-    static CHANT_BINARY: OnceLock<PathBuf> = OnceLock::new();
-    let chant_binary = CHANT_BINARY.get_or_init(|| {
-        let output = Command::new("cargo")
-            .args(["build", "--bin", "chant"])
-            .output()
-            .expect("Failed to build chant");
-        assert!(output.status.success(), "Failed to build chant");
-        PathBuf::from("target/debug/chant")
-    });
+    let chant_binary = get_chant_binary();
 
     // Get current directory to restore later
     let original_dir = std::env::current_dir().expect("Failed to get current dir");
@@ -3026,7 +2989,7 @@ fn test_dependency_chain_updates_after_completion() {
     std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
 
     // Initialize chant (skip config prompt with stdin)
-    let init_output = Command::new(chant_binary)
+    let init_output = Command::new(&chant_binary)
         .arg("init")
         .stdin(std::process::Stdio::null())
         .output()
@@ -3064,7 +3027,7 @@ fn test_dependency_chain_updates_after_completion() {
     fs::write(&spec_a_path, updated_content).expect("Failed to write spec A");
 
     // Use chant list to verify B is now ready (not blocked)
-    let list_output = Command::new(chant_binary)
+    let list_output = Command::new(&chant_binary)
         .args(["list"])
         .current_dir(&repo_dir)
         .output()
@@ -3100,7 +3063,7 @@ fn test_dependency_chain_updates_after_completion() {
     fs::write(&spec_b_path, updated_content).expect("Failed to write spec B");
 
     // Use chant ready to verify C is now ready
-    let ready_output = Command::new(chant_binary)
+    let ready_output = Command::new(&chant_binary)
         .args(["ready"])
         .current_dir(&repo_dir)
         .output()
