@@ -130,14 +130,30 @@ Attempting to work on a blocked spec:
 
 ```bash
 $ chant work 2026-01-22-003-abc
-Error: Spec is blocked
-
-Waiting on:
-  - 2026-01-22-001-x7m (in_progress)
-  - 2026-01-22-002-q2n (pending)
-
-Use 'chant work --blocked' to force (not recommended)
+✗ Spec has unsatisfied dependencies.
+Blocked by: 2026-01-22-001-x7m (in_progress), 2026-01-22-002-q2n (pending)
+Use --force to bypass dependency checks.
 ```
+
+### Forcing Work on Blocked Specs
+
+Use `--force` to bypass dependency checks when you know dependencies are satisfied despite their status:
+
+```bash
+$ chant work 2026-01-22-003-abc --force
+⚠ Warning: Forcing work on spec (skipping dependency checks)
+  Skipping dependencies: 2026-01-22-001-x7m (in_progress), 2026-01-22-002-q2n (pending)
+→ Working 2026-01-22-003-abc with prompt 'standard'
+...
+```
+
+**Use Cases for `--force`:**
+1. **Dependency tracking bug** - Spec shows as blocked but dependencies are actually completed
+2. **Manual override** - You verified dependencies are satisfied despite their status
+3. **Emergency work** - Need to proceed despite dependency chain issues
+4. **Testing** - Want to work on spec to test dependency resolution
+
+**Warning:** Forcing work on a truly blocked spec may lead to conflicts or incomplete work if dependencies aren't actually satisfied.
 
 ## Dependency Visualization
 

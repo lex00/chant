@@ -226,16 +226,40 @@ The prep command is useful for:
 
 By default, `chant prep` outputs the spec body. With the `--clean` flag, it removes any "## Agent Conversation", "## Execution Result", or similar sections that may have been added during previous runs, ensuring a clean slate for replay scenarios.
 
-### Skipping Acceptance Criteria Validation
+### The --force Flag
 
-Use `--force` to skip validation of unchecked acceptance criteria:
+The `--force` flag for `chant work` serves two purposes:
+
+1. **Override dependency checks** - Work on a blocked spec that has unsatisfied dependencies
+2. **Skip acceptance criteria validation** - Complete a spec without all criteria checked
 
 ```bash
+# Work on blocked spec (bypasses dependency checks)
+chant work 001 --force
+
 # Complete spec without all criteria checked
 chant work 001 --force
 ```
 
-The `--force` flag allows completing a spec even if some acceptance criteria checkboxes are not marked as complete. Use this when:
+#### Overriding Dependency Checks
+
+When a spec is blocked due to unsatisfied dependencies, `--force` allows you to proceed anyway:
+
+```bash
+$ chant work 2026-01-22-003-abc --force
+⚠ Warning: Forcing work on spec (skipping dependency checks)
+  Skipping dependencies: 2026-01-22-001-x7m (in_progress)
+→ Working 2026-01-22-003-abc with prompt 'standard'
+```
+
+**Use cases:**
+- Dependency tracking has a bug or false positive
+- You've manually verified dependencies are satisfied
+- Emergency work needed despite dependency chain issues
+
+#### Skipping Acceptance Criteria Validation
+
+The `--force` flag also allows completing a spec even if some acceptance criteria checkboxes are not marked as complete. Use this when:
 - Requirements changed after spec was created
 - A criterion is no longer applicable
 - You want to complete with manual verification

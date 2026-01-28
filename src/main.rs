@@ -145,7 +145,7 @@ enum Commands {
         /// Create a pull request after spec completes
         #[arg(long)]
         pr: bool,
-        /// Skip validation of unchecked acceptance criteria
+        /// Override dependency checks and skip validation of unchecked acceptance criteria
         #[arg(long)]
         force: bool,
         /// Execute all ready specs in parallel (when no spec ID provided)

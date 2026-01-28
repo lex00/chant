@@ -344,7 +344,7 @@ pub fn cmd_work(
 
     // Check if dependencies are satisfied
     let all_specs = spec::load_all_specs(&specs_dir)?;
-    if !spec.is_ready(&all_specs) && !force {
+    if !spec.is_ready(&all_specs) {
         // Find which dependencies are blocking
         let mut blocking: Vec<String> = Vec::new();
 
@@ -381,10 +381,19 @@ pub fn cmd_work(
         }
 
         if !blocking.is_empty() {
-            println!("{} Spec has unsatisfied dependencies.", "✗".red());
-            println!("Blocked by: {}", blocking.join(", "));
-            println!("Use {} to bypass dependency checks.", "--force".cyan());
-            anyhow::bail!("Cannot execute spec with unsatisfied dependencies");
+            if force {
+                // Print warning when forcing past dependency checks
+                eprintln!(
+                    "{} Warning: Forcing work on spec (skipping dependency checks)",
+                    "⚠".yellow()
+                );
+                eprintln!("  Skipping dependencies: {}", blocking.join(", "));
+            } else {
+                println!("{} Spec has unsatisfied dependencies.", "✗".red());
+                println!("Blocked by: {}", blocking.join(", "));
+                println!("Use {} to bypass dependency checks.", "--force".cyan());
+                anyhow::bail!("Cannot execute spec with unsatisfied dependencies");
+            }
         }
     }
 

@@ -2784,7 +2784,7 @@ fn test_force_flag_bypasses_dependency_check() {
 
     std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
 
-    // Initialize chant
+    // Initialize chant with --minimal to avoid interactive wizard
     let init_output = Command::new(&chant_binary)
         .args(["init", "--minimal"])
         .current_dir(&repo_dir)
@@ -2795,6 +2795,15 @@ fn test_force_flag_bypasses_dependency_check() {
         "Chant init failed: {}",
         String::from_utf8_lossy(&init_output.stderr)
     );
+
+    // Create a minimal prompt file for testing
+    let prompts_dir = repo_dir.join(".chant/prompts");
+    fs::create_dir_all(&prompts_dir).expect("Failed to create prompts dir");
+    fs::write(
+        prompts_dir.join("standard.md"),
+        "# Standard Prompt\n\n{{spec.body}}",
+    )
+    .expect("Failed to write prompt file");
 
     let specs_dir = repo_dir.join(".chant/specs");
     fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
@@ -2826,9 +2835,121 @@ fn test_force_flag_bypasses_dependency_check() {
         stdout
     );
 
-    // The --force flag test would require a full agent setup and prompt configuration.
-    // For now, we verify that the dependency blocking is working correctly.
-    // The actual --force bypassing is tested elsewhere in the codebase.
+    // Test that working on blocked spec without --force fails
+    let work_without_force = Command::new(&chant_binary)
+        .args(["work", spec_b])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant work");
+
+    let work_stdout = String::from_utf8_lossy(&work_without_force.stdout);
+    assert!(
+        !work_without_force.status.success(),
+        "chant work on blocked spec without --force should fail"
+    );
+    assert!(
+        work_stdout.contains("unsatisfied dependencies")
+            || work_stdout.contains("Blocked by")
+            || work_stdout.contains("--force"),
+        "Error message should mention dependency blocking. Output: {}",
+        work_stdout
+    );
+
+    // Test that working on blocked spec with --force shows warning
+    // Note: This will fail later because there's no agent configured, but the warning
+    // should appear in stderr before the agent invocation
+    let work_with_force = Command::new(&chant_binary)
+        .args(["work", spec_b, "--force"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant work --force");
+
+    let force_stderr = String::from_utf8_lossy(&work_with_force.stderr);
+    assert!(
+        force_stderr.contains("Warning: Forcing work on spec")
+            || force_stderr.contains("Skipping dependencies"),
+        "Warning message should appear when using --force on blocked spec. Stderr: {}",
+        force_stderr
+    );
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}
+
+/// Test --force flag warning shows which dependencies are being skipped
+#[test]
+#[serial]
+fn test_force_flag_shows_skipped_dependencies() {
+    let repo_dir = PathBuf::from("/tmp/test-chant-dep-force-warn");
+    let _ = cleanup_test_repo(&repo_dir);
+
+    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
+    let chant_binary = get_chant_binary();
+
+    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
+
+    // Initialize chant with --minimal to avoid interactive wizard
+    let init_output = Command::new(&chant_binary)
+        .args(["init", "--minimal"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant init");
+    assert!(
+        init_output.status.success(),
+        "Chant init failed: {}",
+        String::from_utf8_lossy(&init_output.stderr)
+    );
+
+    // Create a minimal prompt file for testing
+    let prompts_dir = repo_dir.join(".chant/prompts");
+    fs::create_dir_all(&prompts_dir).expect("Failed to create prompts dir");
+    fs::write(
+        prompts_dir.join("standard.md"),
+        "# Standard Prompt\n\n{{spec.body}}",
+    )
+    .expect("Failed to write prompt file");
+
+    let specs_dir = repo_dir.join(".chant/specs");
+    fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+
+    // Create chain: A -> B -> C (where C depends on both A and B)
+    let spec_a = "2026-01-27-force-warn-a";
+    let spec_b = "2026-01-27-force-warn-b";
+    let spec_c = "2026-01-27-force-warn-c";
+
+    create_spec_with_dependencies(&specs_dir, spec_a, &[]).expect("Failed to create spec A");
+    create_spec_with_dependencies(&specs_dir, spec_b, &[spec_a]).expect("Failed to create spec B");
+    create_spec_with_dependencies(&specs_dir, spec_c, &[spec_a, spec_b])
+        .expect("Failed to create spec C");
+
+    // Test that working on spec C with --force shows both A and B as skipped dependencies
+    let work_with_force = Command::new(&chant_binary)
+        .args(["work", spec_c, "--force"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant work --force");
+
+    let force_stderr = String::from_utf8_lossy(&work_with_force.stderr);
+
+    // The warning should mention both spec A and B as skipped dependencies
+    assert!(
+        force_stderr.contains("Skipping dependencies"),
+        "Warning should mention 'Skipping dependencies'. Stderr: {}",
+        force_stderr
+    );
+    assert!(
+        force_stderr.contains(spec_a) || force_stderr.contains("force-warn-a"),
+        "Warning should mention spec A as a skipped dependency. Stderr: {}",
+        force_stderr
+    );
+    assert!(
+        force_stderr.contains(spec_b) || force_stderr.contains("force-warn-b"),
+        "Warning should mention spec B as a skipped dependency. Stderr: {}",
+        force_stderr
+    );
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
