@@ -190,6 +190,12 @@ enum Commands {
         #[arg(long)]
         repo: Option<String>,
     },
+    /// Refresh dependency status for all specs
+    Refresh {
+        /// Show detailed list of ready and blocked specs
+        #[arg(short, long)]
+        verbose: bool,
+    },
     /// Validate all specs for common issues
     Lint,
     /// Show log for a spec
@@ -559,6 +565,7 @@ fn main() -> Result<()> {
         Commands::Ready { global, repo } => {
             cmd::spec::cmd_list(true, &[], None, None, global, repo.as_deref(), None)
         }
+        Commands::Refresh { verbose } => cmd::refresh::cmd_refresh(verbose),
         Commands::Lint => cmd::spec::cmd_lint(),
         Commands::Log {
             id,
