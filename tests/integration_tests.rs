@@ -3948,7 +3948,6 @@ This spec tests that finalization updates the status field.
     let _ = cleanup_test_repo(&repo_dir);
 }
 
-<<<<<<< HEAD
 /// Test that invalid regex patterns in enterprise config are handled gracefully
 /// This verifies:
 /// 1. Config with syntactically invalid regex pattern doesn't crash chant add
@@ -4079,7 +4078,10 @@ enterprise:
     );
 
     // Cleanup
-=======
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}
+
 // ============================================================================
 // PARALLEL WORK AND MERGE WORKFLOW TEST
 // ============================================================================
@@ -4447,7 +4449,6 @@ Test specification for parallel workflow testing.
     // Cleanup
     let _ = fs::remove_dir_all(&wt_path1);
     let _ = fs::remove_dir_all(&wt_path2);
->>>>>>> a2eb56d (chant(2026-01-27-00v-xe8): Add integration test for parallel work and merge workflow)
     let _ = std::env::set_current_dir(&original_dir);
     let _ = cleanup_test_repo(&repo_dir);
 }

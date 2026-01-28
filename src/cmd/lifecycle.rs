@@ -549,6 +549,177 @@ fn is_git_repo() -> bool {
         .unwrap_or(false)
 }
 
+/// Result of verifying target files have changes
+#[derive(Debug)]
+pub struct TargetFilesVerification {
+    /// Files that have changes in spec commits
+    pub files_with_changes: Vec<String>,
+    /// Files listed in target_files but without changes
+    pub files_without_changes: Vec<String>,
+    /// Total net additions (insertions - deletions) across all target files
+    pub net_additions: i64,
+    /// Commits found for the spec
+    pub commits: Vec<String>,
+}
+
+/// Get commits associated with a spec by searching git log
+fn get_spec_commits(spec_id: &str) -> Result<Vec<String>> {
+    // Look for commits with the chant(spec_id): pattern
+    let pattern = format!("chant({}):", spec_id);
+
+    let output = std::process::Command::new("git")
+        .args(["log", "--oneline", "--grep", &pattern, "--reverse"])
+        .output()
+        .context("Failed to execute git log command")?;
+
+    if !output.status.success() {
+        return Ok(Vec::new());
+    }
+
+    let mut commits = Vec::new();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        if let Some(hash) = line.split_whitespace().next() {
+            if !hash.is_empty() {
+                commits.push(hash.to_string());
+            }
+        }
+    }
+
+    Ok(commits)
+}
+
+/// Get file stats (insertions, deletions) for a commit
+/// Returns a map of file path -> (insertions, deletions)
+fn get_commit_file_stats(commit: &str) -> Result<std::collections::HashMap<String, (i64, i64)>> {
+    use std::collections::HashMap;
+
+    let output = std::process::Command::new("git")
+        .args(["show", "--numstat", "--format=", commit])
+        .output()
+        .context("Failed to execute git show command")?;
+
+    if !output.status.success() {
+        return Ok(HashMap::new());
+    }
+
+    let mut stats = HashMap::new();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    for line in stdout.lines() {
+        let parts: Vec<&str> = line.split('\t').collect();
+        if parts.len() >= 3 {
+            // Format: insertions\tdeletions\tfile_path
+            // Binary files show "-" for insertions/deletions
+            let insertions: i64 = parts[0].parse().unwrap_or(0);
+            let deletions: i64 = parts[1].parse().unwrap_or(0);
+            let file_path = parts[2].to_string();
+
+            // Accumulate stats for files that appear in multiple hunks
+            let entry = stats.entry(file_path).or_insert((0i64, 0i64));
+            entry.0 += insertions;
+            entry.1 += deletions;
+        }
+    }
+
+    Ok(stats)
+}
+
+/// Verify that target files listed in a spec have actual changes from spec commits
+fn verify_target_files(spec: &Spec) -> Result<TargetFilesVerification> {
+    use std::collections::HashSet;
+
+    // Get target files from frontmatter
+    let target_files = match &spec.frontmatter.target_files {
+        Some(files) if !files.is_empty() => files.clone(),
+        _ => {
+            // No target_files specified - nothing to verify
+            return Ok(TargetFilesVerification {
+                files_with_changes: Vec::new(),
+                files_without_changes: Vec::new(),
+                net_additions: 0,
+                commits: Vec::new(),
+            });
+        }
+    };
+
+    // Get commits for this spec
+    let commits = get_spec_commits(&spec.id)?;
+
+    if commits.is_empty() {
+        // No commits found - all target files are without changes
+        return Ok(TargetFilesVerification {
+            files_with_changes: Vec::new(),
+            files_without_changes: target_files,
+            net_additions: 0,
+            commits: Vec::new(),
+        });
+    }
+
+    // Collect all file changes across all commits
+    let mut all_file_stats: std::collections::HashMap<String, (i64, i64)> =
+        std::collections::HashMap::new();
+
+    for commit in &commits {
+        let commit_stats = get_commit_file_stats(commit)?;
+        for (file, (ins, del)) in commit_stats {
+            let entry = all_file_stats.entry(file).or_insert((0, 0));
+            entry.0 += ins;
+            entry.1 += del;
+        }
+    }
+
+    // Build set of files that were modified
+    let modified_files: HashSet<String> = all_file_stats.keys().cloned().collect();
+
+    // Check each target file
+    let mut files_with_changes = Vec::new();
+    let mut files_without_changes = Vec::new();
+    let mut total_net_additions: i64 = 0;
+
+    for target_file in &target_files {
+        if modified_files.contains(target_file) {
+            files_with_changes.push(target_file.clone());
+            if let Some((ins, del)) = all_file_stats.get(target_file) {
+                total_net_additions += ins - del;
+            }
+        } else {
+            files_without_changes.push(target_file.clone());
+        }
+    }
+
+    Ok(TargetFilesVerification {
+        files_with_changes,
+        files_without_changes,
+        net_additions: total_net_additions,
+        commits,
+    })
+}
+
+/// Format a warning message when target files have no changes
+fn format_target_files_warning(spec_id: &str, verification: &TargetFilesVerification) -> String {
+    let mut msg = format!(
+        "Warning: Spec {} lists target_files but no changes found\n",
+        spec_id
+    );
+    msg.push_str("Target files:\n");
+    for file in &verification.files_without_changes {
+        msg.push_str(&format!("  - {}\n", file));
+    }
+    if !verification.files_with_changes.is_empty() {
+        msg.push_str(&format!(
+            "\nFiles with changes: {} (net additions: {})\n",
+            verification.files_with_changes.len(),
+            verification.net_additions
+        ));
+    }
+    msg.push_str("\nThis may indicate:\n");
+    msg.push_str("  - Merge conflict resolved incorrectly\n");
+    msg.push_str("  - Implementation was lost during merge\n");
+    msg.push_str("  - Spec manually marked completed without implementation\n");
+    msg
+}
+
 /// Move a file using git mv, falling back to fs::rename if not in a git repo or if no_stage is true
 fn move_spec_file(src: &PathBuf, dst: &PathBuf, no_stage: bool) -> Result<()> {
     let use_git = !no_stage && is_git_repo();
@@ -691,6 +862,48 @@ pub fn cmd_archive(
     if to_archive.is_empty() {
         println!("No specs to archive.");
         return Ok(());
+    }
+
+    // Verify target files have changes (unless --force is set)
+    if !force && is_git_repo() {
+        let mut specs_with_missing_changes = Vec::new();
+
+        for spec in &to_archive {
+            // Only verify specs with target_files
+            if spec.frontmatter.target_files.is_some() {
+                let verification = verify_target_files(spec)?;
+
+                // Check if there are target files without changes
+                if !verification.files_without_changes.is_empty() {
+                    specs_with_missing_changes.push((spec.clone(), verification));
+                }
+            }
+        }
+
+        // If any specs have missing changes, warn the user
+        if !specs_with_missing_changes.is_empty() {
+            println!(
+                "\n{} {} spec(s) have target_files without changes:\n",
+                "⚠".yellow(),
+                specs_with_missing_changes.len()
+            );
+
+            for (spec, verification) in &specs_with_missing_changes {
+                println!("{}", format_target_files_warning(&spec.id, verification));
+                if !verification.commits.is_empty() {
+                    println!("Commits found: {}\n", verification.commits.join(", "));
+                } else {
+                    println!("No commits found with pattern 'chant({}):'.\n", spec.id);
+                }
+            }
+
+            // Prompt for confirmation
+            let confirmed = prompt::confirm("Archive anyway?")?;
+            if !confirmed {
+                println!("{} Archive cancelled.", "✗".yellow());
+                return Ok(());
+            }
+        }
     }
 
     // Count drivers and members for summary
@@ -1853,5 +2066,80 @@ mod tests {
 
         let content = std::fs::read_to_string(&gitignore_path).unwrap();
         assert!(content.contains("logs/"));
+    }
+
+    #[test]
+    fn test_verify_target_files_no_target_files() {
+        // Spec without target_files should return empty verification
+        let spec = Spec {
+            id: "2026-01-27-001-abc".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                target_files: None,
+                ..Default::default()
+            },
+            title: Some("Test spec".to_string()),
+            body: "# Test\n\nBody".to_string(),
+        };
+
+        let verification = verify_target_files(&spec).unwrap();
+        assert!(verification.files_with_changes.is_empty());
+        assert!(verification.files_without_changes.is_empty());
+        assert_eq!(verification.net_additions, 0);
+        assert!(verification.commits.is_empty());
+    }
+
+    #[test]
+    fn test_verify_target_files_empty_target_files() {
+        // Spec with empty target_files should return empty verification
+        let spec = Spec {
+            id: "2026-01-27-002-def".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                target_files: Some(vec![]),
+                ..Default::default()
+            },
+            title: Some("Test spec".to_string()),
+            body: "# Test\n\nBody".to_string(),
+        };
+
+        let verification = verify_target_files(&spec).unwrap();
+        assert!(verification.files_with_changes.is_empty());
+        assert!(verification.files_without_changes.is_empty());
+        assert_eq!(verification.net_additions, 0);
+        assert!(verification.commits.is_empty());
+    }
+
+    #[test]
+    fn test_format_target_files_warning() {
+        let verification = TargetFilesVerification {
+            files_with_changes: vec![],
+            files_without_changes: vec!["src/test.rs".to_string(), "src/main.rs".to_string()],
+            net_additions: 0,
+            commits: vec![],
+        };
+
+        let warning = format_target_files_warning("2026-01-27-001-abc", &verification);
+
+        assert!(warning.contains("2026-01-27-001-abc"));
+        assert!(warning.contains("target_files but no changes found"));
+        assert!(warning.contains("src/test.rs"));
+        assert!(warning.contains("src/main.rs"));
+        assert!(warning.contains("Merge conflict resolved incorrectly"));
+    }
+
+    #[test]
+    fn test_target_files_verification_struct() {
+        let verification = TargetFilesVerification {
+            files_with_changes: vec!["src/lib.rs".to_string()],
+            files_without_changes: vec!["src/test.rs".to_string()],
+            net_additions: 50,
+            commits: vec!["abc1234".to_string(), "def5678".to_string()],
+        };
+
+        assert_eq!(verification.files_with_changes.len(), 1);
+        assert_eq!(verification.files_without_changes.len(), 1);
+        assert_eq!(verification.net_additions, 50);
+        assert_eq!(verification.commits.len(), 2);
     }
 }
