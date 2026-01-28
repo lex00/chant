@@ -400,6 +400,41 @@ impl Spec {
 
         true
     }
+
+    /// Check if the spec's frontmatter contains a specific field.
+    /// Returns true if the field exists and has a non-None value.
+    pub fn has_frontmatter_field(&self, field: &str) -> bool {
+        match field {
+            "type" => true,   // type always has a value (defaults to "code")
+            "status" => true, // status always has a value (defaults to Pending)
+            "depends_on" => self.frontmatter.depends_on.is_some(),
+            "labels" => self.frontmatter.labels.is_some(),
+            "target_files" => self.frontmatter.target_files.is_some(),
+            "context" => self.frontmatter.context.is_some(),
+            "prompt" => self.frontmatter.prompt.is_some(),
+            "branch" => self.frontmatter.branch.is_some(),
+            "commits" => self.frontmatter.commits.is_some(),
+            "pr" => self.frontmatter.pr.is_some(),
+            "completed_at" => self.frontmatter.completed_at.is_some(),
+            "model" => self.frontmatter.model.is_some(),
+            "tracks" => self.frontmatter.tracks.is_some(),
+            "informed_by" => self.frontmatter.informed_by.is_some(),
+            "origin" => self.frontmatter.origin.is_some(),
+            "schedule" => self.frontmatter.schedule.is_some(),
+            "source_branch" => self.frontmatter.source_branch.is_some(),
+            "target_branch" => self.frontmatter.target_branch.is_some(),
+            "conflicting_files" => self.frontmatter.conflicting_files.is_some(),
+            "blocked_specs" => self.frontmatter.blocked_specs.is_some(),
+            "original_spec" => self.frontmatter.original_spec.is_some(),
+            "last_verified" => self.frontmatter.last_verified.is_some(),
+            "verification_status" => self.frontmatter.verification_status.is_some(),
+            "verification_failures" => self.frontmatter.verification_failures.is_some(),
+            "replayed_at" => self.frontmatter.replayed_at.is_some(),
+            "replay_count" => self.frontmatter.replay_count.is_some(),
+            "original_completed_at" => self.frontmatter.original_completed_at.is_some(),
+            _ => false, // Unknown field
+        }
+    }
 }
 
 /// Split content into frontmatter and body.
@@ -1802,5 +1837,175 @@ Description here.
 "#;
         let spec = Spec::parse("2026-01-26-007-stu", content).unwrap();
         assert_eq!(spec.frontmatter.replay_count, Some(0));
+    }
+
+    #[test]
+    fn test_has_frontmatter_field_required_fields_present() {
+        let content = r#"---
+type: code
+status: pending
+team: backend
+component: auth
+jira_key: AUTH-123
+---
+
+# Test spec with required fields
+"#;
+        let spec = Spec::parse("2026-01-27-001-abc", content).unwrap();
+
+        // Fields that always exist
+        assert!(spec.has_frontmatter_field("type"));
+        assert!(spec.has_frontmatter_field("status"));
+    }
+
+    #[test]
+    fn test_has_frontmatter_field_optional_fields_present() {
+        let content = r#"---
+type: code
+status: pending
+labels:
+  - important
+  - bugfix
+target_files:
+  - src/main.rs
+---
+
+# Test spec with optional fields
+"#;
+        let spec = Spec::parse("2026-01-27-002-def", content).unwrap();
+
+        // Optional fields that are present
+        assert!(spec.has_frontmatter_field("labels"));
+        assert!(spec.has_frontmatter_field("target_files"));
+
+        // Optional fields that are not present
+        assert!(!spec.has_frontmatter_field("model"));
+        assert!(!spec.has_frontmatter_field("pr"));
+        assert!(!spec.has_frontmatter_field("commits"));
+    }
+
+    #[test]
+    fn test_has_frontmatter_field_unknown_field() {
+        let content = r#"---
+type: code
+status: pending
+---
+
+# Test spec
+"#;
+        let spec = Spec::parse("2026-01-27-003-ghi", content).unwrap();
+
+        // Unknown fields should return false
+        assert!(!spec.has_frontmatter_field("nonexistent_field"));
+        assert!(!spec.has_frontmatter_field("custom_field"));
+    }
+
+    #[test]
+    fn test_has_frontmatter_field_verification_fields() {
+        let content = r#"---
+type: code
+status: pending
+last_verified: 2026-01-27T10:00:00Z
+verification_status: passed
+---
+
+# Test spec with verification fields
+"#;
+        let spec = Spec::parse("2026-01-27-004-jkl", content).unwrap();
+
+        assert!(spec.has_frontmatter_field("last_verified"));
+        assert!(spec.has_frontmatter_field("verification_status"));
+        assert!(!spec.has_frontmatter_field("verification_failures"));
+    }
+
+    #[test]
+    fn test_has_frontmatter_field_depends_on() {
+        let content = r#"---
+type: code
+status: pending
+depends_on:
+  - 2026-01-27-001-abc
+---
+
+# Test spec with dependency
+"#;
+        let spec = Spec::parse("2026-01-27-005-mno", content).unwrap();
+
+        assert!(spec.has_frontmatter_field("depends_on"));
+    }
+
+    #[test]
+    fn test_has_frontmatter_field_all_optional_present() {
+        let content = r#"---
+type: documentation
+status: completed
+depends_on:
+  - 2026-01-27-001-abc
+labels:
+  - doc
+target_files:
+  - docs/api.md
+context:
+  - src/api.rs
+prompt: standard
+branch: chant/feature
+commits:
+  - abc123
+pr: 42
+completed_at: 2026-01-27T15:00:00Z
+model: claude-opus-4-5
+tracks:
+  - src/**/*.rs
+informed_by:
+  - docs/reference.md
+origin:
+  - data/metrics.csv
+schedule: weekly
+source_branch: main
+target_branch: feature
+conflicting_files:
+  - src/config.rs
+blocked_specs:
+  - 2026-01-27-002-def
+original_spec: 2026-01-27-000-xyz
+last_verified: 2026-01-27T10:00:00Z
+verification_status: passed
+verification_failures:
+  - test_1
+replayed_at: 2026-01-27T14:00:00Z
+replay_count: 2
+original_completed_at: 2026-01-27T12:00:00Z
+---
+
+# Test spec with all fields present
+"#;
+        let spec = Spec::parse("2026-01-27-006-pqr", content).unwrap();
+
+        // Verify all optional fields are present
+        assert!(spec.has_frontmatter_field("depends_on"));
+        assert!(spec.has_frontmatter_field("labels"));
+        assert!(spec.has_frontmatter_field("target_files"));
+        assert!(spec.has_frontmatter_field("context"));
+        assert!(spec.has_frontmatter_field("prompt"));
+        assert!(spec.has_frontmatter_field("branch"));
+        assert!(spec.has_frontmatter_field("commits"));
+        assert!(spec.has_frontmatter_field("pr"));
+        assert!(spec.has_frontmatter_field("completed_at"));
+        assert!(spec.has_frontmatter_field("model"));
+        assert!(spec.has_frontmatter_field("tracks"));
+        assert!(spec.has_frontmatter_field("informed_by"));
+        assert!(spec.has_frontmatter_field("origin"));
+        assert!(spec.has_frontmatter_field("schedule"));
+        assert!(spec.has_frontmatter_field("source_branch"));
+        assert!(spec.has_frontmatter_field("target_branch"));
+        assert!(spec.has_frontmatter_field("conflicting_files"));
+        assert!(spec.has_frontmatter_field("blocked_specs"));
+        assert!(spec.has_frontmatter_field("original_spec"));
+        assert!(spec.has_frontmatter_field("last_verified"));
+        assert!(spec.has_frontmatter_field("verification_status"));
+        assert!(spec.has_frontmatter_field("verification_failures"));
+        assert!(spec.has_frontmatter_field("replayed_at"));
+        assert!(spec.has_frontmatter_field("replay_count"));
+        assert!(spec.has_frontmatter_field("original_completed_at"));
     }
 }

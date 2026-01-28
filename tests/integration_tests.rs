@@ -2049,3 +2049,266 @@ status: in_progress
     let _ = std::env::set_current_dir(&original_dir);
     let _ = cleanup_test_repo(&repo_dir);
 }
+
+// ============================================================================
+// LINT REQUIRED FIELDS TESTS
+// ============================================================================
+
+#[test]
+fn test_lint_required_fields_missing() {
+    let original_dir = std::env::current_dir().expect("Failed to get current dir");
+
+    let repo_dir = PathBuf::from("/tmp/test-chant-lint-required-missing");
+    let chant_binary = get_chant_binary();
+
+    let _ = cleanup_test_repo(&repo_dir);
+    std::fs::create_dir_all(&repo_dir).expect("Failed to create temp dir");
+
+    // Initialize repo
+    Command::new("git")
+        .args(["init"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to init git repo");
+
+    // Manually set up .chant directory
+    let chant_dir = repo_dir.join(".chant");
+    std::fs::create_dir_all(&chant_dir).expect("Failed to create .chant dir");
+
+    // Create a config with required fields (using standard frontmatter fields)
+    let config_path = chant_dir.join("config.md");
+    let config_content = r#"---
+project:
+  name: test-project
+enterprise:
+  required:
+    - pr
+    - model
+    - labels
+---
+
+# Config
+"#;
+    std::fs::write(&config_path, config_content).expect("Failed to write config");
+
+    // Create a spec without required fields
+    let specs_dir = chant_dir.join("specs");
+    std::fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+
+    let spec_path = specs_dir.join("2026-01-27-001-abc.md");
+    let spec_content = r#"---
+type: code
+status: pending
+---
+
+# Test spec without required fields
+
+This spec is missing pr, model, and labels fields.
+"#;
+    std::fs::write(&spec_path, spec_content).expect("Failed to write spec");
+
+    // Run lint - should fail
+    let lint_cmd = Command::new(&chant_binary)
+        .args(["lint"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant lint");
+
+    let stderr = String::from_utf8_lossy(&lint_cmd.stderr);
+    let stdout = String::from_utf8_lossy(&lint_cmd.stdout);
+
+    eprintln!("Lint stdout: {}", stdout);
+    eprintln!("Lint stderr: {}", stderr);
+
+    // Lint should fail (exit code 1)
+    assert!(
+        !lint_cmd.status.success(),
+        "Lint should fail when required fields are missing"
+    );
+
+    // Should report missing required fields
+    let output = format!("{}{}", stdout, stderr);
+    assert!(
+        output.contains("Missing required field 'pr'"),
+        "Should report missing pr field"
+    );
+    assert!(
+        output.contains("Missing required field 'model'"),
+        "Should report missing model field"
+    );
+    assert!(
+        output.contains("Missing required field 'labels'"),
+        "Should report missing labels field"
+    );
+
+    // Should mention enterprise policy
+    assert!(
+        output.contains("Enterprise policy requires"),
+        "Should mention enterprise policy"
+    );
+
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}
+
+#[test]
+fn test_lint_required_fields_present() {
+    let original_dir = std::env::current_dir().expect("Failed to get current dir");
+
+    let repo_dir = PathBuf::from("/tmp/test-chant-lint-required-present");
+    let chant_binary = get_chant_binary();
+
+    let _ = cleanup_test_repo(&repo_dir);
+    std::fs::create_dir_all(&repo_dir).expect("Failed to create temp dir");
+
+    // Initialize repo
+    Command::new("git")
+        .args(["init"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to init git repo");
+
+    // Manually set up .chant directory
+    let chant_dir = repo_dir.join(".chant");
+    std::fs::create_dir_all(&chant_dir).expect("Failed to create .chant dir");
+
+    // Create a config with required fields
+    let config_path = chant_dir.join("config.md");
+    let config_content = r#"---
+project:
+  name: test-project
+enterprise:
+  required:
+    - pr
+    - labels
+---
+
+# Config
+"#;
+    std::fs::write(&config_path, config_content).expect("Failed to write config");
+
+    // Create a spec WITH required fields
+    let specs_dir = chant_dir.join("specs");
+    std::fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+
+    let spec_path = specs_dir.join("2026-01-27-002-def.md");
+    let spec_content = r#"---
+type: code
+status: pending
+pr: "42"
+labels:
+  - important
+  - feature
+---
+
+# Test spec with required fields
+
+This spec has pr and labels fields.
+"#;
+    std::fs::write(&spec_path, spec_content).expect("Failed to write spec");
+
+    // Run lint - should pass
+    let lint_cmd = Command::new(&chant_binary)
+        .args(["lint"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant lint");
+
+    let stderr = String::from_utf8_lossy(&lint_cmd.stderr);
+    let stdout = String::from_utf8_lossy(&lint_cmd.stdout);
+
+    eprintln!("Lint stdout: {}", stdout);
+    eprintln!("Lint stderr: {}", stderr);
+
+    // Lint should pass (exit code 0)
+    assert!(
+        lint_cmd.status.success(),
+        "Lint should pass when required fields are present"
+    );
+
+    let output = format!("{}{}", stdout, stderr);
+    assert!(
+        output.contains("All 1 specs valid"),
+        "Should report all specs valid"
+    );
+
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}
+
+#[test]
+fn test_lint_no_required_fields_configured() {
+    let original_dir = std::env::current_dir().expect("Failed to get current dir");
+
+    let repo_dir = PathBuf::from("/tmp/test-chant-lint-no-required");
+    let chant_binary = get_chant_binary();
+
+    let _ = cleanup_test_repo(&repo_dir);
+    std::fs::create_dir_all(&repo_dir).expect("Failed to create temp dir");
+
+    // Initialize repo
+    Command::new("git")
+        .args(["init"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to init git repo");
+
+    // Manually set up .chant directory
+    let chant_dir = repo_dir.join(".chant");
+    std::fs::create_dir_all(&chant_dir).expect("Failed to create .chant dir");
+
+    // Create default config without enterprise required fields
+    let config_path = chant_dir.join("config.md");
+    let config_content = r#"---
+project:
+  name: test-project
+---
+
+# Config
+"#;
+    std::fs::write(&config_path, config_content).expect("Failed to write config");
+
+    // Create a spec without any special fields
+    let specs_dir = chant_dir.join("specs");
+    std::fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+
+    let spec_path = specs_dir.join("2026-01-27-003-ghi.md");
+    let spec_content = r#"---
+type: code
+status: pending
+---
+
+# Test spec without required fields config
+
+This spec should pass even without required fields since none are configured.
+"#;
+    std::fs::write(&spec_path, spec_content).expect("Failed to write spec");
+
+    // Run lint - should pass (no required fields configured)
+    let lint_cmd = Command::new(&chant_binary)
+        .args(["lint"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant lint");
+
+    let stderr = String::from_utf8_lossy(&lint_cmd.stderr);
+    let stdout = String::from_utf8_lossy(&lint_cmd.stdout);
+
+    eprintln!("Lint stdout: {}", stdout);
+    eprintln!("Lint stderr: {}", stderr);
+
+    // Lint should pass
+    assert!(
+        lint_cmd.status.success(),
+        "Lint should pass when no required fields are configured"
+    );
+
+    let output = format!("{}{}", stdout, stderr);
+    assert!(
+        output.contains("All 1 specs valid"),
+        "Should report all specs valid"
+    );
+
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}

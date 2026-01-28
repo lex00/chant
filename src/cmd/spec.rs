@@ -901,6 +901,9 @@ pub fn cmd_lint() -> Result<()> {
     let mut issues: Vec<(String, String)> = Vec::new();
     let mut total_specs = 0;
 
+    // Load config to get enterprise required fields
+    let config = Config::load().ok();
+
     // First pass: collect all spec IDs and check for parse errors
     let mut all_spec_ids: Vec<String> = Vec::new();
     let mut specs_to_check: Vec<Spec> = Vec::new();
@@ -949,6 +952,17 @@ pub fn cmd_lint() -> Result<()> {
             }
         }
 
+        // Check required fields from enterprise config
+        if let Some(ref cfg) = config {
+            if !cfg.enterprise.required.is_empty() {
+                for required_field in &cfg.enterprise.required {
+                    if !spec.has_frontmatter_field(required_field) {
+                        spec_issues.push(format!("Missing required field '{}'", required_field));
+                    }
+                }
+            }
+        }
+
         // Type-specific validation
         let type_warnings = validate_spec_type(spec);
 
@@ -991,17 +1005,30 @@ pub fn cmd_lint() -> Result<()> {
         }
     }
 
-    if issues.is_empty() {
-        println!("\nAll {} specs valid.", total_specs);
-        Ok(())
-    } else {
+    // Print summary with enterprise policy if configured
+    if !issues.is_empty() {
         println!(
             "\nFound {} {} in {} specs.",
             issues.len(),
             if issues.len() == 1 { "issue" } else { "issues" },
             total_specs
         );
+
+        // Show enterprise policy if required fields are configured
+        if let Some(cfg) = &config {
+            if !cfg.enterprise.required.is_empty() {
+                println!(
+                    "\n{} Enterprise policy requires: {}",
+                    "ℹ".cyan(),
+                    cfg.enterprise.required.join(", ")
+                );
+            }
+        }
+
         std::process::exit(1);
+    } else {
+        println!("\nAll {} specs valid.", total_specs);
+        Ok(())
     }
 }
 
