@@ -242,6 +242,9 @@ enum Commands {
         /// Merge all completed spec branches
         #[arg(long)]
         all: bool,
+        /// Merge all completed specs that have branches (convenience flag for post-parallel execution)
+        #[arg(long)]
+        all_completed: bool,
         /// Preview merges without executing
         #[arg(long)]
         dry_run: bool,
@@ -578,6 +581,7 @@ fn main() -> Result<()> {
         Commands::Merge {
             ids,
             all,
+            all_completed,
             dry_run,
             delete_branch,
             continue_on_error,
@@ -587,7 +591,7 @@ fn main() -> Result<()> {
         } => cmd::lifecycle::cmd_merge(
             &ids,
             all,
-            false, // all_completed - placeholder until feature is properly integrated
+            all_completed,
             dry_run,
             delete_branch,
             continue_on_error,
