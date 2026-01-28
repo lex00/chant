@@ -57,6 +57,28 @@ enum Commands {
         /// Prompt to use for execution
         #[arg(long)]
         prompt: Option<String>,
+        /// Require approval before this spec can be worked
+        #[arg(long)]
+        needs_approval: bool,
+    },
+    /// Approve a spec for work
+    Approve {
+        /// Spec ID (full or partial)
+        id: String,
+        /// Name of the person approving (validated against git committers)
+        #[arg(long)]
+        by: String,
+    },
+    /// Reject a spec with a reason
+    Reject {
+        /// Spec ID (full or partial)
+        id: String,
+        /// Name of the person rejecting (validated against git committers)
+        #[arg(long)]
+        by: String,
+        /// Reason for rejection
+        #[arg(long)]
+        reason: String,
     },
     /// List specs
     List {
@@ -169,6 +191,9 @@ enum Commands {
         /// Force cleanup prompt even on success
         #[arg(long)]
         cleanup: bool,
+        /// Skip approval check (for emergencies)
+        #[arg(long)]
+        skip_approval: bool,
     },
     /// Start MCP server (Model Context Protocol)
     Mcp,
@@ -482,7 +507,10 @@ fn main() -> Result<()> {
         Commands::Add {
             description,
             prompt,
-        } => cmd::spec::cmd_add(&description, prompt.as_deref()),
+            needs_approval,
+        } => cmd::spec::cmd_add(&description, prompt.as_deref(), needs_approval),
+        Commands::Approve { id, by } => cmd::spec::cmd_approve(&id, &by),
+        Commands::Reject { id, by, reason } => cmd::spec::cmd_reject(&id, &by, &reason),
         Commands::List {
             ready,
             label,
@@ -546,6 +574,7 @@ fn main() -> Result<()> {
             max_parallel,
             no_cleanup,
             cleanup,
+            skip_approval,
         } => cmd::work::cmd_work(
             &ids,
             prompt.as_deref(),
@@ -559,6 +588,7 @@ fn main() -> Result<()> {
             max_parallel,
             no_cleanup,
             cleanup,
+            skip_approval,
         ),
         Commands::Mcp => mcp::run_server(),
         Commands::Status { global, repo } => cmd::spec::cmd_status(global, repo.as_deref()),

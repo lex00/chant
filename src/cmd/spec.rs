@@ -313,6 +313,38 @@ fn remove_code_blocks(text: &str) -> String {
     result
 }
 
+/// Validate approval schema - check for consistency in approval fields.
+pub fn validate_approval_schema(spec: &Spec) -> Vec<String> {
+    let mut warnings = Vec::new();
+
+    if let Some(ref approval) = spec.frontmatter.approval {
+        // If approved or rejected, should have 'by' and 'at' fields
+        if approval.status == spec::ApprovalStatus::Approved
+            || approval.status == spec::ApprovalStatus::Rejected
+        {
+            if approval.by.is_none() {
+                warnings.push(format!(
+                    "Approval status is {:?} but 'by' field is missing",
+                    approval.status
+                ));
+            }
+            if approval.at.is_none() {
+                warnings.push(format!(
+                    "Approval status is {:?} but 'at' timestamp is missing",
+                    approval.status
+                ));
+            }
+        }
+
+        // If 'by' is set but status is still pending, that's inconsistent
+        if approval.status == spec::ApprovalStatus::Pending && approval.by.is_some() {
+            warnings.push("Approval has 'by' field set but status is still 'pending'".to_string());
+        }
+    }
+
+    warnings
+}
+
 /// Validate model usage - warn when expensive models are used on simple specs.
 /// Haiku should be used for straightforward specs; opus/sonnet for complex work.
 pub fn validate_model_waste(spec: &Spec) -> Vec<String> {
@@ -396,7 +428,7 @@ pub fn validate_spec_type(spec: &Spec) -> Vec<String> {
 // CORE COMMAND FUNCTIONS
 // ============================================================================
 
-pub fn cmd_add(description: &str, prompt: Option<&str>) -> Result<()> {
+pub fn cmd_add(description: &str, prompt: Option<&str>, needs_approval: bool) -> Result<()> {
     let config = Config::load()?;
     let specs_dir = crate::cmd::ensure_initialized()?;
 
@@ -411,15 +443,21 @@ pub fn cmd_add(description: &str, prompt: Option<&str>) -> Result<()> {
         None => String::new(),
     };
 
+    let approval_line = if needs_approval {
+        "approval:\n  required: true\n  status: pending\n"
+    } else {
+        ""
+    };
+
     let content = format!(
         r#"---
 type: code
 status: pending
-{}---
+{}{}---
 
 # {}
 "#,
-        prompt_line, description
+        prompt_line, approval_line, description
     );
 
     std::fs::write(&filepath, content)?;
@@ -469,7 +507,259 @@ status: pending
     }
 
     println!("{} {}", "Created".green(), id.cyan());
+    if needs_approval {
+        println!("{} Requires approval before work can begin", "ℹ".cyan());
+    }
     println!("Edit: {}", filepath.display());
+
+    Ok(())
+}
+
+/// Get list of git committers from the repository history
+fn get_git_committers() -> Result<Vec<String>> {
+    let output = Command::new("git")
+        .args(["shortlog", "-sn", "--all"])
+        .output()
+        .context("Failed to run git shortlog")?;
+
+    if !output.status.success() {
+        return Ok(Vec::new());
+    }
+
+    let output_str = String::from_utf8_lossy(&output.stdout);
+    let committers: Vec<String> = output_str
+        .lines()
+        .filter_map(|line| {
+            // Format is "   123\tName" - extract the name part
+            let parts: Vec<&str> = line.trim().splitn(2, '\t').collect();
+            parts.get(1).map(|s| s.to_string())
+        })
+        .collect();
+
+    Ok(committers)
+}
+
+/// Validate that a name exists in the git committers list
+fn validate_committer(name: &str) -> Result<bool> {
+    let committers = get_git_committers()?;
+
+    // Check for exact match or partial match (case-insensitive)
+    let name_lower = name.to_lowercase();
+    let is_valid = committers
+        .iter()
+        .any(|c| c.to_lowercase() == name_lower || c.to_lowercase().contains(&name_lower));
+
+    Ok(is_valid)
+}
+
+/// Append a message to the Approval Discussion section in the spec body.
+/// Creates the section if it doesn't exist.
+fn append_to_approval_discussion(spec: &mut Spec, message: &str) {
+    let discussion_header = "## Approval Discussion";
+
+    if spec.body.contains(discussion_header) {
+        // Find the section and append to it
+        if let Some(pos) = spec.body.find(discussion_header) {
+            let insert_pos = pos + discussion_header.len();
+            // Find the next section heading or end of body
+            let rest = &spec.body[insert_pos..];
+            let next_section = rest.find("\n## ").unwrap_or(rest.len());
+            let insert_at = insert_pos + next_section;
+
+            // Insert the message before the next section (or at end)
+            let new_body = format!(
+                "{}\n\n{}{}",
+                &spec.body[..insert_at].trim_end(),
+                message,
+                &spec.body[insert_at..]
+            );
+            spec.body = new_body;
+        }
+    } else {
+        // Add the section at the end of the body
+        spec.body = format!(
+            "{}\n\n{}\n\n{}",
+            spec.body.trim_end(),
+            discussion_header,
+            message
+        );
+    }
+}
+
+pub fn cmd_approve(id: &str, by: &str) -> Result<()> {
+    let specs_dir = crate::cmd::ensure_initialized()?;
+
+    // Resolve spec
+    let mut spec = spec::resolve_spec(&specs_dir, id)?;
+    let spec_path = specs_dir.join(format!("{}.md", spec.id));
+
+    // Validate the approver name against git committers
+    match validate_committer(by) {
+        Ok(true) => {}
+        Ok(false) => {
+            eprintln!(
+                "{} Warning: '{}' is not a known git committer in this repository",
+                "⚠".yellow(),
+                by
+            );
+        }
+        Err(e) => {
+            eprintln!(
+                "{} Warning: Could not validate committer name: {}",
+                "⚠".yellow(),
+                e
+            );
+        }
+    }
+
+    // Check if spec has approval section
+    let approval = spec
+        .frontmatter
+        .approval
+        .get_or_insert_with(Default::default);
+
+    // Check if already approved
+    if approval.status == spec::ApprovalStatus::Approved {
+        println!(
+            "{} Spec {} is already approved{}",
+            "ℹ".cyan(),
+            spec.id,
+            approval
+                .by
+                .as_ref()
+                .map(|b| format!(" by {}", b))
+                .unwrap_or_default()
+        );
+        return Ok(());
+    }
+
+    // Update approval status
+    let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    approval.status = spec::ApprovalStatus::Approved;
+    approval.by = Some(by.to_string());
+    approval.at = Some(timestamp.clone());
+
+    // Add discussion entry
+    let discussion_entry = format!(
+        "**{}** - {} - APPROVED",
+        by,
+        chrono::Local::now().format("%Y-%m-%d %H:%M")
+    );
+    append_to_approval_discussion(&mut spec, &discussion_entry);
+
+    // Save the spec
+    spec.save(&spec_path)?;
+
+    // Commit the change
+    let output = Command::new("git")
+        .args(["add", &spec_path.to_string_lossy()])
+        .output()
+        .context("Failed to run git add for spec file")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Failed to stage spec file: {}", stderr);
+    }
+
+    let commit_message = format!("chant({}): approve spec", spec.id);
+    let output = Command::new("git")
+        .args(["commit", "-m", &commit_message])
+        .output()
+        .context("Failed to run git commit")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !stderr.contains("nothing to commit") && !stderr.contains("no changes added") {
+            anyhow::bail!("Failed to commit spec file: {}", stderr);
+        }
+    }
+
+    println!("{} Spec {} approved by {}", "✓".green(), spec.id.cyan(), by);
+
+    Ok(())
+}
+
+pub fn cmd_reject(id: &str, by: &str, reason: &str) -> Result<()> {
+    let specs_dir = crate::cmd::ensure_initialized()?;
+
+    // Resolve spec
+    let mut spec = spec::resolve_spec(&specs_dir, id)?;
+    let spec_path = specs_dir.join(format!("{}.md", spec.id));
+
+    // Validate the rejector name against git committers
+    match validate_committer(by) {
+        Ok(true) => {}
+        Ok(false) => {
+            eprintln!(
+                "{} Warning: '{}' is not a known git committer in this repository",
+                "⚠".yellow(),
+                by
+            );
+        }
+        Err(e) => {
+            eprintln!(
+                "{} Warning: Could not validate committer name: {}",
+                "⚠".yellow(),
+                e
+            );
+        }
+    }
+
+    // Check if spec has approval section
+    let approval = spec
+        .frontmatter
+        .approval
+        .get_or_insert_with(Default::default);
+
+    // Update approval status
+    let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    approval.status = spec::ApprovalStatus::Rejected;
+    approval.by = Some(by.to_string());
+    approval.at = Some(timestamp.clone());
+
+    // Add discussion entry with reason
+    let discussion_entry = format!(
+        "**{}** - {} - REJECTED\n{}",
+        by,
+        chrono::Local::now().format("%Y-%m-%d %H:%M"),
+        reason
+    );
+    append_to_approval_discussion(&mut spec, &discussion_entry);
+
+    // Save the spec
+    spec.save(&spec_path)?;
+
+    // Commit the change
+    let output = Command::new("git")
+        .args(["add", &spec_path.to_string_lossy()])
+        .output()
+        .context("Failed to run git add for spec file")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Failed to stage spec file: {}", stderr);
+    }
+
+    let commit_message = format!("chant({}): reject spec", spec.id);
+    let output = Command::new("git")
+        .args(["commit", "-m", &commit_message])
+        .output()
+        .context("Failed to run git commit")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !stderr.contains("nothing to commit") && !stderr.contains("no changes added") {
+            anyhow::bail!("Failed to commit spec file: {}", stderr);
+        }
+    }
+
+    println!(
+        "{} Spec {} rejected by {}: {}",
+        "✗".red(),
+        spec.id.cyan(),
+        by,
+        reason
+    );
 
     Ok(())
 }
@@ -1019,11 +1309,15 @@ pub fn cmd_lint() -> Result<()> {
         // Model waste validation (expensive model on simple spec)
         let model_warnings = validate_model_waste(spec);
 
+        // Approval schema validation
+        let approval_warnings = validate_approval_schema(spec);
+
         // Combine all warnings
         let mut spec_warnings = type_warnings;
         spec_warnings.extend(complexity_warnings);
         spec_warnings.extend(coupling_warnings);
         spec_warnings.extend(model_warnings);
+        spec_warnings.extend(approval_warnings);
 
         if spec_issues.is_empty() && spec_warnings.is_empty() {
             println!("{} {}", "✓".green(), spec.id);

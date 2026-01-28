@@ -31,6 +31,33 @@ pub enum SpecStatus {
     Cancelled,
 }
 
+/// Approval status for a spec
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ApprovalStatus {
+    #[default]
+    Pending,
+    Approved,
+    Rejected,
+}
+
+/// Approval information for a spec
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Approval {
+    /// Whether approval is required for this spec
+    #[serde(default)]
+    pub required: bool,
+    /// Current approval status
+    #[serde(default)]
+    pub status: ApprovalStatus,
+    /// Name of the person who approved/rejected
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub by: Option<String>,
+    /// Timestamp of approval/rejection
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub at: Option<String>,
+}
+
 /// Represents a dependency that is blocking a spec from being ready.
 #[derive(Debug, Clone)]
 pub struct BlockingDependency {
@@ -110,6 +137,9 @@ pub struct SpecFrontmatter {
     // Derivation tracking - which fields were automatically derived
     #[serde(skip_serializing_if = "Option::is_none")]
     pub derived_fields: Option<Vec<String>>,
+    // Approval workflow fields
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub approval: Option<Approval>,
 }
 
 fn default_type() -> String {
@@ -147,6 +177,7 @@ impl Default for SpecFrontmatter {
             replay_count: None,
             original_completed_at: None,
             derived_fields: None,
+            approval: None,
         }
     }
 }
@@ -567,7 +598,37 @@ impl Spec {
             "replayed_at" => self.frontmatter.replayed_at.is_some(),
             "replay_count" => self.frontmatter.replay_count.is_some(),
             "original_completed_at" => self.frontmatter.original_completed_at.is_some(),
+            "approval" => self.frontmatter.approval.is_some(),
             _ => false, // Unknown field
+        }
+    }
+
+    /// Check if this spec requires approval before work can begin.
+    /// Returns true if approval is required AND the spec is not yet approved.
+    pub fn requires_approval(&self) -> bool {
+        if let Some(ref approval) = self.frontmatter.approval {
+            approval.required && approval.status != ApprovalStatus::Approved
+        } else {
+            false
+        }
+    }
+
+    /// Check if this spec has been approved.
+    pub fn is_approved(&self) -> bool {
+        if let Some(ref approval) = self.frontmatter.approval {
+            approval.status == ApprovalStatus::Approved
+        } else {
+            // No approval section means no approval required (implicitly approved)
+            true
+        }
+    }
+
+    /// Check if this spec has been rejected.
+    pub fn is_rejected(&self) -> bool {
+        if let Some(ref approval) = self.frontmatter.approval {
+            approval.status == ApprovalStatus::Rejected
+        } else {
+            false
         }
     }
 }

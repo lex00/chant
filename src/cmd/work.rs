@@ -265,6 +265,7 @@ pub fn cmd_work(
     max_parallel: Option<usize>,
     no_cleanup: bool,
     force_cleanup: bool,
+    skip_approval: bool,
 ) -> Result<()> {
     let specs_dir = crate::cmd::ensure_initialized()?;
     let prompts_dir = PathBuf::from(PROMPTS_DIR);
@@ -343,6 +344,43 @@ pub fn cmd_work(
             "Cannot work on cancelled spec '{}'. Cancelled specs are not eligible for execution.",
             spec.id
         );
+    }
+
+    // Check approval requirements
+    if spec.requires_approval() && !skip_approval {
+        let approval = spec.frontmatter.approval.as_ref().unwrap();
+        if approval.status == spec::ApprovalStatus::Rejected {
+            let by_info = approval
+                .by
+                .as_ref()
+                .map(|b| format!(" by {}", b))
+                .unwrap_or_default();
+            anyhow::bail!(
+                "Cannot work on spec '{}' - it has been rejected{}. \
+                 Address the feedback and get approval first.",
+                spec.id,
+                by_info
+            );
+        } else {
+            // Status is Pending
+            eprintln!(
+                "\n{} Spec {} requires approval before work can begin\n",
+                "Error:".red().bold(),
+                spec.id.cyan()
+            );
+            eprintln!("This spec has 'approval.required: true' but has not been approved yet.");
+            eprintln!("\nNext steps:");
+            eprintln!(
+                "  1. Get approval: {}",
+                format!("chant approve {} --by <name>", spec.id).cyan()
+            );
+            eprintln!(
+                "  2. Or bypass with: {}",
+                format!("chant work {} --skip-approval", spec.id).cyan()
+            );
+            eprintln!();
+            anyhow::bail!("Spec requires approval");
+        }
     }
 
     // Handle re-finalization mode
