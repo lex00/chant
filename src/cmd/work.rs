@@ -18,7 +18,7 @@ use chant::conflict;
 use chant::git;
 use chant::paths::PROMPTS_DIR;
 use chant::prompt;
-use chant::spec::{self, Spec, SpecStatus};
+use chant::spec::{self, BlockingDependency, Spec, SpecStatus};
 use chant::worktree;
 use dialoguer::Select;
 
@@ -43,6 +43,81 @@ use crate::cmd::spec as spec_cmd;
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
+
+/// Print detailed error message for blocked spec dependencies.
+///
+/// Shows each blocking dependency with status indicator, title, and status details.
+/// Includes actionable next steps and warnings for potentially stale blocked status.
+fn print_blocking_dependencies_error(spec_id: &str, blockers: &[BlockingDependency]) {
+    eprintln!(
+        "\n{} Spec {} is blocked by dependencies\n",
+        "Error:".red().bold(),
+        spec_id.cyan()
+    );
+    eprintln!("Blocking dependencies:");
+
+    for blocker in blockers {
+        // Status indicator
+        let status_indicator = match blocker.status {
+            SpecStatus::Completed => "●".green(),
+            SpecStatus::InProgress => "◐".yellow(),
+            SpecStatus::Failed => "✗".red(),
+            SpecStatus::Blocked => "◌".magenta(),
+            _ => "○".white(),
+        };
+
+        // Title display
+        let title_display = blocker.title.as_deref().unwrap_or("");
+        let sibling_marker = if blocker.is_sibling { " (sibling)" } else { "" };
+
+        eprintln!(
+            "  {} {} {}{}",
+            status_indicator,
+            blocker.spec_id.cyan(),
+            title_display,
+            sibling_marker.dimmed()
+        );
+        eprintln!(
+            "    Status: {}",
+            format!("{:?}", blocker.status).to_lowercase()
+        );
+
+        // Show completed_at if available and warn about potential stale blocking
+        if let Some(ref completed_at) = blocker.completed_at {
+            eprintln!("    Completed at: {}", completed_at);
+            if blocker.status == SpecStatus::Completed {
+                eprintln!(
+                    "    {} This dependency is complete but spec still shows as blocked - this may be a bug",
+                    "⚠️".yellow()
+                );
+            }
+        }
+    }
+
+    eprintln!("\nNext steps:");
+    eprintln!(
+        "  1. Run '{}' to update dependency status",
+        "chant refresh".cyan()
+    );
+    eprintln!(
+        "  2. Use '{}' to override dependency checks",
+        format!("chant work {} --force", spec_id).cyan()
+    );
+    eprintln!(
+        "  3. Check dependency details with '{}'",
+        "chant show <dep-id>".cyan()
+    );
+
+    // Check if any dependencies are marked complete but still blocking
+    let has_complete_blockers = blockers.iter().any(|b| b.status == SpecStatus::Completed);
+    if has_complete_blockers {
+        eprintln!(
+            "\n{} If the dependency is truly complete, this is likely a dependency resolution bug",
+            "Tip:".yellow().bold()
+        );
+    }
+    eprintln!();
+}
 
 /// Load all ready specs from the specs directory
 fn load_ready_specs(specs_dir: &Path) -> Result<Vec<Spec>> {
@@ -345,54 +420,25 @@ pub fn cmd_work(
     // Check if dependencies are satisfied
     let all_specs = spec::load_all_specs(&specs_dir)?;
     if !spec.is_ready(&all_specs) {
-        // Find which dependencies are blocking
-        let mut blocking: Vec<String> = Vec::new();
+        // Get detailed blocking dependency information
+        let blockers = spec.get_blocking_dependencies(&all_specs, &specs_dir);
 
-        if let Some(deps) = &spec.frontmatter.depends_on {
-            for dep_id in deps {
-                let dep = all_specs.iter().find(|s| s.id == *dep_id);
-                match dep {
-                    Some(d) if d.frontmatter.status == SpecStatus::Completed => continue,
-                    Some(d) => blocking
-                        .push(format!("{} ({:?})", dep_id, d.frontmatter.status).to_lowercase()),
-                    None => blocking.push(format!("{} (not found)", dep_id)),
-                }
-            }
-        }
-
-        // Check for prior siblings
-        if let Some(driver_id) = spec::extract_driver_id(&spec.id) {
-            if let Some(member_num) = spec::extract_member_number(&spec.id) {
-                for i in 1..member_num {
-                    let sibling_id = format!("{}.{}", driver_id, i);
-                    let sibling = all_specs.iter().find(|s| s.id == sibling_id);
-                    if let Some(s) = sibling {
-                        if s.frontmatter.status != SpecStatus::Completed {
-                            blocking.push(
-                                format!("{} ({:?})", sibling_id, s.frontmatter.status)
-                                    .to_lowercase(),
-                            );
-                        }
-                    } else {
-                        blocking.push(format!("{} (not found)", sibling_id));
-                    }
-                }
-            }
-        }
-
-        if !blocking.is_empty() {
+        if !blockers.is_empty() {
             if force {
                 // Print warning when forcing past dependency checks
                 eprintln!(
                     "{} Warning: Forcing work on spec (skipping dependency checks)",
                     "⚠".yellow()
                 );
-                eprintln!("  Skipping dependencies: {}", blocking.join(", "));
+                let blocking_ids: Vec<String> = blockers
+                    .iter()
+                    .map(|b| format!("{} ({:?})", b.spec_id, b.status).to_lowercase())
+                    .collect();
+                eprintln!("  Skipping dependencies: {}", blocking_ids.join(", "));
             } else {
-                println!("{} Spec has unsatisfied dependencies.", "✗".red());
-                println!("Blocked by: {}", blocking.join(", "));
-                println!("Use {} to bypass dependency checks.", "--force".cyan());
-                anyhow::bail!("Cannot execute spec with unsatisfied dependencies");
+                // Print detailed error message
+                print_blocking_dependencies_error(&spec.id, &blockers);
+                anyhow::bail!("Spec blocked by dependencies");
             }
         }
     }
