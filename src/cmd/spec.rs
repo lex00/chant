@@ -994,8 +994,8 @@ pub fn cmd_list(
                     _ => false,
                 }
             } else {
-                // Specs without approval section only match "pending" if they require approval
-                approval_lower == "pending" && false // No approval section means not in approval workflow
+                // Specs without approval section are not in the approval workflow
+                false
             }
         });
     }

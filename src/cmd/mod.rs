@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use chant::paths::SPECS_DIR;
 
+pub mod activity;
 pub mod agent;
 pub mod agent_rotation;
 pub mod cleanup;

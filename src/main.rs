@@ -435,6 +435,18 @@ enum Commands {
     },
     /// Show disk usage of chant artifacts
     Disk,
+    /// Show git-based activity feed for spec operations
+    Activity {
+        /// Filter by author name (case-insensitive substring match)
+        #[arg(long)]
+        by: Option<String>,
+        /// Show activity since duration (e.g., "2h", "1d", "1w", "1m")
+        #[arg(long)]
+        since: Option<String>,
+        /// Filter by spec ID (substring match)
+        #[arg(long)]
+        spec: Option<String>,
+    },
     /// Remove orphan worktrees and stale artifacts
     Cleanup {
         /// Show what would be cleaned without removing
@@ -734,6 +746,9 @@ fn main() -> Result<()> {
             output.as_deref(),
         ),
         Commands::Disk => cmd::disk::cmd_disk(),
+        Commands::Activity { by, since, spec } => {
+            cmd::activity::cmd_activity(by.as_deref(), since.as_deref(), spec.as_deref())
+        }
         Commands::Cleanup {
             dry_run,
             yes,
