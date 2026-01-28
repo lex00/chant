@@ -18,9 +18,9 @@ use serial_test::serial;
 fn setup_test_repo(repo_dir: &Path) -> std::io::Result<()> {
     fs::create_dir_all(repo_dir)?;
 
-    // Initialize git repo
+    // Initialize git repo with explicit 'main' branch name
     let output = Command::new("git")
-        .arg("init")
+        .args(["init", "-b", "main"])
         .current_dir(repo_dir)
         .output()?;
     assert!(output.status.success(), "Failed to init repo");
