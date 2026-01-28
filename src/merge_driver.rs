@@ -123,6 +123,9 @@ pub fn merge_frontmatter(
     // context: merge both lists, deduplicate
     result.context = merge_string_lists(&base.context, &ours.context, &theirs.context);
 
+    // members: merge both lists, deduplicate
+    result.members = merge_string_lists(&base.members, &ours.members, &theirs.members);
+
     // Verification fields: prefer theirs (from finalize) if present
     if result.last_verified.is_none() && theirs.last_verified.is_some() {
         result.last_verified = theirs.last_verified.clone();

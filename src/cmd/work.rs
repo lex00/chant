@@ -2051,6 +2051,7 @@ mod tests {
             },
             repos: vec![],
             enterprise: chant::config::EnterpriseConfig::default(),
+            approval: chant::config::ApprovalConfig::default(),
         }
     }
 

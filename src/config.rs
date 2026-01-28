@@ -15,6 +15,37 @@ use std::path::{Path, PathBuf};
 use crate::provider::{ProviderConfig, ProviderType};
 use crate::spec::split_frontmatter;
 
+/// Rejection action mode for approval workflow
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RejectionAction {
+    /// Leave rejected, user handles it manually
+    #[default]
+    Manual,
+    /// Prompt to create fix spec, original becomes blocked with depends_on
+    Dependency,
+    /// Convert to driver with numbered member specs
+    Group,
+}
+
+impl fmt::Display for RejectionAction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            RejectionAction::Manual => write!(f, "manual"),
+            RejectionAction::Dependency => write!(f, "dependency"),
+            RejectionAction::Group => write!(f, "group"),
+        }
+    }
+}
+
+/// Approval workflow configuration
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct ApprovalConfig {
+    /// Action to take when a spec is rejected
+    #[serde(default)]
+    pub rejection_action: RejectionAction,
+}
+
 /// Git hosting provider for PR creation
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -98,6 +129,8 @@ pub struct Config {
     pub repos: Vec<RepoConfig>,
     #[serde(default)]
     pub enterprise: EnterpriseConfig,
+    #[serde(default)]
+    pub approval: ApprovalConfig,
 }
 
 /// Configuration for a single repository in cross-repo dependency resolution
@@ -366,6 +399,7 @@ struct PartialConfig {
     pub parallel: Option<ParallelConfig>,
     pub repos: Option<Vec<RepoConfig>>,
     pub enterprise: Option<EnterpriseConfig>,
+    pub approval: Option<ApprovalConfig>,
 }
 
 #[allow(dead_code)]
@@ -473,6 +507,8 @@ impl PartialConfig {
                 .unwrap_or_else(|| self.repos.unwrap_or_default()),
             // Enterprise config: project overrides global, or use default
             enterprise: project.enterprise.or(self.enterprise).unwrap_or_default(),
+            // Approval config: project overrides global, or use default
+            approval: project.approval.or(self.approval).unwrap_or_default(),
         }
     }
 }
@@ -1185,5 +1221,148 @@ enterprise:
             .enterprise
             .required
             .contains(&"project_field".to_string()));
+    }
+
+    // =========================================================================
+    // APPROVAL CONFIG TESTS
+    // =========================================================================
+
+    #[test]
+    fn test_parse_approval_config_manual() {
+        let content = r#"---
+project:
+  name: test-project
+approval:
+  rejection_action: manual
+---
+"#;
+        let config = Config::parse(content).unwrap();
+        assert_eq!(config.approval.rejection_action, RejectionAction::Manual);
+    }
+
+    #[test]
+    fn test_parse_approval_config_dependency() {
+        let content = r#"---
+project:
+  name: test-project
+approval:
+  rejection_action: dependency
+---
+"#;
+        let config = Config::parse(content).unwrap();
+        assert_eq!(
+            config.approval.rejection_action,
+            RejectionAction::Dependency
+        );
+    }
+
+    #[test]
+    fn test_parse_approval_config_group() {
+        let content = r#"---
+project:
+  name: test-project
+approval:
+  rejection_action: group
+---
+"#;
+        let config = Config::parse(content).unwrap();
+        assert_eq!(config.approval.rejection_action, RejectionAction::Group);
+    }
+
+    #[test]
+    fn test_approval_config_defaults_to_manual() {
+        let content = r#"---
+project:
+  name: test-project
+---
+"#;
+        let config = Config::parse(content).unwrap();
+        assert_eq!(config.approval.rejection_action, RejectionAction::Manual);
+    }
+
+    #[test]
+    fn test_approval_config_empty_section() {
+        let content = r#"---
+project:
+  name: test-project
+approval: {}
+---
+"#;
+        let config = Config::parse(content).unwrap();
+        assert_eq!(config.approval.rejection_action, RejectionAction::Manual);
+    }
+
+    #[test]
+    fn test_rejection_action_display() {
+        assert_eq!(format!("{}", RejectionAction::Manual), "manual");
+        assert_eq!(format!("{}", RejectionAction::Dependency), "dependency");
+        assert_eq!(format!("{}", RejectionAction::Group), "group");
+    }
+
+    #[test]
+    fn test_load_merged_approval_config() {
+        let tmp = TempDir::new().unwrap();
+        let global_path = tmp.path().join("global.md");
+        let project_path = tmp.path().join("project.md");
+
+        fs::write(
+            &global_path,
+            r#"---
+approval:
+  rejection_action: dependency
+---
+"#,
+        )
+        .unwrap();
+
+        fs::write(
+            &project_path,
+            r#"---
+project:
+  name: my-project
+---
+"#,
+        )
+        .unwrap();
+
+        let config = Config::load_merged_from(Some(&global_path), &project_path).unwrap();
+        // Global sets dependency, project doesn't override
+        assert_eq!(
+            config.approval.rejection_action,
+            RejectionAction::Dependency
+        );
+    }
+
+    #[test]
+    fn test_load_merged_approval_config_project_overrides() {
+        let tmp = TempDir::new().unwrap();
+        let global_path = tmp.path().join("global.md");
+        let project_path = tmp.path().join("project.md");
+
+        fs::write(
+            &global_path,
+            r#"---
+approval:
+  rejection_action: dependency
+---
+"#,
+        )
+        .unwrap();
+
+        fs::write(
+            &project_path,
+            r#"---
+project:
+  name: my-project
+approval:
+  rejection_action: group
+---
+"#,
+        )
+        .unwrap();
+
+        let config = Config::load_merged_from(Some(&global_path), &project_path).unwrap();
+        // Project overrides global
+        assert_eq!(config.approval.rejection_action, RejectionAction::Group);
     }
 }

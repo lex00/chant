@@ -13,7 +13,7 @@ use colored::Colorize;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use chant::config::Config;
+use chant::config::{Config, RejectionAction};
 use chant::derivation::{DerivationContext, DerivationEngine};
 use chant::git;
 use chant::id;
@@ -418,6 +418,14 @@ pub fn validate_spec_type(spec: &Spec) -> Vec<String> {
                 warnings.push("Research spec missing 'target_files' field".to_string());
             }
         }
+        "driver" | "group" => {
+            // Validate members field if present
+            if let Some(ref members) = spec.frontmatter.members {
+                if members.is_empty() {
+                    warnings.push("Driver/group spec has empty 'members' array".to_string());
+                }
+            }
+        }
         _ => {}
     }
 
@@ -813,6 +821,7 @@ pub fn cmd_approve(id: &str, by: &str) -> Result<()> {
 
 pub fn cmd_reject(id: &str, by: &str, reason: &str) -> Result<()> {
     let specs_dir = crate::cmd::ensure_initialized()?;
+    let config = Config::load()?;
 
     // Resolve spec
     let mut spec = spec::resolve_spec(&specs_dir, id)?;
@@ -893,7 +902,326 @@ pub fn cmd_reject(id: &str, by: &str, reason: &str) -> Result<()> {
         reason
     );
 
+    // Apply rejection action based on config
+    let rejection_action = config.approval.rejection_action;
+    match rejection_action {
+        RejectionAction::Manual => {
+            // No automatic action - user handles it manually
+        }
+        RejectionAction::Dependency => {
+            handle_rejection_dependency(&specs_dir, &mut spec, &spec_path, reason)?;
+        }
+        RejectionAction::Group => {
+            handle_rejection_group(&specs_dir, &mut spec, &spec_path, reason)?;
+        }
+    }
+
     Ok(())
+}
+
+/// Handle rejection in dependency mode: create a fix spec and link it as a dependency.
+fn handle_rejection_dependency(
+    specs_dir: &Path,
+    spec: &mut Spec,
+    spec_path: &Path,
+    reason: &str,
+) -> Result<()> {
+    // Check if stdin is a TTY for interactive prompt
+    let should_create = if atty::is(atty::Stream::Stdin) {
+        // Interactive: prompt user
+        eprint!("{} Create fix spec? (Y/n): ", "?".cyan());
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input)?;
+        let trimmed = input.trim().to_lowercase();
+        trimmed.is_empty() || trimmed == "y" || trimmed == "yes"
+    } else {
+        // Non-interactive: automatically create fix spec
+        true
+    };
+
+    if !should_create {
+        println!(
+            "{} Skipping fix spec creation. Spec remains rejected.",
+            "ℹ".cyan()
+        );
+        return Ok(());
+    }
+
+    // Generate a new spec ID for the fix spec
+    let fix_id = id::generate_id(specs_dir)?;
+    let fix_filename = format!("{}.md", fix_id);
+    let fix_path = specs_dir.join(&fix_filename);
+
+    // Create the fix spec content
+    let fix_description = format!("Fix rejection issues for {}", spec.id);
+    let fix_content = format!(
+        r#"---
+type: code
+status: pending
+---
+
+# {}
+
+## Context
+
+Original spec {} was rejected with reason:
+> {}
+
+## Acceptance Criteria
+
+- [ ] Address rejection feedback
+- [ ] Changes ready for re-review
+"#,
+        fix_description, spec.id, reason
+    );
+
+    std::fs::write(&fix_path, fix_content)?;
+
+    // Update original spec: add depends_on and set status to blocked
+    let depends_on = spec.frontmatter.depends_on.get_or_insert_with(Vec::new);
+    depends_on.push(fix_id.clone());
+    spec.frontmatter.status = SpecStatus::Blocked;
+    spec.save(spec_path)?;
+
+    // Git add and commit both files
+    let output = Command::new("git")
+        .args([
+            "add",
+            &fix_path.to_string_lossy(),
+            &spec_path.to_string_lossy(),
+        ])
+        .output()
+        .context("Failed to run git add for fix spec")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Failed to stage fix spec files: {}", stderr);
+    }
+
+    let commit_message = format!(
+        "chant({}): create fix spec {} (dependency mode)",
+        spec.id, fix_id
+    );
+    let output = Command::new("git")
+        .args(["commit", "-m", &commit_message])
+        .output()
+        .context("Failed to run git commit for fix spec")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !stderr.contains("nothing to commit") && !stderr.contains("no changes added") {
+            anyhow::bail!("Failed to commit fix spec: {}", stderr);
+        }
+    }
+
+    println!("{} Created fix spec {}", "✓".green(), fix_id.cyan());
+    println!(
+        "{} Spec {} is now blocked, waiting for fix spec {}",
+        "ℹ".cyan(),
+        spec.id.cyan(),
+        fix_id.cyan()
+    );
+
+    Ok(())
+}
+
+/// Handle rejection in group mode: convert spec to driver with numbered member specs.
+fn handle_rejection_group(
+    specs_dir: &Path,
+    spec: &mut Spec,
+    spec_path: &Path,
+    reason: &str,
+) -> Result<()> {
+    println!(
+        "{} Converting rejected spec to driver with member specs...",
+        "→".cyan()
+    );
+
+    // Extract acceptance criteria from the spec body to distribute across members
+    let criteria = extract_acceptance_criteria(&spec.body);
+
+    let driver_id = spec.id.clone();
+    let mut member_ids = Vec::new();
+
+    if criteria.is_empty() {
+        // No acceptance criteria to distribute - create a single fix member
+        let member_id = format!("{}.1", driver_id);
+        let member_path = specs_dir.join(format!("{}.md", member_id));
+
+        let member_content = format!(
+            r#"---
+type: code
+status: pending
+---
+
+# Fix rejection issues for {}
+
+## Context
+
+Original spec was rejected with reason:
+> {}
+
+## Acceptance Criteria
+
+- [ ] Address rejection feedback
+- [ ] Changes ready for re-review
+"#,
+            driver_id, reason
+        );
+
+        std::fs::write(&member_path, member_content)?;
+        member_ids.push(member_id);
+    } else {
+        // Distribute criteria across member specs
+        for (index, criterion) in criteria.iter().enumerate() {
+            let member_number = index + 1;
+            let member_id = format!("{}.{}", driver_id, member_number);
+            let member_path = specs_dir.join(format!("{}.md", member_id));
+
+            // Build depends_on for sequential ordering (each depends on previous)
+            let depends_on_line = if index > 0 {
+                format!(
+                    "depends_on:\n  - {}.{}\n",
+                    driver_id,
+                    index // previous member number
+                )
+            } else {
+                String::new()
+            };
+
+            let member_content = format!(
+                r#"---
+type: code
+status: pending
+{}---
+
+# {}
+
+## Acceptance Criteria
+
+- [ ] {}
+"#,
+                depends_on_line,
+                criterion
+                    .trim_start_matches("- [ ] ")
+                    .trim_start_matches("- [x] ")
+                    .trim_start_matches("- [X] "),
+                criterion
+                    .trim_start_matches("- [ ] ")
+                    .trim_start_matches("- [x] ")
+                    .trim_start_matches("- [X] ")
+            );
+
+            std::fs::write(&member_path, member_content)?;
+            member_ids.push(member_id);
+        }
+    }
+
+    // Update driver spec: change type to driver, add members list
+    spec.frontmatter.r#type = "driver".to_string();
+    spec.frontmatter.members = Some(member_ids.clone());
+    spec.save(spec_path)?;
+
+    // Git add all files
+    let mut git_args: Vec<String> = vec!["add".to_string()];
+    git_args.push(spec_path.to_string_lossy().to_string());
+    for member_id in &member_ids {
+        git_args.push(
+            specs_dir
+                .join(format!("{}.md", member_id))
+                .to_string_lossy()
+                .to_string(),
+        );
+    }
+
+    let output = Command::new("git")
+        .args(&git_args)
+        .output()
+        .context("Failed to run git add for group mode files")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Failed to stage group mode files: {}", stderr);
+    }
+
+    let commit_message = format!(
+        "chant({}): convert to driver with {} member specs (group mode)",
+        spec.id,
+        member_ids.len()
+    );
+    let output = Command::new("git")
+        .args(["commit", "-m", &commit_message])
+        .output()
+        .context("Failed to run git commit for group mode")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !stderr.contains("nothing to commit") && !stderr.contains("no changes added") {
+            anyhow::bail!("Failed to commit group mode changes: {}", stderr);
+        }
+    }
+
+    println!(
+        "{} Spec {} converted to driver",
+        "✓".green(),
+        spec.id.cyan()
+    );
+    println!("Created members:");
+    for member_id in &member_ids {
+        println!("  {} {}", "•".cyan(), member_id);
+    }
+
+    Ok(())
+}
+
+/// Extract acceptance criteria items from a spec body.
+/// Returns a list of criterion text strings (including the checkbox prefix).
+fn extract_acceptance_criteria(body: &str) -> Vec<String> {
+    let acceptance_criteria_marker = "## Acceptance Criteria";
+    let mut criteria = Vec::new();
+    let mut in_ac_section = false;
+    let mut in_code_fence = false;
+
+    for line in body.lines() {
+        let trimmed = line.trim_start();
+
+        if trimmed.starts_with("```") {
+            in_code_fence = !in_code_fence;
+            continue;
+        }
+
+        if in_code_fence {
+            continue;
+        }
+
+        if trimmed.starts_with(acceptance_criteria_marker) {
+            in_ac_section = true;
+            continue;
+        }
+
+        if in_ac_section && trimmed.starts_with("## ") {
+            break;
+        }
+
+        if in_ac_section {
+            let checkbox_line = trimmed;
+            if checkbox_line.starts_with("- [ ] ")
+                || checkbox_line.starts_with("- [x] ")
+                || checkbox_line.starts_with("- [X] ")
+            {
+                // Only include top-level criteria (not indented sub-items)
+                if line.starts_with("- ") || line.starts_with("  - ") {
+                    // Skip deeply nested items (more than one level of indentation)
+                    let indent = line.len() - line.trim_start().len();
+                    if indent <= 2 {
+                        criteria.push(trimmed.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    criteria
 }
 
 pub fn cmd_list(
@@ -1553,6 +1881,15 @@ pub fn cmd_lint() -> Result<()> {
             for dep_id in deps {
                 if !all_spec_ids.contains(dep_id) {
                     spec_issues.push(format!("Unknown dependency '{}'", dep_id));
+                }
+            }
+        }
+
+        // Check members references
+        if let Some(members) = &spec.frontmatter.members {
+            for member_id in members {
+                if !all_spec_ids.contains(member_id) {
+                    spec_issues.push(format!("Unknown member spec '{}'", member_id));
                 }
             }
         }
@@ -6272,5 +6609,413 @@ This is a test spec.
         assert!(context.spec_path.is_some());
         // Environment variables should be captured
         assert!(!context.env_vars.is_empty());
+    }
+
+    // =========================================================================
+    // REJECTION ACTION HANDLER TESTS
+    // =========================================================================
+
+    #[test]
+    fn test_extract_acceptance_criteria_basic() {
+        let body = r#"# Test Spec
+
+## Problem
+
+Something is wrong.
+
+## Acceptance Criteria
+
+- [ ] First criterion
+- [ ] Second criterion
+- [ ] Third criterion
+
+## Notes
+
+Some notes here.
+"#;
+        let criteria = super::extract_acceptance_criteria(body);
+        assert_eq!(criteria.len(), 3);
+        assert_eq!(criteria[0], "- [ ] First criterion");
+        assert_eq!(criteria[1], "- [ ] Second criterion");
+        assert_eq!(criteria[2], "- [ ] Third criterion");
+    }
+
+    #[test]
+    fn test_extract_acceptance_criteria_mixed_checked() {
+        let body = r#"# Test Spec
+
+## Acceptance Criteria
+
+- [x] Already done
+- [ ] Still todo
+- [X] Also done
+"#;
+        let criteria = super::extract_acceptance_criteria(body);
+        assert_eq!(criteria.len(), 3);
+    }
+
+    #[test]
+    fn test_extract_acceptance_criteria_empty() {
+        let body = r#"# Test Spec
+
+## Problem
+
+No acceptance criteria section here.
+"#;
+        let criteria = super::extract_acceptance_criteria(body);
+        assert!(criteria.is_empty());
+    }
+
+    #[test]
+    fn test_extract_acceptance_criteria_with_code_blocks() {
+        let body = r#"# Test Spec
+
+## Acceptance Criteria
+
+- [ ] Implement feature
+
+```markdown
+- [ ] This is inside a code block and should be ignored
+```
+
+- [ ] Write tests
+"#;
+        let criteria = super::extract_acceptance_criteria(body);
+        assert_eq!(criteria.len(), 2);
+        assert_eq!(criteria[0], "- [ ] Implement feature");
+        assert_eq!(criteria[1], "- [ ] Write tests");
+    }
+
+    #[test]
+    fn test_extract_acceptance_criteria_skips_nested() {
+        let body = r#"# Test Spec
+
+## Acceptance Criteria
+
+- [ ] Top level criterion
+    - [ ] Deeply nested sub-item should be skipped
+  - [ ] One level indent should be included
+"#;
+        let criteria = super::extract_acceptance_criteria(body);
+        // Should include top-level and one-level indent, but skip deeply nested
+        assert!(criteria.len() >= 1);
+        assert!(criteria.contains(&"- [ ] Top level criterion".to_string()));
+    }
+
+    #[test]
+    fn test_spec_frontmatter_members_field() {
+        let spec = Spec::parse(
+            "test-spec",
+            r#"---
+type: driver
+status: pending
+members:
+  - test-spec.1
+  - test-spec.2
+  - test-spec.3
+---
+
+# Test Driver Spec
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(spec.frontmatter.r#type, "driver");
+        let members = spec.frontmatter.members.unwrap();
+        assert_eq!(members.len(), 3);
+        assert_eq!(members[0], "test-spec.1");
+        assert_eq!(members[1], "test-spec.2");
+        assert_eq!(members[2], "test-spec.3");
+    }
+
+    #[test]
+    fn test_spec_frontmatter_members_none_by_default() {
+        let spec = Spec::parse(
+            "test-spec",
+            r#"---
+type: code
+status: pending
+---
+
+# Test Spec
+"#,
+        )
+        .unwrap();
+
+        assert!(spec.frontmatter.members.is_none());
+    }
+
+    #[test]
+    fn test_spec_has_frontmatter_field_members() {
+        let spec = Spec::parse(
+            "test-spec",
+            r#"---
+type: driver
+status: pending
+members:
+  - test-spec.1
+---
+
+# Test Spec
+"#,
+        )
+        .unwrap();
+
+        assert!(spec.has_frontmatter_field("members"));
+    }
+
+    #[test]
+    fn test_spec_has_frontmatter_field_members_absent() {
+        let spec = Spec::parse(
+            "test-spec",
+            r#"---
+type: code
+status: pending
+---
+
+# Test Spec
+"#,
+        )
+        .unwrap();
+
+        assert!(!spec.has_frontmatter_field("members"));
+    }
+
+    #[test]
+    fn test_dependency_mode_creates_fix_spec_and_updates_original() {
+        // Test the core dependency mode logic: fix spec creation and frontmatter updates
+        // (without git operations, which require the CWD to be inside the git repo)
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        // Create a rejected spec
+        let mut spec = Spec {
+            id: "2026-01-28-001-abc".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "code".to_string(),
+                status: SpecStatus::Pending,
+                approval: Some(chant::spec::Approval {
+                    required: true,
+                    status: chant::spec::ApprovalStatus::Rejected,
+                    by: Some("alice".to_string()),
+                    at: Some("2026-01-28T00:00:00Z".to_string()),
+                }),
+                ..Default::default()
+            },
+            title: Some("Test spec".to_string()),
+            body: "# Test spec\n\n## Acceptance Criteria\n\n- [ ] Something\n".to_string(),
+        };
+
+        let spec_path = specs_dir.join("2026-01-28-001-abc.md");
+        spec.save(&spec_path).unwrap();
+
+        // Simulate dependency mode: generate fix spec ID, create fix spec, update original
+        let fix_id = chant::id::generate_id(specs_dir).unwrap();
+        let fix_path = specs_dir.join(format!("{}.md", fix_id));
+        let fix_content = format!(
+            "---\ntype: code\nstatus: pending\n---\n\n# Fix rejection issues for {}\n\n## Context\n\nRejected: Too broad\n",
+            spec.id
+        );
+        std::fs::write(&fix_path, fix_content).unwrap();
+
+        // Update original spec: add depends_on and set status to blocked
+        let depends_on = spec.frontmatter.depends_on.get_or_insert_with(Vec::new);
+        depends_on.push(fix_id.clone());
+        spec.frontmatter.status = SpecStatus::Blocked;
+        spec.save(&spec_path).unwrap();
+
+        // Verify original spec was updated
+        let updated_spec = Spec::load(&spec_path).unwrap();
+        assert_eq!(updated_spec.frontmatter.status, SpecStatus::Blocked);
+        assert!(updated_spec.frontmatter.depends_on.is_some());
+        let deps = updated_spec.frontmatter.depends_on.unwrap();
+        assert_eq!(deps.len(), 1);
+        assert_eq!(deps[0], fix_id);
+
+        // Verify fix spec was created
+        assert!(fix_path.exists());
+        let fix_spec = Spec::load(&fix_path).unwrap();
+        assert_eq!(fix_spec.frontmatter.status, SpecStatus::Pending);
+        assert!(fix_spec.body.contains("Too broad"));
+    }
+
+    #[test]
+    fn test_group_mode_creates_members_and_converts_to_driver() {
+        // Test the core group mode logic: member spec creation and driver conversion
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        let driver_id = "2026-01-28-002-def";
+
+        // Create a spec with acceptance criteria
+        let mut spec = Spec {
+            id: driver_id.to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "code".to_string(),
+                status: SpecStatus::Pending,
+                ..Default::default()
+            },
+            title: Some("Test spec".to_string()),
+            body: "# Test spec\n\n## Acceptance Criteria\n\n- [ ] First thing\n- [ ] Second thing\n- [ ] Third thing\n".to_string(),
+        };
+
+        let spec_path = specs_dir.join(format!("{}.md", driver_id));
+        spec.save(&spec_path).unwrap();
+
+        // Extract criteria
+        let criteria = super::extract_acceptance_criteria(&spec.body);
+        assert_eq!(criteria.len(), 3);
+
+        // Create member specs (simulating group mode logic)
+        let mut member_ids = Vec::new();
+        for (index, criterion) in criteria.iter().enumerate() {
+            let member_number = index + 1;
+            let member_id = format!("{}.{}", driver_id, member_number);
+            let member_path = specs_dir.join(format!("{}.md", member_id));
+
+            let depends_on_line = if index > 0 {
+                format!("depends_on:\n  - {}.{}\n", driver_id, index)
+            } else {
+                String::new()
+            };
+
+            let criterion_text = criterion
+                .trim_start_matches("- [ ] ")
+                .trim_start_matches("- [x] ");
+            let member_content = format!(
+                "---\ntype: code\nstatus: pending\n{}---\n\n# {}\n\n## Acceptance Criteria\n\n- [ ] {}\n",
+                depends_on_line, criterion_text, criterion_text
+            );
+
+            std::fs::write(&member_path, member_content).unwrap();
+            member_ids.push(member_id);
+        }
+
+        // Update driver spec
+        spec.frontmatter.r#type = "driver".to_string();
+        spec.frontmatter.members = Some(member_ids.clone());
+        spec.save(&spec_path).unwrap();
+
+        // Verify driver was updated
+        let updated_spec = Spec::load(&spec_path).unwrap();
+        assert_eq!(updated_spec.frontmatter.r#type, "driver");
+        assert!(updated_spec.frontmatter.members.is_some());
+        let members = updated_spec.frontmatter.members.unwrap();
+        assert_eq!(members.len(), 3);
+        assert_eq!(members[0], format!("{}.1", driver_id));
+        assert_eq!(members[1], format!("{}.2", driver_id));
+        assert_eq!(members[2], format!("{}.3", driver_id));
+
+        // Verify member specs were created
+        for i in 1..=3 {
+            let member_path = specs_dir.join(format!("{}.{}.md", driver_id, i));
+            assert!(member_path.exists(), "Member {} should exist", i);
+
+            let member_spec = Spec::load(&member_path).unwrap();
+            assert_eq!(member_spec.frontmatter.r#type, "code");
+            assert_eq!(member_spec.frontmatter.status, SpecStatus::Pending);
+        }
+
+        // Verify second and third members have depends_on
+        let member2 = Spec::load(&specs_dir.join(format!("{}.2.md", driver_id))).unwrap();
+        assert!(member2.frontmatter.depends_on.is_some());
+        assert_eq!(
+            member2.frontmatter.depends_on.unwrap(),
+            vec![format!("{}.1", driver_id)]
+        );
+
+        let member3 = Spec::load(&specs_dir.join(format!("{}.3.md", driver_id))).unwrap();
+        assert!(member3.frontmatter.depends_on.is_some());
+        assert_eq!(
+            member3.frontmatter.depends_on.unwrap(),
+            vec![format!("{}.2", driver_id)]
+        );
+    }
+
+    #[test]
+    fn test_group_mode_no_criteria_creates_single_fix_member() {
+        // Test group mode when spec has no acceptance criteria
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        let driver_id = "2026-01-28-003-ghi";
+
+        let mut spec = Spec {
+            id: driver_id.to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "code".to_string(),
+                status: SpecStatus::Pending,
+                ..Default::default()
+            },
+            title: Some("Test spec".to_string()),
+            body: "# Test spec\n\nNo criteria here.\n".to_string(),
+        };
+
+        let spec_path = specs_dir.join(format!("{}.md", driver_id));
+        spec.save(&spec_path).unwrap();
+
+        // Extract criteria - should be empty
+        let criteria = super::extract_acceptance_criteria(&spec.body);
+        assert!(criteria.is_empty());
+
+        // Create single fix member (simulating group mode logic for no criteria)
+        let member_id = format!("{}.1", driver_id);
+        let member_path = specs_dir.join(format!("{}.md", member_id));
+        let member_content = format!(
+            "---\ntype: code\nstatus: pending\n---\n\n# Fix rejection issues for {}\n\nRejected: Needs work\n\n## Acceptance Criteria\n\n- [ ] Address rejection feedback\n",
+            driver_id
+        );
+        std::fs::write(&member_path, member_content).unwrap();
+
+        // Update driver spec
+        spec.frontmatter.r#type = "driver".to_string();
+        spec.frontmatter.members = Some(vec![member_id.clone()]);
+        spec.save(&spec_path).unwrap();
+
+        // Verify driver was updated
+        let updated_spec = Spec::load(&spec_path).unwrap();
+        assert_eq!(updated_spec.frontmatter.r#type, "driver");
+        let members = updated_spec.frontmatter.members.unwrap();
+        assert_eq!(members.len(), 1);
+        assert_eq!(members[0], format!("{}.1", driver_id));
+
+        // Verify the single member was created
+        assert!(member_path.exists());
+        let member_spec = Spec::load(&member_path).unwrap();
+        assert!(member_spec.body.contains("Needs work"));
+    }
+
+    #[test]
+    fn test_validate_spec_type_driver_empty_members() {
+        let spec = Spec {
+            id: "test-driver".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "driver".to_string(),
+                members: Some(vec![]),
+                ..Default::default()
+            },
+            title: Some("Driver spec".to_string()),
+            body: "# Driver\n".to_string(),
+        };
+
+        let warnings = super::validate_spec_type(&spec);
+        assert!(warnings.iter().any(|w| w.contains("empty 'members' array")));
+    }
+
+    #[test]
+    fn test_validate_spec_type_driver_with_members() {
+        let spec = Spec {
+            id: "test-driver".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "driver".to_string(),
+                members: Some(vec!["test-driver.1".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Driver spec".to_string()),
+            body: "# Driver\n".to_string(),
+        };
+
+        let warnings = super::validate_spec_type(&spec);
+        assert!(warnings.is_empty());
     }
 }

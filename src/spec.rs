@@ -140,6 +140,9 @@ pub struct SpecFrontmatter {
     // Approval workflow fields
     #[serde(skip_serializing_if = "Option::is_none")]
     pub approval: Option<Approval>,
+    // Driver/group member tracking
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub members: Option<Vec<String>>,
 }
 
 fn default_type() -> String {
@@ -178,6 +181,7 @@ impl Default for SpecFrontmatter {
             original_completed_at: None,
             derived_fields: None,
             approval: None,
+            members: None,
         }
     }
 }
@@ -599,6 +603,7 @@ impl Spec {
             "replay_count" => self.frontmatter.replay_count.is_some(),
             "original_completed_at" => self.frontmatter.original_completed_at.is_some(),
             "approval" => self.frontmatter.approval.is_some(),
+            "members" => self.frontmatter.members.is_some(),
             _ => false, // Unknown field
         }
     }

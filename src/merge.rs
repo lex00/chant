@@ -274,6 +274,7 @@ mod tests {
             parallel: crate::config::ParallelConfig::default(),
             repos: vec![],
             enterprise: crate::config::EnterpriseConfig::default(),
+            approval: crate::config::ApprovalConfig::default(),
         }
     }
 
