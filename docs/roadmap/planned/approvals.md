@@ -1,9 +1,14 @@
 # Approvals
 
-> **Status: Not Implemented** ❌
+> **Status: Partially Implemented** ⚠️
 >
-> This feature is documented as a planned workflow enhancement.
-> It is not currently implemented. See [Roadmap](../roadmap.md) for planned releases.
+> **Spec Approval** is fully implemented (v0.3.6): `chant approve`, `chant reject`,
+> `--needs-approval` flag, approval discussion tracking, rejection modes, activity command,
+> and list filters. See [Approval Workflow Guide](../../guides/approval-workflow.md) and
+> [CLI Reference](../../reference/cli.md#approve).
+>
+> **Code Approval** (review) and **Completion Approval** are not yet implemented.
+> See [Roadmap](../roadmap.md) for planned releases.
 
 ## Three Types of Approval
 

@@ -55,6 +55,7 @@ Supported agent providers: `claude`, `cursor`, `amazonq`, `generic`, `all`
 ```bash
 chant add                                    # Interactive wizard
 chant add "Fix authentication bug"           # Create spec with description
+chant add "Risky refactor" --needs-approval  # Create spec requiring approval
 chant list                                   # List all specs
 chant show 2026-01-22-001-x7m                # Show spec details
 ```
@@ -77,6 +78,24 @@ When you run `chant add` without a description, you'll be guided through spec cr
   - src/auth/tokens.rs
 ?
 ```
+
+### Needs-Approval Flag
+
+When creating a spec with `--needs-approval`, the spec requires explicit approval before work can begin:
+
+```bash
+chant add "Add authentication" --needs-approval
+```
+
+This sets the following in the spec's frontmatter:
+
+```yaml
+approval:
+  required: true
+  status: pending
+```
+
+The spec cannot be worked on until someone approves it with `chant approve`, or the check is bypassed with `chant work --skip-approval`.
 
 ### List Specs
 
@@ -128,6 +147,62 @@ chant list --label auth --label api          # Specs with 'auth' OR 'api' label
 chant list --label feature --label urgent    # Combine multiple labels
 ```
 
+#### Approval Filtering
+
+Filter specs by approval status:
+
+```bash
+chant list --approval pending                # Specs awaiting approval
+chant list --approval approved               # Approved specs
+chant list --approval rejected               # Rejected specs
+```
+
+Only specs that have an `approval:` section in their frontmatter are included in approval-filtered results.
+
+#### People and Activity Filtering
+
+```bash
+chant list --created-by alice                # Specs created by alice (case-insensitive)
+chant list --mentions bob                    # Specs where bob is mentioned in approval discussion
+chant list --activity-since 2h               # Specs modified in the last 2 hours
+chant list --activity-since 1d               # Modified in the last day
+chant list --activity-since 1w               # Modified in the last week
+```
+
+Duration formats: `2h` (hours), `1d` (days), `1w` (weeks), `2mo` (months).
+
+#### Count Flag
+
+Show only the count of matching specs instead of listing them:
+
+```bash
+chant list --count                           # Total spec count
+chant list --approval pending --count        # Count of specs awaiting approval
+chant list --status ready --count            # Count of ready specs
+```
+
+#### Visual Indicators
+
+When listing specs, approval-related visual indicators are displayed:
+
+| Indicator | Meaning |
+|-----------|---------|
+| `[needs approval]` (yellow) | Spec requires approval and is pending |
+| `[rejected]` (red) | Spec has been rejected |
+| `[approved]` (green) | Spec has been approved |
+| `👤 <name>` | Created by indicator |
+| `↩ <time>` | Time since last activity (e.g., `2h`, `3d`) |
+| `💬 <count>` | Number of comments in approval discussion |
+| `✓ <name>` (green) | Approved by indicator |
+
+**Example output:**
+
+```
+✓ 2026-01-28-001-abc [approved] Implement feature     👤 alice ↩ 1h 💬 3 ✓ bob
+⚠ 2026-01-28-002-def [needs approval] Fix bug         👤 charlie ↩ 30m
+✗ 2026-01-28-003-ghi [rejected] Improve performance   👤 dave ↩ 2h 💬 5
+```
+
 ### Cancel Spec
 
 Soft-delete a spec by marking it cancelled. The spec file is preserved but excluded from lists and execution:
@@ -163,10 +238,31 @@ chant work                                 # Interactive wizard to select specs
 chant work 2026-01-22-001-x7m              # Execute single spec
 chant work 2026-01-22-001-x7m --prompt tdd # Execute with specific prompt
 chant work 2026-01-22-001-x7m --force      # Replay a completed spec
+chant work 2026-01-22-001-x7m --skip-approval  # Bypass approval check
 chant work --parallel                      # Execute all ready specs in parallel
 chant work --parallel --label auth         # Execute ready specs with label
 chant work 001 002 003 --parallel          # Execute specific specs in parallel
 ```
+
+### Approval Check
+
+When a spec has `approval.required: true`, `chant work` checks the approval status before proceeding:
+
+- **Pending**: Work is blocked. You must approve the spec first or use `--skip-approval`.
+- **Rejected**: Work is blocked entirely. Address the feedback and get approval first.
+- **Approved**: Work proceeds normally.
+
+```bash
+$ chant work 001
+Error: Spec requires approval before work can begin
+
+  Approval status: pending
+
+  To approve:  chant approve 001 --by <name>
+  To bypass:   chant work 001 --skip-approval
+```
+
+Use `--skip-approval` for emergency bypasses only.
 
 ### Interactive Wizard for Work
 
@@ -1163,6 +1259,133 @@ success  failure
 │  10. Check if driver complete        │
 └──────────────────────────────────────┘
 ```
+
+## Approve
+
+Approve a spec for work:
+
+```bash
+chant approve 001 --by alice                 # Approve spec by name
+```
+
+### What Happens
+
+1. Validates the spec has `approval.required: true`
+2. Validates the approver name against git committers (warns if not found)
+3. Updates the spec's approval frontmatter:
+   ```yaml
+   approval:
+     required: true
+     status: approved
+     by: alice
+     at: 2026-01-28T14:30:45Z
+   ```
+4. Appends a timestamped entry to the "## Approval Discussion" section in the spec body
+5. Auto-commits with message: `chant(<spec-id>): approve spec`
+
+**Output:**
+
+```
+✓ Spec 001-abc approved by alice
+```
+
+If the spec is already approved, the operation is skipped.
+
+## Reject
+
+Reject a spec with a reason:
+
+```bash
+chant reject 001 --by bob --reason "Scope too large, split first"
+```
+
+### What Happens
+
+1. Validates the spec has `approval.required: true`
+2. Validates the rejector name against git committers (warns if not found)
+3. Updates the spec's approval frontmatter:
+   ```yaml
+   approval:
+     required: true
+     status: rejected
+     by: bob
+     at: 2026-01-28T14:30:45Z
+   ```
+4. Appends the rejection reason to the "## Approval Discussion" section
+5. Auto-commits with message: `chant(<spec-id>): reject spec`
+6. Applies the configured rejection action (see [Rejection Modes](#rejection-modes))
+
+**Output:**
+
+```
+✗ Spec 001-abc rejected by bob: Scope too large, split first
+```
+
+### Rejection Modes
+
+The behavior after rejection depends on the `approval.rejection_action` config setting:
+
+**manual** (default):
+- Spec remains rejected
+- User resolves issues manually and re-submits for approval
+
+**dependency**:
+- Creates a new "fix spec" automatically
+- Sets the original spec to `blocked` status
+- Adds the fix spec as a dependency of the original
+- Fix spec title: "Fix rejection issues for `<spec-id>`"
+
+**group**:
+- Converts the rejected spec to a driver type
+- Creates numbered member specs (`.1`, `.2`, `.3`, etc.)
+- Distributes acceptance criteria across members
+- Each member depends on the previous one (sequential execution)
+
+Configure the rejection mode in `.chant/config.md`:
+
+```yaml
+approval:
+  rejection_action: manual    # manual | dependency | group
+```
+
+## Activity
+
+View recent activity across specs:
+
+```bash
+chant activity                               # Show all recent activity
+chant activity --by alice                    # Filter by person
+chant activity --since 2h                    # Activity in the last 2 hours
+chant activity --spec 001                    # Activity for a specific spec
+chant activity --by alice --since 1d         # Combine filters
+```
+
+### Activity Types
+
+| Type | Color | Description |
+|------|-------|-------------|
+| `CREATED` | Cyan | Spec was created |
+| `APPROVED` | Green | Spec was approved |
+| `REJECTED` | Red | Spec was rejected |
+| `WORKED` | Yellow | Commit with `chant(<id>):` pattern |
+| `COMPLETED` | Green (bold) | Spec status changed to completed |
+
+### Filters
+
+- `--by <name>` - Filter by person (case-insensitive substring match)
+- `--since <duration>` - Show activity from the last N time (e.g., `2h`, `1d`, `1w`, `1m`)
+- `--spec <id>` - Filter by spec ID (substring match)
+
+### Output
+
+```
+2026-01-28 14:30  alice    APPROVED    001-abc  Implement feature X
+2026-01-28 12:00  bob      CREATED     002-def  Fix authentication
+2026-01-27 16:45  alice    COMPLETED   003-ghi  Update docs
+2026-01-27 10:15  charlie  WORKED      004-jkl  Add logging
+```
+
+Activity is deduplicated, showing the first occurrence of each (spec_id, activity_type) pair.
 
 ---
 

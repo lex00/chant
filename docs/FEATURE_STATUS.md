@@ -45,6 +45,11 @@ For planned features and future releases, see [Roadmap](roadmap/roadmap.md).
 | Derived Fields | [enterprise.md](enterprise/enterprise.md) | ✅ Complete | v0.3.0 |
 | Required Fields | [enterprise.md](enterprise/enterprise.md) | ✅ Complete | v0.3.0 |
 | Chant Derive Command | [cli.md](reference/cli.md) | ✅ Complete | v0.3.0 |
+| Spec Approval | [approval-workflow.md](guides/approval-workflow.md) | ✅ Complete | v0.3.6 |
+| Approval Commands | [cli.md](reference/cli.md) | ✅ Complete | v0.3.6 |
+| Activity Command | [cli.md](reference/cli.md) | ✅ Complete | v0.3.6 |
+| Approval List Filters | [cli.md](reference/cli.md) | ✅ Complete | v0.3.6 |
+| Rejection Modes | [config.md](reference/config.md) | ✅ Complete | v0.3.6 |
 
 ## Partially Implemented ⚠️
 
@@ -63,7 +68,6 @@ For planned features and future releases, see [Roadmap](roadmap/roadmap.md).
 | Hooks | [hooks.md](roadmap/planned/hooks.md) | v0.4.0 or later |
 | Triggers | [triggers.md](roadmap/planned/triggers.md) | v0.4.0 or later |
 | Notifications | [notifications.md](roadmap/planned/notifications.md) | v0.4.0 or later |
-| Approvals | [approvals.md](roadmap/planned/approvals.md) | v0.4.0 or later |
 | Daemon Mode | [daemon.md](roadmap/planned/daemon.md) | v0.5.0 |
 | Prometheus Metrics | [metrics.md](roadmap/planned/metrics.md) | v0.5.0 |
 | Cost Tracking | [costs.md](roadmap/planned/costs.md) | v0.4.0 or later |
@@ -107,6 +111,9 @@ chant export        ✅ Export to JSON/CSV/Markdown
 chant config        ✅ Configuration management
 chant mcp           ✅ MCP server
 chant derive        ✅ Manual field derivation
+chant approve       ✅ Approve spec for work
+chant reject        ✅ Reject spec with reason
+chant activity      ✅ View recent spec activity
 ```
 
 ### Planned but Not Implemented ❌
@@ -120,7 +127,6 @@ chant edit          ❌ Planned for v0.4.0+
 chant lock          ❌ Planned for v0.5.0
 chant agent worker  ❌ Planned for v0.5.0
 chant notify        ❌ Planned for v0.4.0+
-chant approve       ❌ Planned for v0.4.0+
 chant costs         ❌ Planned for v0.4.0+
 ```
 
@@ -181,7 +187,7 @@ chant costs         ❌ Planned for v0.4.0+
 - `metrics.md` - ❌ Not implemented (Phase 6)
 - `hooks.md` - ❌ Not implemented (Phase 8)
 - `triggers.md` - ❌ Not implemented (Phase 8)
-- `approvals.md` - ❌ Not implemented (Phase 8)
+- `approvals.md` - ✅ Implemented (Spec Approval workflow)
 - `costs.md` - ❌ Not implemented (Phase 8)
 - `notifications.md` - ❌ Not implemented (Phase 8)
 

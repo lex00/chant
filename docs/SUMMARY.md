@@ -35,6 +35,7 @@
 - [Example Configurations](guides/examples.md)
 - [Ecosystem](guides/ecosystem.md)
 - [Recovery](guides/recovery.md)
+- [Approval Workflow](guides/approval-workflow.md)
 
 # Reference
 

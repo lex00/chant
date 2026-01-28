@@ -387,6 +387,87 @@ chant add "Fix payment webhook" --project payments
 
 ---
 
+## Approval-Gated Team Development
+
+Team with approval requirements for spec execution.
+
+### Config
+
+```markdown
+# .chant/config.md
+---
+project:
+  name: team-app
+
+defaults:
+  prompt: standard
+  branch: true
+
+approval:
+  rejection_action: dependency
+---
+
+# Team App
+
+All risky specs require approval before execution.
+Rejected specs automatically create fix specs.
+```
+
+### Workflow
+
+```bash
+# Developer creates spec requiring approval
+chant add "Migrate user table to new schema" --needs-approval
+
+# Tech lead reviews the spec
+chant show 001-abc
+
+# Option A: Approve
+chant approve 001-abc --by tech-lead
+chant work 001-abc
+
+# Option B: Reject with reason
+chant reject 001-abc --by tech-lead --reason "Need rollback plan first"
+# With dependency mode, a fix spec is auto-created and original is blocked
+
+# Monitor team activity
+chant activity --since 1d
+
+# Find specs waiting for approval
+chant list --approval pending
+
+# Find specs a person has been involved with
+chant list --mentions tech-lead
+```
+
+### Sample Spec with Approval
+
+```markdown
+# .chant/specs/2026-01-28-001-abc.md
+---
+status: pending
+approval:
+  required: true
+  status: approved
+  by: tech-lead
+  at: 2026-01-28T14:30:00Z
+---
+
+# Migrate user table to new schema
+
+## Acceptance Criteria
+
+- [ ] Migration script handles existing data
+- [ ] Rollback script tested
+- [ ] Zero-downtime migration verified
+
+## Approval Discussion
+
+**tech-lead** - 2026-01-28 14:30 - APPROVED
+```
+
+---
+
 ## Self-Bootstrap
 
 Building chant using chant.

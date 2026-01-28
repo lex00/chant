@@ -109,6 +109,10 @@ parallel:
     prompt: parallel-cleanup # Cleanup prompt to use
     auto_run: false         # Run cleanup automatically
 
+# Optional - approval settings
+approval:
+  rejection_action: manual  # manual | dependency | group
+
 # Optional - schema validation
 schema:
   spec:
@@ -700,6 +704,87 @@ environment:
   from: branch
   pattern: "^(dev|staging|prod)"
 ```
+
+## Approval Configuration
+
+Configure how the approval workflow behaves when specs are rejected.
+
+### Rejection Action
+
+The `approval.rejection_action` setting controls what happens after a spec is rejected with `chant reject`:
+
+```yaml
+approval:
+  rejection_action: manual    # manual | dependency | group
+```
+
+**manual** (default):
+- Spec remains in `rejected` status
+- User must manually resolve issues and re-submit for approval
+- No automatic changes to spec structure
+
+**dependency**:
+- Automatically creates a new "fix spec" for the rejection issues
+- Original spec status changes to `blocked`
+- Fix spec added to original spec's `depends_on`
+- Fix spec title: "Fix rejection issues for `<spec-id>`"
+- Includes context from the rejection reason
+
+**group**:
+- Converts the rejected spec to a `driver` type
+- Creates numbered member specs (`.1`, `.2`, `.3`, etc.)
+- Distributes acceptance criteria across member specs
+- Each member depends on the previous one (sequential execution)
+- Includes context from the rejection reason
+
+### Example Configuration
+
+```markdown
+# .chant/config.md
+---
+project:
+  name: my-project
+
+approval:
+  rejection_action: dependency
+---
+
+# Project Config
+
+When specs are rejected, automatically create a fix spec
+and block the original until the fix is complete.
+```
+
+### Approval Frontmatter Schema
+
+Specs that require approval have an `approval:` section in their frontmatter:
+
+```yaml
+approval:
+  required: true              # Whether approval is required
+  status: pending             # pending | approved | rejected
+  by: alice                   # Name of the approver/rejector
+  at: 2026-01-28T14:30:45Z   # ISO8601 timestamp of approval/rejection
+```
+
+This section is added automatically when using `chant add --needs-approval`, or can be added manually to any spec.
+
+### Members Frontmatter Field
+
+Driver and group specs can list their member specs in the `members:` frontmatter field:
+
+```yaml
+---
+type: driver
+status: pending
+members:
+  - 2026-01-28-001-abc.1
+  - 2026-01-28-001-abc.2
+  - 2026-01-28-001-abc.3
+---
+```
+
+This field is automatically populated when using `chant split` or the `group` rejection action. It tracks which specs belong to a driver for status tracking and merge ordering.
 
 ## Precedence
 
