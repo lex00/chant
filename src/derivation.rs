@@ -1071,4 +1071,220 @@ mod tests {
         let result = engine.derive_fields(&context);
         assert_eq!(result.get("team"), Some(&"平台".to_string()));
     }
+
+    // =========================================================================
+    // SPECIAL CHARACTERS IN VALUES TESTS
+    // =========================================================================
+
+    #[test]
+    fn test_special_characters_branch_with_slashes_hyphens_dots() {
+        // Branch: feature/ABC-123/user-name.test
+        let mut derived = HashMap::new();
+        derived.insert(
+            "ticket".to_string(),
+            DerivedFieldConfig {
+                from: DerivationSource::Branch,
+                pattern: "([A-Z]+-\\d+)".to_string(),
+                validate: None,
+            },
+        );
+        derived.insert(
+            "full_path".to_string(),
+            DerivedFieldConfig {
+                from: DerivationSource::Branch,
+                pattern: "feature/(.+)".to_string(),
+                validate: None,
+            },
+        );
+
+        let engine = create_test_engine(derived);
+        let mut context = DerivationContext::new();
+        context.branch_name = Some("feature/ABC-123/user-name.test".to_string());
+
+        let result = engine.derive_fields(&context);
+        assert_eq!(result.get("ticket"), Some(&"ABC-123".to_string()));
+        assert_eq!(
+            result.get("full_path"),
+            Some(&"ABC-123/user-name.test".to_string())
+        );
+    }
+
+    #[test]
+    fn test_special_characters_env_value_with_spaces_and_quotes() {
+        let mut env_vars = HashMap::new();
+        env_vars.insert("TEAM_NAME".to_string(), "Platform Team".to_string());
+        env_vars.insert(
+            "DESCRIPTION".to_string(),
+            "This is a \"test\" value".to_string(),
+        );
+        env_vars.insert(
+            "NOTES".to_string(),
+            "Value with 'single' and \"double\" quotes".to_string(),
+        );
+
+        let mut derived = HashMap::new();
+        derived.insert(
+            "team".to_string(),
+            DerivedFieldConfig {
+                from: DerivationSource::Env,
+                pattern: "TEAM_NAME".to_string(),
+                validate: None,
+            },
+        );
+        derived.insert(
+            "desc".to_string(),
+            DerivedFieldConfig {
+                from: DerivationSource::Env,
+                pattern: "DESCRIPTION".to_string(),
+                validate: None,
+            },
+        );
+        derived.insert(
+            "notes".to_string(),
+            DerivedFieldConfig {
+                from: DerivationSource::Env,
+                pattern: "NOTES".to_string(),
+                validate: None,
+            },
+        );
+
+        let engine = create_test_engine(derived);
+        let context = DerivationContext::with_env_vars(env_vars);
+
+        let result = engine.derive_fields(&context);
+        assert_eq!(result.get("team"), Some(&"Platform Team".to_string()));
+        assert_eq!(
+            result.get("desc"),
+            Some(&"This is a \"test\" value".to_string())
+        );
+        assert_eq!(
+            result.get("notes"),
+            Some(&"Value with 'single' and \"double\" quotes".to_string())
+        );
+    }
+
+    #[test]
+    fn test_special_characters_path_with_dots_and_hyphens() {
+        let mut derived = HashMap::new();
+        derived.insert(
+            "component".to_string(),
+            DerivedFieldConfig {
+                from: DerivationSource::Path,
+                pattern: "specs/([^/]+)/".to_string(),
+                validate: None,
+            },
+        );
+        derived.insert(
+            "filename".to_string(),
+            DerivedFieldConfig {
+                from: DerivationSource::Path,
+                pattern: "/([^/]+\\.md)$".to_string(),
+                validate: None,
+            },
+        );
+
+        let engine = create_test_engine(derived);
+        let mut context = DerivationContext::new();
+        context.spec_path = Some(PathBuf::from(".chant/specs/platform-team/feature.v2.md"));
+
+        let result = engine.derive_fields(&context);
+        assert_eq!(result.get("component"), Some(&"platform-team".to_string()));
+        assert_eq!(result.get("filename"), Some(&"feature.v2.md".to_string()));
+    }
+
+    #[test]
+    fn test_special_characters_value_with_regex_metacharacters() {
+        // Value contains regex metacharacters but they're literal in the VALUE, not pattern
+        let mut derived = HashMap::new();
+        derived.insert(
+            "description".to_string(),
+            DerivedFieldConfig {
+                from: DerivationSource::Branch,
+                pattern: "feature/(.+)".to_string(),
+                validate: None,
+            },
+        );
+
+        let engine = create_test_engine(derived);
+        let mut context = DerivationContext::new();
+        context.branch_name = Some("feature/fix-[bug]-in-(parser)".to_string());
+
+        let result = engine.derive_fields(&context);
+        assert_eq!(
+            result.get("description"),
+            Some(&"fix-[bug]-in-(parser)".to_string())
+        );
+    }
+
+    #[test]
+    fn test_special_characters_env_value_with_commas_and_special_chars() {
+        let mut env_vars = HashMap::new();
+        env_vars.insert("TAGS".to_string(), "bug,feature,urgent".to_string());
+        env_vars.insert("EXPRESSION".to_string(), "value = 1 + 2 * 3".to_string());
+        env_vars.insert(
+            "PATH_LIKE".to_string(),
+            "/usr/bin:/usr/local/bin".to_string(),
+        );
+
+        let mut derived = HashMap::new();
+        derived.insert(
+            "tags".to_string(),
+            DerivedFieldConfig {
+                from: DerivationSource::Env,
+                pattern: "TAGS".to_string(),
+                validate: None,
+            },
+        );
+        derived.insert(
+            "expr".to_string(),
+            DerivedFieldConfig {
+                from: DerivationSource::Env,
+                pattern: "EXPRESSION".to_string(),
+                validate: None,
+            },
+        );
+        derived.insert(
+            "path".to_string(),
+            DerivedFieldConfig {
+                from: DerivationSource::Env,
+                pattern: "PATH_LIKE".to_string(),
+                validate: None,
+            },
+        );
+
+        let engine = create_test_engine(derived);
+        let context = DerivationContext::with_env_vars(env_vars);
+
+        let result = engine.derive_fields(&context);
+        assert_eq!(result.get("tags"), Some(&"bug,feature,urgent".to_string()));
+        assert_eq!(result.get("expr"), Some(&"value = 1 + 2 * 3".to_string()));
+        assert_eq!(
+            result.get("path"),
+            Some(&"/usr/bin:/usr/local/bin".to_string())
+        );
+    }
+
+    #[test]
+    fn test_special_characters_branch_with_multiple_regex_metacharacters() {
+        // Branch contains various regex metacharacters that should be treated as literals
+        let mut derived = HashMap::new();
+        derived.insert(
+            "desc".to_string(),
+            DerivedFieldConfig {
+                from: DerivationSource::Branch,
+                pattern: "fix/(.+)".to_string(),
+                validate: None,
+            },
+        );
+
+        let engine = create_test_engine(derived);
+        let mut context = DerivationContext::new();
+        context.branch_name = Some("fix/handle-$var.and^chars+more*stuff".to_string());
+
+        let result = engine.derive_fields(&context);
+        assert_eq!(
+            result.get("desc"),
+            Some(&"handle-$var.and^chars+more*stuff".to_string())
+        );
+    }
 }
