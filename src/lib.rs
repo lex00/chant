@@ -59,6 +59,7 @@ pub mod diagnose;
 pub mod git;
 pub mod id;
 pub mod merge;
+pub mod merge_errors;
 pub mod prompt;
 pub mod prompts;
 pub mod provider;

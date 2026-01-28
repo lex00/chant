@@ -229,7 +229,16 @@ fn merge_branch_ff_only(spec_branch: &str, dry_run: bool) -> Result<bool> {
             return Ok(false);
         }
 
-        anyhow::bail!("Merge failed: {}", stderr);
+        // Non-ff failure - branches have diverged
+        anyhow::bail!(
+            "{}",
+            crate::merge_errors::fast_forward_conflict(
+                spec_branch.trim_start_matches("chant/"),
+                spec_branch,
+                "main",
+                &stderr
+            )
+        );
     }
 
     Ok(true)
@@ -382,12 +391,18 @@ pub fn merge_single_spec(
 
     // Check if main branch exists
     if !dry_run && !branch_exists(main_branch)? {
-        anyhow::bail!("Main branch '{}' does not exist", main_branch);
+        anyhow::bail!(
+            "{}",
+            crate::merge_errors::main_branch_not_found(main_branch)
+        );
     }
 
     // Check if spec branch exists
     if !dry_run && !branch_exists(spec_branch)? {
-        anyhow::bail!("Spec branch '{}' not found", spec_branch);
+        anyhow::bail!(
+            "{}",
+            crate::merge_errors::branch_not_found(spec_id, spec_branch)
+        );
     }
 
     // Checkout main branch
@@ -410,7 +425,10 @@ pub fn merge_single_spec(
     if !merge_success && !dry_run {
         // Merge had conflicts - return to original branch
         let _ = checkout_branch(&original_branch, false);
-        anyhow::bail!("Merge conflicts detected. Aborted merge and returned to original branch.");
+        anyhow::bail!(
+            "{}",
+            crate::merge_errors::merge_conflict(spec_id, spec_branch, main_branch)
+        );
     }
 
     // Delete branch if requested and merge was successful

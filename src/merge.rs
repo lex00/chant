@@ -87,22 +87,20 @@ pub fn get_specs_to_merge(
 #[allow(dead_code)]
 pub fn validate_spec_can_merge(spec: &Spec, branch_exists: bool) -> Result<()> {
     // Check status is Completed
-    match spec.frontmatter.status {
+    match &spec.frontmatter.status {
         SpecStatus::Completed => {}
-        SpecStatus::Failed => {
-            anyhow::bail!("Cannot merge failed spec");
-        }
-        SpecStatus::NeedsAttention => {
-            anyhow::bail!("Spec needs attention before merging");
-        }
-        _ => {
-            anyhow::bail!("Spec must be completed before merging");
+        other => {
+            let status_str = format!("{:?}", other);
+            anyhow::bail!(
+                "{}",
+                crate::merge_errors::spec_status_not_mergeable(&spec.id, &status_str)
+            );
         }
     }
 
     // Check branch exists
     if !branch_exists {
-        anyhow::bail!("No branch found for spec: {}", spec.id);
+        anyhow::bail!("{}", crate::merge_errors::no_branch_for_spec(&spec.id));
     }
 
     Ok(())
@@ -191,8 +189,8 @@ pub fn merge_driver_spec(
     // If any preconditions failed, report them all
     if !incomplete_members.is_empty() {
         anyhow::bail!(
-            "Cannot merge driver spec: the following members are incomplete:\n  - {}",
-            incomplete_members.join("\n  - ")
+            "{}",
+            crate::merge_errors::driver_members_incomplete(&driver_spec.id, &incomplete_members)
         );
     }
 
@@ -210,18 +208,24 @@ pub fn merge_driver_spec(
             Ok(result) => {
                 if !result.success {
                     anyhow::bail!(
-                        "Member spec merge failed for {}: {}. Driver merge not attempted.",
-                        member.id,
-                        result.spec_id
+                        "{}",
+                        crate::merge_errors::member_merge_failed(
+                            &driver_spec.id,
+                            &member.id,
+                            &format!("Merge returned unsuccessful for {}", result.spec_id)
+                        )
                     );
                 }
                 all_results.push(result);
             }
             Err(e) => {
                 anyhow::bail!(
-                    "Failed to merge member spec {}: {}. Driver merge not attempted.",
-                    member.id,
-                    e
+                    "{}",
+                    crate::merge_errors::member_merge_failed(
+                        &driver_spec.id,
+                        &member.id,
+                        &e.to_string()
+                    )
                 );
             }
         }
@@ -241,7 +245,14 @@ pub fn merge_driver_spec(
             Ok(all_results)
         }
         Err(e) => {
-            anyhow::bail!("Failed to merge driver spec {}: {}", driver_spec.id, e);
+            anyhow::bail!(
+                "{}",
+                crate::merge_errors::member_merge_failed(
+                    &driver_spec.id,
+                    &driver_spec.id,
+                    &e.to_string()
+                )
+            );
         }
     }
 }
@@ -342,10 +353,10 @@ mod tests {
         let spec = make_spec("spec1", SpecStatus::Pending);
         let result = validate_spec_can_merge(&spec, true);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Spec must be completed before merging"));
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Cannot merge spec spec1"));
+        assert!(err_msg.contains("Pending"));
+        assert!(err_msg.contains("Next Steps"));
     }
 
     #[test]
@@ -353,10 +364,10 @@ mod tests {
         let spec = make_spec("spec1", SpecStatus::InProgress);
         let result = validate_spec_can_merge(&spec, true);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Spec must be completed before merging"));
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Cannot merge spec spec1"));
+        assert!(err_msg.contains("InProgress"));
+        assert!(err_msg.contains("Next Steps"));
     }
 
     #[test]
@@ -364,10 +375,10 @@ mod tests {
         let spec = make_spec("spec1", SpecStatus::Failed);
         let result = validate_spec_can_merge(&spec, true);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Cannot merge failed spec"));
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Cannot merge spec spec1"));
+        assert!(err_msg.contains("Failed"));
+        assert!(err_msg.contains("Next Steps"));
     }
 
     #[test]

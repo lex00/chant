@@ -1207,11 +1207,15 @@ pub fn cmd_work_parallel(
                     .error
                     .as_deref()
                     .unwrap_or("Unknown merge error");
+                let branch_name = branch.as_str();
                 println!(
-                    "[{}] {} Merge failed (branch preserved): {}",
+                    "[{}] {} Merge failed (branch preserved):\n  {}\n  Next Steps:\n    1. Auto-resolve: chant merge {} --rebase --auto\n    2. Merge manually: chant merge {}\n    3. Inspect: git log {} --oneline -3",
                     result.spec_id.cyan(),
                     "⚠".yellow(),
-                    error_msg
+                    error_msg,
+                    result.spec_id,
+                    result.spec_id,
+                    branch_name
                 );
 
                 // Check for actual conflicts that need resolution spec
@@ -1317,11 +1321,11 @@ pub fn cmd_work_parallel(
     // Show next steps for merge failures
     if !merge_failed.is_empty() {
         println!("\n{} Next steps for merge-pending branches:", "→".cyan());
-        println!("  - Review each branch for conflicts");
-        println!(
-            "  - Resolve conflicts manually or run {} to merge sequentially",
-            "chant merge".bold()
-        );
+        println!("  1. Review each branch:  git log <branch> --oneline -5");
+        println!("  2. Auto-resolve conflicts:  chant merge --all --rebase --auto");
+        println!("  3. Or merge sequentially:  chant merge <spec-id>");
+        println!("  4. List worktrees:  git worktree list");
+        println!("\n  Documentation: See 'chant merge --help' for more options");
     }
 
     // Detect parallel pitfalls

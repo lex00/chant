@@ -2953,3 +2953,114 @@ fn test_dependency_chain_updates_after_completion() {
     let _ = std::env::set_current_dir(&original_dir);
     let _ = cleanup_test_repo(&repo_dir);
 }
+
+#[test]
+fn test_env_based_derivation_end_to_end() {
+    let original_dir = std::env::current_dir().expect("Failed to get current dir");
+
+    let repo_dir = PathBuf::from("/tmp/test-chant-env-deriv");
+    let chant_binary = get_chant_binary();
+
+    let _ = cleanup_test_repo(&repo_dir);
+    std::fs::create_dir_all(&repo_dir).expect("Failed to create temp dir");
+
+    // Initialize test repo with setup_test_repo helper
+    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+
+    // Manually set up .chant directory (similar to init test)
+    let chant_dir = repo_dir.join(".chant");
+    std::fs::create_dir_all(&chant_dir).expect("Failed to create .chant dir");
+
+    // Create enterprise config with env variable derivation
+    let config_path = chant_dir.join("config.md");
+    let config_content = r#"---
+project:
+  name: test-project
+enterprise:
+  derived:
+    team:
+      from: env
+      pattern: "TEAM_NAME"
+    environment:
+      from: env
+      pattern: "DEPLOY_ENV"
+---
+
+# Config
+"#;
+    std::fs::write(&config_path, config_content).expect("Failed to write config");
+
+    // Create specs directory
+    let specs_dir = chant_dir.join("specs");
+    std::fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+
+    // Run chant add with environment variables set
+    let add_output = Command::new(&chant_binary)
+        .args(["add", "Test spec with env derivation"])
+        .env("TEAM_NAME", "platform")
+        .env("DEPLOY_ENV", "production")
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant add");
+
+    if !add_output.status.success() {
+        eprintln!(
+            "chant add stderr: {}",
+            String::from_utf8_lossy(&add_output.stderr)
+        );
+        eprintln!(
+            "chant add stdout: {}",
+            String::from_utf8_lossy(&add_output.stdout)
+        );
+        let _ = std::env::set_current_dir(&original_dir);
+        let _ = cleanup_test_repo(&repo_dir);
+        panic!("chant add failed");
+    }
+
+    // Read the created spec
+    let spec_files: Vec<_> = fs::read_dir(&specs_dir)
+        .expect("Failed to read specs directory")
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().map(|ext| ext == "md").unwrap_or(false))
+        .collect();
+
+    assert!(!spec_files.is_empty(), "No spec file was created");
+
+    let spec_file = spec_files[0].path();
+    let spec_content = fs::read_to_string(&spec_file).expect("Failed to read spec file");
+
+    eprintln!("Spec content:\n{}", spec_content);
+
+    // Verify spec contains values from environment variables in context field
+    assert!(
+        spec_content.contains("derived_team=platform"),
+        "Spec should contain derived_team=platform in context. Got:\n{}",
+        spec_content
+    );
+    assert!(
+        spec_content.contains("derived_environment=production"),
+        "Spec should contain derived_environment=production in context. Got:\n{}",
+        spec_content
+    );
+
+    // Verify derived_fields tracking
+    assert!(
+        spec_content.contains("derived_fields:"),
+        "Spec should track derived_fields. Got:\n{}",
+        spec_content
+    );
+    assert!(
+        spec_content.contains("- team") || spec_content.contains("  - team"),
+        "Spec should list 'team' in derived_fields. Got:\n{}",
+        spec_content
+    );
+    assert!(
+        spec_content.contains("- environment") || spec_content.contains("  - environment"),
+        "Spec should list 'environment' in derived_fields. Got:\n{}",
+        spec_content
+    );
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}
