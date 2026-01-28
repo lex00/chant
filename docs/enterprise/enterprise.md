@@ -297,24 +297,22 @@ When a spec completes, derived fields are auto-populated, and `chant lint` verif
 
 ## Audit Trail
 
-Track who did what and when:
+Track when and with what model a spec was completed:
 
 ```yaml
 # Auto-populated on completion
 ---
 status: completed
-completed_by: alice@company.com   # From git user
 completed_at: 2026-01-22T15:30:00Z
 model: claude-haiku-4-5-20251001  # Agent model used
 ---
 ```
 
 These fields are automatically populated by `chant finalize` or auto-finalize when a spec completes:
-- `completed_by`: Git user name or email (from git config)
 - `completed_at`: ISO 8601 timestamp of completion
 - `model`: Model ID of agent that completed the spec
 
-Combined with git history, this provides full audit trail of spec execution.
+Combined with git history (commit author, timestamp, and message), this provides a complete audit trail of spec execution. The git commit records who performed the work and when, while the spec frontmatter records which model was used to complete it.
 
 ## Enterprise vs Personal
 
