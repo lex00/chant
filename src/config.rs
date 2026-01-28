@@ -6,7 +6,8 @@
 //! - ignore: false
 
 use anyhow::{Context, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -34,6 +35,54 @@ impl fmt::Display for GitProvider {
     }
 }
 
+/// Enterprise configuration for derived frontmatter and validation
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct EnterpriseConfig {
+    /// Field derivation rules (which fields to derive, from what source, using what pattern)
+    #[serde(default)]
+    pub derived: HashMap<String, DerivedFieldConfig>,
+    /// List of required field names to validate
+    #[serde(default)]
+    pub required: Vec<String>,
+}
+
+/// Configuration for a single derived field
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DerivedFieldConfig {
+    /// Source of the derived value
+    pub from: DerivationSource,
+    /// Pattern for extracting/formatting the value
+    pub pattern: String,
+    /// Optional validation rule for the derived value
+    #[serde(default)]
+    pub validate: Option<ValidationRule>,
+}
+
+/// Source of a derived field value
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DerivationSource {
+    /// Derive from git branch name
+    Branch,
+    /// Derive from file path
+    Path,
+    /// Derive from environment variable
+    Env,
+    /// Derive from git user information
+    GitUser,
+}
+
+/// Validation rule for derived fields
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ValidationRule {
+    /// Enum validation: value must be one of the specified values
+    Enum {
+        /// List of allowed values
+        values: Vec<String>,
+    },
+}
+
 #[derive(Debug, Deserialize)]
 pub struct Config {
     pub project: ProjectConfig,
@@ -47,6 +96,8 @@ pub struct Config {
     pub parallel: ParallelConfig,
     #[serde(default)]
     pub repos: Vec<RepoConfig>,
+    #[serde(default)]
+    pub enterprise: EnterpriseConfig,
 }
 
 /// Configuration for a single repository in cross-repo dependency resolution
@@ -314,6 +365,7 @@ struct PartialConfig {
     pub git: Option<PartialGitConfig>,
     pub parallel: Option<ParallelConfig>,
     pub repos: Option<Vec<RepoConfig>>,
+    pub enterprise: Option<EnterpriseConfig>,
 }
 
 #[allow(dead_code)]
@@ -419,6 +471,8 @@ impl PartialConfig {
             repos: project
                 .repos
                 .unwrap_or_else(|| self.repos.unwrap_or_default()),
+            // Enterprise config: project overrides global, or use default
+            enterprise: project.enterprise.or(self.enterprise).unwrap_or_default(),
         }
     }
 }
@@ -906,5 +960,230 @@ project:
         let config = Config::parse(content).unwrap();
 
         assert_eq!(config.defaults.rotation_strategy, "none");
+    }
+
+    // =========================================================================
+    // ENTERPRISE CONFIG TESTS
+    // =========================================================================
+
+    #[test]
+    fn test_parse_enterprise_config() {
+        let content = r#"---
+project:
+  name: test-project
+enterprise:
+  derived:
+    environment:
+      from: branch
+      pattern: "^(dev|staging|prod)$"
+      validate:
+        type: enum
+        values:
+          - dev
+          - staging
+          - prod
+    team:
+      from: env
+      pattern: "TEAM_NAME"
+  required:
+    - environment
+    - team
+---
+"#;
+        let config = Config::parse(content).unwrap();
+
+        // Check enterprise config exists
+        assert!(!config.enterprise.derived.is_empty());
+        assert_eq!(config.enterprise.derived.len(), 2);
+        assert!(!config.enterprise.required.is_empty());
+        assert_eq!(config.enterprise.required.len(), 2);
+
+        // Check environment field derivation
+        let env_field = config.enterprise.derived.get("environment").unwrap();
+        assert!(matches!(env_field.from, DerivationSource::Branch));
+        assert_eq!(env_field.pattern, "^(dev|staging|prod)$");
+        assert!(env_field.validate.is_some());
+
+        // Check team field derivation
+        let team_field = config.enterprise.derived.get("team").unwrap();
+        assert!(matches!(team_field.from, DerivationSource::Env));
+        assert_eq!(team_field.pattern, "TEAM_NAME");
+        assert!(team_field.validate.is_none());
+
+        // Check required fields
+        assert!(config
+            .enterprise
+            .required
+            .contains(&"environment".to_string()));
+        assert!(config.enterprise.required.contains(&"team".to_string()));
+    }
+
+    #[test]
+    fn test_parse_enterprise_config_with_path_source() {
+        let content = r#"---
+project:
+  name: test-project
+enterprise:
+  derived:
+    project_code:
+      from: path
+      pattern: "^([a-z]{3})-"
+---
+"#;
+        let config = Config::parse(content).unwrap();
+
+        let field = config.enterprise.derived.get("project_code").unwrap();
+        assert!(matches!(field.from, DerivationSource::Path));
+        assert_eq!(field.pattern, "^([a-z]{3})-");
+    }
+
+    #[test]
+    fn test_parse_enterprise_config_with_git_user_source() {
+        let content = r#"---
+project:
+  name: test-project
+enterprise:
+  derived:
+    author:
+      from: git_user
+      pattern: "name"
+---
+"#;
+        let config = Config::parse(content).unwrap();
+
+        let field = config.enterprise.derived.get("author").unwrap();
+        assert!(matches!(field.from, DerivationSource::GitUser));
+        assert_eq!(field.pattern, "name");
+    }
+
+    #[test]
+    fn test_config_without_enterprise_section() {
+        let content = r#"---
+project:
+  name: test-project
+defaults:
+  prompt: custom
+---
+"#;
+        let config = Config::parse(content).unwrap();
+
+        // Enterprise should default to empty
+        assert!(config.enterprise.derived.is_empty());
+        assert!(config.enterprise.required.is_empty());
+    }
+
+    #[test]
+    fn test_enterprise_config_empty_derived() {
+        let content = r#"---
+project:
+  name: test-project
+enterprise:
+  required:
+    - field1
+---
+"#;
+        let config = Config::parse(content).unwrap();
+
+        // Derived should be empty but required should have values
+        assert!(config.enterprise.derived.is_empty());
+        assert_eq!(config.enterprise.required.len(), 1);
+    }
+
+    #[test]
+    fn test_enterprise_config_minimal() {
+        let content = r#"---
+project:
+  name: test-project
+enterprise: {}
+---
+"#;
+        let config = Config::parse(content).unwrap();
+
+        // Both should be empty
+        assert!(config.enterprise.derived.is_empty());
+        assert!(config.enterprise.required.is_empty());
+    }
+
+    #[test]
+    fn test_validation_rule_enum() {
+        let content = r#"---
+project:
+  name: test-project
+enterprise:
+  derived:
+    region:
+      from: env
+      pattern: "REGION"
+      validate:
+        type: enum
+        values:
+          - us-east-1
+          - us-west-2
+          - eu-central-1
+---
+"#;
+        let config = Config::parse(content).unwrap();
+
+        let field = config.enterprise.derived.get("region").unwrap();
+        assert!(field.validate.is_some());
+
+        if let Some(ValidationRule::Enum { values }) = &field.validate {
+            assert_eq!(values.len(), 3);
+            assert!(values.contains(&"us-east-1".to_string()));
+            assert!(values.contains(&"us-west-2".to_string()));
+            assert!(values.contains(&"eu-central-1".to_string()));
+        } else {
+            panic!("Expected Enum validation rule");
+        }
+    }
+
+    #[test]
+    fn test_load_merged_enterprise_config() {
+        let tmp = TempDir::new().unwrap();
+        let global_path = tmp.path().join("global.md");
+        let project_path = tmp.path().join("project.md");
+
+        fs::write(
+            &global_path,
+            r#"---
+enterprise:
+  derived:
+    global_field:
+      from: branch
+      pattern: "pattern1"
+  required:
+    - global_field
+---
+"#,
+        )
+        .unwrap();
+
+        fs::write(
+            &project_path,
+            r#"---
+project:
+  name: my-project
+enterprise:
+  derived:
+    project_field:
+      from: env
+      pattern: "pattern2"
+  required:
+    - project_field
+---
+"#,
+        )
+        .unwrap();
+
+        let config = Config::load_merged_from(Some(&global_path), &project_path).unwrap();
+
+        // Project enterprise overrides global
+        assert!(config.enterprise.derived.contains_key("project_field"));
+        assert!(!config.enterprise.derived.contains_key("global_field"));
+        assert_eq!(config.enterprise.required.len(), 1);
+        assert!(config
+            .enterprise
+            .required
+            .contains(&"project_field".to_string()));
     }
 }

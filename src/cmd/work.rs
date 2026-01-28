@@ -1767,6 +1767,7 @@ mod tests {
                 stagger_jitter_ms: 200,
             },
             repos: vec![],
+            enterprise: chant::config::EnterpriseConfig::default(),
         }
     }
 

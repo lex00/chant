@@ -12,10 +12,10 @@ defaults:
 parallel:
   stagger_delay_ms: 10000
   agents:
-    - name: claude1
-      command: claude1
-      max_concurrent: 1
-      weight: 1
+    #- name: claude1
+    #  command: claude1
+    #  max_concurrent: 1
+    #  weight: 1
     - name: claude2
       command: claude2
       max_concurrent: 3

@@ -262,6 +262,7 @@ mod tests {
             providers: crate::provider::ProviderConfig::default(),
             parallel: crate::config::ParallelConfig::default(),
             repos: vec![],
+            enterprise: crate::config::EnterpriseConfig::default(),
         }
     }
 
