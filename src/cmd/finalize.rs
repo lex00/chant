@@ -19,12 +19,16 @@ pub const MAX_AGENT_OUTPUT_CHARS: usize = 5000;
 /// Finalize a spec after successful completion
 /// Sets status, commits, completed_at, and model
 /// This function is idempotent and can be called multiple times safely
+///
+/// If `commits` is provided, uses those commits directly.
+/// If `commits` is None, fetches commits using get_commits_for_spec.
 pub fn finalize_spec(
     spec: &mut Spec,
     spec_path: &Path,
     config: &Config,
     all_specs: &[Spec],
     allow_no_commits: bool,
+    commits: Option<Vec<String>>,
 ) -> Result<()> {
     // Check if this is a driver spec with incomplete members
     let incomplete_members = spec::get_incomplete_members(&spec.id, all_specs);
@@ -37,11 +41,16 @@ pub fn finalize_spec(
         );
     }
 
-    // Get the commits for this spec
-    let commits = if allow_no_commits {
-        get_commits_for_spec_allow_no_commits(&spec.id)?
-    } else {
-        get_commits_for_spec(&spec.id)?
+    // Use provided commits or fetch them
+    let commits = match commits {
+        Some(c) => c,
+        None => {
+            if allow_no_commits {
+                get_commits_for_spec_allow_no_commits(&spec.id)?
+            } else {
+                get_commits_for_spec(&spec.id)?
+            }
+        }
     };
 
     // Update spec to completed

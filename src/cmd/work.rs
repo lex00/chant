@@ -487,8 +487,8 @@ pub fn cmd_work(
             // 3. If all criteria checked, auto-finalize
             // 4. If criteria unchecked, fail with clear message
 
-            // Check for commits
-            match if allow_no_commits {
+            // Check for commits and store them for finalization
+            let found_commits = match if allow_no_commits {
                 cmd::commits::get_commits_for_spec_allow_no_commits(&spec.id)
             } else {
                 cmd::commits::get_commits_for_spec(&spec.id)
@@ -504,6 +504,7 @@ pub fn cmd_work(
                         spec.save(&spec_path)?;
                         anyhow::bail!("Cannot complete spec without commits - did the agent make any changes?");
                     }
+                    commits
                 }
                 Err(e) => {
                     if allow_no_commits {
@@ -511,6 +512,8 @@ pub fn cmd_work(
                             "\n{} No matching commits found, using HEAD as fallback.",
                             "→".cyan()
                         );
+                        // Will use HEAD fallback in finalize
+                        vec![]
                     } else {
                         println!("\n{} {}", "⚠".yellow(), e);
                         // Mark as failed since we need commits
@@ -566,7 +569,20 @@ pub fn cmd_work(
                 "→".cyan()
             );
             let all_specs = spec::load_all_specs(&specs_dir)?;
-            finalize_spec(&mut spec, &spec_path, &config, &all_specs, allow_no_commits)?;
+            // Pass the commits we already retrieved to avoid fetching twice
+            let commits_to_pass = if found_commits.is_empty() {
+                None // Let finalize fetch with fallback
+            } else {
+                Some(found_commits)
+            };
+            finalize_spec(
+                &mut spec,
+                &spec_path,
+                &config,
+                &all_specs,
+                allow_no_commits,
+                commits_to_pass,
+            )?;
 
             // If this is a member spec, check if driver should be auto-completed
             // Reload specs to get the freshly-saved completed status

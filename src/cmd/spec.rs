@@ -2293,7 +2293,7 @@ git:
         assert!(spec.frontmatter.completed_at.is_none());
 
         // Finalize the spec
-        finalize_spec(&mut spec, &spec_path, &config, &[], true).unwrap();
+        finalize_spec(&mut spec, &spec_path, &config, &[], true, None).unwrap();
 
         // After finalization, status should be completed
         assert_eq!(spec.frontmatter.status, SpecStatus::Completed);
@@ -2344,7 +2344,7 @@ git:
         let mut spec = Spec::load(&spec_path).unwrap();
 
         // Finalize the spec
-        finalize_spec(&mut spec, &spec_path, &config, &[], true).unwrap();
+        finalize_spec(&mut spec, &spec_path, &config, &[], true, None).unwrap();
 
         // Verify status and completed_at are set in memory
         assert_eq!(spec.frontmatter.status, SpecStatus::Completed);
@@ -2393,7 +2393,7 @@ git:
         let config = Config::parse(config_str).unwrap();
 
         let mut spec = Spec::load(&spec_path).unwrap();
-        finalize_spec(&mut spec, &spec_path, &config, &[], true).unwrap();
+        finalize_spec(&mut spec, &spec_path, &config, &[], true, None).unwrap();
 
         // Verify ISO format YYYY-MM-DDTHH:MM:SSZ
         let completed_at = spec.frontmatter.completed_at.as_ref().unwrap();
@@ -2466,7 +2466,7 @@ git:
         let config = Config::parse(config_str).unwrap();
 
         let mut spec = Spec::load(&spec_path).unwrap();
-        finalize_spec(&mut spec, &spec_path, &config, &[], true).unwrap();
+        finalize_spec(&mut spec, &spec_path, &config, &[], true, None).unwrap();
 
         // When commits list is empty, it should be None (not an empty array)
         // Note: This test assumes no commits were found (the spec we created won't have any)
@@ -2523,7 +2523,7 @@ git:
 
         // Verify status changes to Completed
         assert_ne!(spec.frontmatter.status, SpecStatus::Completed);
-        finalize_spec(&mut spec, &spec_path, &config, &[], true).unwrap();
+        finalize_spec(&mut spec, &spec_path, &config, &[], true, None).unwrap();
         assert_eq!(spec.frontmatter.status, SpecStatus::Completed);
     }
 
@@ -2563,7 +2563,7 @@ git:
         let config = Config::parse(config_str).unwrap();
 
         let mut spec = Spec::load(&spec_path).unwrap();
-        finalize_spec(&mut spec, &spec_path, &config, &[], true).unwrap();
+        finalize_spec(&mut spec, &spec_path, &config, &[], true, None).unwrap();
 
         // Reload from disk
         let reloaded = Spec::load(&spec_path).unwrap();
@@ -3111,7 +3111,7 @@ git:
         assert_ne!(spec.frontmatter.status, SpecStatus::Completed);
 
         // Finalize the spec
-        finalize_spec(&mut spec, &spec_path, &config, &[], true).unwrap();
+        finalize_spec(&mut spec, &spec_path, &config, &[], true, None).unwrap();
 
         // After finalization, status should be completed
         assert_eq!(spec.frontmatter.status, SpecStatus::Completed);
@@ -3199,7 +3199,7 @@ git:
         let mut spec = spec::resolve_spec(&specs_dir, "2026-01-24-test-final-003").unwrap();
 
         // Finalize the spec (simulating force flag behavior)
-        finalize_spec(&mut spec, &spec_path, &config, &[], true).unwrap();
+        finalize_spec(&mut spec, &spec_path, &config, &[], true, None).unwrap();
 
         // After finalization with force, status should be completed
         assert_eq!(spec.frontmatter.status, SpecStatus::Completed);
@@ -3248,7 +3248,7 @@ git:
 
         // Load and finalize
         let mut spec = spec::resolve_spec(&specs_dir, "2026-01-24-test-final-004").unwrap();
-        finalize_spec(&mut spec, &spec_path, &config, &[], true).unwrap();
+        finalize_spec(&mut spec, &spec_path, &config, &[], true, None).unwrap();
 
         // After finalization, status should be completed (regardless of PR creation status)
         assert_eq!(spec.frontmatter.status, SpecStatus::Completed);
@@ -3300,7 +3300,7 @@ git:
 
         // Load and finalize
         let mut spec = spec::resolve_spec(&specs_dir, "2026-01-24-test-final-005").unwrap();
-        finalize_spec(&mut spec, &spec_path, &config, &[], true).unwrap();
+        finalize_spec(&mut spec, &spec_path, &config, &[], true, None).unwrap();
 
         // Status should be completed after finalization
         let status_after_finalize = spec.frontmatter.status.clone();
@@ -3806,7 +3806,7 @@ git:
         // Set PR URL before finalization (simulating PR creation during cmd_work)
         spec.frontmatter.pr = Some("https://github.com/test/repo/pull/99".to_string());
 
-        finalize_spec(&mut spec, &spec_path, &config, &[], true).unwrap();
+        finalize_spec(&mut spec, &spec_path, &config, &[], true, None).unwrap();
 
         // Verify PR URL is still set after finalization
         assert_eq!(
@@ -3866,7 +3866,7 @@ git:
         // Before finalization, model should be None
         assert!(spec.frontmatter.model.is_none());
 
-        finalize_spec(&mut spec, &spec_path, &config, &[], true).unwrap();
+        finalize_spec(&mut spec, &spec_path, &config, &[], true, None).unwrap();
 
         // After finalization with config model, model should be set
         // Note: May be None if env vars override, but if env vars are not set it should be from config
@@ -3922,7 +3922,7 @@ git:
         assert!(spec.frontmatter.model.is_none());
 
         // Finalize the spec
-        finalize_spec(&mut spec, &spec_path, &config, &[], true).unwrap();
+        finalize_spec(&mut spec, &spec_path, &config, &[], true, None).unwrap();
 
         // Model should be set after finalization
         // It will either be from config or from env vars if they're set
@@ -4112,7 +4112,7 @@ git:
         assert_eq!(spec.frontmatter.status, SpecStatus::InProgress);
 
         // Step 3: Finalize
-        finalize_spec(&mut spec, &spec_path, &config, &[], true).unwrap();
+        finalize_spec(&mut spec, &spec_path, &config, &[], true, None).unwrap();
 
         // Step 4: Verify all fields are set
         assert_eq!(spec.frontmatter.status, SpecStatus::Completed);
@@ -4539,7 +4539,14 @@ git:
         let all_specs = vec![driver_spec.clone(), member1, member2];
 
         // Try to finalize - should fail because member 2 is not completed
-        let result = finalize_spec(&mut driver_spec, &spec_path, &config, &all_specs, true);
+        let result = finalize_spec(
+            &mut driver_spec,
+            &spec_path,
+            &config,
+            &all_specs,
+            true,
+            None,
+        );
         assert!(result.is_err());
         let error_msg = result.unwrap_err().to_string();
         assert!(error_msg.contains("Cannot complete driver spec"));
@@ -4599,7 +4606,14 @@ git:
         let all_specs = vec![driver_spec.clone(), member1, member2];
 
         // Try to finalize - should succeed because all members are completed
-        let result = finalize_spec(&mut driver_spec, &spec_path, &config, &all_specs, true);
+        let result = finalize_spec(
+            &mut driver_spec,
+            &spec_path,
+            &config,
+            &all_specs,
+            true,
+            None,
+        );
         assert!(result.is_ok());
         assert_eq!(driver_spec.frontmatter.status, SpecStatus::Completed);
     }
@@ -4636,7 +4650,14 @@ git:
         let all_specs = vec![regular_spec.clone()];
 
         // Try to finalize - should succeed because it's not a driver
-        let result = finalize_spec(&mut regular_spec, &spec_path, &config, &all_specs, true);
+        let result = finalize_spec(
+            &mut regular_spec,
+            &spec_path,
+            &config,
+            &all_specs,
+            true,
+            None,
+        );
         assert!(result.is_ok());
         assert_eq!(regular_spec.frontmatter.status, SpecStatus::Completed);
     }
