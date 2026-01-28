@@ -3064,3 +3064,214 @@ enterprise:
     let _ = std::env::set_current_dir(&original_dir);
     let _ = cleanup_test_repo(&repo_dir);
 }
+
+#[test]
+#[serial]
+fn test_derivation_graceful_failure_no_git() {
+    let original_dir = std::env::current_dir().expect("Failed to get current dir");
+
+    let repo_dir = PathBuf::from("/tmp/test-chant-no-git-deriv");
+    let chant_binary = get_chant_binary();
+
+    let _ = cleanup_test_repo(&repo_dir);
+
+    // Initialize a git repo on 'main' branch (not matching sprint pattern)
+    // This simulates the derivation failure path: git works but branch doesn't match
+    assert!(
+        setup_test_repo(&repo_dir).is_ok(),
+        "Failed to set up test repo"
+    );
+
+    // Set up .chant directory with enterprise config expecting sprint/... branch pattern
+    // Also include a path-based derivation to verify non-git fields still work
+    let chant_dir = repo_dir.join(".chant");
+    std::fs::create_dir_all(chant_dir.join("specs")).expect("Failed to create specs dir");
+
+    let config_path = chant_dir.join("config.md");
+    let config_content = r#"---
+project:
+  name: test-project
+enterprise:
+  derived:
+    sprint:
+      from: branch
+      pattern: "sprint/([^/]+)"
+    component:
+      from: path
+      pattern: "/specs/([^/]+)\\.md$"
+---
+
+# Config
+"#;
+    std::fs::write(&config_path, config_content).expect("Failed to write config");
+
+    // Run chant add on a branch that does NOT match the sprint pattern
+    // Derivation should gracefully skip sprint but still derive component from path
+    let add_output = Command::new(&chant_binary)
+        .args(["add", "Test spec without sprint branch"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant add");
+
+    let stdout = String::from_utf8_lossy(&add_output.stdout);
+    let stderr = String::from_utf8_lossy(&add_output.stderr);
+
+    eprintln!("stdout: {}", stdout);
+    eprintln!("stderr: {}", stderr);
+
+    // Command should succeed — derivation failure is non-fatal
+    assert!(
+        add_output.status.success(),
+        "chant add should succeed when branch pattern doesn't match. stderr: {}",
+        stderr
+    );
+
+    // Read the created spec file
+    let specs_dir = chant_dir.join("specs");
+    let spec_files: Vec<_> = fs::read_dir(&specs_dir)
+        .expect("Failed to read specs directory")
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().map(|ext| ext == "md").unwrap_or(false))
+        .collect();
+
+    assert!(!spec_files.is_empty(), "No spec file was created");
+
+    let spec_file = spec_files[0].path();
+    let spec_content = fs::read_to_string(&spec_file).expect("Failed to read spec file");
+
+    eprintln!("Spec content:\n{}", spec_content);
+
+    // The branch-derived field (sprint) should NOT appear since pattern didn't match
+    assert!(
+        !spec_content.contains("derived_sprint="),
+        "Branch-derived field 'sprint' should be absent when pattern doesn't match. Got:\n{}",
+        spec_content
+    );
+
+    // If derived_fields is present, sprint should not be listed
+    if spec_content.contains("derived_fields:") {
+        assert!(
+            !spec_content.contains("- sprint"),
+            "derived_fields should not list 'sprint' when pattern doesn't match. Got:\n{}",
+            spec_content
+        );
+    }
+
+    // Path-based derivation (component) should still work since it doesn't need git
+    assert!(
+        spec_content.contains("derived_component="),
+        "Path-derived field 'component' should be present. Got:\n{}",
+        spec_content
+    );
+
+    // derived_fields should list component
+    assert!(
+        spec_content.contains("- component"),
+        "derived_fields should list 'component'. Got:\n{}",
+        spec_content
+    );
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}
+
+#[test]
+#[serial]
+fn test_derivation_with_detached_head() {
+    let original_dir = std::env::current_dir().expect("Failed to get current dir");
+
+    let repo_dir = PathBuf::from("/tmp/test-chant-detached-head-deriv");
+    let chant_binary = get_chant_binary();
+
+    let _ = cleanup_test_repo(&repo_dir);
+    assert!(
+        setup_test_repo(&repo_dir).is_ok(),
+        "Failed to set up test repo"
+    );
+
+    // Put repo into detached HEAD state
+    let commit_output = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to get HEAD commit");
+    let commit_hash = String::from_utf8_lossy(&commit_output.stdout)
+        .trim()
+        .to_string();
+
+    let checkout_output = Command::new("git")
+        .args(["checkout", &commit_hash])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to checkout detached HEAD");
+    assert!(
+        checkout_output.status.success(),
+        "Failed to create detached HEAD state"
+    );
+
+    // Set up .chant directory with enterprise config
+    let chant_dir = repo_dir.join(".chant");
+    std::fs::create_dir_all(chant_dir.join("specs")).expect("Failed to create specs dir");
+
+    let config_path = chant_dir.join("config.md");
+    let config_content = r#"---
+project:
+  name: test-project
+enterprise:
+  derived:
+    branch_name:
+      from: branch
+      pattern: "(.*)"
+---
+
+# Config
+"#;
+    std::fs::write(&config_path, config_content).expect("Failed to write config");
+
+    // Run chant add — should handle detached HEAD gracefully (no crash)
+    let add_output = Command::new(&chant_binary)
+        .args(["add", "Test spec in detached HEAD"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant add");
+
+    let stdout = String::from_utf8_lossy(&add_output.stdout);
+    let stderr = String::from_utf8_lossy(&add_output.stderr);
+
+    eprintln!("stdout: {}", stdout);
+    eprintln!("stderr: {}", stderr);
+
+    // Command should succeed — detached HEAD is a valid git state
+    assert!(
+        add_output.status.success(),
+        "chant add should succeed in detached HEAD state. stderr: {}",
+        stderr
+    );
+
+    // Read the created spec
+    let specs_dir = chant_dir.join("specs");
+    let spec_files: Vec<_> = fs::read_dir(&specs_dir)
+        .expect("Failed to read specs directory")
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().map(|ext| ext == "md").unwrap_or(false))
+        .collect();
+
+    assert!(!spec_files.is_empty(), "No spec file was created");
+
+    let spec_file = spec_files[0].path();
+    let spec_content = fs::read_to_string(&spec_file).expect("Failed to read spec file");
+
+    eprintln!("Spec content:\n{}", spec_content);
+
+    // Spec should be created with type field present
+    assert!(
+        spec_content.contains("type: code"),
+        "Spec should have 'type: code' in frontmatter. Got:\n{}",
+        spec_content
+    );
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}

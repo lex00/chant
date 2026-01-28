@@ -6,7 +6,7 @@ defaults:
   prompt: standard
   branch: false
   pr: false
-  model: sonnet
+  model: haiku
   rotation_strategy: round-robin
 
 parallel:
