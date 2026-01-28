@@ -12,6 +12,91 @@ use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+/// Returns the worktree path for a given spec ID.
+///
+/// This does not check whether the worktree exists.
+pub fn worktree_path_for_spec(spec_id: &str) -> PathBuf {
+    PathBuf::from(format!("/tmp/chant-{}", spec_id))
+}
+
+/// Returns the worktree path for a spec if an active worktree exists.
+///
+/// Returns Some(path) if the worktree directory exists, None otherwise.
+pub fn get_active_worktree(spec_id: &str) -> Option<PathBuf> {
+    let path = worktree_path_for_spec(spec_id);
+    if path.exists() && path.is_dir() {
+        Some(path)
+    } else {
+        None
+    }
+}
+
+/// Commits changes in a worktree.
+///
+/// # Arguments
+///
+/// * `worktree_path` - Path to the worktree
+/// * `message` - Commit message
+///
+/// # Returns
+///
+/// Ok(commit_hash) if commit was successful, Err if failed.
+pub fn commit_in_worktree(worktree_path: &Path, message: &str) -> Result<String> {
+    // Stage all changes
+    let output = Command::new("git")
+        .args(["add", "-A"])
+        .current_dir(worktree_path)
+        .output()
+        .context("Failed to stage changes in worktree")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Failed to stage changes: {}", stderr);
+    }
+
+    // Check if there are any changes to commit
+    let output = Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(worktree_path)
+        .output()
+        .context("Failed to check git status in worktree")?;
+
+    let status_output = String::from_utf8_lossy(&output.stdout);
+    if status_output.trim().is_empty() {
+        // No changes to commit, return the current HEAD
+        let output = Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(worktree_path)
+            .output()
+            .context("Failed to get HEAD commit")?;
+
+        let hash = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        return Ok(hash);
+    }
+
+    // Commit the changes
+    let output = Command::new("git")
+        .args(["commit", "-m", message])
+        .current_dir(worktree_path)
+        .output()
+        .context("Failed to commit changes in worktree")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Failed to commit: {}", stderr);
+    }
+
+    // Get the commit hash
+    let output = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(worktree_path)
+        .output()
+        .context("Failed to get commit hash")?;
+
+    let hash = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok(hash)
+}
+
 /// Creates a new git worktree for the given spec.
 ///
 /// # Arguments
@@ -551,6 +636,63 @@ mod tests {
         let result = remove_worktree(&path);
 
         assert!(result.is_ok());
+        Ok(())
+    }
+
+    #[test]
+    fn test_worktree_path_for_spec() {
+        let path = worktree_path_for_spec("2026-01-27-001-abc");
+        assert_eq!(path, PathBuf::from("/tmp/chant-2026-01-27-001-abc"));
+    }
+
+    #[test]
+    fn test_get_active_worktree_nonexistent() {
+        // Test with a spec ID that definitely doesn't have a worktree
+        let result = get_active_worktree("nonexistent-spec-12345");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_commit_in_worktree() -> Result<()> {
+        let repo_dir = PathBuf::from("/tmp/test-chant-commit-in-worktree");
+        cleanup_test_repo(&repo_dir)?;
+        setup_test_repo(&repo_dir)?;
+
+        // Create a new file
+        fs::write(repo_dir.join("new_file.txt"), "content")?;
+
+        // Commit the changes
+        let result = commit_in_worktree(&repo_dir, "Test commit message");
+
+        cleanup_test_repo(&repo_dir)?;
+
+        assert!(result.is_ok());
+        let hash = result.unwrap();
+        // Commit hash should be a 40-character hex string
+        assert_eq!(hash.len(), 40);
+        assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
+
+        Ok(())
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_commit_in_worktree_no_changes() -> Result<()> {
+        let repo_dir = PathBuf::from("/tmp/test-chant-commit-no-changes");
+        cleanup_test_repo(&repo_dir)?;
+        setup_test_repo(&repo_dir)?;
+
+        // Don't make any changes, just try to commit
+        let result = commit_in_worktree(&repo_dir, "Empty commit");
+
+        cleanup_test_repo(&repo_dir)?;
+
+        // Should still succeed (returns HEAD)
+        assert!(result.is_ok());
+        let hash = result.unwrap();
+        assert_eq!(hash.len(), 40);
+
         Ok(())
     }
 }
