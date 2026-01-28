@@ -9,10 +9,19 @@
 //! For each source, the engine applies regex patterns to extract the first capture group.
 //! If a pattern doesn't match, the engine returns None for that field (graceful failure).
 
-use crate::config::{DerivationSource, DerivedFieldConfig, EnterpriseConfig};
+use crate::config::{DerivationSource, DerivedFieldConfig, EnterpriseConfig, ValidationRule};
 use regex::Regex;
 use std::collections::HashMap;
 use std::path::PathBuf;
+
+/// Result of validating a derived value
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ValidationResult {
+    /// Value is valid
+    Valid,
+    /// Value is invalid but derivation proceeds with a warning
+    Warning(String),
+}
 
 /// Context containing all available data sources for derivation
 #[derive(Debug, Clone)]
@@ -98,13 +107,14 @@ impl DerivationEngine {
     /// For Branch and Path sources: Extracts the first capture group from the pattern match.
     /// For Env and GitUser sources: Returns the value directly (pattern is the field identifier).
     /// Returns None if the pattern doesn't match or the source is unavailable.
+    /// Validates the derived value if a validation rule is configured.
     fn derive_field(
         &self,
         field_name: &str,
         config: &DerivedFieldConfig,
         context: &DerivationContext,
     ) -> Option<String> {
-        match config.from {
+        let value = match config.from {
             DerivationSource::Branch => {
                 let source_value = self.extract_from_branch(context)?;
                 self.apply_pattern(&config.pattern, &source_value)
@@ -114,7 +124,7 @@ impl DerivationEngine {
                             field_name
                         );
                         None
-                    })
+                    })?
             }
             DerivationSource::Path => {
                 let source_value = self.extract_from_path(context)?;
@@ -125,17 +135,32 @@ impl DerivationEngine {
                             field_name
                         );
                         None
-                    })
+                    })?
             }
             DerivationSource::Env => {
                 // For Env, pattern is the environment variable name
-                self.extract_from_env(context, &config.pattern)
+                self.extract_from_env(context, &config.pattern)?
             }
             DerivationSource::GitUser => {
                 // For GitUser, pattern is "name" or "email"
-                self.extract_from_git_user(context, &config.pattern)
+                self.extract_from_git_user(context, &config.pattern)?
+            }
+        };
+
+        // Validate the derived value if a validation rule is configured
+        if let Some(validation) = &config.validate {
+            match self.validate_derived_value(field_name, &value, validation) {
+                ValidationResult::Valid => {
+                    // Value is valid, proceed
+                }
+                ValidationResult::Warning(msg) => {
+                    // Log warning but still include the value in results
+                    eprintln!("Warning: {}", msg);
+                }
             }
         }
+
+        Some(value)
     }
 
     /// Extract value from branch name source
@@ -182,6 +207,32 @@ impl DerivationEngine {
             .captures(source)?
             .get(1)
             .map(|m| m.as_str().to_string())
+    }
+
+    /// Validate a derived value against its validation rule
+    ///
+    /// Returns Valid if the value passes validation, or Warning if it fails.
+    /// Does not prevent the value from being included in results.
+    fn validate_derived_value(
+        &self,
+        field_name: &str,
+        value: &str,
+        validation: &ValidationRule,
+    ) -> ValidationResult {
+        match validation {
+            ValidationRule::Enum { values } => {
+                if values.contains(&value.to_string()) {
+                    ValidationResult::Valid
+                } else {
+                    ValidationResult::Warning(format!(
+                        "Field '{}' value '{}' is not in allowed enum values: {}",
+                        field_name,
+                        value,
+                        values.join(", ")
+                    ))
+                }
+            }
+        }
     }
 }
 
@@ -666,5 +717,231 @@ mod tests {
         assert_eq!(result.get("env"), Some(&"prod".to_string()));
         assert!(!result.contains_key("team"));
         assert_eq!(result.get("author"), Some(&"Jane Doe".to_string()));
+    }
+
+    // =========================================================================
+    // VALIDATION TESTS
+    // =========================================================================
+
+    #[test]
+    fn test_enum_validation_valid_value() {
+        let mut derived = HashMap::new();
+        derived.insert(
+            "team".to_string(),
+            DerivedFieldConfig {
+                from: DerivationSource::Env,
+                pattern: "TEAM_NAME".to_string(),
+                validate: Some(ValidationRule::Enum {
+                    values: vec![
+                        "platform".to_string(),
+                        "frontend".to_string(),
+                        "backend".to_string(),
+                    ],
+                }),
+            },
+        );
+
+        let engine = create_test_engine(derived);
+        let mut env_vars = HashMap::new();
+        env_vars.insert("TEAM_NAME".to_string(), "platform".to_string());
+        let context = DerivationContext::with_env_vars(env_vars);
+
+        let result = engine.derive_fields(&context);
+        // Field should be included even with validation
+        assert_eq!(result.get("team"), Some(&"platform".to_string()));
+    }
+
+    #[test]
+    fn test_enum_validation_invalid_value() {
+        let mut derived = HashMap::new();
+        derived.insert(
+            "team".to_string(),
+            DerivedFieldConfig {
+                from: DerivationSource::Env,
+                pattern: "TEAM_NAME".to_string(),
+                validate: Some(ValidationRule::Enum {
+                    values: vec![
+                        "platform".to_string(),
+                        "frontend".to_string(),
+                        "backend".to_string(),
+                    ],
+                }),
+            },
+        );
+
+        let engine = create_test_engine(derived);
+        let mut env_vars = HashMap::new();
+        env_vars.insert("TEAM_NAME".to_string(), "invalid-team".to_string());
+        let context = DerivationContext::with_env_vars(env_vars);
+
+        let result = engine.derive_fields(&context);
+        // Field should still be included even if validation fails
+        assert_eq!(result.get("team"), Some(&"invalid-team".to_string()));
+    }
+
+    #[test]
+    fn test_enum_validation_with_branch_source() {
+        let mut derived = HashMap::new();
+        derived.insert(
+            "environment".to_string(),
+            DerivedFieldConfig {
+                from: DerivationSource::Branch,
+                pattern: r"^(dev|staging|prod)".to_string(),
+                validate: Some(ValidationRule::Enum {
+                    values: vec!["dev".to_string(), "staging".to_string(), "prod".to_string()],
+                }),
+            },
+        );
+
+        let engine = create_test_engine(derived);
+        let mut context = DerivationContext::new();
+        context.branch_name = Some("staging/new-feature".to_string());
+
+        let result = engine.derive_fields(&context);
+        assert_eq!(result.get("environment"), Some(&"staging".to_string()));
+    }
+
+    #[test]
+    fn test_enum_validation_with_branch_source_invalid() {
+        let mut derived = HashMap::new();
+        derived.insert(
+            "environment".to_string(),
+            DerivedFieldConfig {
+                from: DerivationSource::Branch,
+                pattern: r"^([a-z]+)".to_string(),
+                validate: Some(ValidationRule::Enum {
+                    values: vec!["dev".to_string(), "staging".to_string(), "prod".to_string()],
+                }),
+            },
+        );
+
+        let engine = create_test_engine(derived);
+        let mut context = DerivationContext::new();
+        context.branch_name = Some("testing/new-feature".to_string());
+
+        let result = engine.derive_fields(&context);
+        // Value should still be included even though "testing" is not in enum
+        assert_eq!(result.get("environment"), Some(&"testing".to_string()));
+    }
+
+    #[test]
+    fn test_validation_skipped_when_no_rule_configured() {
+        let mut derived = HashMap::new();
+        derived.insert(
+            "team".to_string(),
+            DerivedFieldConfig {
+                from: DerivationSource::Env,
+                pattern: "TEAM_NAME".to_string(),
+                validate: None, // No validation rule
+            },
+        );
+
+        let engine = create_test_engine(derived);
+        let mut env_vars = HashMap::new();
+        env_vars.insert("TEAM_NAME".to_string(), "any-value".to_string());
+        let context = DerivationContext::with_env_vars(env_vars);
+
+        let result = engine.derive_fields(&context);
+        // Field should be included without validation
+        assert_eq!(result.get("team"), Some(&"any-value".to_string()));
+    }
+
+    #[test]
+    fn test_enum_validation_with_path_source() {
+        let mut derived = HashMap::new();
+        derived.insert(
+            "team".to_string(),
+            DerivedFieldConfig {
+                from: DerivationSource::Path,
+                pattern: r"specs/([a-z]+)/".to_string(),
+                validate: Some(ValidationRule::Enum {
+                    values: vec![
+                        "platform".to_string(),
+                        "frontend".to_string(),
+                        "backend".to_string(),
+                    ],
+                }),
+            },
+        );
+
+        let engine = create_test_engine(derived);
+        let mut context = DerivationContext::new();
+        context.spec_path = Some(PathBuf::from(".chant/specs/backend/feature.md"));
+
+        let result = engine.derive_fields(&context);
+        assert_eq!(result.get("team"), Some(&"backend".to_string()));
+    }
+
+    #[test]
+    fn test_enum_validation_case_sensitive() {
+        let mut derived = HashMap::new();
+        derived.insert(
+            "team".to_string(),
+            DerivedFieldConfig {
+                from: DerivationSource::Env,
+                pattern: "TEAM_NAME".to_string(),
+                validate: Some(ValidationRule::Enum {
+                    values: vec!["Platform".to_string(), "Frontend".to_string()],
+                }),
+            },
+        );
+
+        let engine = create_test_engine(derived);
+        let mut env_vars = HashMap::new();
+        env_vars.insert("TEAM_NAME".to_string(), "platform".to_string());
+        let context = DerivationContext::with_env_vars(env_vars);
+
+        let result = engine.derive_fields(&context);
+        // "platform" does not match "Platform" (case sensitive)
+        // Field should still be included
+        assert_eq!(result.get("team"), Some(&"platform".to_string()));
+    }
+
+    #[test]
+    fn test_multiple_fields_with_mixed_validation() {
+        let mut derived = HashMap::new();
+        derived.insert(
+            "team".to_string(),
+            DerivedFieldConfig {
+                from: DerivationSource::Env,
+                pattern: "TEAM_NAME".to_string(),
+                validate: Some(ValidationRule::Enum {
+                    values: vec!["platform".to_string(), "frontend".to_string()],
+                }),
+            },
+        );
+        derived.insert(
+            "environment".to_string(),
+            DerivedFieldConfig {
+                from: DerivationSource::Branch,
+                pattern: r"^(dev|staging|prod)".to_string(),
+                validate: None, // No validation
+            },
+        );
+        derived.insert(
+            "author".to_string(),
+            DerivedFieldConfig {
+                from: DerivationSource::GitUser,
+                pattern: "name".to_string(),
+                validate: Some(ValidationRule::Enum {
+                    values: vec!["Alice".to_string(), "Bob".to_string()],
+                }),
+            },
+        );
+
+        let engine = create_test_engine(derived);
+        let mut context = DerivationContext::new();
+        let mut env_vars = HashMap::new();
+        env_vars.insert("TEAM_NAME".to_string(), "backend".to_string()); // Invalid
+        context.env_vars = env_vars;
+        context.branch_name = Some("prod/feature".to_string());
+        context.git_user_name = Some("Charlie".to_string()); // Invalid
+
+        let result = engine.derive_fields(&context);
+        // All three should be included despite validation warnings
+        assert_eq!(result.len(), 3);
+        assert_eq!(result.get("team"), Some(&"backend".to_string()));
+        assert_eq!(result.get("environment"), Some(&"prod".to_string()));
+        assert_eq!(result.get("author"), Some(&"Charlie".to_string()));
     }
 }
