@@ -137,6 +137,33 @@ When implementing a spec:
   - `--force`: Fully reinitialize while preserving specs, config, and custom files
   - Use when updating agent configurations or resetting to defaults
 
+### Merge Conflict Resolution
+
+When `chant merge` encounters conflicts, it provides detailed diagnostics to help you resolve them quickly.
+
+**Conflict Detection**:
+- Automatically detects conflict type (fast-forward, content, tree)
+- Lists all conflicting files in the error output
+- Suggests recovery strategies specific to the conflict type
+
+**Enhanced Error Messages**:
+```
+Error: Merge failed due to conflicts
+Files with conflicts:
+  - src/main.rs
+  - tests/integration_tests.rs
+
+Next steps:
+  1. Resolve conflicts manually, then: git merge --continue
+  2. Or try automatic rebase: chant merge 00x-v6m --rebase --auto
+  3. Or abort: git merge --abort
+```
+
+**Recovery Options**:
+- `--rebase`: Rebase feature branches onto main before merging (resolves fast-forward issues)
+- `--auto`: Auto-resolve conflicts using AI agent (requires `--rebase`)
+- Manual resolution: Fix conflicts in your editor, stage files with `git add`, then run `git merge --continue`
+
 ## Configuration
 
 ### Global Configuration File: `~/.config/chant/config.md`
@@ -276,6 +303,13 @@ If an unexpected error occurs during spec execution:
   - Updates status to `completed`
   - Adds model and timestamp information to frontmatter
   - Ensures clean, auditable spec completion
+
+### Merge Conflicts
+
+When merging specs back to main:
+- Use `chant merge --all --rebase --auto` for automatic conflict resolution
+- Review enhanced error messages for specific conflict details and recovery steps
+- See [Merge Conflict Resolution](#merge-conflict-resolution) for detailed diagnostics
 
 ### Finalize Workflow (Worktree-Aware)
 
