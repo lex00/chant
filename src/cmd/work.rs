@@ -701,6 +701,83 @@ struct AgentAssignment {
     agent_command: String,
 }
 
+/// Check if a warning should be shown when parallel mode uses agent rotation
+/// with user-specified model preferences that will be ignored.
+///
+/// Returns true if a warning should be shown, false otherwise.
+fn should_warn_model_override_in_parallel(
+    config: &Config,
+    prompt_name: Option<&str>,
+    chant_model_set: bool,
+    anthropic_model_set: bool,
+) -> bool {
+    // Check if using agent rotation (multiple agents or non-"none" rotation strategy)
+    let uses_agent_rotation =
+        config.parallel.agents.len() > 1 || config.defaults.rotation_strategy != "none";
+
+    // If not using agent rotation, no warning needed
+    if !uses_agent_rotation {
+        return false;
+    }
+
+    // Check if user has set model preferences
+    let config_model_set = config.defaults.model.is_some();
+
+    // Check if user specified a non-default prompt
+    let user_specified_prompt = prompt_name
+        .map(|p| p != "standard" && p != config.defaults.prompt.as_str())
+        .unwrap_or(false);
+
+    // If any model preference is set or custom prompt is specified, warn
+    chant_model_set || anthropic_model_set || config_model_set || user_specified_prompt
+}
+
+/// Warn when parallel execution uses agent rotation and user has set model preferences
+/// that will be ignored because each agent has its own CLI profile with its own model.
+fn warn_model_override_in_parallel(config: &Config, prompt_name: Option<&str>) {
+    let chant_model_set = std::env::var("CHANT_MODEL").is_ok();
+    let anthropic_model_set = std::env::var("ANTHROPIC_MODEL").is_ok();
+
+    if !should_warn_model_override_in_parallel(
+        config,
+        prompt_name,
+        chant_model_set,
+        anthropic_model_set,
+    ) {
+        return;
+    }
+
+    // Print warning
+    eprintln!(
+        "{} Note: Parallel mode uses agent CLI profile models, not config/prompt settings",
+        "⚠️ ".yellow()
+    );
+    eprintln!("   The prompt instructions are used, but model selection comes from:");
+
+    // List agents and their config sources
+    let agents = if config.parallel.agents.is_empty() {
+        vec![chant::config::AgentConfig::default()]
+    } else {
+        config.parallel.agents.clone()
+    };
+
+    for agent in &agents {
+        eprintln!(
+            "   - {} → model from `{} config show`",
+            agent.name, agent.command
+        );
+    }
+    eprintln!();
+    eprintln!("   To change which model is used:");
+    for agent in &agents {
+        eprintln!(
+            "   $ {} config set model <opus|sonnet|haiku>",
+            agent.command
+        );
+    }
+    eprintln!();
+}
+
 /// Distribute specs across agents respecting per-agent and total limits
 fn distribute_specs_to_agents(
     specs: &[Spec],
@@ -819,6 +896,9 @@ pub fn cmd_work_parallel(
             ready_specs.len()
         );
     }
+
+    // Warn if user has set model preferences that will be ignored by agent CLI profiles
+    warn_model_override_in_parallel(config, options.prompt_name);
 
     // Show agent distribution
     println!(
@@ -2333,5 +2413,243 @@ mod tests {
 
         // Should clean up only successful spec, skip failed
         cleanup_successful_worktrees(&results);
+    }
+
+    // =========================================================================
+    // MODEL OVERRIDE WARNING TESTS
+    // =========================================================================
+
+    #[test]
+    fn test_warn_model_override_with_chant_model_set() {
+        // Multiple agents + CHANT_MODEL set → should warn
+        let agents = vec![
+            chant::config::AgentConfig {
+                name: "main".to_string(),
+                command: "claude".to_string(),
+                max_concurrent: 2,
+                weight: 1,
+            },
+            chant::config::AgentConfig {
+                name: "alt1".to_string(),
+                command: "claude-alt1".to_string(),
+                max_concurrent: 2,
+                weight: 1,
+            },
+        ];
+        let config = make_test_config_with_agents(agents);
+
+        let should_warn = should_warn_model_override_in_parallel(
+            &config, None,  // no custom prompt
+            true,  // CHANT_MODEL is set
+            false, // ANTHROPIC_MODEL not set
+        );
+
+        assert!(
+            should_warn,
+            "Should warn when multiple agents and CHANT_MODEL set"
+        );
+    }
+
+    #[test]
+    fn test_warn_model_override_with_anthropic_model_set() {
+        // Multiple agents + ANTHROPIC_MODEL set → should warn
+        let agents = vec![
+            chant::config::AgentConfig {
+                name: "main".to_string(),
+                command: "claude".to_string(),
+                max_concurrent: 2,
+                weight: 1,
+            },
+            chant::config::AgentConfig {
+                name: "alt1".to_string(),
+                command: "claude-alt1".to_string(),
+                max_concurrent: 2,
+                weight: 1,
+            },
+        ];
+        let config = make_test_config_with_agents(agents);
+
+        let should_warn = should_warn_model_override_in_parallel(
+            &config, None,  // no custom prompt
+            false, // CHANT_MODEL not set
+            true,  // ANTHROPIC_MODEL is set
+        );
+
+        assert!(
+            should_warn,
+            "Should warn when multiple agents and ANTHROPIC_MODEL set"
+        );
+    }
+
+    #[test]
+    fn test_warn_model_override_with_config_model_set() {
+        // Multiple agents + config.defaults.model set → should warn
+        let mut config = make_test_config_with_agents(vec![
+            chant::config::AgentConfig {
+                name: "main".to_string(),
+                command: "claude".to_string(),
+                max_concurrent: 2,
+                weight: 1,
+            },
+            chant::config::AgentConfig {
+                name: "alt1".to_string(),
+                command: "claude-alt1".to_string(),
+                max_concurrent: 2,
+                weight: 1,
+            },
+        ]);
+        config.defaults.model = Some("claude-opus-4".to_string());
+
+        let should_warn = should_warn_model_override_in_parallel(
+            &config, None,  // no custom prompt
+            false, // CHANT_MODEL not set
+            false, // ANTHROPIC_MODEL not set
+        );
+
+        assert!(
+            should_warn,
+            "Should warn when multiple agents and config.model set"
+        );
+    }
+
+    #[test]
+    fn test_warn_model_override_with_custom_prompt() {
+        // Multiple agents + custom prompt → should warn
+        let agents = vec![
+            chant::config::AgentConfig {
+                name: "main".to_string(),
+                command: "claude".to_string(),
+                max_concurrent: 2,
+                weight: 1,
+            },
+            chant::config::AgentConfig {
+                name: "alt1".to_string(),
+                command: "claude-alt1".to_string(),
+                max_concurrent: 2,
+                weight: 1,
+            },
+        ];
+        let config = make_test_config_with_agents(agents);
+
+        let should_warn = should_warn_model_override_in_parallel(
+            &config,
+            Some("research-analysis"), // custom prompt
+            false,                     // CHANT_MODEL not set
+            false,                     // ANTHROPIC_MODEL not set
+        );
+
+        assert!(
+            should_warn,
+            "Should warn when multiple agents and custom prompt"
+        );
+    }
+
+    #[test]
+    fn test_no_warn_with_rotation_strategy_none_single_agent() {
+        // Single agent + rotation_strategy: none → should NOT warn
+        let agents = vec![chant::config::AgentConfig {
+            name: "main".to_string(),
+            command: "claude".to_string(),
+            max_concurrent: 2,
+            weight: 1,
+        }];
+        let mut config = make_test_config_with_agents(agents);
+        config.defaults.rotation_strategy = "none".to_string();
+
+        let should_warn = should_warn_model_override_in_parallel(
+            &config, None,  // no custom prompt
+            true,  // CHANT_MODEL is set
+            false, // ANTHROPIC_MODEL not set
+        );
+
+        assert!(
+            !should_warn,
+            "Should NOT warn when single agent and rotation_strategy is none"
+        );
+    }
+
+    #[test]
+    fn test_warn_with_rotation_strategy_random_single_agent() {
+        // Single agent + rotation_strategy: random → SHOULD warn (rotation enabled)
+        let agents = vec![chant::config::AgentConfig {
+            name: "main".to_string(),
+            command: "claude".to_string(),
+            max_concurrent: 2,
+            weight: 1,
+        }];
+        let mut config = make_test_config_with_agents(agents);
+        config.defaults.rotation_strategy = "random".to_string();
+
+        let should_warn = should_warn_model_override_in_parallel(
+            &config, None,  // no custom prompt
+            true,  // CHANT_MODEL is set
+            false, // ANTHROPIC_MODEL not set
+        );
+
+        assert!(
+            should_warn,
+            "Should warn when rotation_strategy is not 'none' even with single agent"
+        );
+    }
+
+    #[test]
+    fn test_no_warn_without_model_preferences() {
+        // Multiple agents but no model preferences → should NOT warn
+        let agents = vec![
+            chant::config::AgentConfig {
+                name: "main".to_string(),
+                command: "claude".to_string(),
+                max_concurrent: 2,
+                weight: 1,
+            },
+            chant::config::AgentConfig {
+                name: "alt1".to_string(),
+                command: "claude-alt1".to_string(),
+                max_concurrent: 2,
+                weight: 1,
+            },
+        ];
+        let config = make_test_config_with_agents(agents);
+
+        let should_warn = should_warn_model_override_in_parallel(
+            &config, None,  // no custom prompt (or default prompt)
+            false, // CHANT_MODEL not set
+            false, // ANTHROPIC_MODEL not set
+        );
+
+        assert!(
+            !should_warn,
+            "Should NOT warn when no model preferences are set"
+        );
+    }
+
+    #[test]
+    fn test_no_warn_with_default_prompt_name() {
+        // Multiple agents + default prompt name → should NOT warn
+        let agents = vec![
+            chant::config::AgentConfig {
+                name: "main".to_string(),
+                command: "claude".to_string(),
+                max_concurrent: 2,
+                weight: 1,
+            },
+            chant::config::AgentConfig {
+                name: "alt1".to_string(),
+                command: "claude-alt1".to_string(),
+                max_concurrent: 2,
+                weight: 1,
+            },
+        ];
+        let config = make_test_config_with_agents(agents);
+
+        // Using "standard" (the hardcoded default) or config.defaults.prompt
+        let should_warn = should_warn_model_override_in_parallel(
+            &config,
+            Some("standard"), // default prompt
+            false,            // CHANT_MODEL not set
+            false,            // ANTHROPIC_MODEL not set
+        );
+
+        assert!(!should_warn, "Should NOT warn when using default prompt");
     }
 }
