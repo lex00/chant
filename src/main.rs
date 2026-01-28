@@ -446,6 +446,12 @@ enum Commands {
         /// Spec ID (full or partial)
         id: String,
     },
+    /// Refresh dependency status for all specs
+    Refresh {
+        /// Show detailed list of ready and blocked specs
+        #[arg(long, short)]
+        verbose: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -677,6 +683,7 @@ fn main() -> Result<()> {
             let specs_dir = cmd::ensure_initialized()?;
             cmd::lifecycle::cmd_finalize(&id, &specs_dir)
         }
+        Commands::Refresh { verbose } => cmd::refresh::cmd_refresh(verbose),
     }
 }
 

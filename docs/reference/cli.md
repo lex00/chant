@@ -719,6 +719,62 @@ chant status                          # Overview
 chant ready                           # Show ready specs
 ```
 
+## Refresh
+
+Reload all specs from disk and recalculate dependency status:
+
+```bash
+chant refresh                         # Quick summary of spec counts
+chant refresh --verbose               # Show detailed ready/blocked lists
+chant refresh -v                      # Short form of --verbose
+```
+
+The refresh command:
+1. Reloads all specs fresh from disk (no caching)
+2. Recalculates ready/blocked status based on current dependencies
+3. Reports summary counts (completed, ready, in-progress, pending, blocked)
+4. With `--verbose`: lists ready specs and blocked specs with their blockers
+
+**Example output:**
+
+```
+Checking dependency status...
+✓ Refreshed 142 specs
+  Completed: 45
+  Ready: 18
+  In Progress: 3
+  Pending: 52
+  Blocked: 24
+```
+
+**Verbose output:**
+
+```
+Checking dependency status...
+✓ Refreshed 142 specs
+  Completed: 45
+  Ready: 18
+  In Progress: 3
+  Pending: 52
+  Blocked: 24
+
+Ready specs:
+  ○ 2026-01-27-00t-bfs Validate nodes.edn coverage
+  ○ 2026-01-27-01a-xyz Generate AST types
+  ...
+
+Blocked specs:
+  ⊗ 2026-01-27-02b-abc Implement parser (blocked by: 2026-01-27-01a-xyz (pending))
+  ⊗ 2026-01-27-03c-def Add tests (blocked by: 2026-01-27-02b-abc (pending))
+  ...
+```
+
+**Use cases:**
+- Verify dependency status after completing specs manually
+- Debug why a spec isn't showing as ready
+- Get a quick overview of project spec health
+- Check what's unblocked after a dependency completes
+
 ## Merge
 
 Merge completed spec branches back to main:

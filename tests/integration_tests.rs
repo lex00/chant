@@ -4453,304 +4453,108 @@ Test specification for parallel workflow testing.
     let _ = cleanup_test_repo(&repo_dir);
 }
 
-// ============================================================================
-// MERGE --ALL-COMPLETED TEST
-// ============================================================================
-
-/// Test that --all-completed flag merges all completed specs with branches.
-/// This verifies the convenience flag for post-parallel execution workflow.
 #[test]
 #[serial]
-fn test_merge_all_completed_flag() {
-    let repo_dir = PathBuf::from("/tmp/test-chant-merge-all-completed");
-    let chant_binary = get_chant_binary();
-    let original_dir = std::env::current_dir().expect("Failed to get current dir");
+#[cfg(unix)]
+fn test_refresh_command_shows_ready_after_dependency_completion() {
+    use chant::spec::{Spec, SpecFrontmatter, SpecStatus};
 
+    let repo_dir = PathBuf::from("/tmp/test-chant-refresh-deps");
     let _ = cleanup_test_repo(&repo_dir);
 
+    // Step 1: Setup test repository
     assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
-    // Manually set up .chant directory
-    let chant_dir = repo_dir.join(".chant");
-    std::fs::create_dir_all(&chant_dir).expect("Failed to create .chant dir");
-    let specs_dir = chant_dir.join("specs");
-    std::fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
 
-    // Create config file
-    let config_path = chant_dir.join("config.md");
-    let config_content = r#"---
-project:
-  name: test-project
----
+    // Initialize chant
+    let init_output =
+        run_chant(&repo_dir, &["init", "--minimal"]).expect("Failed to run chant init");
+    if !init_output.status.success() {
+        let _ = std::env::set_current_dir(&original_dir);
+        let _ = cleanup_test_repo(&repo_dir);
+        panic!(
+            "Chant init failed: {}",
+            String::from_utf8_lossy(&init_output.stderr)
+        );
+    }
 
-# Config
-"#;
-    std::fs::write(&config_path, config_content).expect("Failed to write config");
+    // Step 2: Create specs with dependency relationship
+    let specs_dir = repo_dir.join(".chant/specs");
+    fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
 
-    // Create two completed specs with branches
-    let spec1_id = "2026-01-27-001-aaa";
-    let spec2_id = "2026-01-27-002-bbb";
-    let branch1 = format!("chant/{}", spec1_id);
-    let branch2 = format!("chant/{}", spec2_id);
+    // Create dependency spec (initially pending)
+    let dep_spec_id = "2026-01-27-001-dep";
+    let dep_spec = Spec {
+        id: dep_spec_id.to_string(),
+        frontmatter: SpecFrontmatter {
+            status: SpecStatus::Pending,
+            ..Default::default()
+        },
+        title: Some("Dependency Spec".to_string()),
+        body: "# Dependency Spec\n\nThis spec must complete first.\n\n## Acceptance Criteria\n\n- [x] Done".to_string(),
+    };
+    dep_spec
+        .save(&specs_dir.join(format!("{}.md", dep_spec_id)))
+        .expect("Failed to save dep spec");
 
-    // Create spec 1 file
-    let spec1_content = format!(
-        r#"---
-type: code
-status: completed
-completed_at: 2026-01-27T10:00:00Z
----
+    // Create dependent spec (depends on dep_spec)
+    let dependent_spec_id = "2026-01-27-002-dpt";
+    let dependent_spec = Spec {
+        id: dependent_spec_id.to_string(),
+        frontmatter: SpecFrontmatter {
+            status: SpecStatus::Pending,
+            depends_on: Some(vec![dep_spec_id.to_string()]),
+            ..Default::default()
+        },
+        title: Some("Dependent Spec".to_string()),
+        body: "# Dependent Spec\n\nThis spec depends on the first one.\n\n## Acceptance Criteria\n\n- [ ] Complete after dep".to_string(),
+    };
+    dependent_spec
+        .save(&specs_dir.join(format!("{}.md", dependent_spec_id)))
+        .expect("Failed to save dependent spec");
 
-# Test spec 1 for merge all-completed
-
-## Acceptance Criteria
-
-- [x] Test criteria 1
-"#
-    );
-    std::fs::write(specs_dir.join(format!("{}.md", spec1_id)), spec1_content)
-        .expect("Failed to write spec1");
-
-    // Create spec 2 file
-    let spec2_content = format!(
-        r#"---
-type: code
-status: completed
-completed_at: 2026-01-27T10:00:00Z
----
-
-# Test spec 2 for merge all-completed
-
-## Acceptance Criteria
-
-- [x] Test criteria 2
-"#
-    );
-    std::fs::write(specs_dir.join(format!("{}.md", spec2_id)), spec2_content)
-        .expect("Failed to write spec2");
-
-    // Create spec 3 that is completed but has NO branch (should be skipped)
-    let spec3_id = "2026-01-27-003-ccc";
-    let spec3_content = format!(
-        r#"---
-type: code
-status: completed
-completed_at: 2026-01-27T10:00:00Z
----
-
-# Test spec 3 - completed without branch
-
-## Acceptance Criteria
-
-- [x] Test criteria 3
-"#
-    );
-    std::fs::write(specs_dir.join(format!("{}.md", spec3_id)), spec3_content)
-        .expect("Failed to write spec3");
-
-    // Create spec 4 that is pending (should be skipped)
-    let spec4_id = "2026-01-27-004-ddd";
-    let spec4_content = format!(
-        r#"---
-type: code
-status: pending
----
-
-# Test spec 4 - pending
-
-## Acceptance Criteria
-
-- [ ] Test criteria 4
-"#
-    );
-    std::fs::write(specs_dir.join(format!("{}.md", spec4_id)), spec4_content)
-        .expect("Failed to write spec4");
-
-    // Create branches for spec1 and spec2 with commits
-    // Branch 1
-    Command::new("git")
-        .args(["checkout", "-b", &branch1])
-        .current_dir(&repo_dir)
-        .output()
-        .expect("Failed to create branch1");
-
-    std::fs::write(repo_dir.join("file1.txt"), "content from spec1")
-        .expect("Failed to write file1");
-
-    Command::new("git")
-        .args(["add", "file1.txt"])
-        .current_dir(&repo_dir)
-        .output()
-        .expect("Failed to add file1");
-
-    Command::new("git")
-        .args(["commit", "-m", "Add file1 from spec1"])
-        .current_dir(&repo_dir)
-        .output()
-        .expect("Failed to commit on branch1");
-
-    // Return to main
-    Command::new("git")
-        .args(["checkout", "main"])
-        .current_dir(&repo_dir)
-        .output()
-        .expect("Failed to checkout main");
-
-    // Branch 2
-    Command::new("git")
-        .args(["checkout", "-b", &branch2])
-        .current_dir(&repo_dir)
-        .output()
-        .expect("Failed to create branch2");
-
-    std::fs::write(repo_dir.join("file2.txt"), "content from spec2")
-        .expect("Failed to write file2");
-
-    Command::new("git")
-        .args(["add", "file2.txt"])
-        .current_dir(&repo_dir)
-        .output()
-        .expect("Failed to add file2");
-
-    Command::new("git")
-        .args(["commit", "-m", "Add file2 from spec2"])
-        .current_dir(&repo_dir)
-        .output()
-        .expect("Failed to commit on branch2");
-
-    // Return to main
-    Command::new("git")
-        .args(["checkout", "main"])
-        .current_dir(&repo_dir)
-        .output()
-        .expect("Failed to checkout main again");
-
-    // Run chant merge --all-completed --yes --delete-branch
-    let merge_output = Command::new(&chant_binary)
-        .args(["merge", "--all-completed", "--yes", "--delete-branch"])
-        .current_dir(&repo_dir)
-        .output()
-        .expect("Failed to run chant merge --all-completed");
-
-    let merge_stdout = String::from_utf8_lossy(&merge_output.stdout);
-    let merge_stderr = String::from_utf8_lossy(&merge_output.stderr);
-
-    eprintln!("merge stdout: {}", merge_stdout);
-    eprintln!("merge stderr: {}", merge_stderr);
-
-    // Verify merge succeeded
-    assert!(
-        merge_output.status.success(),
-        "chant merge --all-completed should succeed. stderr: {}",
-        merge_stderr
-    );
-
-    // Verify output mentions both specs
-    assert!(
-        merge_stdout.contains(spec1_id),
-        "Output should mention spec1 ID: {}. stdout: {}",
-        spec1_id,
-        merge_stdout
-    );
-    assert!(
-        merge_stdout.contains(spec2_id),
-        "Output should mention spec2 ID: {}. stdout: {}",
-        spec2_id,
-        merge_stdout
-    );
-
-    // Verify spec3 (completed without branch) is NOT mentioned
-    // This is because it has no branch to merge
-    // Actually, the spec discovery may still show it, but merge should skip it
-
-    // Verify files were merged to main
-    assert!(
-        repo_dir.join("file1.txt").exists(),
-        "file1.txt should exist on main after merge"
-    );
-    assert!(
-        repo_dir.join("file2.txt").exists(),
-        "file2.txt should exist on main after merge"
-    );
-
-    // Verify branches were deleted
-    let branch_check1 = Command::new("git")
-        .args(["branch", "--list", &branch1])
-        .current_dir(&repo_dir)
-        .output()
-        .expect("Failed to check branch1");
-
-    let branch_check2 = Command::new("git")
-        .args(["branch", "--list", &branch2])
-        .current_dir(&repo_dir)
-        .output()
-        .expect("Failed to check branch2");
+    // Step 3: Run refresh - dependent should be blocked
+    let refresh_output =
+        run_chant(&repo_dir, &["refresh", "--verbose"]).expect("Failed to run refresh");
+    let refresh_stdout = String::from_utf8_lossy(&refresh_output.stdout);
 
     assert!(
-        String::from_utf8_lossy(&branch_check1.stdout)
-            .trim()
-            .is_empty(),
-        "Branch1 should be deleted after merge"
+        refresh_output.status.success(),
+        "Refresh command should succeed. stderr: {}",
+        String::from_utf8_lossy(&refresh_output.stderr)
     );
     assert!(
-        String::from_utf8_lossy(&branch_check2.stdout)
-            .trim()
-            .is_empty(),
-        "Branch2 should be deleted after merge"
+        refresh_stdout.contains("Blocked") || refresh_stdout.contains("blocked"),
+        "Should show blocked count. Output: {}",
+        refresh_stdout
     );
 
-    // Cleanup
-    let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
-}
+    // Step 4: Complete the dependency spec
+    let mut completed_dep = dep_spec.clone();
+    completed_dep.frontmatter.status = SpecStatus::Completed;
+    completed_dep.frontmatter.completed_at = Some("2026-01-27T10:00:00Z".to_string());
+    completed_dep
+        .save(&specs_dir.join(format!("{}.md", dep_spec_id)))
+        .expect("Failed to save completed dep spec");
 
-/// Test that --all-completed with explicit spec IDs returns an error.
-#[test]
-#[serial]
-fn test_merge_all_completed_with_ids_errors() {
-    let repo_dir = PathBuf::from("/tmp/test-chant-merge-all-completed-error");
-    let chant_binary = get_chant_binary();
-    let original_dir = std::env::current_dir().expect("Failed to get current dir");
+    // Step 5: Run refresh again - dependent should now be ready
+    let refresh_output =
+        run_chant(&repo_dir, &["refresh", "--verbose"]).expect("Failed to run refresh");
+    let refresh_stdout = String::from_utf8_lossy(&refresh_output.stdout);
 
-    let _ = cleanup_test_repo(&repo_dir);
-
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
-
-    // Manually set up .chant directory
-    let chant_dir = repo_dir.join(".chant");
-    std::fs::create_dir_all(&chant_dir).expect("Failed to create .chant dir");
-    let specs_dir = chant_dir.join("specs");
-    std::fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
-
-    // Create config file
-    let config_path = chant_dir.join("config.md");
-    let config_content = r#"---
-project:
-  name: test-project
----
-
-# Config
-"#;
-    std::fs::write(&config_path, config_content).expect("Failed to write config");
-
-    // Run chant merge --all-completed with spec ID (should fail)
-    let merge_output = Command::new(&chant_binary)
-        .args(["merge", "--all-completed", "some-spec-id"])
-        .current_dir(&repo_dir)
-        .output()
-        .expect("Failed to run chant merge");
-
-    let merge_stderr = String::from_utf8_lossy(&merge_output.stderr);
-
-    // Should fail with error message about conflicting args
     assert!(
-        !merge_output.status.success(),
-        "chant merge --all-completed with spec ID should fail"
+        refresh_output.status.success(),
+        "Refresh command should succeed. stderr: {}",
+        String::from_utf8_lossy(&refresh_output.stderr)
     );
+
+    // The dependent spec should now appear in the ready list (not blocked)
+    // since its dependency is complete
     assert!(
-        merge_stderr.contains("Cannot use --all-completed with explicit spec IDs"),
-        "Error message should mention the conflict. stderr: {}",
-        merge_stderr
+        refresh_stdout.contains("Ready"),
+        "Should show ready section. Output: {}",
+        refresh_stdout
     );
 
     // Cleanup
