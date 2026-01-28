@@ -3,7 +3,7 @@
 > **Status: Not Implemented** ❌
 >
 > This feature is documented as a planned enhancement for the Notifications layer.
-> It is not currently implemented. See [Roadmap](../roadmap/roadmap.md) - Phase 8 "Not yet implemented".
+> It is not currently implemented. See [Roadmap](../roadmap.md) - Phase 8 "Not yet implemented".
 
 ## Overview
 

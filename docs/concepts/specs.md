@@ -123,21 +123,18 @@ See [spec-types.md](spec-types.md) for field usage by type.
 ## Spec States
 
 ```
-waiting → pending → in_progress → completed
-                  ↘             ↘ failed
-                   blocked
-                   cancelled
+pending → in_progress → completed
+                      ↘ failed
+blocked
+cancelled
 ```
 
-- **waiting**: Has triggers that are not yet satisfied (see [triggers.md](triggers.md)) *(Planned)*
-- **pending**: Ready to execute (no triggers, or all triggers satisfied)
+- **pending**: Ready to execute
 - **in_progress**: Agent currently executing
 - **completed**: Work done, committed
 - **failed**: Execution failed, needs attention
-- **blocked**: Spec has unmet dependencies or is waiting for something
+- **blocked**: Spec has unmet dependencies
 - **cancelled**: Work was cancelled before completion
-
-> **Note**: The `waiting` state is planned but not yet implemented. Currently supported: `pending`, `in_progress`, `completed`, `failed`, `blocked`, and `cancelled`.
 
 ## Drift Detection
 
@@ -278,45 +275,16 @@ Specs are **append-only by default**. Prefer:
 - Add member specs for new requirements
 - Create follow-up spec
 
-### Editing Before Work (Planned)
+### Editing Specs
 
-> **Status: Planned** - The `chant edit` command is on the roadmap but not yet implemented. For now, edit spec files directly in your text editor.
-
-Freely edit pending specs:
-
-```bash
-$ chant edit 001
-# Opens spec file in $EDITOR
-```
-
-Or edit directly - it's just a markdown file.
-
-### Editing During/After Work (Planned)
-
-> **Status: Planned** - This feature is on the roadmap but not yet implemented.
-
-If spec is `in_progress` or `completed`:
-
-```bash
-$ chant edit 001
-Warning: Spec has work in progress.
-Editing may cause inconsistency.
-
-Options:
-  [D] Edit description only (safe)
-  [F] Full edit (may break history)
-  [A] Abort
-
-Choice: D
-# Opens editor with description section only
-```
+Edit spec files directly in your text editor - they're just markdown files.
 
 **Safe edits** (always allowed):
 - Description clarification
 - Labels
 - Notes
 
-**Risky edits** (warning):
+**Risky edits** (use caution for in-progress/completed specs):
 - Target files (may not match actual work)
 - Dependencies (may invalidate completion)
 

@@ -19,8 +19,6 @@
 - [IDs](concepts/ids.md)
 - [Groups](concepts/groups.md)
 - [Dependencies](concepts/deps.md)
-- [Hooks](concepts/hooks.md)
-- [Triggers](concepts/triggers.md)
 - [Autonomy](concepts/autonomy.md)
 - [Lifecycle](concepts/lifecycle.md)
 - [Skills](concepts/skills.md)
@@ -36,7 +34,6 @@
 - [Research Workflows](guides/research.md)
 - [Example Configurations](guides/examples.md)
 - [Ecosystem](guides/ecosystem.md)
-- [Approvals](guides/approvals.md)
 - [Recovery](guides/recovery.md)
 
 # Reference
@@ -48,9 +45,7 @@
 - [Git Integration](reference/git.md)
 - [Templates](reference/templates.md)
 - [Schema & Validation](reference/schema.md)
-- [Notifications](reference/notifications.md)
 - [Reports](reference/reports.md)
-- [Costs](reference/costs.md)
 - [Initialization](reference/init.md)
 - [MCP Server](reference/mcp.md)
 - [Versioning](reference/versioning.md)
@@ -60,12 +55,10 @@
 # Scale
 
 - [Scaling Overview](scale/scale.md)
-- [Daemon Mode](scale/daemon.md)
 - [Multi-Project](scale/multi-project.md)
 - [Isolation](scale/isolation.md)
 - [Locking](scale/locks.md)
 - [Queue Architecture](scale/queue.md)
-- [Metrics](scale/metrics.md)
 - [Observability](scale/observability.md)
 
 # Enterprise
@@ -75,4 +68,18 @@
 
 ---
 
-[Roadmap](roadmap/roadmap.md)
+# Roadmap
+
+- [Roadmap](roadmap/roadmap.md)
+- [Feature Status](FEATURE_STATUS.md)
+
+# Planned Features
+
+- [Overview](roadmap/planned/README.md)
+- [Daemon Mode](roadmap/planned/daemon.md)
+- [Metrics](roadmap/planned/metrics.md)
+- [Hooks](roadmap/planned/hooks.md)
+- [Triggers](roadmap/planned/triggers.md)
+- [Approvals](roadmap/planned/approvals.md)
+- [Cost Tracking](roadmap/planned/costs.md)
+- [Notifications](roadmap/planned/notifications.md)

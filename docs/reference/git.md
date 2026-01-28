@@ -66,9 +66,7 @@ pr: true             # This spec needs a PR
 
 ## Git Hooks
 
-> **Status: Partially Implemented**
->
-> Basic git hook scripts can be manually set up. The `chant hooks generate/install/remove` CLI commands are not yet implemented.
+> **Note:** Git hooks are optional and can be set up manually using the scripts below.
 
 ### Philosophy
 

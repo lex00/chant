@@ -3,8 +3,8 @@
 > **Status: Partially Implemented** ⚠️
 >
 > Model provider adapters are implemented (Claude, Ollama, OpenAI).
-> Prompt registry and package management are planned but not yet implemented.
-> See [Roadmap](../roadmap/roadmap.md) - Phase 8 "Template/prompt registry" for future plans.
+> Prompt registry and package management are planned for future releases.
+> See [Planned Features](../roadmap/planned/README.md) for details.
 
 ## Philosophy
 
@@ -13,8 +13,6 @@ Chant doesn't build walled gardens. It integrates with existing open source ecos
 | Ecosystem | Chant Integration |
 |-----------|-------------------|
 | Model hubs | Provider adapters |
-| Prompt communities | Prompt registry |
-| Package managers | Prompt packages |
 | Git forges | Native workflow |
 
 ## Model Repositories
@@ -34,98 +32,7 @@ agent:
   endpoint: ${PROVIDER_ENDPOINT}
 ```
 
-## Prompt Registry (Planned)
-
-> **Status: Planned** - The prompt registry feature is on the roadmap but not yet implemented. Currently, prompts are managed by manually creating markdown files in `.chant/prompts/`.
-
-### Installing Prompts
-
-```bash
-# From official registry
-chant prompt add tdd
-chant prompt add security-review
-chant prompt add documentation
-
-# From GitHub
-chant prompt add --from github:user/repo/prompts/custom.md
-
-# From URL
-chant prompt add --from https://example.com/prompts/special.md
-
-# From local file
-chant prompt add --from ~/my-prompts/favorite.md
-```
-
-### Registry Sources
-
-```yaml
-# config.md
-prompts:
-  registries:
-    - https://prompts.chant.dev          # Official
-    - https://github.com/chant-prompts   # Community
-    - https://internal.company.com/prompts  # Private
-```
-
-### Prompt Packages
-
-Like npm packages, but for prompts. Lock file is markdown (of course):
-
-```markdown
-# .chant/prompts.lock.md
----
-packages:
-  tdd:
-    version: 1.2.0
-    source: chant-prompts/tdd
-    sha256: abc123def456...
-  security:
-    version: 2.0.1
-    source: github:acme/security-prompts
-    sha256: 789abc012def...
----
-
-# Installed Prompts
-
-Prompts installed from registry. Edit frontmatter to pin versions,
-or use `chant prompt update` to refresh.
-
-## tdd (1.2.0)
-
-Test-driven development workflow. Write tests first, then implement.
-
-Source: chant-prompts/tdd
-
-## security (2.0.1)
-
-Security-focused code review and implementation.
-
-Source: github:acme/security-prompts
-```
-
-The body is documentation. The frontmatter is the lock data. Git diffs show
-exactly what changed.
-
-```bash
-chant prompt install        # Install from lock file
-chant prompt update tdd     # Update specific prompt
-chant prompt update         # Update all
-```
-
-### Publishing Prompts
-
-```bash
-# Package your prompt
-chant prompt pack .chant/prompts/my-workflow.md
-
-# Publish to registry (requires auth)
-chant prompt publish my-workflow
-
-# Or just push to GitHub
-git push origin main  # Others can --from github:you/repo
-```
-
-## Community Prompt Categories
+## Prompt Categories
 
 | Category | Examples |
 |----------|----------|
@@ -202,23 +109,6 @@ models:
 ---
 ```
 
-## Discovery (Planned)
-
-> **Status: Planned** - Prompt discovery commands are on the roadmap but not yet implemented.
-
-```bash
-# Search registry
-chant prompt search "security"
-chant prompt search --category workflow
-chant prompt search --model ollama
-
-# Popular prompts
-chant prompt popular
-
-# Recently updated
-chant prompt recent
-```
-
 ## Offline Mode
 
 Prompts are just files. Work offline:
@@ -249,11 +139,6 @@ chant work 001  # Uses cached prompts
 - Version constraints specified
 - Example output included
 
-## Future: Prompt Marketplace
+---
 
-Potential commercial feature:
-
-- Curated enterprise prompts
-- Domain expert prompts (security, compliance)
-- Team-specific customization
-- Usage analytics
+**Note:** Prompt registry and package management features are planned for future releases. Currently, prompts are managed by manually creating markdown files in `.chant/prompts/`.

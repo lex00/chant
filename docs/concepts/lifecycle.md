@@ -197,41 +197,6 @@ lifecycle:
     max_size: 100M             # Per file (if rotate: size)
 ```
 
-### Index Rebuild (Planned)
-
-> **Status: Planned** - Index management commands are on the roadmap but not yet implemented.
-
-Index is derived, can always be rebuilt:
-
-```bash
-chant index rebuild            # Rebuild from spec files
-chant index clear              # Delete index (rebuilds on next query)
-```
-
-## Cleanup Commands (Planned)
-
-> **Status: Planned** - Cleanup commands are on the roadmap but not yet implemented.
-
-```bash
-# Show what would be cleaned
-chant cleanup --dry-run
-
-# Clean old clones
-chant cleanup clones
-
-# Clean old logs
-chant cleanup logs
-
-# Archive old specs (if configured)
-chant cleanup archive
-
-# Full cleanup
-chant cleanup --all
-
-# Scheduled cleanup (cron)
-0 0 * * * cd /repo && chant cleanup --all --quiet
-```
-
 ## Data Flow Diagram
 
 ```
@@ -324,11 +289,9 @@ Recommendations:
   - Run 'chant cleanup clones' to reclaim
 ```
 
-## Export (Planned)
+## Export
 
-> **Status: Planned** - Export commands are on the roadmap but not yet implemented.
-
-### Export Specs
+Export spec data in various formats using `chant export`. See [CLI Reference](../reference/cli.md#export) for full details.
 
 ```bash
 # Export to JSON
@@ -337,31 +300,8 @@ chant export --format json > specs.json
 # Export to CSV
 chant export --format csv > specs.csv
 
-# Export specific project
-chant export --project auth --format json
-
 # Export with filters
-chant export --status completed --after 2026-01-01
-```
-
-### Export Format
-
-```json
-{
-  "exported_at": "2026-01-22T15:00:00Z",
-  "specs": [
-    {
-      "id": "2026-01-22-001-x7m",
-      "status": "completed",
-      "title": "Add authentication",
-      "created_at": "2026-01-22T10:00:00Z",
-      "completed_at": "2026-01-22T12:00:00Z",
-      "commit": "abc123",
-      "branch": "chant/2026-01-22-001-x7m",
-      "body": "..."
-    }
-  ]
-}
+chant export --status completed --from 2026-01-01
 ```
 
 ## Backup
@@ -373,26 +313,7 @@ Spec files are git-tracked. Normal git backup applies:
 - Mirror to backup location
 - Standard git disaster recovery
 
-### Local State Backup (Planned)
-
-> **Status: Planned** - Backup/restore commands are on the roadmap but not yet implemented.
-
-For local state (not in git):
-
-```bash
-# Backup local state
-chant backup --output backup.tar.gz
-
-# Includes:
-#   - .chant/.store/ (index)
-#   - .chant/logs/
-#   - .chant/.clones/ (optionally)
-
-# Restore
-chant restore backup.tar.gz
-```
-
-**Note**: Local state can be rebuilt. Backup is convenience, not necessity.
+**Note**: Local state (index, logs, clones) can be rebuilt. Git history is the permanent archive.
 
 ## Configuration Reference
 
@@ -423,3 +344,7 @@ lifecycle:
   index:
     rebuild_on_startup: false  # Rebuild index on daemon start
 ```
+
+---
+
+See [Planned Features](../roadmap/planned/README.md) for upcoming lifecycle enhancements including daemon mode and advanced cleanup commands.

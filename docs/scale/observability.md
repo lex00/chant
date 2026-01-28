@@ -3,8 +3,8 @@
 > **Status: Partially Implemented** ⚠️
 >
 > Local and Team observability tiers are fully implemented (`chant status`, `chant log`, `chant show`).
-> Scale tier features (Prometheus metrics, daemon-based monitoring, DAG visualization) are not yet implemented.
-> See [Roadmap](../roadmap/roadmap.md) - Phase 6 for planned features.
+> Scale tier features (Prometheus metrics, daemon-based monitoring) are planned for future releases.
+> See [Planned Features](../roadmap/planned/README.md) for details.
 
 ## Tiers of Observability
 
@@ -367,89 +367,6 @@ logging:
       env: production
 ```
 
-## DAG Visualization (Planned)
-
-> **Status: Not Implemented** ❌ — The `chant dag` command and DAG visualization features are planned but not yet implemented. See [Roadmap](../roadmap/roadmap.md).
-
-### CLI Visualization
-
-```bash
-$ chant dag
-001 ─┬─▶ 002 ───▶ 004
-     └─▶ 003 ─┬─▶ 005
-              └─▶ 006
-
-Legend: ○ pending  ◐ in_progress  ● completed  ✗ failed  ◇ waiting
-```
-
-### Export Formats
-
-```bash
-# Graphviz DOT
-$ chant dag --format dot > deps.dot
-$ dot -Tpng deps.dot -o deps.png
-
-# Mermaid (for markdown docs)
-$ chant dag --format mermaid >> ARCHITECTURE.md
-
-# JSON (for custom tools)
-$ chant dag --format json | jq '.nodes[] | select(.status == "pending")'
-```
-
-### Filtering
-
-```bash
-# Specs related to a specific spec
-$ chant dag --spec 001 --depth 2
-
-# Tasks with specific label
-$ chant dag --label security
-
-# Only pending tasks
-$ chant dag --status pending
-
-# Combined
-$ chant dag --label auth --status pending,in_progress
-```
-
-### Daemon Web UI (Future)
-
-When running with daemon, a web interface provides:
-
-- Real-time DAG updates as tasks complete
-- Click to expand spec details
-- Gantt-style timeline view
-- Filter and search within visualization
-
-```bash
-chant daemon start --web-port 8080
-# Open http://localhost:8080/dag
-```
-
-### Integration with External Tools
-
-**Grafana Dashboard Panel:**
-
-Use JSON export with Grafana's node graph panel:
-
-```yaml
-# Prometheus query for spec states feeds into visualization
-chant_task_dependencies{from="001", to="002"} 1
-```
-
-**CI/CD Pipeline Visualization:**
-
-Export DAG as part of CI artifacts:
-
-```yaml
-# GitHub Actions
-- run: chant dag --format mermaid > dag.md
-- uses: actions/upload-artifact@v4
-  with:
-    name: spec-dag
-    path: dag.md
-```
-
 ## Debugging
 
 ### Debug Mode
@@ -535,3 +452,7 @@ observability:
       daily: 100.00
       monthly: 2000.00
 ```
+
+---
+
+**Note:** Scale tier observability features (Prometheus metrics, daemon-based monitoring, DAG visualization) are planned for future releases. See [Daemon Mode](../roadmap/planned/daemon.md) and [Metrics](../roadmap/planned/metrics.md) for details.

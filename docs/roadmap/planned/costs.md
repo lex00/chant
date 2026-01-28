@@ -3,7 +3,7 @@
 > **Status: Not Implemented** ❌
 >
 > Cost tracking and token usage monitoring are planned features.
-> They are not currently implemented. See [Roadmap](../roadmap/roadmap.md) - Phase 8 for future plans.
+> They are not currently implemented. See [Roadmap](../roadmap.md) - Phase 8 for future plans.
 
 ## Overview
 

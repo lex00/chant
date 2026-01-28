@@ -16,31 +16,31 @@
 | ID format | [ids.md](../concepts/ids.md) |
 | Spec groups | [groups.md](../concepts/groups.md) |
 | Dependencies | [deps.md](../concepts/deps.md) |
-| Triggers | [triggers.md](../concepts/triggers.md) |
+| Triggers | [triggers.md](planned/triggers.md) |
 | Autonomy | [autonomy.md](../concepts/autonomy.md) |
 | Prompts | [prompts.md](../concepts/prompts.md) |
-| Hooks | [hooks.md](../concepts/hooks.md) |
+| Hooks | [hooks.md](planned/hooks.md) |
 | Templates | [templates.md](../reference/templates.md) |
 | Git integration | [git.md](../reference/git.md) |
 | Git hooks | [git-hooks.md](../reference/git-hooks.md) |
 | Worktree isolation | [isolation.md](../scale/isolation.md) |
 | Locking | [locks.md](../scale/locks.md) |
 | Search | [search.md](../reference/search.md) |
-| Daemon mode | [daemon.md](../scale/daemon.md) |
-| Metrics | [metrics.md](../scale/metrics.md) |
+| Daemon mode | [daemon.md](planned/daemon.md) |
+| Metrics | [metrics.md](planned/metrics.md) |
 | Observability | [observability.md](../scale/observability.md) |
-| Notifications | [notifications.md](../reference/notifications.md) |
+| Notifications | [notifications.md](planned/notifications.md) |
 | Agent protocol | [protocol.md](../architecture/protocol.md) |
 | MCP server | [mcp.md](../reference/mcp.md) |
 | Security | [security.md](../enterprise/security.md) |
-| Cost tracking | [costs.md](../reference/costs.md) |
+| Cost tracking | [costs.md](planned/costs.md) |
 | Enterprise | [enterprise.md](../enterprise/enterprise.md) |
 | Scale patterns | [scale.md](../scale/scale.md) |
 | Queue architecture | [queue.md](../scale/queue.md) |
 | Multi-project | [multi-project.md](../scale/multi-project.md) |
 | Architecture | [architecture.md](../architecture/architecture.md) |
 | Ecosystem | [ecosystem.md](../guides/ecosystem.md) |
-| Approvals | [approvals.md](../guides/approvals.md) |
+| Approvals | [approvals.md](planned/approvals.md) |
 | Recovery | [recovery.md](../guides/recovery.md) |
 | Data lifecycle | [lifecycle.md](../concepts/lifecycle.md) |
 | Errors | [errors.md](../reference/errors.md) |
@@ -271,7 +271,7 @@ See [autonomy.md](../concepts/autonomy.md).
 - ❌ Approvals workflow
 - ❌ Template/prompt registry
 
-See [ecosystem.md](../guides/ecosystem.md), [approvals.md](../guides/approvals.md).
+See [ecosystem.md](../guides/ecosystem.md), [approvals.md](planned/approvals.md).
 
 ## Testing
 

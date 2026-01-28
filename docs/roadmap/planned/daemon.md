@@ -4,7 +4,7 @@
 >
 > This is a planned feature for Phase 6 (Scale). Daemon mode is not currently implemented.
 > Chant works effectively in "daemon-free" mode using file-based coordination and PID locks.
-> See [Roadmap](../roadmap/roadmap.md) - Phase 6 "Daemon ❌, Tantivy ❌".
+> See [Roadmap](../roadmap.md) - Phase 6 "Daemon ❌, Tantivy ❌".
 
 ## Overview
 
@@ -217,7 +217,7 @@ chant queue next --project auth   # Only auth specs
 
 ### Metrics Service
 
-Prometheus metrics endpoint (see [metrics.md](metrics.md)):
+Prometheus metrics endpoint (see [Metrics](metrics.md)):
 
 ```bash
 curl http://localhost:9090/metrics
@@ -368,7 +368,7 @@ scale:
 
 ### No Daemon? Use Hooks
 
-Without daemon, git hooks provide similar functionality. See [git-hooks.md](../reference/git-hooks.md).
+Without daemon, git hooks provide similar functionality. See [Git Integration](../../reference/git.md).
 
 ```
 With daemon:    Automatic, no setup, cannot block

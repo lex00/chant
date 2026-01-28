@@ -3,8 +3,8 @@
 > **Status: Partially Implemented** ⚠️
 >
 > The daemon-free queue (Tiers 1-2) is implemented through file-based coordination.
-> Advanced queue backends (Tier 3+: Tantivy, PostgreSQL, Redis) are not yet implemented.
-> See [Roadmap](../roadmap/roadmap.md) - Phase 6 for queue tier details.
+> Advanced queue backends (Tier 3+: Tantivy, PostgreSQL, Redis) are planned for future releases.
+> See [Planned Features](../roadmap/planned/README.md) for details.
 
 ## Core Insight
 
@@ -204,71 +204,16 @@ impl DerivedQueue {
 
 **Good for**: Teams, single machine, daemon for speed
 
-### Tier 2: Tantivy Index (Scale)
-
-We already have Tantivy for search. Use it for queue queries too.
-
-```rust
-fn ready_specs_from_index(index: &TantivyIndex) -> Vec<SpecId> {
-    index.search("status:pending AND ready:true")
-        .sort_by("priority", Descending)
-        .collect()
-}
-```
-
-- Already have the index
-- Fast queries at scale
-- Persistent across restarts
-
-**Good for**: Larger repos, need fast queries
-
-### Tier 3: PostgreSQL (Distributed)
-
-```sql
--- Use SKIP LOCKED for distributed queue
-BEGIN;
-SELECT spec_id FROM queue
-WHERE status = 'ready'
-ORDER BY priority DESC, created_at ASC
-LIMIT 1
-FOR UPDATE SKIP LOCKED;
-
-UPDATE queue SET status = 'claimed', claimed_by = $1
-WHERE spec_id = $2;
-COMMIT;
-```
-
-- True distributed coordination
-- Multiple daemons can coordinate
-- External infrastructure required
-
-**Good for**: Multi-node, K8s, high reliability
-
-### Tier 4: Redis (Distributed, Simpler)
-
-```redis
-# Sorted set by priority
-ZADD chant:ready <priority> <spec_id>
-
-# Atomic pop
-BZPOPMAX chant:ready 0
-```
-
-- Fast, distributed
-- Simpler ops than PostgreSQL
-- Good ecosystem
-
-**Good for**: Multi-node, K8s, want simplicity
-
 ## When to Use What
 
 | Scale | Daemon | Queue Backend |
 |-------|--------|---------------|
 | Solo | No | Files only |
 | Small team | No | Files + locks |
-| Team (speed) | Yes | Derived/Tantivy |
-| Org | Yes | Tantivy |
-| Enterprise | Yes | PostgreSQL or Redis |
+| Team (speed) | Yes | Derived (planned) |
+| Enterprise | Yes | External DB (planned) |
+
+**Note:** Advanced queue backends (Tantivy, PostgreSQL, Redis) are planned for future releases. See [Daemon Mode](../roadmap/planned/daemon.md) for details.
 
 ## Why Not Kafka?
 

@@ -113,40 +113,6 @@ templates:
   prompt: .chant/templates/my-prompt.md
 ```
 
-## Template Inheritance (Planned)
-
-> **Status: Not Implemented** — Template inheritance (`extends:`) is part of the full Handlebars system that is not yet implemented.
-
-Extend base templates:
-
-```markdown
-# .chant/templates/spec-bug.md
----
-extends: spec.md
----
-
-# Bug: {{description}}
-
-## Reproduction Steps
-
-1.
-
-## Expected Behavior
-
-## Actual Behavior
-
-## Acceptance Criteria
-
-- [ ] Bug no longer reproduces
-- [ ] Regression test added
-```
-
-Usage:
-
-```bash
-chant add "Login fails on Safari" --template spec-bug
-```
-
 ## Template Variables
 
 ### Spec Templates
@@ -167,70 +133,6 @@ chant add "Login fails on Safari" --template spec-bug
 |----------|-------------|
 | `{{name}}` | Prompt name |
 | `{{project}}` | Project name |
-
-### Notification Templates (Planned)
-
-> Notification templates are not yet implemented. See [notifications.md](notifications.md) for the planned design.
-
-## Partials (Planned)
-
-> **Status: Not Implemented** — Template partials (`{{> partial}}`) are part of the full Handlebars system that is not yet implemented.
-
-Reusable template fragments:
-
-```markdown
-# .chant/templates/partials/criteria.md
-## Acceptance Criteria
-
-- [ ] All tests pass
-- [ ] No linting errors
-- [ ] Documentation updated (if applicable)
-```
-
-Include in template:
-
-```markdown
-# .chant/templates/spec.md
----
-status: pending
----
-
-# {{description}}
-
-{{> criteria}}
-```
-
-## Conditional Templates (Planned)
-
-> **Status: Not Implemented** — Conditional template selection via path patterns is not yet implemented.
-
-Project-specific templates via path patterns:
-
-```yaml
-# config.md
-templates:
-  spec:
-    default: .chant/templates/spec.md
-    patterns:
-      "packages/auth/**": .chant/templates/spec-auth.md
-      "packages/api/**": .chant/templates/spec-api.md
-```
-
-## Template Validation (Planned)
-
-> **Status: Not Implemented** — Template-specific validation (`chant lint --templates`) is not yet implemented. Use `chant lint` for general spec validation.
-
-Chant validates templates at init and runtime:
-
-```bash
-chant lint --templates
-```
-
-Checks:
-- Required frontmatter fields
-- Valid handlebars syntax
-- Partials exist
-- No undefined variables
 
 ## Built-in Templates
 
@@ -280,3 +182,7 @@ After test passes:
 ```bash
 chant add "Add email validation" --template spec-tdd
 ```
+
+---
+
+**Note:** Full Handlebars templating features (conditionals, helpers, partials, inheritance) are planned for future releases. Currently, basic variable substitution (`{{variable}}`) and environment variable expansion (`${ENV_VAR}`) are supported.

@@ -3,7 +3,7 @@
 > **Status: Not Implemented** ❌
 >
 > Triggers are a planned feature. The configuration and evaluation of triggers is not yet implemented.
-> See [Roadmap](../roadmap/roadmap.md) for implementation plans.
+> See [Roadmap](../roadmap.md) for implementation plans.
 
 ## Overview
 

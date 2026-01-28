@@ -75,15 +75,6 @@ The MCP server exposes these tools:
 | `chant_spec_get` | Get spec details | `id` (required, partial match supported) |
 | `chant_spec_update` | Update spec status/output | `id` (required), `status`, `output` (optional) |
 
-### Planned Tools
-
-> **Status: Planned** - These tools are on the roadmap but not yet implemented.
-
-| Tool | Description | Parameters |
-|------|-------------|------------|
-| `chant_commit` | Commit changes | `message`, `files` |
-| `chant_verify` | Run verification | `id` |
-
 ### chant_spec_list
 
 List all chant specs in the current project.

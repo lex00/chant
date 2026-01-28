@@ -23,8 +23,8 @@ chant work 001
 - [Spec IDs](concepts/ids.md)
 - [Spec Groups](concepts/groups.md)
 - [Dependencies](concepts/deps.md)
-- [Hooks](concepts/hooks.md)
-- [Triggers](concepts/triggers.md)
+- [Hooks](roadmap/planned/hooks.md) *(Planned)*
+- [Triggers](roadmap/planned/triggers.md) *(Planned)*
 - [Autonomous Workflows](concepts/autonomy.md)
 - [Data Lifecycle](concepts/lifecycle.md)
 - [Skills](concepts/skills.md)
@@ -45,7 +45,7 @@ chant work 001
 - [Research Workflows Guide](guides/research.md)
 - [Examples](guides/examples.md)
 - [Ecosystem Integration](guides/ecosystem.md)
-- [Approvals](guides/approvals.md)
+- [Approvals](roadmap/planned/approvals.md) *(Planned)*
 - [Recovery & Resume](guides/recovery.md)
 
 ### Reference
@@ -58,9 +58,9 @@ chant work 001
 - [Git Hooks](reference/git-hooks.md)
 - [Templates](reference/templates.md)
 - [Schema & Validation](reference/schema.md)
-- [Notifications](reference/notifications.md)
+- [Notifications](roadmap/planned/notifications.md) *(Planned)*
 - [Export](reference/reports.md)
-- [Cost Tracking](reference/costs.md)
+- [Cost Tracking](roadmap/planned/costs.md) *(Planned)*
 - [Initialization](reference/init.md)
 - [MCP Server](reference/mcp.md)
 - [Versioning](reference/versioning.md)
@@ -69,12 +69,12 @@ chant work 001
 ### Scale
 
 - [Chant at Scale](scale/scale.md)
-- [Daemon Mode](scale/daemon.md)
+- [Daemon Mode](roadmap/planned/daemon.md) *(Planned)*
 - [Multi-Project Support](scale/multi-project.md)
 - [Work Isolation](scale/isolation.md)
 - [Locking & Recovery](scale/locks.md)
 - [Queue Architecture](scale/queue.md)
-- [Metrics](scale/metrics.md)
+- [Metrics](roadmap/planned/metrics.md) *(Planned)*
 - [Observability](scale/observability.md)
 
 ### Enterprise

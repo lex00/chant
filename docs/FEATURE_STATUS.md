@@ -60,17 +60,17 @@ For detailed implementation status of each phase, see [Roadmap](roadmap/roadmap.
 
 | Feature | Documentation | Roadmap Phase | Target Version |
 |---------|-------------|----------------|-----------------|
-| Hooks | [hooks.md](concepts/hooks.md) | Phase 8 | v0.4.0 or later |
-| Triggers | [triggers.md](concepts/triggers.md) | Phase 8 | v0.4.0 or later |
-| Notifications | [notifications.md](reference/notifications.md) | Phase 8 | v0.4.0 or later |
-| Approvals | [approvals.md](guides/approvals.md) | Phase 8 | v0.4.0 or later |
-| Daemon Mode | [daemon.md](scale/daemon.md) | Phase 6 | v0.5.0 |
-| Prometheus Metrics | [metrics.md](scale/metrics.md) | Phase 6 | v0.5.0 |
-| Cost Tracking | [costs.md](reference/costs.md) | Phase 8 | v0.4.0 or later |
+| Hooks | [hooks.md](roadmap/planned/hooks.md) | Phase 8 | v0.4.0 or later |
+| Triggers | [triggers.md](roadmap/planned/triggers.md) | Phase 8 | v0.4.0 or later |
+| Notifications | [notifications.md](roadmap/planned/notifications.md) | Phase 8 | v0.4.0 or later |
+| Approvals | [approvals.md](roadmap/planned/approvals.md) | Phase 8 | v0.4.0 or later |
+| Daemon Mode | [daemon.md](roadmap/planned/daemon.md) | Phase 6 | v0.5.0 |
+| Prometheus Metrics | [metrics.md](roadmap/planned/metrics.md) | Phase 6 | v0.5.0 |
+| Cost Tracking | [costs.md](roadmap/planned/costs.md) | Phase 8 | v0.4.0 or later |
 | Tantivy Search | [search.md](reference/search.md) | Phase 6 | v0.4.0 |
-| DAG Visualization | [observability.md](scale/observability.md) | Phase 6 | v0.4.0 or later |
+| DAG Visualization | Planned | Phase 6 | v0.4.0 or later |
 | Prompt Registry | [ecosystem.md](guides/ecosystem.md) | Phase 8 | v0.4.0 or later |
-| Edit Command | [cli.md](reference/cli.md) | Phase 8 | v0.4.0 or later |
+| Edit Command | Planned | Phase 8 | v0.4.0 or later |
 
 ## Commands Status Reference
 
@@ -140,8 +140,6 @@ chant costs         ❌ Planned for v0.4.0+
 - `ids.md` - ✅ Current
 - `groups.md` - ✅ Current
 - `deps.md` - ✅ Current
-- `hooks.md` - ❌ Not implemented (updated with status)
-- `triggers.md` - ❌ Not implemented (updated with status)
 - `autonomy.md` - ✅ Current (all documented features implemented)
 - `lifecycle.md` - ✅ Current
 
@@ -153,17 +151,15 @@ chant costs         ❌ Planned for v0.4.0+
 - `storage.md` - ✅ Current
 
 ### Reference
-- `cli.md` - ⚠️ Some planned commands marked as "Status: Planned"
+- `cli.md` - ✅ Current (planned commands moved to Planned Features)
 - `config.md` - ✅ Current
 - `errors.md` - ✅ Current
 - `search.md` - ⚠️ Advanced search (Tantivy) not implemented
 - `git.md` - ✅ Current
 - `git-hooks.md` - ⚠️ Partial implementation
-- `templates.md` - ⚠️ Basic only, full Handlebars not implemented
+- `templates.md` - ⚠️ Basic only, full Handlebars planned
 - `schema.md` - ✅ Current
-- `notifications.md` - ❌ Not implemented (updated with status)
-- `reports.md` - ✅ Current (export implemented, status updated)
-- `costs.md` - ❌ Not implemented (updated with status)
+- `reports.md` - ✅ Current (export implemented)
 - `mcp.md` - ✅ Current
 - `versioning.md` - ✅ Current
 - `output.md` - ✅ Current
@@ -176,19 +172,25 @@ chant costs         ❌ Planned for v0.4.0+
 - `prompt-advanced.md` - ✅ Current
 - `research.md` - ✅ Current
 - `examples.md` - ✅ Current
-- `ecosystem.md` - ⚠️ Partially implemented (updated with status)
-- `approvals.md` - ❌ Not implemented (updated with status)
+- `ecosystem.md` - ⚠️ Partially implemented (prompt registry planned)
 - `recovery.md` - ✅ Current
 
 ### Scale
 - `scale.md` - ✅ Current
-- `daemon.md` - ❌ Not implemented (updated with status)
 - `multi-project.md` - ✅ Current
 - `isolation.md` - ✅ Current
 - `locks.md` - ✅ Current
-- `queue.md` - ⚠️ Partially implemented (updated with status)
-- `metrics.md` - ❌ Not implemented (updated with status)
-- `observability.md` - ⚠️ Partially implemented (updated with status)
+- `queue.md` - ⚠️ Partially implemented (advanced backends planned)
+- `observability.md` - ⚠️ Partially implemented (scale tier planned)
+
+### Planned Features (docs/roadmap/planned/)
+- `daemon.md` - ❌ Not implemented (Phase 6)
+- `metrics.md` - ❌ Not implemented (Phase 6)
+- `hooks.md` - ❌ Not implemented (Phase 8)
+- `triggers.md` - ❌ Not implemented (Phase 8)
+- `approvals.md` - ❌ Not implemented (Phase 8)
+- `costs.md` - ❌ Not implemented (Phase 8)
+- `notifications.md` - ❌ Not implemented (Phase 8)
 
 ### Enterprise
 - `enterprise.md` - ✅ Implemented (derived frontmatter, required fields, audit trail)

@@ -115,16 +115,14 @@ parallel:
     prompt: parallel-cleanup # Cleanup prompt to use
     auto_run: false         # Run cleanup automatically
 
-# Optional - schema validation (Planned)
-# Note: Schema validation is on the roadmap but not yet implemented
+# Optional - schema validation
 schema:
   spec:
     required: [status]      # Required frontmatter fields (id comes from filename)
     status:
       enum: [pending, in_progress, completed, failed]
 
-# Optional - scale deployment settings (Planned)
-# Note: Scale features are on the roadmap but not yet implemented
+# Optional - scale deployment settings (requires daemon - planned)
 scale:
   # Project prefix auto-detection (monorepos)
   id_prefix:
@@ -571,21 +569,6 @@ With `round-robin`, specs are executed in sequence using agents from this list, 
 - **Load balancing**: Distribute work across multiple accounts with different rate limits
 - **Account rotation**: Rotate through multiple Claude accounts to avoid session conflicts
 - **Capacity planning**: Weight agents based on their availability/capacity
-
-### Override Per Spec (Planned)
-
-> **Status: Planned** - Spec-level provider override is on the roadmap but not yet implemented.
-
-In the future, you'll be able to override the default provider in individual specs using frontmatter.
-
-## Environment Overrides (Planned)
-
-> **Status: Planned** - Environment variable overrides are on the roadmap but not yet implemented.
-
-```bash
-CHANT_BRANCH=true chant work 2026-01-22-001-x7m
-CHANT_PROMPT=tdd chant work 2026-01-22-001-x7m
-```
 
 ## Enterprise Configuration
 
