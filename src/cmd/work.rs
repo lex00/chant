@@ -495,7 +495,10 @@ pub fn cmd_work(
             } {
                 Ok(commits) => {
                     if commits.is_empty() {
-                        println!("\n{} No commits found - agent did not make any changes.", "⚠".yellow());
+                        println!(
+                            "\n{} No commits found - agent did not make any changes.",
+                            "⚠".yellow()
+                        );
                         // Mark as failed since no work was done
                         spec.frontmatter.status = SpecStatus::Failed;
                         spec.save(&spec_path)?;
@@ -504,7 +507,10 @@ pub fn cmd_work(
                 }
                 Err(e) => {
                     if allow_no_commits {
-                        println!("\n{} No matching commits found, using HEAD as fallback.", "→".cyan());
+                        println!(
+                            "\n{} No matching commits found, using HEAD as fallback.",
+                            "→".cyan()
+                        );
                     } else {
                         println!("\n{} {}", "⚠".yellow(), e);
                         // Mark as failed since we need commits
@@ -555,7 +561,10 @@ pub fn cmd_work(
             }
 
             // All criteria are checked, auto-finalize the spec
-            println!("\n{} Auto-finalizing spec (all acceptance criteria checked)...", "→".cyan());
+            println!(
+                "\n{} Auto-finalizing spec (all acceptance criteria checked)...",
+                "→".cyan()
+            );
             let all_specs = spec::load_all_specs(&specs_dir)?;
             finalize_spec(&mut spec, &spec_path, &config, &all_specs, allow_no_commits)?;
 

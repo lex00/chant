@@ -1537,7 +1537,9 @@ pub fn cmd_resume(
     let spec_id = spec.id.clone();
 
     // Check if spec is in failed or in_progress state
-    if spec.frontmatter.status != SpecStatus::Failed && spec.frontmatter.status != SpecStatus::InProgress {
+    if spec.frontmatter.status != SpecStatus::Failed
+        && spec.frontmatter.status != SpecStatus::InProgress
+    {
         anyhow::bail!(
             "Spec {} is not in failed or in_progress state (current status: {:?}). \
              Only failed or in_progress specs can be resumed.",
