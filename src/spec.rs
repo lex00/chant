@@ -94,8 +94,6 @@ pub struct SpecFrontmatter {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub commits: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub pr: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub completed_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
@@ -161,7 +159,6 @@ impl Default for SpecFrontmatter {
             prompt: None,
             branch: None,
             commits: None,
-            pr: None,
             completed_at: None,
             model: None,
             tracks: None,
@@ -584,7 +581,6 @@ impl Spec {
             "prompt" => self.frontmatter.prompt.is_some(),
             "branch" => self.frontmatter.branch.is_some(),
             "commits" => self.frontmatter.commits.is_some(),
-            "pr" => self.frontmatter.pr.is_some(),
             "completed_at" => self.frontmatter.completed_at.is_some(),
             "model" => self.frontmatter.model.is_some(),
             "tracks" => self.frontmatter.tracks.is_some(),
@@ -2194,7 +2190,6 @@ original_completed_at: 2026-01-27T12:00:00Z
         assert!(spec.has_frontmatter_field("prompt"));
         assert!(spec.has_frontmatter_field("branch"));
         assert!(spec.has_frontmatter_field("commits"));
-        assert!(spec.has_frontmatter_field("pr"));
         assert!(spec.has_frontmatter_field("completed_at"));
         assert!(spec.has_frontmatter_field("model"));
         assert!(spec.has_frontmatter_field("tracks"));

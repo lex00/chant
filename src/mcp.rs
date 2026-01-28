@@ -443,7 +443,6 @@ fn tool_chant_spec_get(arguments: Option<&Value>) -> Result<Value> {
         "prompt": spec.frontmatter.prompt,
         "branch": spec.frontmatter.branch,
         "commits": spec.frontmatter.commits,
-        "pr": spec.frontmatter.pr,
         "completed_at": spec.frontmatter.completed_at,
         "model": spec.frontmatter.model,
         "body": spec.body

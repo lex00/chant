@@ -46,26 +46,6 @@ pub struct ApprovalConfig {
     pub rejection_action: RejectionAction,
 }
 
-/// Git hosting provider for PR creation
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum GitProvider {
-    #[default]
-    Github,
-    Gitlab,
-    Bitbucket,
-}
-
-impl fmt::Display for GitProvider {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            GitProvider::Github => write!(f, "github"),
-            GitProvider::Gitlab => write!(f, "gitlab"),
-            GitProvider::Bitbucket => write!(f, "bitbucket"),
-        }
-    }
-}
-
 /// Enterprise configuration for derived frontmatter and validation
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct EnterpriseConfig {
@@ -119,8 +99,6 @@ pub struct Config {
     pub project: ProjectConfig,
     #[serde(default)]
     pub defaults: DefaultsConfig,
-    #[serde(default)]
-    pub git: GitConfig,
     #[serde(default)]
     pub providers: ProviderConfig,
     #[serde(default)]
@@ -259,12 +237,6 @@ impl Default for CleanupConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Default)]
-pub struct GitConfig {
-    #[serde(default)]
-    pub provider: GitProvider,
-}
-
 #[derive(Debug, Clone, Deserialize)]
 pub struct ProjectConfig {
     pub name: String,
@@ -278,8 +250,6 @@ pub struct DefaultsConfig {
     pub prompt: String,
     #[serde(default)]
     pub branch: bool,
-    #[serde(default)]
-    pub pr: bool,
     #[serde(default = "default_branch_prefix")]
     pub branch_prefix: String,
     /// Default model name to use when env vars are not set
@@ -321,7 +291,6 @@ impl Default for DefaultsConfig {
         Self {
             prompt: default_prompt(),
             branch: false,
-            pr: false,
             branch_prefix: default_branch_prefix(),
             model: None,
             split_model: None,
@@ -395,17 +364,10 @@ pub fn global_config_path() -> Option<PathBuf> {
 struct PartialConfig {
     pub project: Option<PartialProjectConfig>,
     pub defaults: Option<PartialDefaultsConfig>,
-    pub git: Option<PartialGitConfig>,
     pub parallel: Option<ParallelConfig>,
     pub repos: Option<Vec<RepoConfig>>,
     pub enterprise: Option<EnterpriseConfig>,
     pub approval: Option<ApprovalConfig>,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Deserialize, Default)]
-struct PartialGitConfig {
-    pub provider: Option<GitProvider>,
 }
 
 #[allow(dead_code)]
@@ -420,7 +382,6 @@ struct PartialProjectConfig {
 struct PartialDefaultsConfig {
     pub prompt: Option<String>,
     pub branch: Option<bool>,
-    pub pr: Option<bool>,
     pub branch_prefix: Option<String>,
     pub model: Option<String>,
     pub split_model: Option<String>,
@@ -450,10 +411,8 @@ impl PartialConfig {
     fn merge_with(self, project: PartialConfig) -> Config {
         let global_project = self.project.unwrap_or_default();
         let global_defaults = self.defaults.unwrap_or_default();
-        let global_git = self.git.unwrap_or_default();
         let project_project = project.project.unwrap_or_default();
         let project_defaults = project.defaults.unwrap_or_default();
-        let project_git = project.git.unwrap_or_default();
 
         Config {
             project: ProjectConfig {
@@ -472,7 +431,6 @@ impl PartialConfig {
                     .branch
                     .or(global_defaults.branch)
                     .unwrap_or(false),
-                pr: project_defaults.pr.or(global_defaults.pr).unwrap_or(false),
                 branch_prefix: project_defaults
                     .branch_prefix
                     .or(global_defaults.branch_prefix)
@@ -491,12 +449,6 @@ impl PartialConfig {
                     .rotation_strategy
                     .or(global_defaults.rotation_strategy)
                     .unwrap_or_else(default_rotation_strategy),
-            },
-            git: GitConfig {
-                provider: project_git
-                    .provider
-                    .or(global_git.provider)
-                    .unwrap_or_default(),
             },
             providers: Default::default(),
             // Parallel config: project overrides global, or use default
@@ -627,9 +579,7 @@ defaults:
         // Since project has branch: false, we use global's value
         // Wait, that's not right - let me check the logic
         assert!(!config.defaults.branch); // Project sets false
-                                          // pr from global (not set in project)
-        assert!(config.defaults.pr);
-        // branch_prefix from global (project uses default)
+                                          // branch_prefix from global (project uses default)
         assert_eq!(config.defaults.branch_prefix, "global/");
     }
 
@@ -688,101 +638,6 @@ project:
 
         let config = Config::load_merged_from(Some(&global_path), &project_path).unwrap();
         assert_eq!(config.project.name, "my-project");
-    }
-
-    #[test]
-    fn test_parse_git_provider() {
-        let content = r#"---
-project:
-  name: test-project
-git:
-  provider: gitlab
----
-"#;
-        let config = Config::parse(content).unwrap();
-        assert_eq!(config.git.provider, GitProvider::Gitlab);
-    }
-
-    #[test]
-    fn test_git_provider_defaults_to_github() {
-        let content = r#"---
-project:
-  name: test-project
----
-"#;
-        let config = Config::parse(content).unwrap();
-        assert_eq!(config.git.provider, GitProvider::Github);
-    }
-
-    #[test]
-    fn test_git_provider_display() {
-        assert_eq!(format!("{}", GitProvider::Github), "github");
-        assert_eq!(format!("{}", GitProvider::Gitlab), "gitlab");
-        assert_eq!(format!("{}", GitProvider::Bitbucket), "bitbucket");
-    }
-
-    #[test]
-    fn test_load_merged_git_provider() {
-        let tmp = TempDir::new().unwrap();
-        let global_path = tmp.path().join("global.md");
-        let project_path = tmp.path().join("project.md");
-
-        fs::write(
-            &global_path,
-            r#"---
-git:
-  provider: gitlab
----
-"#,
-        )
-        .unwrap();
-
-        fs::write(
-            &project_path,
-            r#"---
-project:
-  name: my-project
----
-"#,
-        )
-        .unwrap();
-
-        let config = Config::load_merged_from(Some(&global_path), &project_path).unwrap();
-        // Global sets gitlab, project doesn't override
-        assert_eq!(config.git.provider, GitProvider::Gitlab);
-    }
-
-    #[test]
-    fn test_load_merged_git_provider_override() {
-        let tmp = TempDir::new().unwrap();
-        let global_path = tmp.path().join("global.md");
-        let project_path = tmp.path().join("project.md");
-
-        fs::write(
-            &global_path,
-            r#"---
-git:
-  provider: gitlab
----
-"#,
-        )
-        .unwrap();
-
-        fs::write(
-            &project_path,
-            r#"---
-project:
-  name: my-project
-git:
-  provider: bitbucket
----
-"#,
-        )
-        .unwrap();
-
-        let config = Config::load_merged_from(Some(&global_path), &project_path).unwrap();
-        // Project overrides global
-        assert_eq!(config.git.provider, GitProvider::Bitbucket);
     }
 
     #[test]

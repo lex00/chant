@@ -41,6 +41,7 @@ pub fn create_or_switch_branch(branch_name: &str) -> Result<()> {
 }
 
 /// Push a branch to the remote origin with upstream tracking.
+#[allow(dead_code)]
 pub fn push_branch(branch_name: &str) -> Result<()> {
     use std::process::Command;
 

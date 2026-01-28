@@ -7,24 +7,8 @@ Git behavior is controlled by explicit boolean flags in `.chant/config.md`:
 ```yaml
 defaults:
   branch: false      # Create a branch for each spec?
-  pr: false          # Create a PR on completion?
   branch_prefix: "chant/"
 ```
-
-### Provider Configuration
-
-Chant supports multiple git hosting providers:
-
-```yaml
-git:
-  provider: github   # github (default), gitlab, or bitbucket
-```
-
-| Provider | CLI Tool | PR Type |
-|----------|----------|---------|
-| `github` | `gh` | Pull Request |
-| `gitlab` | `glab` | Merge Request |
-| `bitbucket` | `bb` | Pull Request |
 
 ### Spec Override
 
@@ -34,17 +18,17 @@ Individual specs can override defaults:
 # Spec frontmatter
 ---
 branch: true         # This spec needs a branch
-pr: true             # This spec needs a PR
 ---
 ```
 
 ## Git Modes
 
-| branch | pr | Behavior |
-|--------|-----|----------|
-| `false` | `false` | Commit directly to current branch (default) |
-| `true` | `false` | Create branch, user merges manually |
-| `true` | `true` | Create branch, create PR |
+| branch | Behavior |
+|--------|----------|
+| `false` | Commit directly to current branch (default) |
+| `true` | Create branch, user merges manually |
+
+> **Note:** Specs serve as the review primitive in chant. Each spec has a title, acceptance criteria, branch, commits, and review workflow — fulfilling the same role as a pull request but working offline and without external dependencies.
 
 ## Commit Flow
 

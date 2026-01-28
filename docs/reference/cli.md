@@ -622,7 +622,6 @@ chant replay 001                      # Re-execute spec
 chant replay 001 --dry-run            # Preview changes without executing
 chant replay 001 --yes                # Skip confirmation prompts
 chant replay 001 --branch             # Create feature branch
-chant replay 001 --pr                 # Create pull request
 chant replay 001 --prompt custom      # Use custom prompt
 ```
 
@@ -1161,8 +1160,7 @@ success  failure
        ▼
 ┌──────────────────────────────────────┐
 │  9. Update frontmatter (commit hash) │
-│  10. Create PR (if enabled)          │
-│  11. Check if driver complete        │
+│  10. Check if driver complete        │
 └──────────────────────────────────────┘
 ```
 

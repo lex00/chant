@@ -179,9 +179,6 @@ enum Commands {
         /// Create a feature branch before executing (optionally with a custom prefix)
         #[arg(long, num_args = 0..=1, require_equals = true, value_name = "PREFIX")]
         branch: Option<String>,
-        /// Create a pull request after spec completes
-        #[arg(long)]
-        pr: bool,
         /// Override dependency checks and skip validation of unchecked acceptance criteria
         #[arg(long)]
         force: bool,
@@ -344,9 +341,6 @@ enum Commands {
         /// Create a feature branch before executing (optionally with a custom prefix)
         #[arg(long, num_args = 0..=1, require_equals = true, value_name = "PREFIX")]
         branch: Option<String>,
-        /// Create a pull request after spec completes
-        #[arg(long)]
-        pr: bool,
         /// Skip validation of unchecked acceptance criteria
         #[arg(long)]
         force: bool,
@@ -602,7 +596,6 @@ fn main() -> Result<()> {
             ids,
             prompt,
             branch,
-            pr,
             force,
             parallel,
             label,
@@ -616,7 +609,6 @@ fn main() -> Result<()> {
             &ids,
             prompt.as_deref(),
             branch,
-            pr,
             force,
             parallel,
             &label,
@@ -696,11 +688,10 @@ fn main() -> Result<()> {
             id,
             prompt,
             branch,
-            pr,
             force,
             dry_run,
             yes,
-        } => cmd::lifecycle::cmd_replay(&id, prompt.as_deref(), branch, pr, force, dry_run, yes),
+        } => cmd::lifecycle::cmd_replay(&id, prompt.as_deref(), branch, force, dry_run, yes),
         Commands::Cancel {
             id,
             force,

@@ -82,7 +82,6 @@ chant add           ✅ Create new spec
 chant list          ✅ List specs with filters
 chant show          ✅ Display spec details
 chant work          ✅ Execute spec
-chant work --pr     ✅ Execute and create PR
 chant work --branch ✅ Execute with feature branch
 chant work --parallel ✅ Execute multiple specs
 chant resume        ✅ Resume failed/in_progress spec

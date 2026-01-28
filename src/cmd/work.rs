@@ -15,7 +15,6 @@ use std::path::{Path, PathBuf};
 
 use chant::config::Config;
 use chant::conflict;
-use chant::git;
 use chant::paths::PROMPTS_DIR;
 use chant::prompt;
 use chant::spec::{self, BlockingDependency, Spec, SpecStatus};
@@ -37,7 +36,7 @@ use crate::cmd::commits::get_commits_for_spec;
 use crate::cmd::finalize::{
     append_agent_output, confirm_re_finalize, finalize_spec, re_finalize_spec,
 };
-use crate::cmd::git_ops::{commit_transcript, create_or_switch_branch, push_branch};
+use crate::cmd::git_ops::{commit_transcript, create_or_switch_branch};
 use crate::cmd::spec as spec_cmd;
 
 // ============================================================================
@@ -256,7 +255,6 @@ pub fn cmd_work(
     ids: &[String],
     prompt_name: Option<&str>,
     cli_branch: Option<String>,
-    cli_pr: bool,
     force: bool,
     parallel: bool,
     labels: &[String],
@@ -273,12 +271,6 @@ pub fn cmd_work(
 
     // Check for silent mode conflicts
     let in_silent_mode = is_silent_mode();
-    if in_silent_mode && cli_pr {
-        anyhow::bail!(
-            "Cannot create pull request in silent mode - would reveal chant usage to the team. \
-             Remove --pr or disable silent mode with `chant init --force` (non-silent)."
-        );
-    }
     if in_silent_mode && cli_branch.is_some() {
         println!(
             "{} Warning: Creating branches in silent mode will still be visible to the team",
@@ -520,20 +512,19 @@ pub fn cmd_work(
 
     // CLI flags override config defaults
     // Wizard selection overrides both config and CLI (when ids were empty)
-    let create_pr = cli_pr || config.defaults.pr;
     let use_branch_prefix = cli_branch
         .as_deref()
         .unwrap_or(&config.defaults.branch_prefix);
     let create_branch = if ids.is_empty() {
         // Wizard mode: use wizard's branch selection
-        final_branch || cli_branch.is_some() || config.defaults.branch || create_pr
+        final_branch || cli_branch.is_some() || config.defaults.branch
     } else {
         // Direct mode: use CLI flags and config
-        cli_branch.is_some() || config.defaults.branch || create_pr
+        cli_branch.is_some() || config.defaults.branch
     };
 
     // Handle branch creation/switching if requested
-    let branch_name = if create_branch {
+    let _branch_name = if create_branch {
         let branch_name = format!("{}{}", use_branch_prefix, spec.id);
         create_or_switch_branch(&branch_name)?;
         spec.frontmatter.branch = Some(branch_name.clone());
@@ -732,40 +723,6 @@ pub fn cmd_work(
             }
             if let Some(model) = &spec.frontmatter.model {
                 println!("Model: {}", model);
-            }
-
-            // Create PR if requested (after finalization so PR URL can be saved)
-            if create_pr {
-                let branch_name = branch_name
-                    .as_ref()
-                    .expect("branch_name should exist when create_pr is true");
-                println!("\n{} Pushing branch to remote...", "→".cyan());
-                match push_branch(branch_name) {
-                    Ok(()) => {
-                        let provider = git::get_provider(config.git.provider);
-                        println!(
-                            "{} Creating pull request via {}...",
-                            "→".cyan(),
-                            provider.name()
-                        );
-                        let pr_title = spec.title.clone().unwrap_or_else(|| spec.id.clone());
-                        let pr_body = spec.body.clone();
-                        match provider.create_pr(&pr_title, &pr_body) {
-                            Ok(pr_url) => {
-                                spec.frontmatter.pr = Some(pr_url.clone());
-                                println!("{} PR created: {}", "✓".green(), pr_url);
-                            }
-                            Err(e) => {
-                                // PR creation failed, but spec is still finalized
-                                println!("{} Failed to create PR: {}", "⚠".yellow(), e);
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        // Push failed, but spec is still finalized
-                        println!("{} Failed to push branch: {}", "⚠".yellow(), e);
-                    }
-                }
             }
 
             // Append agent output to spec body (after finalization so finalized spec is the base)
@@ -2041,7 +1998,6 @@ mod tests {
                 prefix: None,
             },
             defaults: chant::config::DefaultsConfig::default(),
-            git: chant::config::GitConfig::default(),
             providers: chant::provider::ProviderConfig::default(),
             parallel: chant::config::ParallelConfig {
                 agents,

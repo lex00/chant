@@ -1900,7 +1900,6 @@ pub fn cmd_resume(
             std::slice::from_ref(&spec_id),
             prompt,
             branch,
-            false, // pr
             false, // force
             false, // parallel
             &[],   // label
@@ -1925,7 +1924,6 @@ pub fn cmd_replay(
     id: &str,
     prompt: Option<&str>,
     branch: Option<String>,
-    pr: bool,
     force: bool,
     dry_run: bool,
     yes: bool,
@@ -1985,9 +1983,6 @@ pub fn cmd_replay(
                 .unwrap_or_default()
         );
     }
-    if pr {
-        println!("    {} Create pull request", "∘".cyan());
-    }
     if force {
         println!(
             "    {} Skip validation of unchecked acceptance criteria",
@@ -2001,7 +1996,7 @@ pub fn cmd_replay(
             prompt.unwrap_or("standard").cyan()
         );
     }
-    if branch.is_none() && !pr && !force && prompt.is_none() {
+    if branch.is_none() && !force && prompt.is_none() {
         println!("    {} {}", "∘".cyan(), "(no additional options)".dimmed());
     }
 
@@ -2040,7 +2035,6 @@ pub fn cmd_replay(
         std::slice::from_ref(&spec_id),
         prompt,
         branch,
-        pr,
         true,  // force=true to bypass guards in cmd_work for replay
         false, // parallel
         &[],   // label

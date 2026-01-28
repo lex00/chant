@@ -108,11 +108,6 @@ pub fn merge_frontmatter(
         result.branch = theirs.branch.clone();
     }
 
-    // pr: prefer ours, fallback to theirs
-    if result.pr.is_none() && theirs.pr.is_some() {
-        result.pr = theirs.pr.clone();
-    }
-
     // labels: merge both lists, deduplicate
     result.labels = merge_string_lists(&base.labels, &ours.labels, &theirs.labels);
 

@@ -43,7 +43,7 @@ fn test_phase0_self_hosting() {
 | Phase | Key Tests |
 |-------|-----------|
 | 0 → 1 | Self-hosting: chant executes spec on itself |
-| 1 → 2 | Branching, PR creation, isolation, hooks |
+| 1 → 2 | Branching, isolation, hooks |
 | 2 → 3 | MCP server tools, provider config |
 | 3 → 4 | Cross-repo dependencies |
 | 4 → 5 | Labels, triggers, spec types, groups |

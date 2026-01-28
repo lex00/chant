@@ -1578,81 +1578,6 @@ fn test_silent_mode_isolation() {
 #[test]
 #[serial]
 #[cfg(unix)] // Uses Unix-specific /tmp paths
-#[ignore] // Flaky in CI - passes locally but fails on GitHub Actions
-fn test_silent_mode_pr_fails() {
-    let silent_repo = PathBuf::from("/tmp/test-chant-silent-pr-fail");
-
-    // Cleanup from previous runs
-    let _ = cleanup_test_repo(&silent_repo);
-
-    // Setup
-    assert!(
-        setup_test_repo(&silent_repo).is_ok(),
-        "Setup silent repo failed"
-    );
-
-    let original_dir = std::env::current_dir().expect("Failed to get cwd");
-
-    // Initialize chant with --silent
-    let output =
-        run_chant(&silent_repo, &["init", "--silent"]).expect("Failed to run chant init --silent");
-    assert!(
-        output.status.success(),
-        "Chant init --silent failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    // Create a spec
-    let output =
-        run_chant(&silent_repo, &["add", "Test spec for PR test"]).expect("Failed to create spec");
-    assert!(
-        output.status.success(),
-        "Failed to add spec: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    // Get the spec ID from list
-    let list_output = run_chant(&silent_repo, &["list"]).expect("Failed to list specs");
-    let list_content = String::from_utf8_lossy(&list_output.stdout);
-
-    // Extract a spec ID (format: YYYY-MM-DD-XXX-abc)
-    let spec_id = list_content
-        .lines()
-        .find(|line| line.contains("2026") || line.contains("-"))
-        .and_then(|line| {
-            line.split_whitespace()
-                .find(|word| word.contains("-") && word.len() > 8)
-        })
-        .unwrap_or("test-spec");
-
-    // Try to work the spec with --pr, should fail
-    let output = run_chant(&silent_repo, &["work", spec_id, "--pr"])
-        .expect("Failed to run work --pr command");
-
-    // Should fail with specific error message
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let combined = format!("{}\n{}", stdout, stderr);
-
-    assert!(
-        !output.status.success(),
-        "work --pr should fail in silent mode. Output: {}",
-        combined
-    );
-    assert!(
-        combined.contains("silent mode"),
-        "Error should mention silent mode. Output: {}",
-        combined
-    );
-
-    // Cleanup
-    let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&silent_repo);
-}
-
-#[test]
-#[serial]
-#[cfg(unix)] // Uses Unix-specific /tmp paths
 fn test_silent_mode_branch_warning() {
     let silent_repo = PathBuf::from("/tmp/test-chant-silent-branch-warn");
 
@@ -1708,7 +1633,7 @@ fn test_silent_mode_branch_warning() {
     let combined = format!("{}\n{}", stdout, stderr);
 
     // The command should process (whether it succeeds or fails due to other reasons is OK)
-    // We're just checking that --branch doesn't hard-fail like --pr does
+    // We're just checking that --branch doesn't hard-fail
     // The presence of "Working" indicates chant is proceeding with the work command
     assert!(
         combined.contains("Working") || output.status.success() || combined.contains("Warning"),
@@ -2082,7 +2007,7 @@ project:
   name: test-project
 enterprise:
   required:
-    - pr
+    - branch
     - model
     - labels
 ---
@@ -2103,7 +2028,7 @@ status: pending
 
 # Test spec without required fields
 
-This spec is missing pr, model, and labels fields.
+This spec is missing branch, model, and labels fields.
 "#;
     std::fs::write(&spec_path, spec_content).expect("Failed to write spec");
 
@@ -2129,8 +2054,8 @@ This spec is missing pr, model, and labels fields.
     // Should report missing required fields
     let output = format!("{}{}", stdout, stderr);
     assert!(
-        output.contains("Missing required field 'pr'"),
-        "Should report missing pr field"
+        output.contains("Missing required field 'branch'"),
+        "Should report missing branch field"
     );
     assert!(
         output.contains("Missing required field 'model'"),
@@ -2179,7 +2104,7 @@ project:
   name: test-project
 enterprise:
   required:
-    - pr
+    - branch
     - labels
 ---
 
@@ -2195,7 +2120,7 @@ enterprise:
     let spec_content = r#"---
 type: code
 status: pending
-pr: "42"
+branch: chant/feature
 labels:
   - important
   - feature
@@ -2203,7 +2128,7 @@ labels:
 
 # Test spec with required fields
 
-This spec has pr and labels fields.
+This spec has branch and labels fields.
 "#;
     std::fs::write(&spec_path, spec_content).expect("Failed to write spec");
 

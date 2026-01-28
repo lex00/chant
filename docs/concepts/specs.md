@@ -97,7 +97,6 @@ schedule: weekly               # research: recurring execution
 # Git (populated on completion)
 branch: chant/2026-01-22-002-q2n
 commit: a1b2c3d4
-pr: https://github.com/...
 completed_at: 2026-01-22T15:30:00Z
 model: claude-opus-4-5            # AI model that executed the spec
 

@@ -21,7 +21,6 @@ project:
 defaults:
   prompt: bootstrap
   branch: false
-  pr: false
   branch_prefix: "chant/"
   model: claude-opus-4
   provider: claude
@@ -84,16 +83,11 @@ project:
 defaults:
   prompt: bootstrap         # Default prompt (bootstrap for minimal API concurrency)
   branch: false             # Create branches?
-  pr: false                 # Create PRs?
   branch_prefix: "chant/"   # Branch name prefix
   provider: claude          # Model provider: claude, ollama, openai
   model: null               # Model name (e.g. "claude-opus-4", "llama2")
   split_model: null         # Model for split operations (defaults to sonnet)
   main_branch: "main"       # Default main branch for merges
-
-# Optional - git provider settings
-git:
-  provider: github          # PR provider: github, gitlab, bitbucket
 
 # Optional - model provider endpoints
 providers:
@@ -174,12 +168,8 @@ Project config overrides global config. Values are merged at the key level:
 ---
 defaults:
   branch: true
-  pr: true
   model: claude-opus-4
   provider: claude
-
-git:
-  provider: github
 
 providers:
   openai:
@@ -201,11 +191,10 @@ project:
 
 defaults:
   branch: false   # Override: direct commits for this project
-  pr: false
 ---
 ```
 
-In this example, the global config sets `branch: true` and `pr: true`, but the project config overrides both to `false`. The `git.provider: github` from global config is still applied since the project doesn't override it.
+In this example, the global config sets `branch: true`, but the project config overrides it to `false`.
 
 ## Model Providers
 

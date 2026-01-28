@@ -237,7 +237,7 @@ lifecycle:
 │  Lock released (immediate)                                   │
 │  Clone retained (7d default)                                 │
 │  Spec updated (status: completed)                            │
-│  Branch pushed (if pr: true)                                 │
+│  Branch pushed (if branch: true)                              │
 └──────────────────────────┬──────────────────────────────────┘
                            │
                            │ after retention period

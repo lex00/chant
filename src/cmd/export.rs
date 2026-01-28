@@ -332,7 +332,6 @@ fn get_field_value(spec: &Spec, field: &str) -> serde_json::Value {
         "model" => json!(spec.frontmatter.model),
         "completed_at" => json!(spec.frontmatter.completed_at),
         "commits" => json!(spec.frontmatter.commits),
-        "pr" => json!(spec.frontmatter.pr),
         "tracks" => json!(spec.frontmatter.tracks),
         "informed_by" => json!(spec.frontmatter.informed_by),
         "origin" => json!(spec.frontmatter.origin),

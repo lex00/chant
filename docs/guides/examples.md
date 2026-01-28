@@ -32,7 +32,6 @@ project:
 defaults:
   prompt: standard
   branch: false
-  pr: false
 ---
 
 # My Project
@@ -79,7 +78,7 @@ chant work 2026-01-22-001-x7m
 
 ## Team Collaboration
 
-Multiple developers, PR-based workflow.
+Multiple developers, branch-based workflow.
 
 ### Directory Structure
 
@@ -110,7 +109,6 @@ project:
 defaults:
   prompt: standard
   branch: true
-  pr: true
 
 notifications:
   on_complete: .chant/notifications/on_complete.md
@@ -122,7 +120,7 @@ hooks:
 
 # Team Project
 
-All changes via PR. Slack notifications on completion.
+All changes via branch. Slack notifications on completion.
 ```
 
 ### Post-Work Hook
@@ -155,8 +153,6 @@ webhook: ${SLACK_WEBHOOK_URL}
 
 > {{spec.title}}
 
-PR: {{pr_url}}
-
 _{{duration}} · {{prompt}} prompt_
 ```
 
@@ -166,10 +162,10 @@ _{{duration}} · {{prompt}} prompt_
 # Developer creates spec
 chant add "Implement OAuth login"
 
-# Execute - creates branch + PR
+# Execute - creates branch
 chant work 2026-01-22-001-x7m
 
-# Team reviews PR in GitHub
+# Team reviews changes
 # Merge triggers spec completion
 # Slack notification sent
 ```
@@ -205,7 +201,6 @@ project:
 defaults:
   prompt: standard
   branch: true
-  pr: true
   branch_prefix: "alex/"      # Personal prefix
 
 enterprise:
@@ -271,7 +266,6 @@ project:
 defaults:
   prompt: standard
   branch: true
-  pr: true
 
 scale:
   id_prefix:

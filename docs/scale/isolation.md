@@ -142,7 +142,7 @@ Agent works in isolated worktree on dedicated branch.
 
 On completion:
 1. Agent commits to branch
-2. CLI merges branch to main (or creates PR)
+2. CLI merges branch to main
 3. Worktree removed
 
 ### Comparison
