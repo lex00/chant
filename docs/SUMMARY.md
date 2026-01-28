@@ -36,6 +36,13 @@
 - [Ecosystem](guides/ecosystem.md)
 - [Recovery](guides/recovery.md)
 - [Approval Workflow](guides/approval-workflow.md)
+- [Enterprise KPI/OKR Workflow](guides/enterprise/kpi-okr/README.md)
+  - [The Business Context](guides/enterprise/kpi-okr/01-scenario.md)
+  - [Data Ingestion](guides/enterprise/kpi-okr/02-data-ingestion.md)
+  - [Research Phase](guides/enterprise/kpi-okr/03-research.md)
+  - [Approval Gate](guides/enterprise/kpi-okr/04-approval.md)
+  - [Implementation](guides/enterprise/kpi-okr/05-implementation.md)
+  - [Reporting](guides/enterprise/kpi-okr/06-reporting.md)
 
 # Reference
 
