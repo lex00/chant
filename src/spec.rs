@@ -502,22 +502,26 @@ pub fn apply_blocked_status_with_repos(
     let specs_snapshot = specs.to_vec();
 
     for spec in specs.iter_mut() {
-        // Only apply blocked status to pending specs
-        if spec.frontmatter.status != SpecStatus::Pending {
+        // Handle both Pending and Blocked specs
+        if spec.frontmatter.status != SpecStatus::Pending
+            && spec.frontmatter.status != SpecStatus::Blocked
+        {
             continue;
         }
 
         // Check if this spec has unmet dependencies (local only)
-        if spec.is_blocked(&specs_snapshot) {
-            spec.frontmatter.status = SpecStatus::Blocked;
-            continue;
-        }
+        let is_blocked_locally = spec.is_blocked(&specs_snapshot);
 
         // Check cross-repo dependencies if repos config is available
-        if !repos.is_empty()
-            && crate::deps::is_blocked_by_dependencies(spec, &specs_snapshot, specs_dir, repos)
-        {
+        let is_blocked_cross_repo = !repos.is_empty()
+            && crate::deps::is_blocked_by_dependencies(spec, &specs_snapshot, specs_dir, repos);
+
+        if is_blocked_locally || is_blocked_cross_repo {
+            // Has unmet dependencies - mark as blocked
             spec.frontmatter.status = SpecStatus::Blocked;
+        } else if spec.frontmatter.status == SpecStatus::Blocked {
+            // No unmet dependencies and was previously blocked - revert to pending
+            spec.frontmatter.status = SpecStatus::Pending;
         }
     }
 }
@@ -2021,5 +2025,191 @@ original_completed_at: 2026-01-27T12:00:00Z
         assert!(spec.has_frontmatter_field("replayed_at"));
         assert!(spec.has_frontmatter_field("replay_count"));
         assert!(spec.has_frontmatter_field("original_completed_at"));
+    }
+
+    #[test]
+    fn test_spec_ready_after_dependency_completed() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        // Create a pending spec that will be the dependency
+        let dep_spec = Spec {
+            id: "2026-01-26-001-abc".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                ..Default::default()
+            },
+            title: Some("Dependency".to_string()),
+            body: "# Dependency\n\nBody.".to_string(),
+        };
+
+        // Create a pending spec that depends on the above
+        let dependent_spec = Spec {
+            id: "2026-01-26-002-def".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                depends_on: Some(vec!["2026-01-26-001-abc".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Dependent".to_string()),
+            body: "# Dependent\n\nBody.".to_string(),
+        };
+
+        // Save both specs
+        dep_spec
+            .save(&specs_dir.join("2026-01-26-001-abc.md"))
+            .unwrap();
+        dependent_spec
+            .save(&specs_dir.join("2026-01-26-002-def.md"))
+            .unwrap();
+
+        // Load specs - dependent should be Blocked because dep is not Completed
+        let specs = load_all_specs(specs_dir).unwrap();
+        let dependent = specs.iter().find(|s| s.id == "2026-01-26-002-def").unwrap();
+        assert_eq!(dependent.frontmatter.status, SpecStatus::Blocked);
+
+        // Now mark the dependency as completed and save it
+        let mut completed_dep = dep_spec.clone();
+        completed_dep.frontmatter.status = SpecStatus::Completed;
+        completed_dep.frontmatter.completed_at = Some("2026-01-26T10:00:00Z".to_string());
+        completed_dep
+            .save(&specs_dir.join("2026-01-26-001-abc.md"))
+            .unwrap();
+
+        // Load specs again - dependent should now be Ready (or at least Pending, not Blocked)
+        let specs = load_all_specs(specs_dir).unwrap();
+        let dependent = specs.iter().find(|s| s.id == "2026-01-26-002-def").unwrap();
+
+        // BUG: This will fail because dependent is still marked as Blocked
+        // even though its dependency is now completed
+        assert_eq!(
+            dependent.frontmatter.status,
+            SpecStatus::Pending,
+            "Spec should no longer be blocked after its dependency is completed"
+        );
+    }
+
+    #[test]
+    fn test_blocked_spec_unblocked_when_dependency_completed() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        // Create a completed spec that will be the dependency
+        let dep_spec = Spec {
+            id: "2026-01-26-001-abc".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                completed_at: Some("2026-01-26T10:00:00Z".to_string()),
+                ..Default::default()
+            },
+            title: Some("Dependency".to_string()),
+            body: "# Dependency\n\nBody.".to_string(),
+        };
+
+        // Create a BLOCKED spec that depends on the above
+        // This represents a spec that was previously marked as blocked
+        let dependent_spec = Spec {
+            id: "2026-01-26-002-def".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Blocked, // Already marked as blocked in file
+                depends_on: Some(vec!["2026-01-26-001-abc".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Dependent".to_string()),
+            body: "# Dependent\n\nBody.".to_string(),
+        };
+
+        // Save both specs
+        dep_spec
+            .save(&specs_dir.join("2026-01-26-001-abc.md"))
+            .unwrap();
+        dependent_spec
+            .save(&specs_dir.join("2026-01-26-002-def.md"))
+            .unwrap();
+
+        // Load specs - the dependent should be unblocked because its dependency is completed
+        let specs = load_all_specs(specs_dir).unwrap();
+        let dependent = specs.iter().find(|s| s.id == "2026-01-26-002-def").unwrap();
+
+        // BUG: This will fail because apply_blocked_status only changes Pending specs,
+        // so Blocked specs stay Blocked even if their dependencies are now met
+        assert_eq!(
+            dependent.frontmatter.status,
+            SpecStatus::Pending,
+            "Spec should no longer be blocked after its dependency is completed"
+        );
+    }
+
+    #[test]
+    fn test_cascade_dependency_unblocking() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        // Create a chain: A depends on B, B depends on C
+        let spec_c = Spec {
+            id: "2026-01-26-001-abc".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                completed_at: Some("2026-01-26T10:00:00Z".to_string()),
+                ..Default::default()
+            },
+            title: Some("C".to_string()),
+            body: "# C\n\nBody.".to_string(),
+        };
+
+        let spec_b = Spec {
+            id: "2026-01-26-002-def".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Blocked,
+                depends_on: Some(vec!["2026-01-26-001-abc".to_string()]),
+                ..Default::default()
+            },
+            title: Some("B".to_string()),
+            body: "# B\n\nBody.".to_string(),
+        };
+
+        let spec_a = Spec {
+            id: "2026-01-26-003-ghi".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Blocked,
+                depends_on: Some(vec!["2026-01-26-002-def".to_string()]),
+                ..Default::default()
+            },
+            title: Some("A".to_string()),
+            body: "# A\n\nBody.".to_string(),
+        };
+
+        // Save all specs
+        spec_c
+            .save(&specs_dir.join("2026-01-26-001-abc.md"))
+            .unwrap();
+        spec_b
+            .save(&specs_dir.join("2026-01-26-002-def.md"))
+            .unwrap();
+        spec_a
+            .save(&specs_dir.join("2026-01-26-003-ghi.md"))
+            .unwrap();
+
+        // Load specs - B should be unblocked (C is completed), but A should still be blocked
+        let specs = load_all_specs(specs_dir).unwrap();
+        let b = specs.iter().find(|s| s.id == "2026-01-26-002-def").unwrap();
+        let a = specs.iter().find(|s| s.id == "2026-01-26-003-ghi").unwrap();
+
+        assert_eq!(
+            b.frontmatter.status,
+            SpecStatus::Pending,
+            "B should be unblocked since C is completed"
+        );
+        assert_eq!(
+            a.frontmatter.status,
+            SpecStatus::Blocked,
+            "A should still be blocked since B is only pending"
+        );
     }
 }
