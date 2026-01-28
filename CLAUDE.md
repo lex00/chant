@@ -45,6 +45,61 @@ This workflow ensures:
 - Work matches expectations
 - All specs are thoroughly documented
 
+## Orchestrator Pattern - Monitoring Agent Execution
+
+As the orchestrator, you should actively monitor agents executing specs. Use `chant log <spec-id>` to check progress and detect struggling agents early.
+
+### Struggling Agent Indicators
+
+Watch for these signs that an agent is struggling:
+
+- **Repeated errors**: The same error appearing multiple times, especially compilation or test failures that the agent cannot resolve
+- **Circular fixes**: The agent repeatedly modifying the same code, undoing and redoing changes
+- **Scope confusion**: The agent modifying files outside the spec's `target_files` or working on unrelated concerns
+- **Long silences**: Extended periods with no meaningful progress in the log
+- **Misunderstanding the task**: The agent implementing something different from what the spec describes
+- **Excessive exploration**: Reading many files without making progress toward implementation
+
+### Stop-and-Split Workflow
+
+When you detect a struggling agent:
+
+1. **Stop the agent** - Cancel the current execution
+2. **Review the log** - Use `chant log <spec-id>` to understand where the agent got stuck
+3. **Restructure the spec into phases**:
+   - **Phase 1 - Research**: Create a spec to investigate the problem, identify the right approach, and document findings. This spec's acceptance criteria should produce a concrete plan, not code changes.
+   - **Phase 2 - Implementation**: Create a spec that references the research findings and implements the solution with clear, narrow acceptance criteria.
+4. **Evaluate further splitting** - If the implementation phase is still complex, split it into multiple focused specs
+
+### Research vs Implementation Phase Split
+
+**Research spec** (type: `task`):
+- Goal: Understand the problem and produce a plan
+- Acceptance criteria: Document findings, identify affected files, propose approach
+- Does NOT modify production code
+- Example: "Research how authentication middleware is structured and document the integration points for OAuth support"
+
+**Implementation spec** (type: `code`):
+- Goal: Make specific code changes based on known approach
+- Acceptance criteria: Concrete, verifiable code changes
+- References the research spec's findings
+- Example: "Add OAuth provider configuration to authentication middleware using the integration points identified in spec 2026-01-28-001-abc"
+
+### When to Split Specs
+
+Split a spec into multiple specs when:
+
+- **Multiple unrelated files**: The spec touches files in different subsystems with no shared logic
+- **Research required**: The agent needs to understand a complex area before it can implement changes
+- **Large acceptance criteria list**: More than 5-6 acceptance criteria often indicates the spec is too broad
+- **Mixed concerns**: The spec combines refactoring with new features, or infrastructure changes with business logic
+- **Sequential dependencies**: Part of the work must be complete and verified before the next part can begin
+
+**Do NOT split** when:
+- The changes are small and cohesive, even if they touch multiple files
+- The acceptance criteria are all closely related aspects of one feature
+- Splitting would create specs that can't be tested independently
+
 ## Primary Rules
 
 ### 1. Always Use `chant` for CLI Operations
@@ -477,6 +532,21 @@ The `chant init --force` flag allows full reinitialization of the `.chant/` dire
   # Silent mode (non-interactive, validates no git tracking conflict)
   chant init --force --silent
   ```
+
+## Keeping Agent Configuration in Sync
+
+The repository contains two CLAUDE.md-related files that must stay in sync:
+
+- **`CLAUDE.md`** (repo root) - Instructions for the **orchestrator** role. Contains orchestrator-specific sections (monitoring agents, configuration, merge workflows).
+- **`templates/agent-claude.md`** - Template embedded in the chant binary for the **spec implementer** role. Installed as `CLAUDE.md` in user projects via `chant init --agent claude`.
+
+These files share common sections (Core Commands, Spec Format, Important Constraints, Best Practices, etc.) but differ in role-specific content. When updating shared sections, update both files. The template is compiled into the binary via `include_str!()` in `src/templates.rs`, so changes require a rebuild.
+
+**Update checklist:**
+- When adding/modifying command documentation → update both files
+- When adding orchestrator-specific guidance → update only `CLAUDE.md`
+- When adding implementer-specific guidance → update only `templates/agent-claude.md`
+- After updating `templates/agent-claude.md` → rebuild the binary and test with `chant init --force --agent claude`
 
 ## Key Principles
 

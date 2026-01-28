@@ -97,6 +97,8 @@ When implementing a spec:
 - `chant ready` - Show ready specs
 - `chant lint` - Validate all specs
 - `chant search [query]` - Search specs (or launch interactive wizard)
+  - Non-TTY hint: When stdin is not a terminal, run with explicit query: `chant search "keyword"`
+  - Supports filters: `--status`, `--type`, `--label`, `--since`, `--until`
 - `chant archive <spec-id>` - Archive completed specs
 - `chant cancel <spec-id>` - Cancel a spec
 - `chant delete <spec-id>` - Delete a spec and clean up artifacts
@@ -104,21 +106,39 @@ When implementing a spec:
 ### Execution
 
 - `chant work <spec-id>` - Execute a spec
+  - Non-TTY hint: When stdin is not a terminal, provide spec ID explicitly: `chant work <SPEC_ID>`
+  - Optional: `--prompt <name>`, `--branch`, `--force`, `--finalize`
 - `chant work <spec-id> --branch` - Execute with feature branch
 - `chant work --parallel` - Execute all ready specs in parallel
+  - Supports: `--max-parallel N` to limit concurrent agents
+  - Supports: `--label <LABEL>` to execute only labeled specs
 - `chant resume <spec-id>` - Resume a failed spec
 - `chant resume <spec-id> --work` - Resume and automatically re-execute
 
 ### Additional Tools
 
+- `chant refresh` - Refresh dependency status for all specs
+  - Reloads specs and recalculates ready/blocked status
+  - Use `--verbose` for detailed list of ready and blocked specs
 - `chant log <spec-id>` - Show spec execution log
 - `chant split <spec-id>` - Split spec into member specs
 - `chant merge --all --rebase --auto` - Merge specs with conflict auto-resolution
+- `chant finalize <spec-id>` - Finalize a completed spec (validate criteria, update status and model)
+  - Automatically detects if spec has an active worktree
+  - If worktree exists, finalizes in worktree and commits changes (prevents merge conflicts)
+  - If no worktree, finalizes on current branch
 - `chant diagnose <spec-id>` - Diagnose spec execution issues
 - `chant drift [spec-id]` - Check for drift in documentation specs
-- `chant export` - Export specs (interactive wizard or with `--format json/csv/markdown`)
+- `chant export` - Export specs with wizard or direct options
+  - Non-TTY hint: When stdin is not a terminal, provide format explicitly: `chant export --format json`
+  - Formats: `--format json|csv|markdown`
+  - Supports filters: `--status`, `--type`, `--label`, `--ready-only`
+  - Options: `--output <file>` to save to file
 - `chant disk` - Show disk usage of chant artifacts
 - `chant cleanup` - Remove orphan worktrees and stale artifacts
+- `chant init [--force]` - Initialize or reinitialize .chant/ directory
+  - `--force`: Fully reinitialize while preserving specs, config, and custom files
+  - Use when updating agent configurations or resetting to defaults
 
 ## Spec Format and Patterns
 
@@ -209,6 +229,11 @@ If an unexpected error occurs during spec execution:
 - Reference spec IDs in commit messages: `chant(2026-01-24-01m-q7e): implement feature X`
 - Use `target_files:` frontmatter to declare modified files
 - Mark acceptance criteria as complete by changing checkboxes to `[x]`
+- Use `chant finalize <spec-id>` to complete a spec:
+  - Validates all acceptance criteria are checked
+  - Updates status to `completed`
+  - Adds model and timestamp information to frontmatter
+  - Ensures clean, auditable spec completion
 
 ### Testing
 - Write tests that validate the spec's acceptance criteria
@@ -217,12 +242,21 @@ If an unexpected error occurs during spec execution:
 
 ## Interactive Wizard Modes
 
-Several commands support interactive wizards for easier operation:
+Several commands support interactive wizards for easier operation. Wizards only activate in TTY (terminal) contexts:
 
 - `chant search` - Launch interactive search wizard (omit query to trigger)
-- `chant export` - Launch interactive export wizard (omit `--format` to trigger)
+  - In non-TTY contexts (piped input, CI/CD): Provide explicit query
+  - Example: `chant search "keyword"`
 
-These wizards guide you through available filters and options.
+- `chant work` - Launch interactive spec selector (omit spec ID to trigger)
+  - In non-TTY contexts: Provide explicit spec ID
+  - Example: `chant work 2026-01-27-001-abc`
+
+- `chant export` - Launch interactive export wizard (omit `--format` to trigger)
+  - In non-TTY contexts: Provide explicit format flag
+  - Example: `chant export --format json`
+
+These wizards guide you through available filters and options when running interactively in a terminal.
 
 ## Key Principles
 
