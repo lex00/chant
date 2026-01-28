@@ -587,6 +587,7 @@ fn main() -> Result<()> {
         } => cmd::lifecycle::cmd_merge(
             &ids,
             all,
+            false, // all_completed - placeholder until feature is properly integrated
             dry_run,
             delete_branch,
             continue_on_error,
