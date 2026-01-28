@@ -5,6 +5,115 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-01-28
+
+### Added
+
+- **`chant refresh` command**: Reload specs and recalculate dependency status
+  - Shows summary counts (completed, ready, in-progress, pending, blocked)
+  - `--verbose` flag lists ready and blocked specs with their dependencies
+  - Useful for debugging dependency chains and verifying status after manual changes
+  - Fully documented in CLI reference and CLAUDE.md
+
+- **`chant merge --all-completed` flag**: Convenience flag for post-parallel workflows
+  - Merges only completed specs that have branches (perfect after `chant work --parallel`)
+  - Differs from `--all` which merges all completed specs regardless of branches
+  - Documented with comparison table and examples in CLI reference
+
+- **Custom merge driver for spec frontmatter**: Auto-resolve conflicts when merging spec branches
+  - Intelligently merges `status`, `completed_at`, and `model` fields
+  - Prevents accidental loss of implementation during conflict resolution
+  - Install with `chant init --install-merge-driver` (planned)
+  - Manual setup via `.gitattributes` and git config
+  - Full installation and troubleshooting guide in CLAUDE.md
+
+- **Enhanced merge conflict detection**: Detailed error messages for merge failures
+  - Detects conflict type (fast-forward, content, tree)
+  - Lists all conflicting files
+  - Provides numbered recovery steps
+  - Suggests appropriate flags (`--rebase`, `--auto`)
+  - Documented in "Merge Conflict Resolution" section in CLAUDE.md
+
+- **Archive target file verification**: Warns when archiving specs without implementation
+  - Checks if `target_files` were actually modified by spec commits
+  - Detects merge conflicts resolved incorrectly
+  - Shows net additions for each file
+  - Prevents accidental archival of specs with lost implementations
+
+- **`chant work --force` flag**: Override dependency checks when working specs
+  - Allows working blocked specs for testing or urgent fixes
+  - Documented with warning about dependency violations
+
+- **Improved blocked spec errors**: Show detailed dependency information
+  - Lists blocking dependencies with their status
+  - Shows `completed_at` for completed dependencies
+  - Warns if dependency is complete but spec still shows as blocked
+  - Provides actionable next steps (`chant refresh`, `--force`, etc.)
+
+- **Finalize in worktree**: Prevents merge conflicts during parallel execution
+  - Finalization now happens in the feature branch worktree before merge
+  - Both main and feature branch have same metadata = no frontmatter conflicts
+  - Automatic in `chant work --parallel` and `chant work --branch --finalize`
+  - Documented in "Finalize Workflow (Worktree-Aware)" section
+
+### Fixed
+
+- **Compilation error**: Added missing `all_completed` parameter to `cmd_merge` call
+  - Was causing build failure after incomplete integration of 00x-v6m feature
+  - Now properly passes flag through to merge implementation
+
+- **Spec status updates**: Parallel execution now properly updates spec status to completed
+  - Fixed issue where specs remained `in_progress` after successful completion
+  - Added automatic status updates in worktree finalization
+
+- **Divergence detection**: Automatic `--no-ff` for diverged branches during merge
+  - Detects when branches have diverged from main
+  - Prevents fast-forward that would lose parallel work
+  - Ensures merge commits preserve full history
+
+- **Worktree cleanup**: Automatic cleanup after parallel execution
+  - Removes stale worktrees from `/tmp/chant-*`
+  - Cleans up after both successful and failed spec execution
+  - Prevents disk space accumulation from parallel runs
+
+### Changed
+
+- **Reconcile renamed to merge**: Help text and documentation updated
+  - All references to `reconcile` changed to `merge` for consistency
+  - CLI command remains `chant merge` (was already the name)
+
+### Documentation
+
+- **CLAUDE.md improvements**:
+  - Added "Merge Conflict Resolution" section with recovery strategies
+  - Added "Custom Merge Driver for Specs" with installation guide
+  - Updated finalization workflow documentation for worktree-aware operation
+  - Clarified parallel execution model selection behavior
+
+- **CLI reference updates** (`docs/reference/cli.md`):
+  - Full `chant refresh` command documentation with examples
+  - Documented `--all-completed` flag with comparison to `--all`
+  - Added post-parallel workflow examples
+
+### Tests
+
+- **Integration tests for derivation**:
+  - Path-based derivation from git branch names
+  - `chant derive --all` batch processing
+  - `chant derive --dry-run` preview mode
+  - Invalid regex pattern graceful handling
+  - Unicode and special characters in values
+
+- **Integration tests for parallel execution**:
+  - Parallel work and merge workflow end-to-end
+  - `--force` flag overriding dependency checks
+  - Automatic worktree cleanup verification
+
+- **Unit tests**:
+  - Special characters in derived field values
+  - Unicode handling in derivation sources
+  - Blocking dependency status calculation
+
 ## [0.3.7] - 2026-01-28
 
 ### Fixed
