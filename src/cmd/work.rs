@@ -1442,17 +1442,11 @@ pub fn cmd_work_parallel(
 
     // Show branch mode information
     if !branch_mode_branches.is_empty() {
-        println!(
-            "\n{} Branch mode branches created for merging:",
-            "→".cyan()
-        );
+        println!("\n{} Branch mode branches created for merging:", "→".cyan());
         for (_spec_id, branch) in branch_mode_branches {
             println!("  {} {}", "•".yellow(), branch);
         }
-        println!(
-            "\nUse {} to merge branches later.",
-            "chant merge".bold()
-        );
+        println!("\nUse {} to merge branches later.", "chant merge".bold());
     }
 
     // Show next steps for merge failures

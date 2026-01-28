@@ -15,7 +15,7 @@ mod cmd;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
 #[command(name = "chant")]
@@ -443,6 +443,19 @@ enum Commands {
         /// Spec ID (full or partial)
         id: String,
     },
+    /// Git merge driver for spec files (called by git, not directly by users)
+    #[command(name = "merge-driver")]
+    MergeDriver {
+        /// Path to base (common ancestor) version
+        base: PathBuf,
+        /// Path to current version (ours) - result is written here
+        current: PathBuf,
+        /// Path to other version (theirs)
+        other: PathBuf,
+    },
+    /// Show setup instructions for the spec merge driver
+    #[command(name = "merge-driver-setup")]
+    MergeDriverSetup,
 }
 
 fn main() -> Result<()> {
@@ -672,7 +685,38 @@ fn main() -> Result<()> {
             let specs_dir = cmd::ensure_initialized()?;
             cmd::lifecycle::cmd_finalize(&id, &specs_dir)
         }
+        Commands::MergeDriver {
+            base,
+            current,
+            other,
+        } => cmd_merge_driver(&base, &current, &other),
+        Commands::MergeDriverSetup => cmd_merge_driver_setup(),
     }
+}
+
+/// Run the git merge driver for spec files
+fn cmd_merge_driver(base: &Path, current: &Path, other: &Path) -> Result<()> {
+    match chant::merge_driver::run_merge_driver(base, current, other) {
+        Ok(true) => {
+            // Clean merge
+            std::process::exit(0);
+        }
+        Ok(false) => {
+            // Merge with conflicts
+            eprintln!("Spec merge completed with conflicts - manual resolution needed for body");
+            std::process::exit(1);
+        }
+        Err(e) => {
+            eprintln!("Merge driver error: {}", e);
+            std::process::exit(2);
+        }
+    }
+}
+
+/// Show setup instructions for the merge driver
+fn cmd_merge_driver_setup() -> Result<()> {
+    println!("{}", chant::merge_driver::get_setup_instructions());
+    Ok(())
 }
 
 fn cmd_init(
@@ -980,6 +1024,19 @@ Project initialized on {}.
     if !gitignore_path.exists() {
         let gitignore_content = "# Local state (not shared)\n.locks/\n.store/\n";
         std::fs::write(&gitignore_path, gitignore_content)?;
+    }
+
+    // Create .gitattributes in repo root (only if it doesn't exist)
+    // This enables the custom merge driver for spec files
+    let gitattributes_path = PathBuf::from(".gitattributes");
+    if !gitattributes_path.exists() {
+        let gitattributes_content = r#"# Chant spec files use a custom merge driver for intelligent conflict resolution
+# This driver automatically resolves frontmatter conflicts while preserving implementation content
+#
+# Setup: Run `chant merge-driver-setup` for configuration instructions
+.chant/specs/*.md merge=chant-spec
+"#;
+        std::fs::write(&gitattributes_path, gitattributes_content)?;
     }
 
     // Handle silent mode: add .chant/ to .git/info/exclude

@@ -43,7 +43,7 @@ ureq = { version = "2", default-features = false, features = ["tls", "json"] }
 
 glob = "0.3"
 url = "2"
+tempfile = "3.0"
 
 [dev-dependencies]
-tempfile = "3.0"
 serial_test = "3.0"
