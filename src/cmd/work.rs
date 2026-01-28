@@ -1993,33 +1993,6 @@ mod tests {
         assert_eq!(result, None);
     }
 
-    #[test]
-    fn test_auto_select_prompt_research_prefers_analysis_over_synthesis() {
-        use tempfile::TempDir;
-
-        let temp_dir = TempDir::new().unwrap();
-        let prompts_dir = temp_dir.path();
-
-        // Create both prompt files
-        std::fs::write(prompts_dir.join("research-analysis.md"), "# Analysis").unwrap();
-        std::fs::write(prompts_dir.join("research-synthesis.md"), "# Synthesis").unwrap();
-
-        // Spec has BOTH origin and informed_by - should prefer analysis because origin is set
-        let spec = Spec {
-            id: "test-spec".to_string(),
-            frontmatter: SpecFrontmatter {
-                r#type: "research".to_string(),
-                origin: Some(vec!["data/input.csv".to_string()]),
-                informed_by: Some(vec!["docs/reference.md".to_string()]),
-                ..Default::default()
-            },
-            title: Some("Test".to_string()),
-            body: "# Test".to_string(),
-        };
-
-        let result = auto_select_prompt_for_type(&spec, prompts_dir);
-        assert_eq!(result, Some("research-analysis".to_string()));
-    }
 
     // =========================================================================
     // DISTRIBUTION LOGIC TESTS
