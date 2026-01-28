@@ -167,14 +167,40 @@ Daemon ready.
 - Main branch changed while agent worked
 - Merge has conflicts
 
+**Conflict Types:**
+- **Fast-forward**: Branches have diverged, fast-forward not possible
+- **Content**: Same lines modified in both branches
+- **Tree**: File renamed/deleted in one branch, modified in another
+
 **Detection:**
+
+Chant automatically detects the conflict type and shows detailed error messages:
+
 ```bash
 $ chant merge 001
-Merge conflict in src/api/handler.go
+Error: Content conflicts detected for spec 001
 
-Conflicting changes:
-  - main: lines 42-50 (added validation)
-  - chant/001: lines 42-55 (added auth check)
+Context:
+  - Branch: chant/001
+  - Target: main
+  - Conflict type: content
+
+Files with conflicts:
+  - src/api/handler.go
+  - src/api/types.go
+
+Next steps:
+  1. Resolve conflicts manually, then:  git merge --continue
+  2. Or try automatic rebase:  chant merge 001 --rebase --auto
+  3. Or abort:  git merge --abort
+
+Example (resolve manually):
+  $ git status                    # see conflicting files
+  $ vim src/api/handler.go        # edit to resolve
+  $ git add src/api/handler.go    # stage resolved file
+  $ git merge --continue          # complete merge
+
+Documentation: See 'chant merge --help' for more options
 ```
 
 **Recovery options:**
@@ -599,9 +625,19 @@ progress:
 
 ### Conflict Types
 
-| Type | Cause | Resolution |
-|------|-------|------------|
-| **Merge conflict** | Main changed while agent worked | Manual or retry |
+Chant classifies merge conflicts into four types:
+
+| Type | Cause | Detection | Resolution |
+|------|-------|-----------|------------|
+| **Fast-forward** | Branches have diverged, FF not possible | Git merge fails with "cannot fast-forward" | Use `--no-ff` or `--rebase` |
+| **Content** | Same lines modified in both branches | Git shows `UU` status, "CONFLICT (content)" | Manual edit or `--rebase --auto` |
+| **Tree** | File renamed/deleted in one branch, modified in another | Git shows `DU`, `AU` status, "CONFLICT (rename/delete)" | Usually requires manual resolution |
+| **Unknown** | Other git errors | Fallback for unrecognized errors | Check git status and resolve manually |
+
+Additional conflict scenarios:
+
+| Scenario | Cause | Resolution |
+|----------|-------|------------|
 | **Logical conflict** | Two tasks modify same logic | Human review |
 | **Test conflict** | Merged code breaks tests | Fix or revert |
 | **Dependency conflict** | Dependency spec was reverted | Re-run or update deps |
