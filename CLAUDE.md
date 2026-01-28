@@ -303,6 +303,7 @@ If an unexpected error occurs during spec execution:
   - Updates status to `completed`
   - Adds model and timestamp information to frontmatter
   - Ensures clean, auditable spec completion
+- Enable the custom merge driver to auto-resolve frontmatter conflicts when merging branches (see "Custom Merge Driver for Specs" section below)
 
 ### Merge Conflicts
 
@@ -329,6 +330,102 @@ Without worktree-aware finalization:
 - ❌ Feature branch: `status: in_progress`
 - ❌ Main branch: `status: completed`, `completed_at: ...`, `model: ...`
 - ❌ Merge conflict on spec frontmatter
+
+### Custom Merge Driver for Specs
+
+Chant includes a custom git merge driver that automatically resolves frontmatter conflicts in `.chant/specs/*.md` files.
+
+#### What It Does
+
+When merging spec branches back to main, frontmatter conflicts commonly occur:
+- Main branch: `status: completed` (from finalize)
+- Feature branch: `status: in_progress`
+- Conflict: Both sides modified the same fields
+
+The merge driver:
+- Detects frontmatter vs body conflicts
+- Intelligently merges status, completed_at, and model fields
+- Preserves implementation content (never discards code)
+- Prevents accidental data loss from manual conflict resolution
+
+**Merge Strategy:**
+- `status`: Prefers the more "advanced" status (completed > in_progress > pending)
+- `completed_at`, `model`: Takes values from whichever side has them (prefers finalized values)
+- `commits`: Merges both lists, deduplicates
+- `labels`, `target_files`, `context`: Merges lists, deduplicates
+- Body content: Uses standard 3-way merge (shows conflict markers if both sides changed)
+
+#### Installation
+
+**Automatic** (recommended):
+```bash
+chant init --install-merge-driver
+```
+
+**Manual**:
+1. Add to `.gitattributes` in your repository root:
+   ```
+   .chant/specs/*.md merge=chant-spec
+   ```
+
+2. Configure the git merge driver:
+   ```bash
+   git config merge.chant-spec.driver "chant merge-driver %O %A %B"
+   git config merge.chant-spec.name "Chant spec merge driver"
+   ```
+
+   Or add directly to `.git/config`:
+   ```ini
+   [merge "chant-spec"]
+       name = Chant spec merge driver
+       driver = chant merge-driver %O %A %B
+   ```
+
+#### When It Activates
+
+The driver activates automatically when:
+- Merging any branch that modifies `.chant/specs/*.md` files
+- Git detects a conflict in spec files
+- `.gitattributes` is properly configured with the `merge=chant-spec` pattern
+
+#### Verification
+
+Check if the driver is configured:
+```bash
+# Check git config
+git config --get merge.chant-spec.driver
+
+# Check .gitattributes
+grep chant-spec .gitattributes
+```
+
+Test with a merge scenario:
+```bash
+# Work on a spec with feature branch
+chant work spec-id --branch
+
+# Make changes, finalize on main
+# Then merge the branch
+git merge chant/spec-id  # Should auto-resolve frontmatter conflicts
+```
+
+#### Troubleshooting
+
+**Driver not activating?**
+- Verify `.gitattributes` exists and contains: `.chant/specs/*.md merge=chant-spec`
+- Check git config: `git config --get merge.chant-spec.driver`
+- Ensure chant binary is in PATH: `which chant`
+- Make sure the file being merged matches the pattern `.chant/specs/*.md`
+
+**Still getting conflicts?**
+- Check if the conflict is in the spec body (not frontmatter)
+- Body conflicts require manual resolution - the driver only auto-resolves frontmatter
+- Review the conflict markers to understand what changed on each side
+
+**Unexpected merge results?**
+- The driver prefers "completed" status over "in_progress"
+- Implementation content from your branch should be preserved
+- If results seem wrong, run `chant show <spec-id>` to inspect the merged spec
 
 ### Testing
 - Write tests that validate the spec's acceptance criteria
