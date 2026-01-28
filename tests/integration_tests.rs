@@ -3553,6 +3553,156 @@ enterprise:
     let _ = cleanup_test_repo(&repo_dir);
 }
 
+/// Test the `chant derive <SPEC_ID>` command re-derives fields for a single spec
+/// This verifies:
+/// 1. Creating a spec WITHOUT derived fields (no enterprise config initially)
+/// 2. Adding enterprise config AFTER spec creation
+/// 3. Running `chant derive <SPEC_ID>` to re-derive fields
+/// 4. Verifying the spec file is updated with derived fields
+#[test]
+#[serial]
+fn test_chant_derive_single_spec() {
+    let original_dir = std::env::current_dir().expect("Failed to get current dir");
+
+    let repo_dir = PathBuf::from("/tmp/test-chant-derive-single");
+    let chant_binary = get_chant_binary();
+
+    let _ = cleanup_test_repo(&repo_dir);
+
+    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+
+    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
+
+    // Initialize chant with minimal config (no enterprise derivation)
+    let init_output = Command::new(&chant_binary)
+        .args(["init", "--minimal"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant init");
+    assert!(
+        init_output.status.success(),
+        "chant init failed: {}",
+        String::from_utf8_lossy(&init_output.stderr)
+    );
+
+    // Create specs directory
+    let chant_dir = repo_dir.join(".chant");
+    let specs_dir = chant_dir.join("specs");
+    fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+
+    // Create a spec file manually (simulating spec creation without enterprise config)
+    let spec_id = "2026-01-27-test-derive";
+    let spec_content = r#"---
+type: code
+status: pending
+---
+
+# Test Spec for Derivation
+
+This spec is created without derived fields.
+
+## Acceptance Criteria
+
+- [ ] Test completed
+"#;
+    let spec_path = specs_dir.join(format!("{}.md", spec_id));
+    fs::write(&spec_path, spec_content).expect("Failed to write spec");
+
+    // Verify the spec has NO derived fields initially
+    let initial_content = fs::read_to_string(&spec_path).expect("Failed to read spec");
+    assert!(
+        !initial_content.contains("derived_fields:"),
+        "Spec should NOT contain derived_fields initially. Got:\n{}",
+        initial_content
+    );
+    assert!(
+        !initial_content.contains("component:"),
+        "Spec should NOT contain component field initially. Got:\n{}",
+        initial_content
+    );
+
+    // Now add enterprise config with derivation rules
+    let config_path = chant_dir.join("config.md");
+    let config_content = r#"---
+project:
+  name: test-project
+
+defaults:
+  prompt: standard
+
+enterprise:
+  derived:
+    component:
+      from: path
+      pattern: "/([^/]+)\\.md$"
+---
+
+# Chant Configuration
+
+Enterprise config added after spec creation.
+"#;
+    fs::write(&config_path, config_content).expect("Failed to write config");
+
+    eprintln!("Config written:\n{}", config_content);
+
+    // Run chant derive <SPEC_ID>
+    let derive_output = Command::new(&chant_binary)
+        .args(["derive", spec_id])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant derive");
+
+    let stdout = String::from_utf8_lossy(&derive_output.stdout);
+    let stderr = String::from_utf8_lossy(&derive_output.stderr);
+
+    eprintln!("chant derive stdout: {}", stdout);
+    eprintln!("chant derive stderr: {}", stderr);
+
+    assert!(
+        derive_output.status.success(),
+        "chant derive should succeed. stderr: {}",
+        stderr
+    );
+
+    // Verify success message in stdout
+    // The derive command prints "{spec_id}: updated with N derived field(s)"
+    assert!(
+        stdout.contains("updated with") || stdout.contains("derived field"),
+        "Output should indicate fields were derived. Got:\n{}",
+        stdout
+    );
+
+    // Verify the spec file now has derived fields
+    let updated_content = fs::read_to_string(&spec_path).expect("Failed to read updated spec");
+
+    eprintln!("Updated spec content:\n{}", updated_content);
+
+    // The pattern "/([^/]+)\\.md$" should capture the spec filename
+    // Derived fields that aren't standard frontmatter fields (like 'component')
+    // are stored in the context field as "derived_{key}={value}"
+    assert!(
+        updated_content.contains("derived_component="),
+        "Spec should contain derived_component in context after derivation. Got:\n{}",
+        updated_content
+    );
+
+    // Verify derived_fields tracking is added
+    assert!(
+        updated_content.contains("derived_fields:"),
+        "Spec should contain derived_fields tracking. Got:\n{}",
+        updated_content
+    );
+    assert!(
+        updated_content.contains("- component"),
+        "derived_fields should include component. Got:\n{}",
+        updated_content
+    );
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}
+
 /// Test that spec status is updated to 'completed' after finalization in parallel mode
 /// This validates the fix for the issue where parallel execution didn't update spec status
 #[test]
