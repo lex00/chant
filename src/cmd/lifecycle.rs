@@ -1047,44 +1047,49 @@ fn run_merge_wizard(
     Ok((selected_spec_ids, delete_after_merge, use_rebase))
 }
 
-/// Merge completed spec branches back to main
-#[allow(clippy::too_many_arguments)]
-pub fn cmd_merge(
-    ids: &[String],
-    all: bool,
-    dry_run: bool,
-    delete_branch: bool,
-    continue_on_error: bool,
-    yes: bool,
-    rebase: bool,
-    auto_resolve: bool,
-) -> Result<()> {
-    let specs_dir = crate::cmd::ensure_initialized()?;
+/// Find all completed specs that have corresponding branches.
+/// Used by --all-completed to find specs to merge after parallel execution.
+fn find_completed_specs_with_branches(
+    all_specs: &[Spec],
+    branch_prefix: &str,
+) -> Result<Vec<String>> {
+    let mut completed_with_branches = Vec::new();
 
-    // Load config
-    let config = Config::load()?;
-    let branch_prefix = &config.defaults.branch_prefix;
-    let main_branch = merge::load_main_branch(&config);
+    for spec in all_specs {
+        // Only consider completed specs
+        if spec.frontmatter.status != SpecStatus::Completed {
+            continue;
+        }
 
-    // Load all specs first (needed for wizard and validation)
-    let all_specs = spec::load_all_specs(&specs_dir)?;
-
-    // Handle wizard mode when no arguments provided
-    let (final_ids, final_delete_branch, final_rebase) = if !all && ids.is_empty() {
-        run_merge_wizard(&all_specs, branch_prefix, delete_branch, rebase)?
-    } else {
-        (ids.to_vec(), delete_branch, rebase)
-    };
-
-    // Validate arguments after wizard
-    if !all && final_ids.is_empty() {
-        anyhow::bail!(
-            "Please specify one or more spec IDs, or use --all to merge all completed specs"
-        );
+        // Check if the branch exists
+        let branch_name = format!("{}{}", branch_prefix, spec.id);
+        if git::branch_exists(&branch_name).unwrap_or(false) {
+            completed_with_branches.push(spec.id.clone());
+        }
     }
 
+    Ok(completed_with_branches)
+}
+
+/// Execute the merge operation for a list of spec IDs.
+/// This is the core merge logic shared between different entry points.
+#[allow(clippy::too_many_arguments)]
+fn execute_merge(
+    final_ids: &[String],
+    all: bool,
+    dry_run: bool,
+    final_delete_branch: bool,
+    continue_on_error: bool,
+    yes: bool,
+    final_rebase: bool,
+    auto_resolve: bool,
+    all_specs: &[Spec],
+    config: &Config,
+    branch_prefix: &str,
+    main_branch: &str,
+) -> Result<()> {
     // Get specs to merge using the merge module function
-    let mut specs_to_merge = merge::get_specs_to_merge(&final_ids, all, &all_specs)?;
+    let mut specs_to_merge = merge::get_specs_to_merge(final_ids, all, all_specs)?;
 
     // Filter to only those with branches that exist (unless dry-run)
     if !dry_run {
@@ -1150,12 +1155,12 @@ pub fn cmd_merge(
     // Execute merges
     let mut merge_results: Vec<git::MergeResult> = Vec::new();
     let mut errors: Vec<(String, String)> = Vec::new();
-    let mut skipped_conflicts: Vec<(String, Vec<String>)> = Vec::new();
+    let mut _skipped_conflicts: Vec<(String, Vec<String>)> = Vec::new();
 
     println!(
         "{} Executing merges{}...",
         "→".cyan(),
-        if rebase { " with rebase" } else { "" }
+        if final_rebase { " with rebase" } else { "" }
     );
 
     for (spec_id, spec) in &sorted_specs {
@@ -1170,7 +1175,7 @@ pub fn cmd_merge(
                 main_branch
             );
 
-            match git::rebase_branch(&branch_name, &main_branch) {
+            match git::rebase_branch(&branch_name, main_branch) {
                 Ok(rebase_result) => {
                     if !rebase_result.success {
                         // Rebase had conflicts
@@ -1185,9 +1190,9 @@ pub fn cmd_merge(
 
                             match resolve_conflicts_with_agent(
                                 &branch_name,
-                                &main_branch,
+                                main_branch,
                                 &rebase_result.conflicting_files,
-                                &config,
+                                config,
                             ) {
                                 Ok(()) => {
                                     println!("    {} Conflicts resolved", "✓".green());
@@ -1195,7 +1200,7 @@ pub fn cmd_merge(
                                 Err(e) => {
                                     let error_msg = format!("Auto-resolve failed: {}", e);
                                     errors.push((spec_id.clone(), error_msg.clone()));
-                                    skipped_conflicts
+                                    _skipped_conflicts
                                         .push((spec_id.clone(), rebase_result.conflicting_files));
                                     println!("    {} {}", "✗".red(), error_msg);
                                     if !continue_on_error {
@@ -1214,7 +1219,7 @@ pub fn cmd_merge(
                                 &rebase_result.conflicting_files,
                             );
                             errors.push((spec_id.clone(), error_msg.clone()));
-                            skipped_conflicts
+                            _skipped_conflicts
                                 .push((spec_id.clone(), rebase_result.conflicting_files));
                             println!("    {} {}", "✗".red(), error_msg);
                             if !continue_on_error {
@@ -1228,7 +1233,7 @@ pub fn cmd_merge(
                     let error_msg = merge_errors::generic_merge_failed(
                         spec_id,
                         &branch_name,
-                        &main_branch,
+                        main_branch,
                         &format!("Rebase failed: {}", e),
                     );
                     errors.push((spec_id.clone(), error_msg.clone()));
@@ -1242,15 +1247,15 @@ pub fn cmd_merge(
         }
 
         // Check if this is a driver spec
-        let is_driver = merge::is_driver_spec(spec, &all_specs);
+        let is_driver = merge::is_driver_spec(spec, all_specs);
 
         let merge_op_result = if is_driver {
             // Merge driver and its members
             merge::merge_driver_spec(
                 spec,
-                &all_specs,
+                all_specs,
                 branch_prefix,
-                &main_branch,
+                main_branch,
                 final_delete_branch,
                 false,
             )
@@ -1259,7 +1264,7 @@ pub fn cmd_merge(
             match git::merge_single_spec(
                 spec_id,
                 &branch_name,
-                &main_branch,
+                main_branch,
                 final_delete_branch,
                 false,
             ) {
@@ -1320,6 +1325,113 @@ pub fn cmd_merge(
 
     println!("\n{} All specs merged successfully.", "✓".green());
     Ok(())
+}
+
+/// Merge completed spec branches back to main
+#[allow(clippy::too_many_arguments)]
+pub fn cmd_merge(
+    ids: &[String],
+    all: bool,
+    all_completed: bool,
+    dry_run: bool,
+    delete_branch: bool,
+    continue_on_error: bool,
+    yes: bool,
+    rebase: bool,
+    auto_resolve: bool,
+) -> Result<()> {
+    let specs_dir = crate::cmd::ensure_initialized()?;
+
+    // Load config
+    let config = Config::load()?;
+    let branch_prefix = &config.defaults.branch_prefix;
+    let main_branch = merge::load_main_branch(&config);
+
+    // Load all specs first (needed for wizard and validation)
+    let all_specs = spec::load_all_specs(&specs_dir)?;
+
+    // Validate --all-completed is not used with explicit spec IDs
+    if all_completed && !ids.is_empty() {
+        anyhow::bail!(
+            "Cannot use --all-completed with explicit spec IDs. Use either --all-completed or provide spec IDs."
+        );
+    }
+
+    // Handle --all-completed flag: find all completed specs with branches
+    if all_completed {
+        let completed_with_branches =
+            find_completed_specs_with_branches(&all_specs, branch_prefix)?;
+
+        if completed_with_branches.is_empty() {
+            println!("No completed specs with branches found.");
+            return Ok(());
+        }
+
+        // Print which specs will be merged
+        println!(
+            "{} Found {} completed spec(s) with branches:",
+            "→".cyan(),
+            completed_with_branches.len()
+        );
+        for spec_id in &completed_with_branches {
+            let spec = all_specs.iter().find(|s| &s.id == spec_id);
+            let title = spec
+                .and_then(|s| s.title.as_deref())
+                .unwrap_or("(no title)");
+            println!("  {} {} {}", "·".cyan(), spec_id, title.dimmed());
+        }
+        println!();
+
+        // Proceed with merging using the found spec IDs
+        let final_ids = completed_with_branches;
+        let final_delete_branch = delete_branch;
+        let final_rebase = rebase;
+
+        return execute_merge(
+            &final_ids,
+            false, // not --all mode
+            dry_run,
+            final_delete_branch,
+            continue_on_error,
+            yes,
+            final_rebase,
+            auto_resolve,
+            &all_specs,
+            &config,
+            branch_prefix,
+            &main_branch,
+        );
+    }
+
+    // Handle wizard mode when no arguments provided
+    let (final_ids, final_delete_branch, final_rebase) = if !all && ids.is_empty() {
+        run_merge_wizard(&all_specs, branch_prefix, delete_branch, rebase)?
+    } else {
+        (ids.to_vec(), delete_branch, rebase)
+    };
+
+    // Validate arguments after wizard
+    if !all && final_ids.is_empty() {
+        anyhow::bail!(
+            "Please specify one or more spec IDs, or use --all to merge all completed specs"
+        );
+    }
+
+    // Execute merge using shared helper
+    execute_merge(
+        &final_ids,
+        all,
+        dry_run,
+        final_delete_branch,
+        continue_on_error,
+        yes,
+        final_rebase,
+        auto_resolve,
+        &all_specs,
+        &config,
+        branch_prefix,
+        &main_branch,
+    )
 }
 
 // ============================================================================
