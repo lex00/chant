@@ -5544,8 +5544,8 @@ This is a test spec.
     #[test]
     fn test_spec_add_derived_fields_basic() {
         // Test that add_derived_fields method works correctly
-        use std::collections::HashMap;
         use chant::spec::{Spec, SpecFrontmatter};
+        use std::collections::HashMap;
 
         let mut spec = Spec {
             id: "2026-01-27-001-abc".to_string(),
@@ -5566,8 +5566,8 @@ This is a test spec.
     #[test]
     fn test_spec_add_derived_fields_labels() {
         // Test that labels field is properly handled
-        use std::collections::HashMap;
         use chant::spec::{Spec, SpecFrontmatter};
+        use std::collections::HashMap;
 
         let mut spec = Spec {
             id: "2026-01-27-001-abc".to_string(),

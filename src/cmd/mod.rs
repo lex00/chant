@@ -10,6 +10,7 @@ pub mod agent_rotation;
 pub mod cleanup;
 pub mod commits;
 pub mod config;
+pub mod derive;
 pub mod disk;
 pub mod export;
 pub mod finalize;

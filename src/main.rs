@@ -424,6 +424,17 @@ enum Commands {
         #[arg(long)]
         clean: bool,
     },
+    /// Derive fields for specs based on enterprise config
+    Derive {
+        /// Spec ID (full or partial). If omitted with --all, derives for all specs.
+        id: Option<String>,
+        /// Derive for all specs
+        #[arg(long)]
+        all: bool,
+        /// Show what would be derived without modifying specs
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Finalize a completed spec - validate criteria, update status and model
     Finalize {
         /// Spec ID (full or partial)
@@ -649,6 +660,7 @@ fn main() -> Result<()> {
             let specs_dir = cmd::ensure_initialized()?;
             cmd::prep::cmd_prep(&id, clean, &specs_dir)
         }
+        Commands::Derive { id, all, dry_run } => cmd::derive::cmd_derive(id, all, dry_run),
         Commands::Finalize { id } => {
             let specs_dir = cmd::ensure_initialized()?;
             cmd::lifecycle::cmd_finalize(&id, &specs_dir)
