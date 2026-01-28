@@ -2429,16 +2429,6 @@ mod tests {
     use serial_test::serial;
     use tempfile::TempDir;
 
-    /// Helper function to check if we're in a git repository
-    /// Returns false if git is unavailable or if we're not in a git repo
-    fn is_git_repo_available() -> bool {
-        std::process::Command::new("git")
-            .args(["rev-parse", "--is-inside-work-tree"])
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
-    }
-
     #[test]
     fn test_ensure_logs_dir_creates_directory() {
         let temp_dir = TempDir::new().unwrap();
@@ -3634,55 +3624,97 @@ git:
         assert!(file_content.contains("completed_at:"));
     }
 
-    #[test]
-    fn test_get_commits_for_spec_found_commits() {
-        // This test verifies that when git log finds matching commits, they're all returned
-        // We test with the actual git repo since we're in one
-        // Skip if not in a git repository
-        if !is_git_repo_available() {
-            return;
-        }
+    /// Creates a temporary git repository with an initial commit.
+    /// Returns the TempDir (must be kept alive) and the original working directory.
+    /// The current directory is changed to the temp repo.
+    fn setup_temp_git_repo() -> (TempDir, std::path::PathBuf) {
+        use std::process::Command;
 
-        let commits = get_commits_for_spec("2026-01-24-01p-cmz");
+        let temp_dir = TempDir::new().unwrap();
+        let original_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(temp_dir.path()).unwrap();
 
-        // The repo should have at least one commit with this spec ID
-        // If it doesn't exist, that's okay - the test just verifies the function works
-        if let Ok(c) = commits {
-            // Commits should be non-empty or the function handled it gracefully
-            assert!(!c.is_empty() || c.is_empty()); // Always passes, but verifies function doesn't crash
-        }
+        Command::new("git")
+            .args(["init"])
+            .output()
+            .expect("Failed to init git repo");
+        Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .output()
+            .expect("Failed to set git email");
+        Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .output()
+            .expect("Failed to set git name");
+
+        // Create an initial commit so HEAD exists
+        std::fs::write(temp_dir.path().join("README.md"), "init").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .output()
+            .expect("Failed to git add");
+        Command::new("git")
+            .args(["commit", "-m", "initial commit"])
+            .output()
+            .expect("Failed to create initial commit");
+
+        (temp_dir, original_dir)
     }
 
     #[test]
+    #[serial]
+    fn test_get_commits_for_spec_found_commits() {
+        // This test verifies that when git log finds matching commits, they're all returned
+        // Set up a temp git repo with a commit matching the spec pattern
+        let (_temp_dir, original_dir) = setup_temp_git_repo();
+
+        // Create a commit with the chant spec pattern
+        std::fs::write("test.txt", "change").unwrap();
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-m", "chant(2026-01-24-01p-cmz): test commit"])
+            .output()
+            .unwrap();
+
+        let commits = get_commits_for_spec("2026-01-24-01p-cmz");
+        assert!(commits.is_ok());
+        let c = commits.unwrap();
+        assert!(
+            !c.is_empty(),
+            "Should find the commit matching the spec pattern"
+        );
+
+        std::env::set_current_dir(original_dir).unwrap();
+    }
+
+    #[test]
+    #[serial]
     fn test_get_commits_for_spec_empty_log_returns_ok() {
         // This test verifies that when git log succeeds but finds no matches,
         // with allow_no_commits=true, the function uses HEAD fallback
-        // Skip if not in a git repository
-        if !is_git_repo_available() {
-            return;
-        }
+        let (_temp_dir, original_dir) = setup_temp_git_repo();
 
         let commits =
             get_commits_for_spec_allow_no_commits("nonexistent-spec-id-that-should-never-exist");
 
         // Should return Ok with HEAD fallback commit
         assert!(commits.is_ok());
-        if let Ok(c) = commits {
-            // Should have at least HEAD as fallback
-            assert!(!c.is_empty()); // Must have HEAD
-            assert!(c.len() >= 1); // At least HEAD fallback
-        }
+        let c = commits.unwrap();
+        assert!(!c.is_empty(), "Must have HEAD as fallback");
+
+        std::env::set_current_dir(original_dir).unwrap();
     }
 
     #[test]
+    #[serial]
     fn test_get_commits_for_spec_special_characters_in_id() {
         // This test verifies that spec IDs with special characters don't crash pattern matching
         // Pattern format is "chant(spec_id)" so we test with various special chars
         // Using allow_no_commits variant to test character handling in the pattern
-        // Skip if not in a git repository
-        if !is_git_repo_available() {
-            return;
-        }
+        let (_temp_dir, original_dir) = setup_temp_git_repo();
 
         let test_ids = vec![
             "2026-01-24-01p-cmz",   // Normal
@@ -3693,8 +3725,10 @@ git:
         for spec_id in test_ids {
             let result = get_commits_for_spec_allow_no_commits(spec_id);
             // Should not panic, even if no commits are found - should use HEAD fallback
-            assert!(result.is_ok());
+            assert!(result.is_ok(), "Failed for spec_id: {}", spec_id);
         }
+
+        std::env::set_current_dir(original_dir).unwrap();
     }
 
     #[test]

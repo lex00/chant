@@ -1825,6 +1825,45 @@ mod tests {
     use super::*;
     use crate::cmd::commits::{get_commits_for_spec_allow_no_commits, CommitError};
     use chant::spec::SpecFrontmatter;
+    use serial_test::serial;
+    use tempfile::TempDir;
+
+    /// Creates a temporary git repository with an initial commit.
+    /// Returns the TempDir (must be kept alive) and the original working directory.
+    /// The current directory is changed to the temp repo.
+    fn setup_temp_git_repo() -> (TempDir, std::path::PathBuf) {
+        use std::process::Command;
+
+        let temp_dir = TempDir::new().unwrap();
+        let original_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        Command::new("git")
+            .args(["init"])
+            .output()
+            .expect("Failed to init git repo");
+        Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .output()
+            .expect("Failed to set git email");
+        Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .output()
+            .expect("Failed to set git name");
+
+        // Create an initial commit so HEAD exists
+        std::fs::write(temp_dir.path().join("README.md"), "init").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .output()
+            .expect("Failed to git add");
+        Command::new("git")
+            .args(["commit", "-m", "initial commit"])
+            .output()
+            .expect("Failed to create initial commit");
+
+        (temp_dir, original_dir)
+    }
 
     #[test]
     fn test_commit_error_display() {
@@ -1846,10 +1885,11 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_get_commits_for_spec_error_behavior() {
         // This test verifies that when the spec ID doesn't have matching commits,
         // get_commits_for_spec returns an error (default behavior)
-        // Note: This test assumes we're in a git repo with no commits matching "chant(nonexistent-spec-xyz-abc)"
+        let (_temp_dir, original_dir) = setup_temp_git_repo();
 
         let spec_id = "nonexistent-spec-xyz-abc-999";
         let result = get_commits_for_spec(spec_id);
@@ -1870,12 +1910,16 @@ mod tests {
                 error_msg
             );
         }
+
+        std::env::set_current_dir(original_dir).unwrap();
     }
 
     #[test]
+    #[serial]
     fn test_get_commits_for_spec_allow_no_commits_behavior() {
         // This test verifies that when allow_no_commits is true,
         // the function returns HEAD as a fallback
+        let (_temp_dir, original_dir) = setup_temp_git_repo();
 
         let spec_id = "nonexistent-spec-fallback-test";
         let result = get_commits_for_spec_allow_no_commits(spec_id);
@@ -1894,6 +1938,8 @@ mod tests {
             // HEAD should be a short hash (7 chars)
             assert!(commits[0].len() >= 7, "First commit should be HEAD hash");
         }
+
+        std::env::set_current_dir(original_dir).unwrap();
     }
 
     #[test]
