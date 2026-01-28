@@ -1229,6 +1229,7 @@ fn extract_acceptance_criteria(body: &str) -> Vec<String> {
     criteria
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn cmd_list(
     ready_only: bool,
     labels: &[String],
@@ -1462,11 +1463,11 @@ pub fn cmd_list(
         };
 
         println!(
-            "{} {}{}{}{}",
+            "{} {}{} {}{}",
             icon,
             spec.id.cyan(),
             approval_marker,
-            format!(" {}", spec.title.as_deref().unwrap_or("(no title)")),
+            spec.title.as_deref().unwrap_or("(no title)"),
             indicators_str
         );
     }
