@@ -944,4 +944,131 @@ mod tests {
         assert_eq!(result.get("environment"), Some(&"prod".to_string()));
         assert_eq!(result.get("author"), Some(&"Charlie".to_string()));
     }
+
+    // =========================================================================
+    // UNICODE HANDLING TESTS
+    // =========================================================================
+
+    #[test]
+    fn test_branch_with_unicode_characters() {
+        let mut derived = HashMap::new();
+        derived.insert(
+            "project".to_string(),
+            DerivedFieldConfig {
+                from: DerivationSource::Branch,
+                pattern: "feature/([^/]+)/".to_string(),
+                validate: None,
+            },
+        );
+        derived.insert(
+            "description".to_string(),
+            DerivedFieldConfig {
+                from: DerivationSource::Branch,
+                pattern: "feature/[^/]+/(.+)".to_string(),
+                validate: None,
+            },
+        );
+
+        let engine = create_test_engine(derived);
+        let mut context = DerivationContext::new();
+        context.branch_name = Some("feature/项目-123/amélioration".to_string());
+
+        let result = engine.derive_fields(&context);
+        assert_eq!(result.get("project"), Some(&"项目-123".to_string()));
+        assert_eq!(result.get("description"), Some(&"amélioration".to_string()));
+    }
+
+    #[test]
+    fn test_env_value_with_unicode() {
+        let mut derived = HashMap::new();
+        derived.insert(
+            "author".to_string(),
+            DerivedFieldConfig {
+                from: DerivationSource::Env,
+                pattern: "AUTHOR_NAME".to_string(),
+                validate: None,
+            },
+        );
+        derived.insert(
+            "team".to_string(),
+            DerivedFieldConfig {
+                from: DerivationSource::Env,
+                pattern: "TEAM_NAME".to_string(),
+                validate: None,
+            },
+        );
+        derived.insert(
+            "desc".to_string(),
+            DerivedFieldConfig {
+                from: DerivationSource::Env,
+                pattern: "DESCRIPTION".to_string(),
+                validate: None,
+            },
+        );
+
+        let engine = create_test_engine(derived);
+        let mut env_vars = HashMap::new();
+        env_vars.insert("AUTHOR_NAME".to_string(), "José García".to_string());
+        env_vars.insert("TEAM_NAME".to_string(), "Платформа".to_string());
+        env_vars.insert("DESCRIPTION".to_string(), "Fix 🐛 in parser".to_string());
+        let context = DerivationContext::with_env_vars(env_vars);
+
+        let result = engine.derive_fields(&context);
+        assert_eq!(result.get("author"), Some(&"José García".to_string()));
+        assert_eq!(result.get("team"), Some(&"Платформа".to_string()));
+        assert_eq!(result.get("desc"), Some(&"Fix 🐛 in parser".to_string()));
+    }
+
+    #[test]
+    fn test_git_user_with_unicode() {
+        let mut derived = HashMap::new();
+        derived.insert(
+            "author".to_string(),
+            DerivedFieldConfig {
+                from: DerivationSource::GitUser,
+                pattern: "name".to_string(),
+                validate: None,
+            },
+        );
+        derived.insert(
+            "email".to_string(),
+            DerivedFieldConfig {
+                from: DerivationSource::GitUser,
+                pattern: "email".to_string(),
+                validate: None,
+            },
+        );
+
+        let engine = create_test_engine(derived);
+        let mut context = DerivationContext::new();
+        context.git_user_name = Some("François Müller".to_string());
+        context.git_user_email = Some("françois.müller@example.com".to_string());
+
+        let result = engine.derive_fields(&context);
+        assert_eq!(result.get("author"), Some(&"François Müller".to_string()));
+        assert_eq!(
+            result.get("email"),
+            Some(&"françois.müller@example.com".to_string())
+        );
+    }
+
+    #[test]
+    fn test_path_with_unicode_directory_names() {
+        let mut derived = HashMap::new();
+        derived.insert(
+            "team".to_string(),
+            DerivedFieldConfig {
+                from: DerivationSource::Path,
+                pattern: "specs/([^/]+)/".to_string(),
+                validate: None,
+            },
+        );
+
+        let engine = create_test_engine(derived);
+        let mut context = DerivationContext::new();
+        context.spec_path = Some(PathBuf::from(".chant/specs/平台/文档.md"));
+
+        let result = engine.derive_fields(&context);
+        assert_eq!(result.get("team"), Some(&"平台".to_string()));
+    }
 }
