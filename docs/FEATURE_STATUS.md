@@ -54,7 +54,7 @@ For planned features and future releases, see [Roadmap](roadmap/roadmap.md).
 | Queue Architecture | [queue.md](scale/queue.md) | Daemon-free (Tiers 1-2) | Advanced backends (Tantivy, PostgreSQL, Redis) |
 | Templates | [templates.md](reference/templates.md) | Basic substitution | Full Handlebars (conditionals, helpers, partials, inheritance) |
 | Ecosystem | [ecosystem.md](guides/ecosystem.md) | Provider adapters | Prompt registry, package management |
-| Git Hooks | [git-hooks.md](reference/git-hooks.md) | Basic validation | Advanced pre/post-commit workflows |
+| Git Hooks | [git.md](reference/git.md) | Basic validation | Advanced pre/post-commit workflows |
 
 ## Planned but Not Implemented ❌
 
@@ -144,18 +144,14 @@ chant costs         ❌ Planned for v0.4.0+
 
 ### Architecture
 - `architecture.md` - ✅ Current
-- `stack.md` - ✅ Current
 - `protocol.md` - ✅ Current
-- `invoke.md` - ✅ Current
-- `storage.md` - ✅ Current
 
 ### Reference
 - `cli.md` - ✅ Current (planned commands moved to Planned Features)
 - `config.md` - ✅ Current
 - `errors.md` - ✅ Current
 - `search.md` - ⚠️ Advanced search (Tantivy) not implemented
-- `git.md` - ✅ Current
-- `git-hooks.md` - ⚠️ Partial implementation
+- `git.md` - ✅ Current (includes git hooks - basic validation)
 - `templates.md` - ⚠️ Basic only, full Handlebars planned
 - `schema.md` - ✅ Current
 - `reports.md` - ✅ Current (export implemented)
@@ -166,9 +162,7 @@ chant costs         ❌ Planned for v0.4.0+
 - `testing.md` - ✅ Current
 
 ### Guides
-- `prompt-authoring.md` - ✅ Current
-- `prompt-examples.md` - ✅ Current
-- `prompt-advanced.md` - ✅ Current
+- `prompts.md` - ✅ Current
 - `research.md` - ✅ Current
 - `examples.md` - ✅ Current
 - `ecosystem.md` - ⚠️ Partially implemented (prompt registry planned)

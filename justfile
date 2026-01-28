@@ -54,6 +54,27 @@ docs-build:
 docs-serve:
     cd docs && mdbook serve --open
 
+# Check documentation for broken links
+docs-check-links:
+    #!/usr/bin/env bash
+    set -e
+    echo "Building docs..."
+    cd docs && mdbook build 2>&1
+    echo "Build succeeded. Checking SUMMARY.md link references..."
+    broken=0
+    while IFS= read -r f; do
+        if [ ! -f "$f" ]; then
+            echo "BROKEN: SUMMARY.md -> $f"
+            broken=$((broken + 1))
+        fi
+    done < <(grep -o '([^)]*\.md)' SUMMARY.md | tr -d '()')
+    if [ "$broken" -eq 0 ]; then
+        echo "All SUMMARY.md links are valid."
+    else
+        echo "$broken broken link(s) found."
+        exit 1
+    fi
+
 # Clean documentation build
 docs-clean:
     rm -rf docs/book

@@ -32,16 +32,11 @@ chant work 001
 ### Architecture
 
 - [Architecture Overview](architecture/architecture.md)
-- [Technology Stack](architecture/stack.md)
 - [Agent Protocol](architecture/protocol.md)
-- [Agent Invocation](architecture/invoke.md)
-- [Storage & Indexing](architecture/storage.md)
 
 ### Guides
 
-- [Prompt Authoring Guide](guides/prompt-authoring.md)
-- [Prompt Examples](guides/prompt-examples.md)
-- [Advanced Prompting Guide](guides/prompt-advanced.md)
+- [Prompt Guide](guides/prompts.md)
 - [Research Workflows Guide](guides/research.md)
 - [Examples](guides/examples.md)
 - [Ecosystem Integration](guides/ecosystem.md)
@@ -55,7 +50,6 @@ chant work 001
 - [Errors](reference/errors.md)
 - [Search Syntax](reference/search.md)
 - [Git Integration](reference/git.md)
-- [Git Hooks](reference/git-hooks.md)
 - [Templates](reference/templates.md)
 - [Schema & Validation](reference/schema.md)
 - [Notifications](roadmap/planned/notifications.md) *(Planned)*

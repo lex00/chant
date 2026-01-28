@@ -12,8 +12,8 @@ create-missing = false
 [output.html]
 default-theme = "light"
 preferred-dark-theme = "navy"
-git-repository-url = "https://github.com/chant-dev/chant"
-edit-url-template = "https://github.com/chant-dev/chant/edit/main/docs/{path}"
+git-repository-url = "https://github.com/lex00/chant"
+edit-url-template = "https://github.com/lex00/chant/edit/main/docs/{path}"
 site-url = "/docs/"
 cname = "chant.dev"
 additional-css = ["theme/custom.css"]
