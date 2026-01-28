@@ -176,13 +176,17 @@ fn merge_and_cleanup_in_dir(branch: &str, work_dir: Option<&Path>) -> MergeClean
             let _ = cmd.output();
         }
 
+        // Extract spec_id from branch name (strip "chant/" prefix if present)
+        let spec_id = branch.trim_start_matches("chant/");
+        let error_msg = if has_conflict {
+            crate::merge_errors::merge_conflict(spec_id, branch, "main")
+        } else {
+            crate::merge_errors::fast_forward_conflict(spec_id, branch, "main", &stderr)
+        };
         return MergeCleanupResult {
             success: false,
             has_conflict,
-            error: Some(format!(
-                "Merge failed (branch '{}' is preserved): {}",
-                branch, stderr
-            )),
+            error: Some(error_msg),
         };
     }
 

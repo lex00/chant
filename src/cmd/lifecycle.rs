@@ -17,6 +17,7 @@ use chant::config::Config;
 use chant::diagnose;
 use chant::git;
 use chant::merge;
+use chant::merge_errors;
 use chant::paths::{ARCHIVE_DIR, PROMPTS_DIR};
 use chant::prompt;
 use chant::replay::ReplayContext;
@@ -1207,27 +1208,33 @@ pub fn cmd_merge(
                             // No auto-resolve, abort rebase and skip this branch
                             git::rebase_abort()?;
 
-                            let error_msg = format!(
-                                "Rebase conflict in: {}",
-                                rebase_result.conflicting_files.join(", ")
+                            let error_msg = merge_errors::rebase_conflict(
+                                spec_id,
+                                &branch_name,
+                                &rebase_result.conflicting_files,
                             );
                             errors.push((spec_id.clone(), error_msg.clone()));
                             skipped_conflicts
                                 .push((spec_id.clone(), rebase_result.conflicting_files));
-                            println!("    {} {} (use --auto to resolve)", "✗".red(), error_msg);
+                            println!("    {} {}", "✗".red(), error_msg);
                             if !continue_on_error {
-                                anyhow::bail!("Merge stopped at spec {}. Use --auto to auto-resolve conflicts.", spec_id);
+                                anyhow::bail!("{}", merge_errors::rebase_stopped(spec_id));
                             }
                             continue;
                         }
                     }
                 }
                 Err(e) => {
-                    let error_msg = format!("Rebase failed: {}", e);
+                    let error_msg = merge_errors::generic_merge_failed(
+                        spec_id,
+                        &branch_name,
+                        &main_branch,
+                        &format!("Rebase failed: {}", e),
+                    );
                     errors.push((spec_id.clone(), error_msg.clone()));
                     println!("    {} {}", "✗".red(), error_msg);
                     if !continue_on_error {
-                        anyhow::bail!("Merge stopped at spec {}.", spec_id);
+                        anyhow::bail!("{}", merge_errors::merge_stopped(spec_id));
                     }
                     continue;
                 }
@@ -1271,10 +1278,7 @@ pub fn cmd_merge(
                 println!("  {} {} failed: {}", "✗".red(), spec_id, error_msg);
 
                 if !continue_on_error {
-                    anyhow::bail!(
-                        "Merge stopped at spec {}. Use --continue-on-error to continue.",
-                        spec_id
-                    );
+                    anyhow::bail!("{}", merge_errors::merge_stopped(spec_id));
                 }
             }
         }
@@ -1305,6 +1309,12 @@ pub fn cmd_merge(
 
     if !errors.is_empty() {
         println!("\n{}", "Some merges failed.".yellow());
+        println!("\nNext steps:");
+        println!("  1. Review failed specs with:  chant show <spec-id>");
+        println!("  2. Retry with rebase:  chant merge --all --rebase");
+        println!("  3. Auto-resolve conflicts:  chant merge --all --rebase --auto");
+        println!("  4. Or merge individually:  chant merge <spec-id>");
+        println!("\nDocumentation: See 'chant merge --help' for more options");
         return Ok(());
     }
 

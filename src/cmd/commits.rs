@@ -102,13 +102,9 @@ fn get_commits_for_spec_internal(spec_id: &str, allow_no_commits: bool) -> Resul
                 return Err(anyhow::anyhow!(CommitError::NoMatchingCommits));
             }
         } else {
-            // Default behavior: fail loudly
-            let error_msg = format!(
-                "No commits found matching 'chant({})' pattern. Did the agent forget to commit?\n\
-                 Commits must follow the pattern: 'chant({}): <description>'\n\
-                 Use --allow-no-commits to use HEAD as fallback (for special cases only).",
-                spec_id, spec_id
-            );
+            // Default behavior: fail loudly with actionable message
+            let error_msg =
+                chant::merge_errors::no_commits_found(spec_id, &format!("chant/{}", spec_id));
             eprintln!("{} {}", "✗".red(), error_msg);
             return Err(anyhow::anyhow!(CommitError::NoMatchingCommits));
         }
