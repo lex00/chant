@@ -2988,9 +2988,9 @@ fn test_dependency_chain_updates_after_completion() {
     // Change to repo directory
     std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
 
-    // Initialize chant (skip config prompt with stdin)
+    // Initialize chant (use --minimal to avoid wizard mode which requires interactive input)
     let init_output = Command::new(&chant_binary)
-        .arg("init")
+        .args(["init", "--minimal"])
         .stdin(std::process::Stdio::null())
         .output()
         .expect("Failed to run chant init");

@@ -489,7 +489,7 @@ status: pending
         spec.save(&filepath)?;
     }
 
-    // Auto-commit the spec file to git
+    // Auto-commit the spec file to git (skip if .chant/ is gitignored, e.g. silent mode)
     let output = Command::new("git")
         .args(["add", &filepath.to_string_lossy()])
         .output()
@@ -497,20 +497,25 @@ status: pending
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("Failed to stage spec file {}: {}", id, stderr);
-    }
+        // If the path is ignored (silent mode), skip git commit silently
+        if stderr.contains("ignored") {
+            // .chant/ is gitignored (silent mode) - skip git commit
+        } else {
+            anyhow::bail!("Failed to stage spec file {}: {}", id, stderr);
+        }
+    } else {
+        let commit_message = format!("chant: Add spec {}", id);
+        let output = Command::new("git")
+            .args(["commit", "-m", &commit_message])
+            .output()
+            .context("Failed to run git commit for spec file")?;
 
-    let commit_message = format!("chant: Add spec {}", id);
-    let output = Command::new("git")
-        .args(["commit", "-m", &commit_message])
-        .output()
-        .context("Failed to run git commit for spec file")?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        // It's ok if there's nothing to commit (shouldn't happen but be safe)
-        if !stderr.contains("nothing to commit") && !stderr.contains("no changes added") {
-            anyhow::bail!("Failed to commit spec file {}: {}", id, stderr);
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            // It's ok if there's nothing to commit (shouldn't happen but be safe)
+            if !stderr.contains("nothing to commit") && !stderr.contains("no changes added") {
+                anyhow::bail!("Failed to commit spec file {}: {}", id, stderr);
+            }
         }
     }
 
