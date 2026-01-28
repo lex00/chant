@@ -226,18 +226,36 @@ fn branches_have_diverged(spec_branch: &str) -> Result<bool> {
     Ok(!output.status.success())
 }
 
+/// Result of a merge attempt with conflict details.
+#[derive(Debug)]
+pub struct MergeAttemptResult {
+    /// Whether merge succeeded
+    pub success: bool,
+    /// Type of conflict if any
+    pub conflict_type: Option<crate::merge_errors::ConflictType>,
+    /// Files with conflicts if any
+    pub conflicting_files: Vec<String>,
+    /// Git stderr output
+    pub stderr: String,
+}
+
 /// Merge a branch using appropriate strategy based on divergence.
 ///
 /// Strategy:
 /// 1. Check if branches have diverged
 /// 2. If diverged: Use --no-ff to create a merge commit
 /// 3. If clean fast-forward possible: Use fast-forward merge
-/// 4. If conflicts exist: Return false
+/// 4. If conflicts exist: Return details about the conflict
 ///
-/// Returns true if successful, false if there are conflicts.
-fn merge_branch_ff_only(spec_branch: &str, dry_run: bool) -> Result<bool> {
+/// Returns MergeAttemptResult with success status and conflict details.
+fn merge_branch_ff_only(spec_branch: &str, dry_run: bool) -> Result<MergeAttemptResult> {
     if dry_run {
-        return Ok(true);
+        return Ok(MergeAttemptResult {
+            success: true,
+            conflict_type: None,
+            conflicting_files: vec![],
+            stderr: String::new(),
+        });
     }
 
     // Check if branches have diverged
@@ -257,27 +275,40 @@ fn merge_branch_ff_only(spec_branch: &str, dry_run: bool) -> Result<bool> {
     let output = cmd.output().context("Failed to run git merge")?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        // Check if this was a conflict (CONFLICT) or a non-ff situation
-        if stderr.contains("CONFLICT") || stderr.contains("merge conflict") {
-            // Abort the merge
-            let _ = Command::new("git").args(["merge", "--abort"]).output();
-            return Ok(false);
-        }
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
-        // For non-diverged branches, this shouldn't happen, but handle gracefully
-        anyhow::bail!(
-            "{}",
-            crate::merge_errors::fast_forward_conflict(
-                spec_branch.trim_start_matches("chant/"),
-                spec_branch,
-                "main",
-                &stderr
-            )
-        );
+        // Get git status to classify conflict and find files
+        let status_output = Command::new("git")
+            .args(["status", "--porcelain"])
+            .output()
+            .ok()
+            .map(|o| String::from_utf8_lossy(&o.stdout).to_string());
+
+        let conflict_type =
+            crate::merge_errors::classify_conflict_type(&stderr, status_output.as_deref());
+
+        let conflicting_files = status_output
+            .as_deref()
+            .map(crate::merge_errors::parse_conflicting_files)
+            .unwrap_or_default();
+
+        // Abort the merge to restore clean state
+        let _ = Command::new("git").args(["merge", "--abort"]).output();
+
+        return Ok(MergeAttemptResult {
+            success: false,
+            conflict_type: Some(conflict_type),
+            conflicting_files,
+            stderr,
+        });
     }
 
-    Ok(true)
+    Ok(MergeAttemptResult {
+        success: true,
+        conflict_type: None,
+        conflicting_files: vec![],
+        stderr: String::new(),
+    })
 }
 
 /// Delete a branch.
@@ -449,8 +480,8 @@ pub fn merge_single_spec(
     }
 
     // Perform merge
-    let merge_success = match merge_branch_ff_only(spec_branch, dry_run) {
-        Ok(success) => success,
+    let merge_result = match merge_branch_ff_only(spec_branch, dry_run) {
+        Ok(result) => result,
         Err(e) => {
             // Try to return to original branch before failing
             let _ = checkout_branch(&original_branch, false);
@@ -458,14 +489,28 @@ pub fn merge_single_spec(
         }
     };
 
-    if !merge_success && !dry_run {
+    if !merge_result.success && !dry_run {
         // Merge had conflicts - return to original branch
         let _ = checkout_branch(&original_branch, false);
+
+        // Use detailed error message with conflict type and file list
+        let conflict_type = merge_result
+            .conflict_type
+            .unwrap_or(crate::merge_errors::ConflictType::Unknown);
+
         anyhow::bail!(
             "{}",
-            crate::merge_errors::merge_conflict(spec_id, spec_branch, main_branch)
+            crate::merge_errors::merge_conflict_detailed(
+                spec_id,
+                spec_branch,
+                main_branch,
+                conflict_type,
+                &merge_result.conflicting_files
+            )
         );
     }
+
+    let merge_success = merge_result.success;
 
     // Delete branch if requested and merge was successful
     let mut branch_delete_warning: Option<String> = None;

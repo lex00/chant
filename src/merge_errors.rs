@@ -304,6 +304,170 @@ pub fn rebase_stopped(spec_id: &str) -> String {
     )
 }
 
+/// Conflict type classification for merge operations.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ConflictType {
+    /// Fast-forward is not possible - branches have diverged
+    FastForward,
+    /// Content conflicts - same lines modified in both branches
+    Content,
+    /// Tree conflicts - file renamed/deleted in one branch, modified in another
+    Tree,
+    /// Unknown conflict type
+    Unknown,
+}
+
+impl std::fmt::Display for ConflictType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConflictType::FastForward => write!(f, "fast-forward"),
+            ConflictType::Content => write!(f, "content"),
+            ConflictType::Tree => write!(f, "tree"),
+            ConflictType::Unknown => write!(f, "unknown"),
+        }
+    }
+}
+
+/// Detailed merge conflict error with file list and recovery steps.
+///
+/// Used when git detects content or tree conflicts during merge.
+pub fn merge_conflict_detailed(
+    spec_id: &str,
+    spec_branch: &str,
+    main_branch: &str,
+    conflict_type: ConflictType,
+    conflicting_files: &[String],
+) -> String {
+    let conflict_type_str = match conflict_type {
+        ConflictType::FastForward => "Cannot fast-forward",
+        ConflictType::Content => "Content conflicts detected",
+        ConflictType::Tree => "Tree conflicts detected",
+        ConflictType::Unknown => "Merge conflicts detected",
+    };
+
+    let files_section = if conflicting_files.is_empty() {
+        "  (unable to determine conflicting files)".to_string()
+    } else {
+        conflicting_files
+            .iter()
+            .map(|f| format!("  - {}", f))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+
+    let recovery_steps = match conflict_type {
+        ConflictType::FastForward => format!(
+            "Next steps:\n\
+             \x20 1. Use no-fast-forward merge:  chant merge {} --no-ff\n\
+             \x20 2. Or rebase onto {}:  chant merge {} --rebase\n\
+             \x20 3. Or merge manually:  git merge --no-ff {}",
+            spec_id, main_branch, spec_id, spec_branch
+        ),
+        ConflictType::Content | ConflictType::Tree | ConflictType::Unknown => format!(
+            "Next steps:\n\
+             \x20 1. Resolve conflicts manually, then:  git merge --continue\n\
+             \x20 2. Or try automatic rebase:  chant merge {} --rebase --auto\n\
+             \x20 3. Or abort:  git merge --abort\n\n\
+             Example (resolve manually):\n\
+             \x20 $ git status                    # see conflicting files\n\
+             \x20 $ vim src/main.rs               # edit to resolve\n\
+             \x20 $ git add src/main.rs           # stage resolved file\n\
+             \x20 $ git merge --continue          # complete merge",
+            spec_id
+        ),
+    };
+
+    format!(
+        "Error: {} for spec {}\n\n\
+         Context:\n\
+         \x20 - Branch: {}\n\
+         \x20 - Target: {}\n\
+         \x20 - Conflict type: {}\n\n\
+         Files with conflicts:\n\
+         {}\n\n\
+         {}\n\n\
+         Documentation: See 'chant merge --help' for more options",
+        conflict_type_str,
+        spec_id,
+        spec_branch,
+        main_branch,
+        conflict_type,
+        files_section,
+        recovery_steps
+    )
+}
+
+/// Classify merge conflict type from git output.
+///
+/// Analyzes git merge stderr and status output to determine the type of conflict.
+pub fn classify_conflict_type(stderr: &str, status_output: Option<&str>) -> ConflictType {
+    let stderr_lower = stderr.to_lowercase();
+
+    // Check for fast-forward conflicts
+    if stderr_lower.contains("not possible to fast-forward")
+        || stderr_lower.contains("cannot fast-forward")
+        || stderr_lower.contains("refusing to merge unrelated histories")
+    {
+        return ConflictType::FastForward;
+    }
+
+    // Check for tree conflicts (rename/delete conflicts)
+    if stderr_lower.contains("conflict (rename/delete)")
+        || stderr_lower.contains("conflict (modify/delete)")
+        || stderr_lower.contains("deleted in")
+        || stderr_lower.contains("renamed in")
+        || stderr_lower.contains("conflict (add/add)")
+    {
+        return ConflictType::Tree;
+    }
+
+    // Check git status for conflict markers if available
+    if let Some(status) = status_output {
+        // Tree conflicts show as DD, AU, UD, UA, DU in status
+        if status.lines().any(|line| {
+            let prefix = line.get(..2).unwrap_or("");
+            matches!(prefix, "DD" | "AU" | "UD" | "UA" | "DU")
+        }) {
+            return ConflictType::Tree;
+        }
+
+        // Content conflicts show as UU or AA in status
+        if status.lines().any(|line| {
+            let prefix = line.get(..2).unwrap_or("");
+            matches!(prefix, "UU" | "AA")
+        }) {
+            return ConflictType::Content;
+        }
+    }
+
+    // Check for general merge conflicts
+    if stderr_lower.contains("conflict") || stderr_lower.contains("merge conflict") {
+        return ConflictType::Content;
+    }
+
+    ConflictType::Unknown
+}
+
+/// Parse conflicting files from git status --porcelain output.
+///
+/// Returns a list of files that have conflict markers.
+pub fn parse_conflicting_files(status_output: &str) -> Vec<String> {
+    let mut files = Vec::new();
+
+    for line in status_output.lines() {
+        if line.len() >= 3 {
+            let status = &line[0..2];
+            // Conflict markers: UU, AA, DD, AU, UD, UA, DU
+            if status.contains('U') || status == "AA" || status == "DD" {
+                let file = line[3..].trim();
+                files.push(file.to_string());
+            }
+        }
+    }
+
+    files
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -437,5 +601,154 @@ mod tests {
         let msg = rebase_stopped("001-abc");
         assert!(msg.contains("rebase conflict"));
         assert!(msg.contains("--rebase --auto"));
+    }
+
+    #[test]
+    fn test_conflict_type_display() {
+        assert_eq!(format!("{}", ConflictType::FastForward), "fast-forward");
+        assert_eq!(format!("{}", ConflictType::Content), "content");
+        assert_eq!(format!("{}", ConflictType::Tree), "tree");
+        assert_eq!(format!("{}", ConflictType::Unknown), "unknown");
+    }
+
+    #[test]
+    fn test_classify_conflict_type_fast_forward() {
+        let stderr = "fatal: Not possible to fast-forward, aborting.";
+        assert_eq!(
+            classify_conflict_type(stderr, None),
+            ConflictType::FastForward
+        );
+
+        let stderr2 = "error: cannot fast-forward";
+        assert_eq!(
+            classify_conflict_type(stderr2, None),
+            ConflictType::FastForward
+        );
+    }
+
+    #[test]
+    fn test_classify_conflict_type_tree() {
+        let stderr = "CONFLICT (rename/delete): file.rs renamed in HEAD";
+        assert_eq!(classify_conflict_type(stderr, None), ConflictType::Tree);
+
+        let stderr2 = "CONFLICT (modify/delete): file.rs deleted in branch";
+        assert_eq!(classify_conflict_type(stderr2, None), ConflictType::Tree);
+
+        // Test via status output
+        let status = "DU src/deleted.rs\n";
+        assert_eq!(classify_conflict_type("", Some(status)), ConflictType::Tree);
+    }
+
+    #[test]
+    fn test_classify_conflict_type_content() {
+        let stderr = "CONFLICT (content): Merge conflict in file.rs";
+        assert_eq!(classify_conflict_type(stderr, None), ConflictType::Content);
+
+        // Test via status output
+        let status = "UU src/main.rs\nUU src/lib.rs\n";
+        assert_eq!(
+            classify_conflict_type("", Some(status)),
+            ConflictType::Content
+        );
+    }
+
+    #[test]
+    fn test_classify_conflict_type_unknown() {
+        let stderr = "some other error";
+        assert_eq!(classify_conflict_type(stderr, None), ConflictType::Unknown);
+    }
+
+    #[test]
+    fn test_parse_conflicting_files() {
+        let status = "UU src/main.rs\nUU src/lib.rs\nM  src/other.rs\n";
+        let files = parse_conflicting_files(status);
+        assert_eq!(files.len(), 2);
+        assert!(files.contains(&"src/main.rs".to_string()));
+        assert!(files.contains(&"src/lib.rs".to_string()));
+    }
+
+    #[test]
+    fn test_parse_conflicting_files_tree_conflicts() {
+        let status = "DD deleted.rs\nAU added_unmerged.rs\nUD unmerged_deleted.rs\n";
+        let files = parse_conflicting_files(status);
+        assert_eq!(files.len(), 3);
+        assert!(files.contains(&"deleted.rs".to_string()));
+        assert!(files.contains(&"added_unmerged.rs".to_string()));
+        assert!(files.contains(&"unmerged_deleted.rs".to_string()));
+    }
+
+    #[test]
+    fn test_merge_conflict_detailed_content() {
+        let files = vec!["src/main.rs".to_string(), "src/lib.rs".to_string()];
+        let msg = merge_conflict_detailed(
+            "001-abc",
+            "chant/001-abc",
+            "main",
+            ConflictType::Content,
+            &files,
+        );
+
+        assert!(msg.contains("Content conflicts detected"));
+        assert!(msg.contains("001-abc"));
+        assert!(msg.contains("chant/001-abc"));
+        assert!(msg.contains("main"));
+        assert!(msg.contains("Conflict type: content"));
+        assert!(msg.contains("src/main.rs"));
+        assert!(msg.contains("src/lib.rs"));
+        assert!(msg.contains("Next steps:"));
+        assert!(msg.contains("1."));
+        assert!(msg.contains("2."));
+        assert!(msg.contains("3."));
+        assert!(msg.contains("git merge --continue"));
+        assert!(msg.contains("chant merge 001-abc --rebase --auto"));
+        assert!(msg.contains("git merge --abort"));
+        assert!(msg.contains("Example"));
+    }
+
+    #[test]
+    fn test_merge_conflict_detailed_tree() {
+        let files = vec!["src/renamed.rs".to_string()];
+        let msg = merge_conflict_detailed(
+            "001-abc",
+            "chant/001-abc",
+            "main",
+            ConflictType::Tree,
+            &files,
+        );
+
+        assert!(msg.contains("Tree conflicts detected"));
+        assert!(msg.contains("Conflict type: tree"));
+        assert!(msg.contains("src/renamed.rs"));
+    }
+
+    #[test]
+    fn test_merge_conflict_detailed_fast_forward() {
+        let files: Vec<String> = vec![];
+        let msg = merge_conflict_detailed(
+            "001-abc",
+            "chant/001-abc",
+            "main",
+            ConflictType::FastForward,
+            &files,
+        );
+
+        assert!(msg.contains("Cannot fast-forward"));
+        assert!(msg.contains("Conflict type: fast-forward"));
+        assert!(msg.contains("chant merge 001-abc --no-ff"));
+        assert!(msg.contains("chant merge 001-abc --rebase"));
+    }
+
+    #[test]
+    fn test_merge_conflict_detailed_empty_files() {
+        let files: Vec<String> = vec![];
+        let msg = merge_conflict_detailed(
+            "001-abc",
+            "chant/001-abc",
+            "main",
+            ConflictType::Content,
+            &files,
+        );
+
+        assert!(msg.contains("unable to determine conflicting files"));
     }
 }
