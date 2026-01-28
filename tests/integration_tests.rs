@@ -3826,3 +3826,137 @@ This spec tests that finalization updates the status field.
     let _ = std::env::set_current_dir(&original_dir);
     let _ = cleanup_test_repo(&repo_dir);
 }
+
+/// Test that invalid regex patterns in enterprise config are handled gracefully
+/// This verifies:
+/// 1. Config with syntactically invalid regex pattern doesn't crash chant add
+/// 2. Fields with invalid regex patterns are omitted from the spec
+/// 3. Fields with valid patterns still work correctly
+#[test]
+#[serial]
+fn test_invalid_regex_pattern_graceful_failure() {
+    let original_dir = std::env::current_dir().expect("Failed to get current dir");
+
+    let repo_dir = PathBuf::from("/tmp/test-chant-invalid-regex");
+    let chant_binary = get_chant_binary();
+
+    let _ = cleanup_test_repo(&repo_dir);
+
+    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+
+    // Manually set up .chant directory
+    let chant_dir = repo_dir.join(".chant");
+    std::fs::create_dir_all(&chant_dir).expect("Failed to create .chant dir");
+
+    // Create config with INVALID regex pattern (unclosed bracket)
+    // and a valid pattern to ensure partial success
+    let config_path = chant_dir.join("config.md");
+    let config_content = r#"---
+project:
+  name: test-project
+enterprise:
+  derived:
+    bad_field:
+      from: branch
+      pattern: "[invalid regex("
+    good_field:
+      from: env
+      pattern: "TEAM_NAME"
+---
+
+# Config
+"#;
+    std::fs::write(&config_path, config_content).expect("Failed to write config");
+
+    // Create specs directory
+    let specs_dir = chant_dir.join("specs");
+    std::fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+
+    // Create a branch for the branch-based derivation to have something to match against
+    let _branch_output = Command::new("git")
+        .args(["checkout", "-b", "test-branch"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to create test branch");
+
+    // Run chant add with TEAM_NAME env var set (for the valid pattern)
+    let add_output = Command::new(&chant_binary)
+        .args(["add", "Test spec with invalid regex"])
+        .env("TEAM_NAME", "platform")
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant add");
+
+    // Command should succeed (not crash)
+    if !add_output.status.success() {
+        eprintln!(
+            "chant add stderr: {}",
+            String::from_utf8_lossy(&add_output.stderr)
+        );
+        eprintln!(
+            "chant add stdout: {}",
+            String::from_utf8_lossy(&add_output.stdout)
+        );
+        let _ = std::env::set_current_dir(&original_dir);
+        let _ = cleanup_test_repo(&repo_dir);
+        panic!("chant add failed - command should succeed despite invalid regex");
+    }
+
+    // Read the created spec
+    let spec_files: Vec<_> = fs::read_dir(&specs_dir)
+        .expect("Failed to read specs directory")
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().map(|ext| ext == "md").unwrap_or(false))
+        .collect();
+
+    assert!(!spec_files.is_empty(), "No spec file was created");
+
+    let spec_file = spec_files[0].path();
+    let spec_content = fs::read_to_string(&spec_file).expect("Failed to read spec file");
+
+    eprintln!("Spec content:\n{}", spec_content);
+
+    // Verify spec was created with basic fields
+    assert!(
+        spec_content.contains("type: code"),
+        "Spec should contain type: code. Got:\n{}",
+        spec_content
+    );
+    assert!(
+        spec_content.contains("status: pending"),
+        "Spec should contain status: pending. Got:\n{}",
+        spec_content
+    );
+
+    // Verify bad_field is NOT in the spec (invalid regex should be skipped)
+    // Derived fields are stored as "derived_<field_name>" in the context section
+    assert!(
+        !spec_content.contains("bad_field"),
+        "Spec should NOT contain bad_field (invalid regex pattern). Got:\n{}",
+        spec_content
+    );
+
+    // Verify good_field IS in the spec with the correct value
+    // Derived field values are stored in context as "derived_<field_name>=<value>"
+    assert!(
+        spec_content.contains("derived_good_field=platform"),
+        "Spec should contain derived_good_field=platform in context (valid pattern matched). Got:\n{}",
+        spec_content
+    );
+
+    // Verify derived_fields list only includes good_field
+    assert!(
+        spec_content.contains("derived_fields:"),
+        "Spec should contain derived_fields section. Got:\n{}",
+        spec_content
+    );
+    assert!(
+        spec_content.contains("- good_field"),
+        "derived_fields should list good_field. Got:\n{}",
+        spec_content
+    );
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}
