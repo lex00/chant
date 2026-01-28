@@ -67,9 +67,28 @@ pub fn finalize_spec(
     );
     spec.frontmatter.model = get_model_name(Some(config));
 
+    eprintln!(
+        "{} [{}] Saving spec with status=Completed, commits={}, completed_at={:?}, model={:?}",
+        "→".cyan(),
+        spec.id,
+        spec.frontmatter
+            .commits
+            .as_ref()
+            .map(|c| c.len())
+            .unwrap_or(0),
+        spec.frontmatter.completed_at,
+        spec.frontmatter.model
+    );
+
     // Save the spec - this must not fail silently
     spec.save(spec_path)
         .context("Failed to save finalized spec")?;
+
+    eprintln!(
+        "{} [{}] Spec successfully saved to disk",
+        "✓".green(),
+        spec.id
+    );
 
     // Validation 1: Verify that status was actually changed to Completed
     anyhow::ensure!(

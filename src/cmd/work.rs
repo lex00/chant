@@ -1010,10 +1010,30 @@ pub fn cmd_work_parallel(
 
                     // Finalize spec with completed status using the proper finalize_spec function
                     let spec_path = specs_dir_clone.join(format!("{}.md", spec_id));
+                    eprintln!(
+                        "{} [{}] Attempting to finalize spec after successful agent work",
+                        "→".cyan(),
+                        spec_id
+                    );
                     if let Ok(mut spec) = spec::resolve_spec(&specs_dir_clone, &spec_id) {
+                        eprintln!(
+                            "{} [{}] Loaded spec from disk (current status: {:?})",
+                            "→".cyan(),
+                            spec_id,
+                            spec.frontmatter.status
+                        );
+
                         // Load all specs for finalization validation
                         let all_specs = match spec::load_all_specs(&specs_dir_clone) {
-                            Ok(specs) => specs,
+                            Ok(specs) => {
+                                eprintln!(
+                                    "{} [{}] Loaded {} total specs for validation",
+                                    "→".cyan(),
+                                    spec_id,
+                                    specs.len()
+                                );
+                                specs
+                            }
                             Err(e) => {
                                 eprintln!(
                                     "{} [{}] Warning: Failed to load all specs for finalization: {}",
@@ -1028,6 +1048,13 @@ pub fn cmd_work_parallel(
                         // Use proper finalize_spec function with extracted commits
                         // Pass commits to avoid re-fetching them
                         let commits_to_finalize = commits.clone();
+                        eprintln!(
+                            "{} [{}] Calling finalize_spec with {} commits",
+                            "→".cyan(),
+                            spec_id,
+                            commits_to_finalize.as_ref().map(|c| c.len()).unwrap_or(0)
+                        );
+
                         match finalize_spec(
                             &mut spec,
                             &spec_path,
@@ -1038,16 +1065,17 @@ pub fn cmd_work_parallel(
                         ) {
                             Ok(()) => {
                                 eprintln!(
-                                    "{} [{}] Finalized spec with status completed",
+                                    "{} [{}] ✓ Finalization succeeded - spec status is now {:?}",
                                     "✓".green(),
-                                    spec_id
+                                    spec_id,
+                                    spec.frontmatter.status
                                 );
                                 (true, commits, None, true)
                             }
                             Err(e) => {
                                 eprintln!(
-                                    "{} [{}] Cannot finalize spec: {}",
-                                    "⚠".yellow(),
+                                    "{} [{}] ✗ Cannot finalize spec: {}",
+                                    "✗".red(),
                                     spec_id,
                                     e
                                 );
@@ -1055,6 +1083,11 @@ pub fn cmd_work_parallel(
                                 if let Ok(mut failed_spec) =
                                     spec::resolve_spec(&specs_dir_clone, &spec_id)
                                 {
+                                    eprintln!(
+                                        "{} [{}] Marking spec as NeedsAttention due to finalization error",
+                                        "→".yellow(),
+                                        spec_id
+                                    );
                                     failed_spec.frontmatter.status = SpecStatus::NeedsAttention;
                                     let _ = failed_spec.save(&spec_path);
                                 }
@@ -1062,7 +1095,18 @@ pub fn cmd_work_parallel(
                             }
                         }
                     } else {
-                        (true, commits, None, true)
+                        eprintln!(
+                            "{} [{}] ✗ Failed to load spec from disk - cannot finalize",
+                            "✗".red(),
+                            spec_id
+                        );
+                        // Mark as failed since we couldn't finalize
+                        (
+                            false,
+                            commits,
+                            Some("Failed to load spec for finalization".to_string()),
+                            false,
+                        )
                     }
                 }
                 Err(e) => {
