@@ -233,15 +233,6 @@ enum WizardSelection {
 fn auto_select_prompt_for_type(spec: &Spec, prompts_dir: &Path) -> Option<String> {
     let auto_prompt = match spec.frontmatter.r#type.as_str() {
         "documentation" => Some("documentation"),
-        "research" => {
-            // If origin is set (data analysis), prefer research-analysis
-            // Otherwise (synthesis), prefer research-synthesis
-            if spec.frontmatter.origin.is_some() {
-                Some("research-analysis")
-            } else {
-                Some("research-synthesis")
-            }
-        }
         _ => None,
     };
 
@@ -1910,56 +1901,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_auto_select_prompt_research_with_origin() {
-        use tempfile::TempDir;
-
-        let temp_dir = TempDir::new().unwrap();
-        let prompts_dir = temp_dir.path();
-
-        // Create the research-analysis prompt file
-        std::fs::write(prompts_dir.join("research-analysis.md"), "# Test prompt").unwrap();
-
-        let spec = Spec {
-            id: "test-spec".to_string(),
-            frontmatter: SpecFrontmatter {
-                r#type: "research".to_string(),
-                origin: Some(vec!["data/input.csv".to_string()]),
-                ..Default::default()
-            },
-            title: Some("Test".to_string()),
-            body: "# Test".to_string(),
-        };
-
-        let result = auto_select_prompt_for_type(&spec, prompts_dir);
-        assert_eq!(result, Some("research-analysis".to_string()));
-    }
-
-    #[test]
-    fn test_auto_select_prompt_research_with_informed_by_only() {
-        use tempfile::TempDir;
-
-        let temp_dir = TempDir::new().unwrap();
-        let prompts_dir = temp_dir.path();
-
-        // Create the research-synthesis prompt file
-        std::fs::write(prompts_dir.join("research-synthesis.md"), "# Test prompt").unwrap();
-
-        let spec = Spec {
-            id: "test-spec".to_string(),
-            frontmatter: SpecFrontmatter {
-                r#type: "research".to_string(),
-                informed_by: Some(vec!["docs/reference.md".to_string()]),
-                origin: None,
-                ..Default::default()
-            },
-            title: Some("Test".to_string()),
-            body: "# Test".to_string(),
-        };
-
-        let result = auto_select_prompt_for_type(&spec, prompts_dir);
-        assert_eq!(result, Some("research-synthesis".to_string()));
-    }
 
     #[test]
     fn test_auto_select_prompt_documentation() {
@@ -2039,15 +1980,15 @@ mod tests {
         let spec = Spec {
             id: "test-spec".to_string(),
             frontmatter: SpecFrontmatter {
-                r#type: "research".to_string(),
-                origin: Some(vec!["data/input.csv".to_string()]),
+                r#type: "documentation".to_string(),
+                tracks: Some(vec!["src/**/*.rs".to_string()]),
                 ..Default::default()
             },
             title: Some("Test".to_string()),
             body: "# Test".to_string(),
         };
 
-        // Should return None because research-analysis.md doesn't exist
+        // Should return None because documentation.md doesn't exist
         let result = auto_select_prompt_for_type(&spec, prompts_dir);
         assert_eq!(result, None);
     }

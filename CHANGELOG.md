@@ -172,7 +172,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Bundled prompts**: All 11 standard prompts are now embedded in the binary
   - `chant init` automatically creates `.chant/prompts/` with all bundled prompts
-  - Prompts include: bootstrap (default), standard, split, verify, documentation, research-analysis, research-synthesis, doc-audit, merge-conflict, parallel-cleanup, ollama
+  - Prompts include: bootstrap (default), standard, split, verify, documentation, doc-audit, merge-conflict, parallel-cleanup, ollama
 
 - **`chant init prompts`**: Install/update prompts on already-initialized projects
   - Adds missing prompts without overwriting user customizations

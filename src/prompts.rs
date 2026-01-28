@@ -19,12 +19,6 @@ pub const VERIFY: &str = include_str!("../prompts/verify.md");
 /// Documentation prompt - for generating documentation from source code
 pub const DOCUMENTATION: &str = include_str!("../prompts/documentation.md");
 
-/// Research analysis prompt - for analyzing data and extracting findings
-pub const RESEARCH_ANALYSIS: &str = include_str!("../prompts/research-analysis.md");
-
-/// Research synthesis prompt - for synthesizing multiple sources
-pub const RESEARCH_SYNTHESIS: &str = include_str!("../prompts/research-synthesis.md");
-
 /// Documentation audit prompt - for auditing Rust code against mdbook documentation
 pub const DOC_AUDIT: &str = include_str!("../prompts/doc-audit.md");
 
@@ -75,16 +69,6 @@ pub fn all_bundled_prompts() -> Vec<PromptMetadata> {
             name: "documentation",
             purpose: "Generate documentation from tracked source files",
             content: DOCUMENTATION,
-        },
-        PromptMetadata {
-            name: "research-analysis",
-            purpose: "Analyze data or code and extract structured findings",
-            content: RESEARCH_ANALYSIS,
-        },
-        PromptMetadata {
-            name: "research-synthesis",
-            purpose: "Synthesize multiple sources into coherent findings and recommendations",
-            content: RESEARCH_SYNTHESIS,
         },
         PromptMetadata {
             name: "doc-audit",
