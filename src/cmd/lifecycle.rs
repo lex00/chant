@@ -1754,15 +1754,18 @@ pub fn cmd_replay(
 
 /// Finalize a completed or in_progress spec
 /// Validates all acceptance criteria are checked, updates status to completed,
-/// and adds model information to frontmatter
+/// and adds model information to frontmatter.
+///
+/// If the spec has an active worktree, finalization happens in the worktree
+/// to prevent merge conflicts when the feature branch is later merged to main.
 pub fn cmd_finalize(id: &str, specs_dir: &std::path::Path) -> Result<()> {
     use crate::cmd::finalize;
     use chant::spec;
+    use chant::worktree;
 
     // Resolve the spec
     let spec = spec::resolve_spec(specs_dir, id)?;
     let spec_id = spec.id.clone();
-    let spec_path = specs_dir.join(format!("{}.md", spec_id));
 
     // Check if spec is in a valid state for finalization
     // Allow failed too - agents often leave specs in failed state when they actually completed the work
@@ -1792,24 +1795,84 @@ pub fn cmd_finalize(id: &str, specs_dir: &std::path::Path) -> Result<()> {
     // Load the config for model information
     let config = Config::load()?;
 
-    // Perform finalization
-    let mut mut_spec = spec.clone();
-    finalize::re_finalize_spec(&mut mut_spec, &spec_path, &config, false)?;
-
-    println!("{} Spec {} finalized", "✓".green(), spec_id.green());
-    if let Some(model) = &mut_spec.frontmatter.model {
-        println!("  {} Model: {}", "•".cyan(), model);
-    }
-    if let Some(completed_at) = &mut_spec.frontmatter.completed_at {
-        println!("  {} Completed at: {}", "•".cyan(), completed_at);
-    }
-    if let Some(commits) = &mut_spec.frontmatter.commits {
+    // Check if this spec has an active worktree - if so, finalize there
+    if let Some(worktree_path) = worktree::get_active_worktree(&spec_id) {
         println!(
-            "  {} {} commit{}",
-            "•".cyan(),
-            commits.len(),
-            if commits.len() == 1 { "" } else { "s" }
+            "{} Finalizing spec {} in worktree",
+            "→".cyan(),
+            spec_id.cyan()
         );
+
+        // Get the spec path in the worktree
+        let worktree_spec_path = worktree_path
+            .join(".chant/specs")
+            .join(format!("{}.md", spec_id));
+
+        // Load the spec from the worktree
+        let mut worktree_spec =
+            spec::Spec::load(&worktree_spec_path).context("Failed to load spec from worktree")?;
+
+        // Get all specs from worktree for validation
+        let worktree_specs_dir = worktree_path.join(".chant/specs");
+        let all_specs = spec::load_all_specs(&worktree_specs_dir).unwrap_or_default();
+
+        // Finalize in worktree
+        finalize::finalize_spec(
+            &mut worktree_spec,
+            &worktree_spec_path,
+            &config,
+            &all_specs,
+            false,
+            None,
+        )?;
+
+        // Commit the finalization changes in the worktree
+        let commit_message = format!("chant({}): finalize spec", spec_id);
+        worktree::commit_in_worktree(&worktree_path, &commit_message)?;
+
+        println!(
+            "{} Spec {} finalized in worktree and committed",
+            "✓".green(),
+            spec_id.green()
+        );
+        if let Some(model) = &worktree_spec.frontmatter.model {
+            println!("  {} Model: {}", "•".cyan(), model);
+        }
+        if let Some(completed_at) = &worktree_spec.frontmatter.completed_at {
+            println!("  {} Completed at: {}", "•".cyan(), completed_at);
+        }
+        if let Some(commits) = &worktree_spec.frontmatter.commits {
+            println!(
+                "  {} {} commit{}",
+                "•".cyan(),
+                commits.len(),
+                if commits.len() == 1 { "" } else { "s" }
+            );
+        }
+        println!("  {} Worktree: {}", "•".cyan(), worktree_path.display());
+    } else {
+        // No active worktree - finalize on current branch (main)
+        let spec_path = specs_dir.join(format!("{}.md", spec_id));
+
+        // Perform finalization
+        let mut mut_spec = spec.clone();
+        finalize::re_finalize_spec(&mut mut_spec, &spec_path, &config, false)?;
+
+        println!("{} Spec {} finalized", "✓".green(), spec_id.green());
+        if let Some(model) = &mut_spec.frontmatter.model {
+            println!("  {} Model: {}", "•".cyan(), model);
+        }
+        if let Some(completed_at) = &mut_spec.frontmatter.completed_at {
+            println!("  {} Completed at: {}", "•".cyan(), completed_at);
+        }
+        if let Some(commits) = &mut_spec.frontmatter.commits {
+            println!(
+                "  {} {} commit{}",
+                "•".cyan(),
+                commits.len(),
+                if commits.len() == 1 { "" } else { "s" }
+            );
+        }
     }
 
     Ok(())

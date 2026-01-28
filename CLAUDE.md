@@ -118,6 +118,9 @@ When implementing a spec:
 - `chant split <spec-id>` - Split spec into member specs
 - `chant merge --all --rebase --auto` - Merge specs with conflict auto-resolution
 - `chant finalize <spec-id>` - Finalize a completed spec (validate criteria, update status and model)
+  - Automatically detects if spec has an active worktree
+  - If worktree exists, finalizes in worktree and commits changes (prevents merge conflicts)
+  - If no worktree, finalizes on current branch
 - `chant diagnose <spec-id>` - Diagnose spec execution issues
 - `chant drift [spec-id]` - Check for drift in documentation specs
 - `chant export` - Export specs with wizard or direct options
@@ -270,6 +273,25 @@ If an unexpected error occurs during spec execution:
   - Updates status to `completed`
   - Adds model and timestamp information to frontmatter
   - Ensures clean, auditable spec completion
+
+### Finalize Workflow (Worktree-Aware)
+
+When using parallel execution (`chant work --parallel`) or feature branches, finalization
+happens IN the worktree before the branch is merged to main:
+
+1. **Agent completes work** → Changes committed to feature branch
+2. **Auto-finalize in worktree** → Updates spec status to `completed`, adds `completed_at` and `model`
+3. **Finalization committed** → `chant(<spec-id>): finalize spec` commit in feature branch
+4. **Branch merged to main** → Both branches have same spec metadata, no conflict
+
+This prevents the merge conflict that would occur if finalization happened on main:
+- ✅ Feature branch: `status: completed`, `completed_at: ...`, `model: ...`
+- ✅ Main branch (after merge): Same metadata, clean merge
+
+Without worktree-aware finalization:
+- ❌ Feature branch: `status: in_progress`
+- ❌ Main branch: `status: completed`, `completed_at: ...`, `model: ...`
+- ❌ Merge conflict on spec frontmatter
 
 ### Testing
 - Write tests that validate the spec's acceptance criteria

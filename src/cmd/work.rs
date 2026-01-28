@@ -7,7 +7,7 @@
 //! - Branch and PR creation
 //! - Worktree management
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use atty;
 use colored::Colorize;
 use rand::Rng;
@@ -300,30 +300,76 @@ pub fn cmd_work(
             return Ok(());
         }
 
-        println!("{} Re-finalizing spec {}...", "→".cyan(), spec.id);
-        re_finalize_spec(&mut spec, &spec_path, &config, allow_no_commits)?;
-        println!("{} Spec re-finalized!", "✓".green());
-
-        if let Some(commits) = &spec.frontmatter.commits {
-            for commit in commits {
-                println!("Commit: {}", commit);
-            }
-        }
-        if let Some(completed_at) = &spec.frontmatter.completed_at {
-            println!("Completed at: {}", completed_at);
-        }
-        if let Some(model) = &spec.frontmatter.model {
-            println!("Model: {}", model);
-        }
-
-        // If this is a member spec, check if driver should be auto-completed
-        let all_specs = spec::load_all_specs(&specs_dir)?;
-        if spec::auto_complete_driver_if_ready(&spec.id, &all_specs, &specs_dir)? {
+        // Check if this spec has an active worktree - if so, finalize there
+        if let Some(worktree_path) = worktree::get_active_worktree(&spec.id) {
             println!(
-                "\n{} Auto-completed driver spec: {}",
-                "✓".green(),
-                spec::extract_driver_id(&spec.id).unwrap()
+                "{} Re-finalizing spec {} in worktree...",
+                "→".cyan(),
+                spec.id
             );
+
+            // Get the spec path in the worktree
+            let worktree_spec_path = worktree_path
+                .join(".chant/specs")
+                .join(format!("{}.md", spec.id));
+
+            // Load the spec from the worktree
+            let mut worktree_spec = spec::Spec::load(&worktree_spec_path)
+                .context("Failed to load spec from worktree")?;
+
+            // Re-finalize in the worktree
+            re_finalize_spec(
+                &mut worktree_spec,
+                &worktree_spec_path,
+                &config,
+                allow_no_commits,
+            )?;
+
+            // Commit the finalization changes in the worktree
+            let commit_message = format!("chant({}): finalize spec", spec.id);
+            worktree::commit_in_worktree(&worktree_path, &commit_message)?;
+
+            println!("{} Spec re-finalized in worktree!", "✓".green());
+
+            if let Some(commits) = &worktree_spec.frontmatter.commits {
+                for commit in commits {
+                    println!("Commit: {}", commit);
+                }
+            }
+            if let Some(completed_at) = &worktree_spec.frontmatter.completed_at {
+                println!("Completed at: {}", completed_at);
+            }
+            if let Some(model) = &worktree_spec.frontmatter.model {
+                println!("Model: {}", model);
+            }
+            println!("Worktree: {}", worktree_path.display());
+        } else {
+            // No active worktree - finalize on current branch
+            println!("{} Re-finalizing spec {}...", "→".cyan(), spec.id);
+            re_finalize_spec(&mut spec, &spec_path, &config, allow_no_commits)?;
+            println!("{} Spec re-finalized!", "✓".green());
+
+            if let Some(commits) = &spec.frontmatter.commits {
+                for commit in commits {
+                    println!("Commit: {}", commit);
+                }
+            }
+            if let Some(completed_at) = &spec.frontmatter.completed_at {
+                println!("Completed at: {}", completed_at);
+            }
+            if let Some(model) = &spec.frontmatter.model {
+                println!("Model: {}", model);
+            }
+
+            // If this is a member spec, check if driver should be auto-completed
+            let all_specs = spec::load_all_specs(&specs_dir)?;
+            if spec::auto_complete_driver_if_ready(&spec.id, &all_specs, &specs_dir)? {
+                println!(
+                    "\n{} Auto-completed driver spec: {}",
+                    "✓".green(),
+                    spec::extract_driver_id(&spec.id).unwrap()
+                );
+            }
         }
 
         return Ok(());
@@ -1080,8 +1126,126 @@ pub fn cmd_work_parallel(
                     // Agent work succeeded - get commits
                     let commits = get_commits_for_spec(&spec_id).ok();
 
-                    // For branch mode: just remove worktree (don't merge yet)
-                    // For direct mode: also don't merge yet - defer to serialized phase
+                    // Finalize IN the worktree before removing it
+                    // This prevents merge conflicts when feature branch is merged to main
+                    eprintln!(
+                        "{} [{}] Attempting to finalize spec in worktree",
+                        "→".cyan(),
+                        spec_id
+                    );
+
+                    let finalize_result = if let Some(ref worktree_path) = worktree_path_clone {
+                        // Get the spec path in the worktree
+                        let worktree_specs_dir = worktree_path.join(".chant/specs");
+                        let worktree_spec_path = worktree_specs_dir.join(format!("{}.md", spec_id));
+
+                        // Load the spec from the worktree
+                        match spec::Spec::load(&worktree_spec_path) {
+                            Ok(mut worktree_spec) => {
+                                eprintln!(
+                                    "{} [{}] Loaded spec from worktree (current status: {:?})",
+                                    "→".cyan(),
+                                    spec_id,
+                                    worktree_spec.frontmatter.status
+                                );
+
+                                // Load all specs from worktree for finalization validation
+                                let all_specs = match spec::load_all_specs(&worktree_specs_dir) {
+                                    Ok(specs) => {
+                                        eprintln!(
+                                            "{} [{}] Loaded {} total specs for validation",
+                                            "→".cyan(),
+                                            spec_id,
+                                            specs.len()
+                                        );
+                                        specs
+                                    }
+                                    Err(e) => {
+                                        eprintln!(
+                                            "{} [{}] Warning: Failed to load all specs for finalization: {}",
+                                            "⚠".yellow(),
+                                            spec_id,
+                                            e
+                                        );
+                                        vec![]
+                                    }
+                                };
+
+                                // Use proper finalize_spec function with extracted commits
+                                let commits_to_finalize = commits.clone();
+                                eprintln!(
+                                    "{} [{}] Calling finalize_spec in worktree with {} commits",
+                                    "→".cyan(),
+                                    spec_id,
+                                    commits_to_finalize.as_ref().map(|c| c.len()).unwrap_or(0)
+                                );
+
+                                match finalize_spec(
+                                    &mut worktree_spec,
+                                    &worktree_spec_path,
+                                    &config_clone,
+                                    &all_specs,
+                                    false,
+                                    commits_to_finalize,
+                                ) {
+                                    Ok(()) => {
+                                        eprintln!(
+                                            "{} [{}] ✓ Finalization succeeded in worktree",
+                                            "✓".green(),
+                                            spec_id
+                                        );
+
+                                        // Commit the finalization changes in the worktree
+                                        let commit_message =
+                                            format!("chant({}): finalize spec", spec_id);
+                                        if let Err(e) = worktree::commit_in_worktree(
+                                            worktree_path,
+                                            &commit_message,
+                                        ) {
+                                            eprintln!(
+                                                "{} [{}] Warning: Failed to commit finalization: {}",
+                                                "⚠".yellow(),
+                                                spec_id,
+                                                e
+                                            );
+                                        }
+
+                                        Ok(())
+                                    }
+                                    Err(e) => Err(e),
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!(
+                                    "{} [{}] Failed to load spec from worktree: {}",
+                                    "⚠".yellow(),
+                                    spec_id,
+                                    e
+                                );
+                                Err(e)
+                            }
+                        }
+                    } else {
+                        // No worktree - finalize on main branch (fallback)
+                        let spec_path = specs_dir_clone.join(format!("{}.md", spec_id));
+                        if let Ok(mut spec) = spec::resolve_spec(&specs_dir_clone, &spec_id) {
+                            let all_specs =
+                                spec::load_all_specs(&specs_dir_clone).unwrap_or_default();
+                            let commits_to_finalize = commits.clone();
+                            finalize_spec(
+                                &mut spec,
+                                &spec_path,
+                                &config_clone,
+                                &all_specs,
+                                false,
+                                commits_to_finalize,
+                            )
+                        } else {
+                            Err(anyhow::anyhow!("Failed to load spec for finalization"))
+                        }
+                    };
+
+                    // Now remove the worktree after finalization is committed
                     if let Some(ref path) = worktree_path_clone {
                         if !is_direct_mode_clone {
                             // Branch mode: remove worktree now
@@ -1097,105 +1261,28 @@ pub fn cmd_work_parallel(
                         // Direct mode: leave worktree for now, merge later
                     }
 
-                    // Finalize spec with completed status using the proper finalize_spec function
-                    let spec_path = specs_dir_clone.join(format!("{}.md", spec_id));
-                    eprintln!(
-                        "{} [{}] Attempting to finalize spec after successful agent work",
-                        "→".cyan(),
-                        spec_id
-                    );
-                    if let Ok(mut spec) = spec::resolve_spec(&specs_dir_clone, &spec_id) {
-                        eprintln!(
-                            "{} [{}] Loaded spec from disk (current status: {:?})",
-                            "→".cyan(),
-                            spec_id,
-                            spec.frontmatter.status
-                        );
-
-                        // Load all specs for finalization validation
-                        let all_specs = match spec::load_all_specs(&specs_dir_clone) {
-                            Ok(specs) => {
-                                eprintln!(
-                                    "{} [{}] Loaded {} total specs for validation",
-                                    "→".cyan(),
-                                    spec_id,
-                                    specs.len()
-                                );
-                                specs
-                            }
-                            Err(e) => {
-                                eprintln!(
-                                    "{} [{}] Warning: Failed to load all specs for finalization: {}",
-                                    "⚠".yellow(),
-                                    spec_id,
-                                    e
-                                );
-                                vec![]
-                            }
-                        };
-
-                        // Use proper finalize_spec function with extracted commits
-                        // Pass commits to avoid re-fetching them
-                        let commits_to_finalize = commits.clone();
-                        eprintln!(
-                            "{} [{}] Calling finalize_spec with {} commits",
-                            "→".cyan(),
-                            spec_id,
-                            commits_to_finalize.as_ref().map(|c| c.len()).unwrap_or(0)
-                        );
-
-                        match finalize_spec(
-                            &mut spec,
-                            &spec_path,
-                            &config_clone,
-                            &all_specs,
-                            false,
-                            commits_to_finalize,
-                        ) {
-                            Ok(()) => {
-                                eprintln!(
-                                    "{} [{}] ✓ Finalization succeeded - spec status is now {:?}",
-                                    "✓".green(),
-                                    spec_id,
-                                    spec.frontmatter.status
-                                );
-                                (true, commits, None, true)
-                            }
-                            Err(e) => {
-                                eprintln!(
-                                    "{} [{}] ✗ Cannot finalize spec: {}",
-                                    "✗".red(),
-                                    spec_id,
-                                    e
-                                );
-                                // Mark as needs attention instead of completed
-                                if let Ok(mut failed_spec) =
-                                    spec::resolve_spec(&specs_dir_clone, &spec_id)
-                                {
-                                    eprintln!(
-                                        "{} [{}] Marking spec as NeedsAttention due to finalization error",
-                                        "→".yellow(),
-                                        spec_id
-                                    );
-                                    failed_spec.frontmatter.status = SpecStatus::NeedsAttention;
-                                    let _ = failed_spec.save(&spec_path);
-                                }
-                                (false, commits, Some(e.to_string()), false)
-                            }
+                    match finalize_result {
+                        Ok(()) => {
+                            eprintln!("{} [{}] ✓ Finalization complete", "✓".green(), spec_id);
+                            (true, commits, None, true)
                         }
-                    } else {
-                        eprintln!(
-                            "{} [{}] ✗ Failed to load spec from disk - cannot finalize",
-                            "✗".red(),
-                            spec_id
-                        );
-                        // Mark as failed since we couldn't finalize
-                        (
-                            false,
-                            commits,
-                            Some("Failed to load spec for finalization".to_string()),
-                            false,
-                        )
+                        Err(e) => {
+                            eprintln!("{} [{}] ✗ Cannot finalize spec: {}", "✗".red(), spec_id, e);
+                            // Mark as needs attention instead of completed
+                            let spec_path = specs_dir_clone.join(format!("{}.md", spec_id));
+                            if let Ok(mut failed_spec) =
+                                spec::resolve_spec(&specs_dir_clone, &spec_id)
+                            {
+                                eprintln!(
+                                    "{} [{}] Marking spec as NeedsAttention due to finalization error",
+                                    "→".yellow(),
+                                    spec_id
+                                );
+                                failed_spec.frontmatter.status = SpecStatus::NeedsAttention;
+                                let _ = failed_spec.save(&spec_path);
+                            }
+                            (false, commits, Some(e.to_string()), false)
+                        }
                     }
                 }
                 Err(e) => {
@@ -1442,17 +1529,11 @@ pub fn cmd_work_parallel(
 
     // Show branch mode information
     if !branch_mode_branches.is_empty() {
-        println!(
-            "\n{} Branch mode branches created for merging:",
-            "→".cyan()
-        );
+        println!("\n{} Branch mode branches created for merging:", "→".cyan());
         for (_spec_id, branch) in branch_mode_branches {
             println!("  {} {}", "•".yellow(), branch);
         }
-        println!(
-            "\nUse {} to merge branches later.",
-            "chant merge".bold()
-        );
+        println!("\nUse {} to merge branches later.", "chant merge".bold());
     }
 
     // Show next steps for merge failures
