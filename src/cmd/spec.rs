@@ -10,9 +10,11 @@
 use anyhow::{Context, Result};
 use atty;
 use colored::Colorize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use chant::config::Config;
+use chant::derivation::{DerivationContext, DerivationEngine};
 use chant::git;
 use chant::id;
 use chant::paths::{ARCHIVE_DIR, LOGS_DIR};
@@ -25,6 +27,50 @@ use crate::render;
 use crate::cmd;
 #[cfg(test)]
 use chant::spec::SpecFrontmatter;
+
+// ============================================================================
+// DERIVATION HELPERS
+// ============================================================================
+
+/// Build a DerivationContext with all available sources for spec creation.
+/// Returns a context with branch name, spec path, environment variables, and git user info.
+fn build_derivation_context(spec_id: &str, specs_dir: &Path) -> Result<DerivationContext> {
+    let mut context = DerivationContext::new();
+
+    // Get current branch
+    if let Ok(branch) = git::get_current_branch() {
+        context.branch_name = Some(branch);
+    }
+
+    // Get spec path
+    let spec_path = specs_dir.join(format!("{}.md", spec_id));
+    context.spec_path = Some(spec_path);
+
+    // Capture environment variables
+    context.env_vars = std::env::vars().collect();
+
+    // Get git user.name
+    if let Ok(output) = Command::new("git").args(["config", "user.name"]).output() {
+        if output.status.success() {
+            let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !name.is_empty() {
+                context.git_user_name = Some(name);
+            }
+        }
+    }
+
+    // Get git user.email
+    if let Ok(output) = Command::new("git").args(["config", "user.email"]).output() {
+        if output.status.success() {
+            let email = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !email.is_empty() {
+                context.git_user_email = Some(email);
+            }
+        }
+    }
+
+    Ok(context)
+}
 
 // ============================================================================
 // MULTI-REPO HELPERS
@@ -351,7 +397,7 @@ pub fn validate_spec_type(spec: &Spec) -> Vec<String> {
 // ============================================================================
 
 pub fn cmd_add(description: &str, prompt: Option<&str>) -> Result<()> {
-    let _config = Config::load()?;
+    let config = Config::load()?;
     let specs_dir = crate::cmd::ensure_initialized()?;
 
     // Generate ID
@@ -377,6 +423,25 @@ status: pending
     );
 
     std::fs::write(&filepath, content)?;
+
+    // Parse the spec to add derived fields if enterprise config is present
+    if !config.enterprise.derived.is_empty() {
+        // Load the spec we just created
+        let mut spec = spec::Spec::load(&filepath)?;
+
+        // Build derivation context
+        let context = build_derivation_context(&id, &specs_dir)?;
+
+        // Derive fields using the engine
+        let engine = DerivationEngine::new(config.enterprise.clone());
+        let derived_fields = engine.derive_fields(&context);
+
+        // Add derived fields to spec frontmatter
+        spec.add_derived_fields(derived_fields);
+
+        // Write the spec with derived fields
+        spec.save(&filepath)?;
+    }
 
     println!("{} {}", "Created".green(), id.cyan());
     println!("Edit: {}", filepath.display());
@@ -5474,5 +5539,70 @@ This is a test spec.
         // Note: Full integration test would require setting up the environment,
         // which is beyond the scope of unit testing the function itself.
         // The project filter logic is tested through the cmd_list function integration.
+    }
+
+    #[test]
+    fn test_spec_add_derived_fields_basic() {
+        // Test that add_derived_fields method works correctly
+        use std::collections::HashMap;
+        use chant::spec::{Spec, SpecFrontmatter};
+
+        let mut spec = Spec {
+            id: "2026-01-27-001-abc".to_string(),
+            frontmatter: SpecFrontmatter::default(),
+            title: Some("Test Spec".to_string()),
+            body: "# Test Spec\n\nBody content".to_string(),
+        };
+
+        let mut derived_fields = HashMap::new();
+        derived_fields.insert("test_field".to_string(), "test_value".to_string());
+
+        spec.add_derived_fields(derived_fields);
+
+        // The fields should be added to context
+        assert!(spec.frontmatter.context.is_some());
+    }
+
+    #[test]
+    fn test_spec_add_derived_fields_labels() {
+        // Test that labels field is properly handled
+        use std::collections::HashMap;
+        use chant::spec::{Spec, SpecFrontmatter};
+
+        let mut spec = Spec {
+            id: "2026-01-27-001-abc".to_string(),
+            frontmatter: SpecFrontmatter::default(),
+            title: Some("Test Spec".to_string()),
+            body: "# Test Spec\n\nBody content".to_string(),
+        };
+
+        let mut derived_fields = HashMap::new();
+        derived_fields.insert("labels".to_string(), "tag1,tag2,tag3".to_string());
+
+        spec.add_derived_fields(derived_fields);
+
+        // The labels should be split and added to frontmatter
+        assert!(spec.frontmatter.labels.is_some());
+        let labels = spec.frontmatter.labels.unwrap();
+        assert_eq!(labels.len(), 3);
+        assert_eq!(labels[0], "tag1");
+        assert_eq!(labels[1], "tag2");
+        assert_eq!(labels[2], "tag3");
+    }
+
+    #[test]
+    fn test_build_derivation_context_basic() {
+        // Test that build_derivation_context creates a context with expected fields
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path().to_path_buf();
+
+        let result = super::build_derivation_context("test-spec-123", &specs_dir);
+        assert!(result.is_ok());
+
+        let context = result.unwrap();
+        // Spec path should be set
+        assert!(context.spec_path.is_some());
+        // Environment variables should be captured
+        assert!(!context.env_vars.is_empty());
     }
 }

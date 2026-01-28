@@ -309,6 +309,45 @@ impl Spec {
         Ok(())
     }
 
+    /// Add derived fields to the spec's frontmatter.
+    /// Updates the frontmatter with the provided derived fields.
+    pub fn add_derived_fields(&mut self, fields: std::collections::HashMap<String, String>) {
+        for (key, value) in fields {
+            // Map frontmatter field names - we need to be careful with reserved names
+            // For now, we'll set generic custom fields
+            // In practice, derived fields might map to existing frontmatter fields or custom ones
+            // This implementation preserves the spec's type system
+
+            // Handle specific known derived fields that map to frontmatter
+            match key.as_str() {
+                "labels" => {
+                    // labels is already a Vec, so split on comma if multiple
+                    let label_vec = value.split(',').map(|s| s.trim().to_string()).collect();
+                    self.frontmatter.labels = Some(label_vec);
+                }
+                "context" => {
+                    // context is a Vec of strings
+                    let context_vec = value.split(',').map(|s| s.trim().to_string()).collect();
+                    self.frontmatter.context = Some(context_vec);
+                }
+                // For other fields, we could extend the frontmatter struct
+                // For now, we'll append them to the body as a note
+                _ => {
+                    // Store other derived fields in a way they can be captured
+                    // One approach is to add them to the body as metadata
+                    // Another is to extend SpecFrontmatter to include a custom map
+                    // For this implementation, we'll store in context if empty
+                    if self.frontmatter.context.is_none() {
+                        self.frontmatter.context = Some(vec![]);
+                    }
+                    if let Some(ref mut ctx) = self.frontmatter.context {
+                        ctx.push(format!("derived_{}={}", key, value));
+                    }
+                }
+            }
+        }
+    }
+
     /// Check if this spec has unmet dependencies that would block it.
     /// Returns true if the spec has dependencies pointing to incomplete specs.
     /// Note: This only checks local dependencies. For cross-repo dependencies,
