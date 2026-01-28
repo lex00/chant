@@ -186,7 +186,7 @@ fn merge_and_cleanup_in_dir(branch: &str, work_dir: Option<&Path>) -> MergeClean
         };
     }
 
-    // Delete the branch after successful merge
+    // Delete the local branch after successful merge
     let mut cmd = Command::new("git");
     cmd.args(["branch", "-d", branch]);
     if let Some(dir) = work_dir {
@@ -211,6 +211,15 @@ fn merge_and_cleanup_in_dir(branch: &str, work_dir: Option<&Path>) -> MergeClean
             error: Some(format!("Failed to delete branch '{}': {}", branch, stderr)),
         };
     }
+
+    // Delete the remote branch (best-effort, don't fail if it doesn't exist)
+    let mut cmd = Command::new("git");
+    cmd.args(["push", "origin", "--delete", branch]);
+    if let Some(dir) = work_dir {
+        cmd.current_dir(dir);
+    }
+    // Ignore errors - remote branch may not exist or remote may be unavailable
+    let _ = cmd.output();
 
     MergeCleanupResult {
         success: true,
