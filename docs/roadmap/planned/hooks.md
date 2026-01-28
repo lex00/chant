@@ -3,7 +3,7 @@
 > **Status: Not Implemented** ❌
 >
 > Hooks are a planned feature. The configuration and execution of hooks is not yet implemented.
-> See [Roadmap](../roadmap.md) for implementation plans.
+> See [Roadmap](../roadmap.md) for planned releases.
 
 ## Hooks as Prompts
 

@@ -3,7 +3,7 @@
 > **Status: Not Implemented** ❌
 >
 > This feature is documented as a planned workflow enhancement.
-> It is not currently implemented. See [Roadmap](../roadmap.md) - Phase 8 "Not yet implemented".
+> It is not currently implemented. See [Roadmap](../roadmap.md) for planned releases.
 
 ## Three Types of Approval
 

@@ -1,7 +1,7 @@
 # Feature Implementation Status
 
 This document tracks which documented features are implemented, planned, or partially complete.
-For detailed implementation status of each phase, see [Roadmap](roadmap/roadmap.md).
+For planned features and future releases, see [Roadmap](roadmap/roadmap.md).
 
 ## Fully Implemented ✅
 
@@ -58,19 +58,19 @@ For detailed implementation status of each phase, see [Roadmap](roadmap/roadmap.
 
 ## Planned but Not Implemented ❌
 
-| Feature | Documentation | Roadmap Phase | Target Version |
-|---------|-------------|----------------|-----------------|
-| Hooks | [hooks.md](roadmap/planned/hooks.md) | Phase 8 | v0.4.0 or later |
-| Triggers | [triggers.md](roadmap/planned/triggers.md) | Phase 8 | v0.4.0 or later |
-| Notifications | [notifications.md](roadmap/planned/notifications.md) | Phase 8 | v0.4.0 or later |
-| Approvals | [approvals.md](roadmap/planned/approvals.md) | Phase 8 | v0.4.0 or later |
-| Daemon Mode | [daemon.md](roadmap/planned/daemon.md) | Phase 6 | v0.5.0 |
-| Prometheus Metrics | [metrics.md](roadmap/planned/metrics.md) | Phase 6 | v0.5.0 |
-| Cost Tracking | [costs.md](roadmap/planned/costs.md) | Phase 8 | v0.4.0 or later |
-| Tantivy Search | [search.md](reference/search.md) | Phase 6 | v0.4.0 |
-| DAG Visualization | Planned | Phase 6 | v0.4.0 or later |
-| Prompt Registry | [ecosystem.md](guides/ecosystem.md) | Phase 8 | v0.4.0 or later |
-| Edit Command | Planned | Phase 8 | v0.4.0 or later |
+| Feature | Documentation | Target Version |
+|---------|-------------|-----------------|
+| Hooks | [hooks.md](roadmap/planned/hooks.md) | v0.4.0 or later |
+| Triggers | [triggers.md](roadmap/planned/triggers.md) | v0.4.0 or later |
+| Notifications | [notifications.md](roadmap/planned/notifications.md) | v0.4.0 or later |
+| Approvals | [approvals.md](roadmap/planned/approvals.md) | v0.4.0 or later |
+| Daemon Mode | [daemon.md](roadmap/planned/daemon.md) | v0.5.0 |
+| Prometheus Metrics | [metrics.md](roadmap/planned/metrics.md) | v0.5.0 |
+| Cost Tracking | [costs.md](roadmap/planned/costs.md) | v0.4.0 or later |
+| Tantivy Search | [search.md](reference/search.md) | v0.4.0 |
+| DAG Visualization | Planned | v0.4.0 or later |
+| Prompt Registry | [ecosystem.md](guides/ecosystem.md) | v0.4.0 or later |
+| Edit Command | Planned | v0.4.0 or later |
 
 ## Commands Status Reference
 

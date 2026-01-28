@@ -18,4 +18,4 @@ This section documents features that are planned but not yet implemented. For cu
 - [Cost Tracking](costs.md) - LLM API cost monitoring
 - [Notifications](notifications.md) - Alerts and status updates
 
-See [Roadmap](../roadmap.md) for implementation timeline.
+See [Roadmap](../roadmap.md) for planned releases.
