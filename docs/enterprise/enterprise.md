@@ -102,7 +102,7 @@ Chant supports **4 derivation sources**:
 | `branch` | Current git branch name | `sprint/2026-Q1-W4/PROJ-123` | Extract from branch naming conventions |
 | `path` | Spec file path | `.chant/specs/teams/platform/task.md` | Extract from directory structure |
 | `env` | Environment variable | `TEAM_NAME=platform` | Extract from shell environment |
-| `git_user` | Git user.name or user.email | `alice@company.com` | Extract from git config |
+| `git_user` | Git user.name or user.email | `alice@company.com` | Pattern must be literal `"name"` or `"email"` (not regex) |
 
 ### Pattern Syntax
 
@@ -128,6 +128,8 @@ pattern: "prefix/([^/]+)/suffix"
 - Invalid regex pattern → field is **omitted** (graceful failure)
 - Multi-line sources (env vars, git config) are matched as single lines
 - All matches are case-sensitive
+
+> **Note:** The `git_user` source does **not** use regex patterns. The pattern must be the literal string `"name"` (for `user.name`) or `"email"` (for `user.email`). Any other value returns no result.
 
 ### Validation Rules
 
