@@ -3948,7 +3948,6 @@ This spec tests that finalization updates the status field.
     let _ = cleanup_test_repo(&repo_dir);
 }
 
-<<<<<<< HEAD
 /// Test that invalid regex patterns in enterprise config are handled gracefully
 /// This verifies:
 /// 1. Config with syntactically invalid regex pattern doesn't crash chant add
@@ -4079,7 +4078,10 @@ enterprise:
     );
 
     // Cleanup
-=======
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}
+
 // ============================================================================
 // PARALLEL WORK AND MERGE WORKFLOW TEST
 // ============================================================================
@@ -4447,7 +4449,115 @@ Test specification for parallel workflow testing.
     // Cleanup
     let _ = fs::remove_dir_all(&wt_path1);
     let _ = fs::remove_dir_all(&wt_path2);
->>>>>>> a2eb56d (chant(2026-01-27-00v-xe8): Add integration test for parallel work and merge workflow)
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}
+
+#[test]
+#[serial]
+#[cfg(unix)]
+fn test_refresh_command_shows_ready_after_dependency_completion() {
+    use chant::spec::{Spec, SpecFrontmatter, SpecStatus};
+
+    let repo_dir = PathBuf::from("/tmp/test-chant-refresh-deps");
+    let _ = cleanup_test_repo(&repo_dir);
+
+    // Step 1: Setup test repository
+    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
+
+    // Initialize chant
+    let init_output =
+        run_chant(&repo_dir, &["init", "--minimal"]).expect("Failed to run chant init");
+    if !init_output.status.success() {
+        let _ = std::env::set_current_dir(&original_dir);
+        let _ = cleanup_test_repo(&repo_dir);
+        panic!(
+            "Chant init failed: {}",
+            String::from_utf8_lossy(&init_output.stderr)
+        );
+    }
+
+    // Step 2: Create specs with dependency relationship
+    let specs_dir = repo_dir.join(".chant/specs");
+    fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+
+    // Create dependency spec (initially pending)
+    let dep_spec_id = "2026-01-27-001-dep";
+    let dep_spec = Spec {
+        id: dep_spec_id.to_string(),
+        frontmatter: SpecFrontmatter {
+            status: SpecStatus::Pending,
+            ..Default::default()
+        },
+        title: Some("Dependency Spec".to_string()),
+        body: "# Dependency Spec\n\nThis spec must complete first.\n\n## Acceptance Criteria\n\n- [x] Done".to_string(),
+    };
+    dep_spec
+        .save(&specs_dir.join(format!("{}.md", dep_spec_id)))
+        .expect("Failed to save dep spec");
+
+    // Create dependent spec (depends on dep_spec)
+    let dependent_spec_id = "2026-01-27-002-dpt";
+    let dependent_spec = Spec {
+        id: dependent_spec_id.to_string(),
+        frontmatter: SpecFrontmatter {
+            status: SpecStatus::Pending,
+            depends_on: Some(vec![dep_spec_id.to_string()]),
+            ..Default::default()
+        },
+        title: Some("Dependent Spec".to_string()),
+        body: "# Dependent Spec\n\nThis spec depends on the first one.\n\n## Acceptance Criteria\n\n- [ ] Complete after dep".to_string(),
+    };
+    dependent_spec
+        .save(&specs_dir.join(format!("{}.md", dependent_spec_id)))
+        .expect("Failed to save dependent spec");
+
+    // Step 3: Run refresh - dependent should be blocked
+    let refresh_output =
+        run_chant(&repo_dir, &["refresh", "--verbose"]).expect("Failed to run refresh");
+    let refresh_stdout = String::from_utf8_lossy(&refresh_output.stdout);
+
+    assert!(
+        refresh_output.status.success(),
+        "Refresh command should succeed. stderr: {}",
+        String::from_utf8_lossy(&refresh_output.stderr)
+    );
+    assert!(
+        refresh_stdout.contains("Blocked") || refresh_stdout.contains("blocked"),
+        "Should show blocked count. Output: {}",
+        refresh_stdout
+    );
+
+    // Step 4: Complete the dependency spec
+    let mut completed_dep = dep_spec.clone();
+    completed_dep.frontmatter.status = SpecStatus::Completed;
+    completed_dep.frontmatter.completed_at = Some("2026-01-27T10:00:00Z".to_string());
+    completed_dep
+        .save(&specs_dir.join(format!("{}.md", dep_spec_id)))
+        .expect("Failed to save completed dep spec");
+
+    // Step 5: Run refresh again - dependent should now be ready
+    let refresh_output =
+        run_chant(&repo_dir, &["refresh", "--verbose"]).expect("Failed to run refresh");
+    let refresh_stdout = String::from_utf8_lossy(&refresh_output.stdout);
+
+    assert!(
+        refresh_output.status.success(),
+        "Refresh command should succeed. stderr: {}",
+        String::from_utf8_lossy(&refresh_output.stderr)
+    );
+
+    // The dependent spec should now appear in the ready list (not blocked)
+    // since its dependency is complete
+    assert!(
+        refresh_stdout.contains("Ready"),
+        "Should show ready section. Output: {}",
+        refresh_stdout
+    );
+
+    // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
     let _ = cleanup_test_repo(&repo_dir);
 }
