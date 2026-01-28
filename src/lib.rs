@@ -54,6 +54,7 @@ pub mod agent;
 pub mod config;
 pub mod conflict;
 pub mod deps;
+pub mod derivation;
 pub mod diagnose;
 pub mod git;
 pub mod id;
