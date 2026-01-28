@@ -3373,3 +3373,182 @@ enterprise:
     let _ = std::env::set_current_dir(&original_dir);
     let _ = cleanup_test_repo(&repo_dir);
 }
+
+#[test]
+#[serial]
+fn test_no_derivation_when_config_empty() {
+    let original_dir = std::env::current_dir().expect("Failed to get current dir");
+
+    let repo_dir = PathBuf::from("/tmp/test-chant-no-config");
+    let chant_binary = get_chant_binary();
+
+    let _ = cleanup_test_repo(&repo_dir);
+
+    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+
+    // Manually set up .chant directory
+    let chant_dir = repo_dir.join(".chant");
+    std::fs::create_dir_all(&chant_dir).expect("Failed to create .chant dir");
+
+    // Create config WITHOUT enterprise section
+    let config_path = chant_dir.join("config.md");
+    let config_content = r#"---
+project:
+  name: test-project
+---
+
+# Config
+"#;
+    std::fs::write(&config_path, config_content).expect("Failed to write config");
+
+    // Create specs directory
+    let specs_dir = chant_dir.join("specs");
+    std::fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+
+    // Run chant add
+    let add_output = Command::new(&chant_binary)
+        .args(["add", "Test spec without config"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant add");
+
+    if !add_output.status.success() {
+        eprintln!(
+            "chant add stderr: {}",
+            String::from_utf8_lossy(&add_output.stderr)
+        );
+        eprintln!(
+            "chant add stdout: {}",
+            String::from_utf8_lossy(&add_output.stdout)
+        );
+        let _ = std::env::set_current_dir(&original_dir);
+        let _ = cleanup_test_repo(&repo_dir);
+        panic!("chant add failed");
+    }
+
+    // Read the created spec
+    let spec_files: Vec<_> = fs::read_dir(&specs_dir)
+        .expect("Failed to read specs directory")
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().map(|ext| ext == "md").unwrap_or(false))
+        .collect();
+
+    assert!(!spec_files.is_empty(), "No spec file was created");
+
+    let spec_file = spec_files[0].path();
+    let spec_content = fs::read_to_string(&spec_file).expect("Failed to read spec file");
+
+    eprintln!("Spec content:\n{}", spec_content);
+
+    // Verify spec created normally without derived fields
+    assert!(
+        !spec_content.contains("derived_fields:"),
+        "Spec should NOT contain derived_fields when no enterprise config. Got:\n{}",
+        spec_content
+    );
+    assert!(
+        spec_content.contains("type: code"),
+        "Spec should contain type: code. Got:\n{}",
+        spec_content
+    );
+    assert!(
+        spec_content.contains("status: pending"),
+        "Spec should contain status: pending. Got:\n{}",
+        spec_content
+    );
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}
+
+#[test]
+#[serial]
+fn test_no_derivation_when_enterprise_derived_empty() {
+    let original_dir = std::env::current_dir().expect("Failed to get current dir");
+
+    let repo_dir = PathBuf::from("/tmp/test-chant-empty-derived");
+    let chant_binary = get_chant_binary();
+
+    let _ = cleanup_test_repo(&repo_dir);
+
+    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+
+    // Manually set up .chant directory
+    let chant_dir = repo_dir.join(".chant");
+    std::fs::create_dir_all(&chant_dir).expect("Failed to create .chant dir");
+
+    // Create config with enterprise section but empty derived
+    let config_path = chant_dir.join("config.md");
+    let config_content = r#"---
+project:
+  name: test-project
+enterprise:
+  derived: {}
+  required: []
+---
+
+# Config
+"#;
+    std::fs::write(&config_path, config_content).expect("Failed to write config");
+
+    // Create specs directory
+    let specs_dir = chant_dir.join("specs");
+    std::fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+
+    // Run chant add
+    let add_output = Command::new(&chant_binary)
+        .args(["add", "Test spec with empty derived"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant add");
+
+    if !add_output.status.success() {
+        eprintln!(
+            "chant add stderr: {}",
+            String::from_utf8_lossy(&add_output.stderr)
+        );
+        eprintln!(
+            "chant add stdout: {}",
+            String::from_utf8_lossy(&add_output.stdout)
+        );
+        let _ = std::env::set_current_dir(&original_dir);
+        let _ = cleanup_test_repo(&repo_dir);
+        panic!("chant add failed");
+    }
+
+    // Read the created spec
+    let spec_files: Vec<_> = fs::read_dir(&specs_dir)
+        .expect("Failed to read specs directory")
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().map(|ext| ext == "md").unwrap_or(false))
+        .collect();
+
+    assert!(!spec_files.is_empty(), "No spec file was created");
+
+    let spec_file = spec_files[0].path();
+    let spec_content = fs::read_to_string(&spec_file).expect("Failed to read spec file");
+
+    eprintln!("Spec content:\n{}", spec_content);
+
+    // Verify no derivation occurred
+    assert!(
+        !spec_content.contains("derived_fields:"),
+        "Spec should NOT contain derived_fields when enterprise.derived is empty. Got:\n{}",
+        spec_content
+    );
+    assert!(
+        spec_content.contains("type: code"),
+        "Spec should contain type: code. Got:\n{}",
+        spec_content
+    );
+    assert!(
+        spec_content.contains("status: pending"),
+        "Spec should contain status: pending. Got:\n{}",
+        spec_content
+    );
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}
