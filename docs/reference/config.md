@@ -110,8 +110,6 @@ parallel:
       max_concurrent: 2     # Max concurrent for this agent
   stagger_delay_ms: 1000    # Delay between spawning agents (ms), default 1000
   stagger_jitter_ms: 200    # Jitter for spawn delays (ms), default 200 (20% of delay)
-  rotation:                 # Agent rotation for single spec execution
-    strategy: none          # none | random | round-robin
   cleanup:
     enabled: true           # Offer cleanup after parallel execution
     prompt: parallel-cleanup # Cleanup prompt to use
@@ -512,8 +510,10 @@ When executing a single spec, distribute work across multiple configured agents 
 ```markdown
 # .chant/config.md
 ---
-parallel:
+defaults:
   rotation_strategy: round-robin  # none, random, round-robin
+
+parallel:
   agents:
     - name: main
       command: claude
@@ -572,23 +572,11 @@ With `round-robin`, specs are executed in sequence using agents from this list, 
 - **Account rotation**: Rotate through multiple Claude accounts to avoid session conflicts
 - **Capacity planning**: Weight agents based on their availability/capacity
 
-### Override Per Spec
+### Override Per Spec (Planned)
 
-You can override the default provider in individual specs using frontmatter:
+> **Status: Planned** - Spec-level provider override is on the roadmap but not yet implemented.
 
-```markdown
----
-type: code
-status: pending
-target_files: [src/main.rs]
----
-
-# Implementation task
-
-This spec will use OpenAI instead of the default provider.
-```
-
-(Note: Spec-level provider override is a planned feature)
+In the future, you'll be able to override the default provider in individual specs using frontmatter.
 
 ## Environment Overrides (Planned)
 

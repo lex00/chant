@@ -1,5 +1,10 @@
 # Triggers
 
+> **Status: Not Implemented** ❌
+>
+> Triggers are a planned feature. The configuration and evaluation of triggers is not yet implemented.
+> See [Roadmap](../roadmap/roadmap.md) for implementation plans.
+
 ## Overview
 
 Triggers allow specs to wait for external conditions before becoming ready. A spec with triggers starts as `status: waiting` instead of `pending`.

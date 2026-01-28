@@ -41,8 +41,6 @@ For detailed implementation status of each phase, see [Roadmap](roadmap/roadmap.
 | Spec Status: Cancelled | [lifecycle.md](concepts/lifecycle.md) | ✅ Complete | v0.3.0 |
 | Interactive Wizards | [cli.md](reference/cli.md) | ✅ Complete | v0.3.0 |
 | Prompts | [prompts.md](concepts/prompts.md) | ✅ Complete | v0.0.0 |
-| Hooks | [hooks.md](concepts/hooks.md) | ✅ Complete | v0.2.0 |
-| Triggers | [triggers.md](concepts/triggers.md) | ✅ Complete | v0.2.0 |
 | Data Lifecycle | [lifecycle.md](concepts/lifecycle.md) | ✅ Complete | v0.2.0 |
 
 ## Partially Implemented ⚠️
@@ -59,6 +57,8 @@ For detailed implementation status of each phase, see [Roadmap](roadmap/roadmap.
 
 | Feature | Documentation | Roadmap Phase | Target Version |
 |---------|-------------|----------------|-----------------|
+| Hooks | [hooks.md](concepts/hooks.md) | Phase 8 | v0.4.0 or later |
+| Triggers | [triggers.md](concepts/triggers.md) | Phase 8 | v0.4.0 or later |
 | Notifications | [notifications.md](reference/notifications.md) | Phase 8 | v0.4.0 or later |
 | Approvals | [approvals.md](guides/approvals.md) | Phase 8 | v0.4.0 or later |
 | Daemon Mode | [daemon.md](scale/daemon.md) | Phase 6 | v0.5.0 |
@@ -136,8 +136,8 @@ chant costs         ❌ Planned for v0.4.0+
 - `ids.md` - ✅ Current
 - `groups.md` - ✅ Current
 - `deps.md` - ✅ Current
-- `hooks.md` - ✅ Current
-- `triggers.md` - ✅ Current
+- `hooks.md` - ❌ Not implemented (updated with status)
+- `triggers.md` - ❌ Not implemented (updated with status)
 - `autonomy.md` - ✅ Current (all documented features implemented)
 - `lifecycle.md` - ✅ Current
 

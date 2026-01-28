@@ -587,17 +587,17 @@ original_completed_at: 2026-01-15T14:30:00Z   # Preserved from original
 View agent output logs for a spec:
 
 ```bash
-chant log 001                         # Show last 50 lines of log
-chant log 001 -f                      # Follow log in real-time
-chant log 001 --lines 100             # Show last 100 lines
-chant log 001 -n 100 -f               # Show last 100 lines and follow
+chant log 001                         # Show last 50 lines and follow (default)
+chant log 001 --no-follow             # Show last 50 lines without following
+chant log 001 -n 100                  # Show last 100 lines and follow
+chant log 001 -n 100 --no-follow      # Show last 100 lines without following
 ```
 
 Logs are stored in `.chant/logs/{spec-id}.log` and are created when a spec is executed with `chant work`. The log contains the full agent output including timestamp and prompt used.
 
 **Use cases:**
-- Monitor spec execution in real-time with `-f`
-- Review agent output after execution
+- Monitor spec execution in real-time (follows by default)
+- Review agent output after execution with `--no-follow`
 - Debug failed specs
 
 ### Real-time Log Streaming
@@ -611,10 +611,10 @@ chant work 001    # Agent runs, streams to stdout AND log file
 
 **Terminal 2 (simultaneously):**
 ```bash
-chant log 001 -f  # See output in real-time as agent works
+chant log 001     # See output in real-time as agent works (follows by default)
 ```
 
-The log file header (spec ID, timestamp, prompt name) is written before the agent starts, so `chant log -f` will begin showing content immediately.
+The log file header (spec ID, timestamp, prompt name) is written before the agent starts, so `chant log` will begin showing content immediately.
 
 ## Status
 
@@ -716,8 +716,6 @@ Manually finalize specs that weren't properly completed:
 
 ```bash
 chant finalize 001                    # Finalize spec (records commits, timestamp, model)
-chant finalize 001 --force            # Skip confirmation prompt
-chant finalize 001 --allow-no-commits # Allow finalization without commits
 ```
 
 The finalize command:

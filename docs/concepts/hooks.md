@@ -1,5 +1,10 @@
 # Hooks
 
+> **Status: Not Implemented** ❌
+>
+> Hooks are a planned feature. The configuration and execution of hooks is not yet implemented.
+> See [Roadmap](../roadmap/roadmap.md) for implementation plans.
+
 ## Hooks as Prompts
 
 Hooks are prompts that run at specific points. Consistent with "everything is markdown."
