@@ -38,7 +38,6 @@ use crate::cmd::finalize::{
     append_agent_output, confirm_re_finalize, finalize_spec, re_finalize_spec,
 };
 use crate::cmd::git_ops::{commit_transcript, create_or_switch_branch, push_branch};
-use crate::cmd::model::get_model_name_with_default;
 use crate::cmd::spec as spec_cmd;
 
 // ============================================================================
@@ -976,6 +975,7 @@ pub fn cmd_work_parallel(
         let branch_for_cleanup_clone = branch_for_cleanup.clone();
         let is_direct_mode_clone = is_direct_mode;
         let agent_command = assignment.agent_command.clone();
+        let config_clone = config.clone();
 
         let handle = thread::spawn(move || {
             let result = cmd::agent::invoke_agent_with_command(
@@ -1008,14 +1008,15 @@ pub fn cmd_work_parallel(
                         // Direct mode: leave worktree for now, merge later
                     }
 
-                    // Finalize spec with completed status (merge status separate)
+                    // Finalize spec with completed status using the proper finalize_spec function
                     let spec_path = specs_dir_clone.join(format!("{}.md", spec_id));
                     if let Ok(mut spec) = spec::resolve_spec(&specs_dir_clone, &spec_id) {
+                        // Load all specs for finalization validation
                         let all_specs = match spec::load_all_specs(&specs_dir_clone) {
                             Ok(specs) => specs,
                             Err(e) => {
                                 eprintln!(
-                                    "{} [{}] Warning: Failed to load all specs for validation: {}",
+                                    "{} [{}] Warning: Failed to load all specs for finalization: {}",
                                     "⚠".yellow(),
                                     spec_id,
                                     e
@@ -1024,44 +1025,41 @@ pub fn cmd_work_parallel(
                             }
                         };
 
-                        // Check if driver with incomplete members
-                        let incomplete_members = spec::get_incomplete_members(&spec_id, &all_specs);
-                        if !incomplete_members.is_empty() {
-                            eprintln!(
-                                "{} [{}] Cannot complete driver spec with {} incomplete member(s): {}",
-                                "⚠".yellow(),
-                                spec_id,
-                                incomplete_members.len(),
-                                incomplete_members.join(", ")
-                            );
-                            spec.frontmatter.status = SpecStatus::NeedsAttention;
-                            let _ = spec.save(&spec_path);
-                            (
-                                false,
-                                commits,
-                                Some("Incomplete members".to_string()),
-                                false,
-                            )
-                        } else {
-                            spec.frontmatter.status = SpecStatus::Completed;
-                            spec.frontmatter.commits =
-                                commits.clone().filter(|c: &Vec<String>| !c.is_empty());
-                            spec.frontmatter.completed_at = Some(
-                                chrono::Local::now()
-                                    .format("%Y-%m-%dT%H:%M:%SZ")
-                                    .to_string(),
-                            );
-                            spec.frontmatter.model =
-                                get_model_name_with_default(config_model.as_deref());
-                            if let Err(e) = spec.save(&spec_path) {
+                        // Use proper finalize_spec function with extracted commits
+                        // Pass commits to avoid re-fetching them
+                        let commits_to_finalize = commits.clone();
+                        match finalize_spec(
+                            &mut spec,
+                            &spec_path,
+                            &config_clone,
+                            &all_specs,
+                            false,
+                            commits_to_finalize,
+                        ) {
+                            Ok(()) => {
                                 eprintln!(
-                                    "{} [{}] Warning: Failed to finalize spec: {}",
+                                    "{} [{}] Finalized spec with status completed",
+                                    "✓".green(),
+                                    spec_id
+                                );
+                                (true, commits, None, true)
+                            }
+                            Err(e) => {
+                                eprintln!(
+                                    "{} [{}] Cannot finalize spec: {}",
                                     "⚠".yellow(),
                                     spec_id,
                                     e
                                 );
+                                // Mark as needs attention instead of completed
+                                if let Ok(mut failed_spec) =
+                                    spec::resolve_spec(&specs_dir_clone, &spec_id)
+                                {
+                                    failed_spec.frontmatter.status = SpecStatus::NeedsAttention;
+                                    let _ = failed_spec.save(&spec_path);
+                                }
+                                (false, commits, Some(e.to_string()), false)
                             }
-                            (true, commits, None, true)
                         }
                     } else {
                         (true, commits, None, true)

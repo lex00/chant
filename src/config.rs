@@ -83,7 +83,7 @@ pub enum ValidationRule {
     },
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     pub project: ProjectConfig,
     #[serde(default)]
@@ -226,20 +226,20 @@ impl Default for CleanupConfig {
     }
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Clone, Deserialize, Default)]
 pub struct GitConfig {
     #[serde(default)]
     pub provider: GitProvider,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct ProjectConfig {
     pub name: String,
     #[allow(dead_code)]
     pub prefix: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct DefaultsConfig {
     #[serde(default = "default_prompt")]
     pub prompt: String,
