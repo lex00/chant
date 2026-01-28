@@ -282,12 +282,14 @@ pub fn cmd_work(
 
     // Handle re-finalization mode
     if finalize {
-        // Re-finalize flag requires the spec to be in_progress or completed
+        // Re-finalize flag requires the spec to be in_progress, completed, or failed
+        // Allow failed too - agents often leave specs in failed state when they actually completed the work
         if spec.frontmatter.status != SpecStatus::InProgress
             && spec.frontmatter.status != SpecStatus::Completed
+            && spec.frontmatter.status != SpecStatus::Failed
         {
             anyhow::bail!(
-                "Cannot re-finalize spec '{}' with status '{:?}'. Must be in_progress or completed.",
+                "Cannot re-finalize spec '{}' with status '{:?}'. Must be in_progress, completed, or failed.",
                 spec.id,
                 spec.frontmatter.status
             );

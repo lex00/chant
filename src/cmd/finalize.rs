@@ -133,13 +133,14 @@ pub fn re_finalize_spec(
 ) -> Result<()> {
     // Re-finalization only works on specs that have been started (in_progress or completed)
     // A pending spec has never been started and should use normal work flow
+    // Allow failed too - agents often leave specs in failed state when they actually completed the work
     match spec.frontmatter.status {
-        SpecStatus::InProgress | SpecStatus::Completed => {
+        SpecStatus::InProgress | SpecStatus::Completed | SpecStatus::Failed => {
             // These are valid for re-finalization
         }
         _ => {
             anyhow::bail!(
-                "Cannot re-finalize spec '{}' with status '{:?}'. Must be in_progress or completed.",
+                "Cannot re-finalize spec '{}' with status '{:?}'. Must be in_progress, completed, or failed.",
                 spec.id,
                 spec.frontmatter.status
             );
