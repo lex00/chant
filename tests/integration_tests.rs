@@ -3066,68 +3066,107 @@ enterprise:
 }
 
 #[test]
-#[serial]
-fn test_derivation_graceful_failure_no_git() {
+fn test_missing_env_var_graceful_failure() {
     let original_dir = std::env::current_dir().expect("Failed to get current dir");
 
-    let repo_dir = PathBuf::from("/tmp/test-chant-no-git-deriv");
+    let repo_dir = PathBuf::from("/tmp/test-chant-missing-env");
     let chant_binary = get_chant_binary();
 
     let _ = cleanup_test_repo(&repo_dir);
+    std::fs::create_dir_all(&repo_dir).expect("Failed to create temp dir");
 
-    // Initialize a git repo on 'main' branch (not matching sprint pattern)
-    // This simulates the derivation failure path: git works but branch doesn't match
-    assert!(
-        setup_test_repo(&repo_dir).is_ok(),
-        "Failed to set up test repo"
-    );
+    // Initialize repo
+    Command::new("git")
+        .args(["init"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to init git repo");
 
-    // Set up .chant directory with enterprise config expecting sprint/... branch pattern
-    // Also include a path-based derivation to verify non-git fields still work
+    Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to config git user.email");
+
+    Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to config git user.name");
+
+    // Create initial commit
+    std::fs::write(repo_dir.join("README.md"), "# Test Repo").expect("Failed to write README");
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to git add");
+
+    Command::new("git")
+        .args(["commit", "-m", "Initial commit"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to git commit");
+
+    // Manually set up .chant directory
     let chant_dir = repo_dir.join(".chant");
-    std::fs::create_dir_all(chant_dir.join("specs")).expect("Failed to create specs dir");
+    std::fs::create_dir_all(&chant_dir).expect("Failed to create .chant dir");
 
+    // Create enterprise config with env variable and path derivation
     let config_path = chant_dir.join("config.md");
     let config_content = r#"---
 project:
   name: test-project
 enterprise:
   derived:
-    sprint:
-      from: branch
-      pattern: "sprint/([^/]+)"
+    team:
+      from: env
+      pattern: "TEAM_NAME"
+    environment:
+      from: env
+      pattern: "DEPLOY_ENV"
     component:
       from: path
-      pattern: "/specs/([^/]+)\\.md$"
+      pattern: "/([^/]+)\\.md$"
 ---
 
 # Config
 "#;
     std::fs::write(&config_path, config_content).expect("Failed to write config");
 
-    // Run chant add on a branch that does NOT match the sprint pattern
-    // Derivation should gracefully skip sprint but still derive component from path
+    // Create specs directory
+    let specs_dir = chant_dir.join("specs");
+    std::fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+
+    // Run chant add WITHOUT setting environment variables
     let add_output = Command::new(&chant_binary)
-        .args(["add", "Test spec without sprint branch"])
+        .args(["add", "Test spec"])
         .current_dir(&repo_dir)
+        // Explicitly do NOT set TEAM_NAME or DEPLOY_ENV
         .output()
         .expect("Failed to run chant add");
 
-    let stdout = String::from_utf8_lossy(&add_output.stdout);
-    let stderr = String::from_utf8_lossy(&add_output.stderr);
+    if !add_output.status.success() {
+        eprintln!(
+            "chant add stderr: {}",
+            String::from_utf8_lossy(&add_output.stderr)
+        );
+        eprintln!(
+            "chant add stdout: {}",
+            String::from_utf8_lossy(&add_output.stdout)
+        );
+        let _ = std::env::set_current_dir(&original_dir);
+        let _ = cleanup_test_repo(&repo_dir);
+        panic!("chant add failed");
+    }
 
-    eprintln!("stdout: {}", stdout);
-    eprintln!("stderr: {}", stderr);
-
-    // Command should succeed — derivation failure is non-fatal
+    // Command should succeed
     assert!(
         add_output.status.success(),
-        "chant add should succeed when branch pattern doesn't match. stderr: {}",
-        stderr
+        "chant add should succeed even with missing env vars"
     );
 
-    // Read the created spec file
-    let specs_dir = chant_dir.join("specs");
+    // Read the created spec
     let spec_files: Vec<_> = fs::read_dir(&specs_dir)
         .expect("Failed to read specs directory")
         .filter_map(|e| e.ok())
@@ -3141,33 +3180,44 @@ enterprise:
 
     eprintln!("Spec content:\n{}", spec_content);
 
-    // The branch-derived field (sprint) should NOT appear since pattern didn't match
+    // team and environment should be missing (env vars not set)
     assert!(
-        !spec_content.contains("derived_sprint="),
-        "Branch-derived field 'sprint' should be absent when pattern doesn't match. Got:\n{}",
+        !spec_content.contains("derived_team"),
+        "Spec should not contain derived_team when TEAM_NAME env var is missing. Got:\n{}",
+        spec_content
+    );
+    assert!(
+        !spec_content.contains("derived_environment"),
+        "Spec should not contain derived_environment when DEPLOY_ENV env var is missing. Got:\n{}",
         spec_content
     );
 
-    // If derived_fields is present, sprint should not be listed
-    if spec_content.contains("derived_fields:") {
-        assert!(
-            !spec_content.contains("- sprint"),
-            "derived_fields should not list 'sprint' when pattern doesn't match. Got:\n{}",
-            spec_content
-        );
-    }
-
-    // Path-based derivation (component) should still work since it doesn't need git
+    // component should work (derived from path, doesn't depend on env)
     assert!(
-        spec_content.contains("derived_component="),
-        "Path-derived field 'component' should be present. Got:\n{}",
+        spec_content.contains("derived_component"),
+        "Spec should contain derived_component from path. Got:\n{}",
         spec_content
     );
 
-    // derived_fields should list component
+    // derived_fields should only list component
     assert!(
-        spec_content.contains("- component"),
-        "derived_fields should list 'component'. Got:\n{}",
+        spec_content.contains("derived_fields:"),
+        "Spec should track derived_fields. Got:\n{}",
+        spec_content
+    );
+    assert!(
+        spec_content.contains("- component") || spec_content.contains("  - component"),
+        "Spec should list 'component' in derived_fields. Got:\n{}",
+        spec_content
+    );
+    assert!(
+        !spec_content.contains("- team") && !spec_content.contains("  - team"),
+        "Spec should NOT list 'team' in derived_fields when env var missing. Got:\n{}",
+        spec_content
+    );
+    assert!(
+        !spec_content.contains("- environment") && !spec_content.contains("  - environment"),
+        "Spec should NOT list 'environment' in derived_fields when env var missing. Got:\n{}",
         spec_content
     );
 
@@ -3177,80 +3227,104 @@ enterprise:
 }
 
 #[test]
-#[serial]
-fn test_derivation_with_detached_head() {
+fn test_partial_env_vars_available() {
     let original_dir = std::env::current_dir().expect("Failed to get current dir");
 
-    let repo_dir = PathBuf::from("/tmp/test-chant-detached-head-deriv");
+    let repo_dir = PathBuf::from("/tmp/test-chant-partial-env");
     let chant_binary = get_chant_binary();
 
     let _ = cleanup_test_repo(&repo_dir);
-    assert!(
-        setup_test_repo(&repo_dir).is_ok(),
-        "Failed to set up test repo"
-    );
+    std::fs::create_dir_all(&repo_dir).expect("Failed to create temp dir");
 
-    // Put repo into detached HEAD state
-    let commit_output = Command::new("git")
-        .args(["rev-parse", "HEAD"])
+    // Initialize repo
+    Command::new("git")
+        .args(["init"])
         .current_dir(&repo_dir)
         .output()
-        .expect("Failed to get HEAD commit");
-    let commit_hash = String::from_utf8_lossy(&commit_output.stdout)
-        .trim()
-        .to_string();
+        .expect("Failed to init git repo");
 
-    let checkout_output = Command::new("git")
-        .args(["checkout", &commit_hash])
+    Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
         .current_dir(&repo_dir)
         .output()
-        .expect("Failed to checkout detached HEAD");
-    assert!(
-        checkout_output.status.success(),
-        "Failed to create detached HEAD state"
-    );
+        .expect("Failed to config git user.email");
 
-    // Set up .chant directory with enterprise config
+    Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to config git user.name");
+
+    // Create initial commit
+    std::fs::write(repo_dir.join("README.md"), "# Test Repo").expect("Failed to write README");
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to git add");
+
+    Command::new("git")
+        .args(["commit", "-m", "Initial commit"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to git commit");
+
+    // Manually set up .chant directory
     let chant_dir = repo_dir.join(".chant");
-    std::fs::create_dir_all(chant_dir.join("specs")).expect("Failed to create specs dir");
+    std::fs::create_dir_all(&chant_dir).expect("Failed to create .chant dir");
 
+    // Create enterprise config expecting multiple env vars
     let config_path = chant_dir.join("config.md");
     let config_content = r#"---
 project:
   name: test-project
 enterprise:
   derived:
-    branch_name:
-      from: branch
-      pattern: "(.*)"
+    team:
+      from: env
+      pattern: "TEAM_NAME"
+    environment:
+      from: env
+      pattern: "DEPLOY_ENV"
 ---
 
 # Config
 "#;
     std::fs::write(&config_path, config_content).expect("Failed to write config");
 
-    // Run chant add — should handle detached HEAD gracefully (no crash)
+    // Create specs directory
+    let specs_dir = chant_dir.join("specs");
+    std::fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+
+    // Run chant add with only one env var set
     let add_output = Command::new(&chant_binary)
-        .args(["add", "Test spec in detached HEAD"])
+        .args(["add", "Test spec"])
+        .env("TEAM_NAME", "platform") // Set this one
+        // DEPLOY_ENV not set
         .current_dir(&repo_dir)
         .output()
         .expect("Failed to run chant add");
 
-    let stdout = String::from_utf8_lossy(&add_output.stdout);
-    let stderr = String::from_utf8_lossy(&add_output.stderr);
+    if !add_output.status.success() {
+        eprintln!(
+            "chant add stderr: {}",
+            String::from_utf8_lossy(&add_output.stderr)
+        );
+        eprintln!(
+            "chant add stdout: {}",
+            String::from_utf8_lossy(&add_output.stdout)
+        );
+        let _ = std::env::set_current_dir(&original_dir);
+        let _ = cleanup_test_repo(&repo_dir);
+        panic!("chant add failed");
+    }
 
-    eprintln!("stdout: {}", stdout);
-    eprintln!("stderr: {}", stderr);
-
-    // Command should succeed — detached HEAD is a valid git state
     assert!(
         add_output.status.success(),
-        "chant add should succeed in detached HEAD state. stderr: {}",
-        stderr
+        "chant add should succeed with partial env vars"
     );
 
-    // Read the created spec
-    let specs_dir = chant_dir.join("specs");
+    // Verify partial success
     let spec_files: Vec<_> = fs::read_dir(&specs_dir)
         .expect("Failed to read specs directory")
         .filter_map(|e| e.ok())
@@ -3264,10 +3338,34 @@ enterprise:
 
     eprintln!("Spec content:\n{}", spec_content);
 
-    // Spec should be created with type field present
+    // team should be present (env var was set)
     assert!(
-        spec_content.contains("type: code"),
-        "Spec should have 'type: code' in frontmatter. Got:\n{}",
+        spec_content.contains("derived_team=platform"),
+        "Spec should contain derived_team=platform when TEAM_NAME is set. Got:\n{}",
+        spec_content
+    );
+
+    // environment should be missing (env var not set)
+    assert!(
+        !spec_content.contains("derived_environment"),
+        "Spec should not contain derived_environment when DEPLOY_ENV is not set. Got:\n{}",
+        spec_content
+    );
+
+    // derived_fields should only list team
+    assert!(
+        spec_content.contains("derived_fields:"),
+        "Spec should track derived_fields. Got:\n{}",
+        spec_content
+    );
+    assert!(
+        spec_content.contains("- team") || spec_content.contains("  - team"),
+        "Spec should list 'team' in derived_fields. Got:\n{}",
+        spec_content
+    );
+    assert!(
+        !spec_content.contains("- environment") && !spec_content.contains("  - environment"),
+        "Spec should NOT list 'environment' in derived_fields when env var missing. Got:\n{}",
         spec_content
     );
 
