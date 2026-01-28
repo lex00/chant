@@ -784,6 +784,7 @@ chant merge                           # Interactive wizard to select specs
 chant merge 001                       # Merge single spec branch
 chant merge 001 002 003               # Merge multiple specs
 chant merge --all                     # Merge all completed spec branches
+chant merge --all-completed           # Merge completed specs with branches (post-parallel)
 chant merge --all --dry-run           # Preview what would be merged
 chant merge --all --delete-branch     # Delete branches after merge
 chant merge --all --yes               # Skip confirmation prompt
@@ -813,6 +814,34 @@ The wizard:
 3. Prompts for rebase strategy (default: no)
 4. Prompts for branch deletion (default: yes)
 5. Executes the merge with your selections
+
+### Post-Parallel Convenience: `--all-completed`
+
+After running `chant work --parallel`, use `--all-completed` as a convenience flag to merge all specs that:
+1. Have `status: completed`
+2. Have an associated branch (e.g., `chant/spec-id`)
+
+This is perfect for post-parallel workflows where you want to merge all successfully completed work:
+
+```bash
+# After parallel execution
+chant work --parallel --max 5
+
+# Merge all completed specs that have branches
+chant merge --all-completed --delete-branch --yes
+
+# Preview what would be merged
+chant merge --all-completed --dry-run
+```
+
+**`--all-completed` vs `--all`:**
+
+| Flag | What it merges |
+|------|----------------|
+| `--all` | All completed specs (including those completed without branches) |
+| `--all-completed` | Only completed specs that have corresponding branches |
+
+Use `--all-completed` when you've run parallel execution and want to merge only the specs that were worked on with feature branches, ignoring specs that may have been manually completed on main.
 
 ### Rebase Before Merge
 
