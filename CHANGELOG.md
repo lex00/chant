@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.5] - 2026-01-27
+
+### Added
+
+- **`chant finalize` command**: Properly complete specs with validation
+  - Validates all acceptance criteria are checked
+  - Sets status to completed, adds model/timestamp/commits
+  - Works on in_progress, completed, or failed specs
+
+- **Auto-finalize in `chant work`**: After agent exits, automatically finalize if criteria checked
+  - Checks for commits first (ensures work was done)
+  - Runs lint to validate spec
+  - Auto-finalizes if all criteria checked
+  - Fails with clear message if criteria unchecked
+
+- **Lint warns on unchecked criteria**: `chant lint` now warns if completed/in_progress specs have unchecked boxes
+
+### Fixed
+
+- **Resume handles in_progress specs**: `chant resume` now accepts in_progress specs (not just failed)
+- **Finalize accepts failed specs**: All finalize paths now accept failed status
+
 ## [0.3.4] - 2026-01-27
 
 ### Fixed
