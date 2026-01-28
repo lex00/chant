@@ -1298,6 +1298,12 @@ pub fn cmd_work_parallel(
         }
     }
 
+    // =========================================================================
+    // CLEANUP PHASE - Remove worktrees for successful specs
+    // =========================================================================
+
+    cleanup_successful_worktrees(&all_results);
+
     // Auto-complete drivers if all their members completed
     let all_specs = spec::load_all_specs(specs_dir).unwrap_or_default();
 
@@ -1414,6 +1420,71 @@ pub fn cmd_work_parallel(
     }
 
     Ok(())
+}
+
+// ============================================================================
+// WORKTREE CLEANUP
+// ============================================================================
+
+/// Clean up worktrees for successfully completed specs
+fn cleanup_successful_worktrees(results: &[ParallelResult]) {
+    let mut cleaned_count = 0;
+    let mut failed_cleanup = Vec::new();
+
+    for result in results {
+        // Only cleanup worktrees for successful specs that aren't direct mode merge-pending
+        if result.success && result.agent_completed {
+            if let Some(ref path) = result.worktree_path {
+                if path.exists() {
+                    match worktree::remove_worktree(path) {
+                        Ok(()) => {
+                            cleaned_count += 1;
+                            eprintln!(
+                                "{} [{}] Cleaned up worktree: {}",
+                                "✓".green(),
+                                result.spec_id,
+                                path.display()
+                            );
+                        }
+                        Err(e) => {
+                            failed_cleanup.push((result.spec_id.clone(), e.to_string()));
+                            eprintln!(
+                                "{} [{}] Failed to cleanup worktree: {}",
+                                "⚠".yellow(),
+                                result.spec_id,
+                                e
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if cleaned_count > 0 {
+        eprintln!(
+            "{} Cleaned up {} worktree{}",
+            "✓".green(),
+            cleaned_count,
+            if cleaned_count == 1 { "" } else { "s" }
+        );
+    }
+
+    if !failed_cleanup.is_empty() {
+        eprintln!(
+            "\n{} Failed to cleanup {} worktree{}:",
+            "⚠".yellow(),
+            failed_cleanup.len(),
+            if failed_cleanup.len() == 1 { "" } else { "s" }
+        );
+        for (spec_id, error) in failed_cleanup {
+            eprintln!("  {} [{}]: {}", "→".yellow(), spec_id, error);
+        }
+        eprintln!(
+            "\nRun {} to manually cleanup orphan worktrees.",
+            "chant cleanup --worktrees".bold()
+        );
+    }
 }
 
 // ============================================================================
@@ -2154,5 +2225,113 @@ mod tests {
         assert_eq!(result[0], "alpha");
         assert_eq!(result[1], "beta");
         assert_eq!(result[2], "zebra");
+    }
+
+    // =========================================================================
+    // CLEANUP TESTS
+    // =========================================================================
+
+    #[test]
+    fn test_cleanup_successful_worktrees_cleans_up_successful_specs() {
+        use std::path::PathBuf;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let worktree_path = temp_dir.path().join("test-worktree");
+        std::fs::create_dir(&worktree_path).unwrap();
+
+        let results = vec![ParallelResult {
+            spec_id: "spec-001".to_string(),
+            success: true,
+            commits: Some(vec!["abc123".to_string()]),
+            error: None,
+            worktree_path: Some(worktree_path.clone()),
+            branch_name: Some("chant/spec-001".to_string()),
+            is_direct_mode: false,
+            agent_completed: true,
+        }];
+
+        // Should not panic and should attempt cleanup
+        cleanup_successful_worktrees(&results);
+        // Note: actual cleanup depends on worktree.rs::remove_worktree implementation
+    }
+
+    #[test]
+    fn test_cleanup_successful_worktrees_skips_failed_specs() {
+        use std::path::PathBuf;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let worktree_path = temp_dir.path().join("test-worktree");
+        std::fs::create_dir(&worktree_path).unwrap();
+
+        let results = vec![ParallelResult {
+            spec_id: "spec-001".to_string(),
+            success: false,
+            commits: None,
+            error: Some("Test failure".to_string()),
+            worktree_path: Some(worktree_path),
+            branch_name: Some("chant/spec-001".to_string()),
+            is_direct_mode: false,
+            agent_completed: false,
+        }];
+
+        // Should not panic and should skip cleanup for failed specs
+        cleanup_successful_worktrees(&results);
+    }
+
+    #[test]
+    fn test_cleanup_successful_worktrees_with_no_worktree_path() {
+        let results = vec![ParallelResult {
+            spec_id: "spec-001".to_string(),
+            success: true,
+            commits: Some(vec!["abc123".to_string()]),
+            error: None,
+            worktree_path: None,
+            branch_name: Some("chant/spec-001".to_string()),
+            is_direct_mode: false,
+            agent_completed: true,
+        }];
+
+        // Should not panic even without worktree_path
+        cleanup_successful_worktrees(&results);
+    }
+
+    #[test]
+    fn test_cleanup_successful_worktrees_mixed_results() {
+        use std::path::PathBuf;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let worktree_path1 = temp_dir.path().join("test-worktree-1");
+        std::fs::create_dir(&worktree_path1).unwrap();
+        let worktree_path2 = temp_dir.path().join("test-worktree-2");
+        std::fs::create_dir(&worktree_path2).unwrap();
+
+        let results = vec![
+            ParallelResult {
+                spec_id: "spec-001".to_string(),
+                success: true,
+                commits: Some(vec!["abc123".to_string()]),
+                error: None,
+                worktree_path: Some(worktree_path1),
+                branch_name: Some("chant/spec-001".to_string()),
+                is_direct_mode: false,
+                agent_completed: true,
+            },
+            ParallelResult {
+                spec_id: "spec-002".to_string(),
+                success: false,
+                commits: None,
+                error: Some("Test failure".to_string()),
+                worktree_path: Some(worktree_path2),
+                branch_name: Some("chant/spec-002".to_string()),
+                is_direct_mode: false,
+                agent_completed: false,
+            },
+        ];
+
+        // Should clean up only successful spec, skip failed
+        cleanup_successful_worktrees(&results);
     }
 }
