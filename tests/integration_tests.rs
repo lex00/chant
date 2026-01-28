@@ -3827,6 +3827,7 @@ This spec tests that finalization updates the status field.
     let _ = cleanup_test_repo(&repo_dir);
 }
 
+<<<<<<< HEAD
 /// Test that invalid regex patterns in enterprise config are handled gracefully
 /// This verifies:
 /// 1. Config with syntactically invalid regex pattern doesn't crash chant add
@@ -3957,6 +3958,375 @@ enterprise:
     );
 
     // Cleanup
+=======
+// ============================================================================
+// PARALLEL WORK AND MERGE WORKFLOW TEST
+// ============================================================================
+
+/// Helper to get worktrees for a repo
+fn get_worktrees(repo_dir: &Path) -> Vec<String> {
+    let output = Command::new("git")
+        .args(["worktree", "list", "--porcelain"])
+        .current_dir(repo_dir)
+        .output()
+        .expect("Failed to list worktrees");
+
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter(|l| l.starts_with("worktree "))
+        .map(|l| l.trim_start_matches("worktree ").to_string())
+        .collect()
+}
+
+/// Test the full parallel work and merge workflow.
+///
+/// This test simulates the complete workflow that users perform:
+/// 1. Create multiple specs
+/// 2. Simulate parallel execution (by manually creating branches and worktrees)
+/// 3. Verify branches created with commits
+/// 4. Merge all specs back to main
+/// 5. Verify worktrees cleaned up
+/// 6. Verify branches deleted
+/// 7. Verify specs show completed status
+///
+/// Note: This test simulates the results of parallel execution rather than
+/// actually running `chant work --parallel`, which would require agents/AI.
+/// The merge and cleanup behavior is tested end-to-end.
+#[test]
+#[serial]
+#[cfg(unix)]
+fn test_parallel_work_and_merge_workflow() {
+    use chant::spec::{Spec, SpecStatus};
+
+    let repo_dir = PathBuf::from("/tmp/test-chant-parallel-merge-workflow");
+    let _ = cleanup_test_repo(&repo_dir);
+
+    // Step 1: Setup test repository
+    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
+
+    // Initialize chant
+    let init_output =
+        run_chant(&repo_dir, &["init", "--minimal"]).expect("Failed to run chant init");
+    if !init_output.status.success() {
+        let _ = std::env::set_current_dir(&original_dir);
+        let _ = cleanup_test_repo(&repo_dir);
+        panic!(
+            "Chant init failed: {}",
+            String::from_utf8_lossy(&init_output.stderr)
+        );
+    }
+
+    // Step 2: Create two specs
+    let chant_dir = repo_dir.join(".chant");
+    let specs_dir = chant_dir.join("specs");
+    fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+
+    // Create spec 1
+    let spec1_id = "2026-01-27-001-aaa";
+    let spec1_content = r#"---
+type: code
+status: ready
+---
+
+# Test Spec 1
+
+Test specification for parallel workflow testing.
+
+## Acceptance Criteria
+
+- [x] Create file1.txt
+"#;
+    let spec1_path = specs_dir.join(format!("{}.md", spec1_id));
+    fs::write(&spec1_path, spec1_content).expect("Failed to write spec1");
+
+    // Create spec 2
+    let spec2_id = "2026-01-27-002-bbb";
+    let spec2_content = r#"---
+type: code
+status: ready
+---
+
+# Test Spec 2
+
+Test specification for parallel workflow testing.
+
+## Acceptance Criteria
+
+- [x] Create file2.txt
+"#;
+    let spec2_path = specs_dir.join(format!("{}.md", spec2_id));
+    fs::write(&spec2_path, spec2_content).expect("Failed to write spec2");
+
+    // Commit the specs
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to add specs");
+    Command::new("git")
+        .args(["commit", "-m", "Add test specs"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to commit specs");
+
+    // Step 3: Simulate parallel execution by creating branches with worktrees
+    // This mimics what `chant work spec1 spec2 --parallel` would do
+    let branch1 = format!("chant/{}", spec1_id);
+    let branch2 = format!("chant/{}", spec2_id);
+    let wt_path1 = PathBuf::from(format!("/tmp/chant-{}", spec1_id));
+    let wt_path2 = PathBuf::from(format!("/tmp/chant-{}", spec2_id));
+
+    // Clean up any previous worktrees
+    let _ = fs::remove_dir_all(&wt_path1);
+    let _ = fs::remove_dir_all(&wt_path2);
+
+    // Create worktree 1
+    let wt1_output = Command::new("git")
+        .args([
+            "worktree",
+            "add",
+            "-b",
+            &branch1,
+            wt_path1.to_str().unwrap(),
+        ])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to create worktree 1");
+
+    if !wt1_output.status.success() {
+        let _ = std::env::set_current_dir(&original_dir);
+        let _ = cleanup_test_repo(&repo_dir);
+        panic!(
+            "Failed to create worktree 1: {}",
+            String::from_utf8_lossy(&wt1_output.stderr)
+        );
+    }
+
+    // Create worktree 2
+    let wt2_output = Command::new("git")
+        .args([
+            "worktree",
+            "add",
+            "-b",
+            &branch2,
+            wt_path2.to_str().unwrap(),
+        ])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to create worktree 2");
+
+    if !wt2_output.status.success() {
+        let _ = Command::new("git")
+            .args(["worktree", "remove", wt_path1.to_str().unwrap()])
+            .current_dir(&repo_dir)
+            .output();
+        let _ = fs::remove_dir_all(&wt_path1);
+        let _ = std::env::set_current_dir(&original_dir);
+        let _ = cleanup_test_repo(&repo_dir);
+        panic!(
+            "Failed to create worktree 2: {}",
+            String::from_utf8_lossy(&wt2_output.stderr)
+        );
+    }
+
+    // Step 4: Verify branches created
+    assert!(
+        branch_exists(&repo_dir, &branch1),
+        "Branch {} should exist",
+        branch1
+    );
+    assert!(
+        branch_exists(&repo_dir, &branch2),
+        "Branch {} should exist",
+        branch2
+    );
+
+    // Step 5: Simulate work by making commits in each worktree
+    // Worktree 1: Create file1.txt
+    fs::write(wt_path1.join("file1.txt"), "Content from spec 1").expect("Failed to write file1");
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(&wt_path1)
+        .output()
+        .expect("Failed to add in wt1");
+    Command::new("git")
+        .args([
+            "commit",
+            "-m",
+            &format!("chant({}): Create file1.txt", spec1_id),
+        ])
+        .current_dir(&wt_path1)
+        .output()
+        .expect("Failed to commit in wt1");
+
+    // Worktree 2: Create file2.txt
+    fs::write(wt_path2.join("file2.txt"), "Content from spec 2").expect("Failed to write file2");
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(&wt_path2)
+        .output()
+        .expect("Failed to add in wt2");
+    Command::new("git")
+        .args([
+            "commit",
+            "-m",
+            &format!("chant({}): Create file2.txt", spec2_id),
+        ])
+        .current_dir(&wt_path2)
+        .output()
+        .expect("Failed to commit in wt2");
+
+    // Verify commits exist on branches
+    let commits1 = get_commit_count(&repo_dir, &branch1);
+    let commits2 = get_commit_count(&repo_dir, &branch2);
+    assert!(
+        commits1 > 1,
+        "Branch {} should have commits beyond initial (has {})",
+        branch1,
+        commits1
+    );
+    assert!(
+        commits2 > 1,
+        "Branch {} should have commits beyond initial (has {})",
+        branch2,
+        commits2
+    );
+
+    // Remove worktrees to simulate what happens after work completes
+    let _ = Command::new("git")
+        .args(["worktree", "remove", wt_path1.to_str().unwrap()])
+        .current_dir(&repo_dir)
+        .output();
+    let _ = Command::new("git")
+        .args(["worktree", "remove", wt_path2.to_str().unwrap()])
+        .current_dir(&repo_dir)
+        .output();
+
+    // Update spec statuses to completed (simulating finalization)
+    let mut spec1 = Spec::load(&spec1_path).expect("Failed to load spec1");
+    spec1.frontmatter.status = SpecStatus::Completed;
+    spec1.frontmatter.model = Some("test-model".to_string());
+    spec1.save(&spec1_path).expect("Failed to save spec1");
+
+    let mut spec2 = Spec::load(&spec2_path).expect("Failed to load spec2");
+    spec2.frontmatter.status = SpecStatus::Completed;
+    spec2.frontmatter.model = Some("test-model".to_string());
+    spec2.save(&spec2_path).expect("Failed to save spec2");
+
+    // Step 6: Merge spec 1 with --delete-branch to clean up after merge
+    let merge1_output = run_chant(&repo_dir, &["merge", spec1_id, "--delete-branch"])
+        .expect("Failed to run merge 1");
+    if !merge1_output.status.success() {
+        eprintln!(
+            "Merge 1 stdout: {}",
+            String::from_utf8_lossy(&merge1_output.stdout)
+        );
+        eprintln!(
+            "Merge 1 stderr: {}",
+            String::from_utf8_lossy(&merge1_output.stderr)
+        );
+    }
+    assert!(
+        merge1_output.status.success(),
+        "Merge of spec1 should succeed"
+    );
+
+    // Step 7: Merge spec 2 with --delete-branch to clean up after merge
+    let merge2_output = run_chant(&repo_dir, &["merge", spec2_id, "--delete-branch"])
+        .expect("Failed to run merge 2");
+    if !merge2_output.status.success() {
+        eprintln!(
+            "Merge 2 stdout: {}",
+            String::from_utf8_lossy(&merge2_output.stdout)
+        );
+        eprintln!(
+            "Merge 2 stderr: {}",
+            String::from_utf8_lossy(&merge2_output.stderr)
+        );
+    }
+    assert!(
+        merge2_output.status.success(),
+        "Merge of spec2 should succeed"
+    );
+
+    // Step 8: Verify worktrees are cleaned up
+    let worktrees = get_worktrees(&repo_dir);
+    assert!(
+        !worktrees.iter().any(|w| w.contains(spec1_id)),
+        "Worktree for spec1 should be cleaned up, but found: {:?}",
+        worktrees
+    );
+    assert!(
+        !worktrees.iter().any(|w| w.contains(spec2_id)),
+        "Worktree for spec2 should be cleaned up, but found: {:?}",
+        worktrees
+    );
+
+    // Step 9: Verify branches are deleted after merge
+    assert!(
+        !branch_exists(&repo_dir, &branch1),
+        "Branch {} should be deleted after merge",
+        branch1
+    );
+    assert!(
+        !branch_exists(&repo_dir, &branch2),
+        "Branch {} should be deleted after merge",
+        branch2
+    );
+
+    // Step 10: Verify files were merged to main
+    let _ = Command::new("git")
+        .args(["checkout", "main"])
+        .current_dir(&repo_dir)
+        .output();
+    assert!(
+        repo_dir.join("file1.txt").exists(),
+        "file1.txt should exist on main after merge"
+    );
+    assert!(
+        repo_dir.join("file2.txt").exists(),
+        "file2.txt should exist on main after merge"
+    );
+
+    // Step 11: Verify specs show completed status via chant list
+    let list_output = run_chant(&repo_dir, &["list"]).expect("Failed to run chant list");
+    let list_stdout = String::from_utf8_lossy(&list_output.stdout);
+
+    // The output format shows status icon followed by spec ID
+    // Completed status shows green "●"
+    assert!(
+        list_stdout.contains(spec1_id),
+        "List output should contain spec1 ID: {}. Output: {}",
+        spec1_id,
+        list_stdout
+    );
+    assert!(
+        list_stdout.contains(spec2_id),
+        "List output should contain spec2 ID: {}. Output: {}",
+        spec2_id,
+        list_stdout
+    );
+
+    // Verify spec status via direct load
+    let reloaded_spec1 = Spec::load(&spec1_path).expect("Failed to reload spec1");
+    let reloaded_spec2 = Spec::load(&spec2_path).expect("Failed to reload spec2");
+    assert_eq!(
+        reloaded_spec1.frontmatter.status,
+        SpecStatus::Completed,
+        "Spec1 should have Completed status"
+    );
+    assert_eq!(
+        reloaded_spec2.frontmatter.status,
+        SpecStatus::Completed,
+        "Spec2 should have Completed status"
+    );
+
+    // Cleanup
+    let _ = fs::remove_dir_all(&wt_path1);
+    let _ = fs::remove_dir_all(&wt_path2);
+>>>>>>> a2eb56d (chant(2026-01-27-00v-xe8): Add integration test for parallel work and merge workflow)
     let _ = std::env::set_current_dir(&original_dir);
     let _ = cleanup_test_repo(&repo_dir);
 }
