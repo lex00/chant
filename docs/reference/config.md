@@ -622,10 +622,10 @@ enterprise:
       from: env
       pattern: DEPLOY_ENV
 
-    # Extract from git user
+    # Extract from git user (pattern must be literal "name" or "email", not regex)
     author_email:
       from: git_user
-      pattern: ".*"              # email or username
+      pattern: "email"           # Extracts git config user.email
 ---
 ```
 
@@ -633,12 +633,13 @@ enterprise:
 - `branch` - Current git branch name
 - `path` - Spec file path relative to repository root
 - `env` - Environment variable name (omits `$`)
-- `git_user` - Git user name or email
+- `git_user` - Git user name or email (pattern must be literal `"name"` or `"email"`, not regex)
 
 **Pattern Syntax:**
 - Standard regex with capture groups
 - First capture group becomes the field value
 - If pattern doesn't match → field omitted (graceful failure)
+- **Exception:** `git_user` source does not use regex — pattern must be the literal string `"name"` or `"email"`
 
 **Validation:**
 - `type: enum` with `values: [...]` list
