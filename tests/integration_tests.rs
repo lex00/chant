@@ -874,7 +874,7 @@ impl Config {
 
     // Simulate merging branches back to main - first one should succeed
     let branch_0 = &branches[0];
-    let wt_path_0 = &worktree_paths[0];
+    let _wt_path_0 = &worktree_paths[0];
 
     let merge_output_0 = Command::new("git")
         .args(["merge", "--ff-only", branch_0])

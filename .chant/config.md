@@ -10,7 +10,7 @@ defaults:
   rotation_strategy: round-robin
 
 parallel:
-  stagger_delay_ms: 10000
+  stagger_delay_ms: 3000
   agents:
     #- name: claude1
     #  command: claude1

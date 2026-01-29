@@ -2402,7 +2402,6 @@ mod tests {
 
     #[test]
     fn test_cleanup_successful_worktrees_cleans_up_successful_specs() {
-        
         use tempfile::TempDir;
 
         let temp_dir = TempDir::new().unwrap();
@@ -2427,7 +2426,6 @@ mod tests {
 
     #[test]
     fn test_cleanup_successful_worktrees_skips_failed_specs() {
-        
         use tempfile::TempDir;
 
         let temp_dir = TempDir::new().unwrap();
@@ -2468,7 +2466,6 @@ mod tests {
 
     #[test]
     fn test_cleanup_successful_worktrees_mixed_results() {
-        
         use tempfile::TempDir;
 
         let temp_dir = TempDir::new().unwrap();

@@ -155,7 +155,7 @@ mod tests {
             Some("regression fix".to_string()),
         );
 
-        let (first_line, body) = ctx.format_commit_message();
+        let (_first_line, body) = ctx.format_commit_message();
 
         assert_eq!(
             body,
