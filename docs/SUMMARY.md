@@ -7,6 +7,7 @@
 # Getting Started
 
 - [Installation](getting-started/installation.md)
+- [Shell Completion](getting-started/shell-completion.md)
 - [Quick Start](getting-started/quickstart.md)
 - [Philosophy](getting-started/philosophy.md)
 - [Value Proposition](getting-started/value.md)

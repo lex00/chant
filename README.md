@@ -40,6 +40,26 @@ brew install chant
 
 For detailed platform-specific instructions and troubleshooting, see the [Installation Guide](https://lex00.github.io/chant/getting-started/installation.html).
 
+### Shell Completion
+
+Enable tab completion for your shell:
+
+```bash
+# Bash
+chant completion bash > /etc/bash_completion.d/chant
+
+# Zsh
+chant completion zsh > "${fpath[1]}/_chant"
+
+# Fish
+chant completion fish > ~/.config/fish/completions/chant.fish
+
+# PowerShell
+chant completion powershell >> $PROFILE
+```
+
+For detailed setup instructions, see the [Shell Completion Guide](https://lex00.github.io/chant/getting-started/shell-completion.html).
+
 ## Documentation
 
 Full documentation is available at **[lex00.github.io/chant](https://lex00.github.io/chant)**

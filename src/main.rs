@@ -13,8 +13,10 @@ mod templates;
 mod cmd;
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::{generate, Shell};
 use colored::Colorize;
+use std::io;
 use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
@@ -511,6 +513,12 @@ enum Commands {
     /// Show setup instructions for the spec merge driver
     #[command(name = "merge-driver-setup")]
     MergeDriverSetup,
+    /// Generate shell completion script
+    Completion {
+        /// Shell to generate completions for (bash, zsh, fish, powershell)
+        #[arg(value_enum)]
+        shell: Shell,
+    },
 }
 
 fn main() -> Result<()> {
@@ -793,6 +801,7 @@ fn run() -> Result<()> {
             other,
         } => cmd_merge_driver(&base, &current, &other),
         Commands::MergeDriverSetup => cmd_merge_driver_setup(),
+        Commands::Completion { shell } => cmd_completion(shell),
     }
 }
 
@@ -818,6 +827,13 @@ fn cmd_merge_driver(base: &Path, current: &Path, other: &Path) -> Result<()> {
 /// Show setup instructions for the merge driver
 fn cmd_merge_driver_setup() -> Result<()> {
     println!("{}", chant::merge_driver::get_setup_instructions());
+    Ok(())
+}
+
+/// Generate shell completion script
+fn cmd_completion(shell: Shell) -> Result<()> {
+    let mut cmd = Cli::command();
+    generate(shell, &mut cmd, "chant", &mut io::stdout());
     Ok(())
 }
 
