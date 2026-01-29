@@ -514,6 +514,24 @@ enum Commands {
 }
 
 fn main() -> Result<()> {
+    // Spawn the real work on a thread with a larger stack size.
+    // Windows defaults to a 1MB stack which is insufficient for this binary
+    // in debug builds (Linux/macOS default to 8MB). Using 8MB here matches
+    // the Linux default and prevents stack overflows on Windows CI.
+    const STACK_SIZE: usize = 8 * 1024 * 1024; // 8 MB
+
+    let thread = std::thread::Builder::new()
+        .stack_size(STACK_SIZE)
+        .spawn(run)
+        .expect("failed to spawn main thread");
+
+    match thread.join() {
+        Ok(result) => result,
+        Err(payload) => std::panic::resume_unwind(payload),
+    }
+}
+
+fn run() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
