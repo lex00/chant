@@ -266,6 +266,7 @@ pub fn cmd_work(
     skip_approval: bool,
     chain: bool,
     chain_max: usize,
+    no_merge: bool,
 ) -> Result<()> {
     let specs_dir = crate::cmd::ensure_initialized()?;
     let prompts_dir = PathBuf::from(PROMPTS_DIR);
@@ -290,6 +291,7 @@ pub fn cmd_work(
             branch_prefix: cli_branch.as_deref(),
             prompt_name,
             specific_ids: ids,
+            no_merge,
         };
         return cmd_work_parallel(&specs_dir, &prompts_dir, &config, options);
     }
@@ -332,6 +334,7 @@ pub fn cmd_work(
                     branch_prefix: cli_branch.as_deref(),
                     prompt_name,
                     specific_ids: &[],
+                    no_merge,
                 };
                 return cmd_work_parallel(&specs_dir, &prompts_dir, &config, options);
             }
@@ -1278,6 +1281,8 @@ pub struct ParallelOptions<'a> {
     pub prompt_name: Option<&'a str>,
     /// Specific spec IDs to run (if empty, runs all ready specs)
     pub specific_ids: &'a [String],
+    /// Disable auto-merge after parallel execution
+    pub no_merge: bool,
 }
 
 /// Options for chain execution mode
@@ -2027,6 +2032,93 @@ pub fn cmd_work_parallel(
     }
 
     // =========================================================================
+    // BRANCH MODE MERGE PHASE - Auto-merge branch mode branches unless --no-merge
+    // =========================================================================
+
+    let mut branch_mode_merged = 0;
+    let mut branch_mode_failed: Vec<(String, bool)> = Vec::new();
+    let mut branch_mode_skipped: Vec<(String, String)> = Vec::new();
+
+    if !options.no_merge && !branch_mode_branches.is_empty() {
+        println!(
+            "\n{} Auto-merging {} branch mode branch(es)...",
+            "→".cyan(),
+            branch_mode_branches.len()
+        );
+
+        for (spec_id, branch) in &branch_mode_branches {
+            println!("[{}] Merging to main...", spec_id.cyan());
+            let merge_result = worktree::merge_and_cleanup(branch);
+
+            if merge_result.success {
+                branch_mode_merged += 1;
+                println!("[{}] {} Merged to main", spec_id.cyan(), "✓".green());
+            } else {
+                // Merge failed - preserve branch
+                branch_mode_failed.push((spec_id.clone(), merge_result.has_conflict));
+
+                // Update spec status to indicate merge pending
+                let spec_path = specs_dir.join(format!("{}.md", spec_id));
+                if let Ok(mut spec) = spec::resolve_spec(specs_dir, spec_id) {
+                    spec.frontmatter.status = SpecStatus::NeedsAttention;
+                    let _ = spec.save(&spec_path);
+                }
+
+                let error_msg = merge_result
+                    .error
+                    .as_deref()
+                    .unwrap_or("Unknown merge error");
+                println!(
+                    "[{}] {} Merge failed (branch preserved):\n  {}\n  Next Steps:\n    1. Auto-resolve: chant merge {} --rebase --auto\n    2. Merge manually: chant merge {}\n    3. Inspect: git log {} --oneline -3",
+                    spec_id.cyan(),
+                    "⚠".yellow(),
+                    error_msg,
+                    spec_id,
+                    spec_id,
+                    branch
+                );
+
+                // Check for actual conflicts that need resolution spec
+                if merge_result.has_conflict {
+                    if let Ok(conflicting_files) = conflict::detect_conflicting_files() {
+                        let all_specs = spec::load_all_specs(specs_dir).unwrap_or_default();
+                        let blocked_specs =
+                            conflict::get_blocked_specs(&conflicting_files, &all_specs);
+
+                        let source_branch = branch.to_string();
+                        let (spec_title, _) = conflict::extract_spec_context(specs_dir, spec_id)
+                            .unwrap_or((None, String::new()));
+                        let diff_summary =
+                            conflict::get_diff_summary(&source_branch, "main").unwrap_or_default();
+
+                        let context = conflict::ConflictContext {
+                            source_branch,
+                            target_branch: "main".to_string(),
+                            conflicting_files,
+                            source_spec_id: spec_id.clone(),
+                            source_spec_title: spec_title,
+                            diff_summary,
+                        };
+
+                        if let Ok(conflict_spec_id) =
+                            conflict::create_conflict_spec(specs_dir, &context, blocked_specs)
+                        {
+                            println!(
+                                "[{}] Created conflict resolution spec: {}",
+                                spec_id.cyan(),
+                                conflict_spec_id
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    } else if options.no_merge && !branch_mode_branches.is_empty() {
+        // --no-merge specified, skip auto-merge
+        branch_mode_skipped = branch_mode_branches.clone();
+    }
+
+    // =========================================================================
     // CLEANUP PHASE - Remove worktrees for successful specs
     // =========================================================================
 
@@ -2058,6 +2150,7 @@ pub fn cmd_work_parallel(
     println!("{}", "Parallel execution complete:".bold());
     println!("  {} {} specs completed work", "✓".green(), completed);
 
+    // Report direct mode merges (if any)
     if !direct_mode_results.is_empty() {
         println!("  {} {} branches merged to main", "✓".green(), merged_count);
 
@@ -2074,22 +2167,56 @@ pub fn cmd_work_parallel(
         }
     }
 
+    // Report branch mode merges
+    if branch_mode_merged > 0 {
+        println!(
+            "  {} {} branch mode specs merged to main",
+            "✓".green(),
+            branch_mode_merged
+        );
+    }
+
+    if !branch_mode_failed.is_empty() {
+        println!(
+            "  {} {} branch mode specs need attention (merge failed)",
+            "⚠".yellow(),
+            branch_mode_failed.len()
+        );
+        for (spec_id, has_conflict) in &branch_mode_failed {
+            let indicator = if *has_conflict { "⚡" } else { "→" };
+            println!("    {} {}", indicator.yellow(), spec_id);
+        }
+    }
+
+    // Show branches that were skipped due to --no-merge
+    if !branch_mode_skipped.is_empty() {
+        println!(
+            "  {} {} branches preserved (--no-merge)",
+            "→".cyan(),
+            branch_mode_skipped.len()
+        );
+    }
+
     if failed > 0 {
         println!("  {} {} specs failed", "✗".red(), failed);
     }
     println!("{}", "═".repeat(60).dimmed());
 
-    // Show branch mode information
-    if !branch_mode_branches.is_empty() {
-        println!("\n{} Branch mode branches created for merging:", "→".cyan());
-        for (_spec_id, branch) in branch_mode_branches {
+    // Show branch mode information (only if --no-merge was used)
+    if !branch_mode_skipped.is_empty() {
+        println!(
+            "\n{} Branch mode branches preserved for manual merging:",
+            "→".cyan()
+        );
+        for (_spec_id, branch) in &branch_mode_skipped {
             println!("  {} {}", "•".yellow(), branch);
         }
         println!("\nUse {} to merge branches later.", "chant merge".bold());
     }
 
-    // Show next steps for merge failures
-    if !merge_failed.is_empty() {
+    // Show next steps for merge failures (direct mode or branch mode)
+    let all_merge_failed = !merge_failed.is_empty() || !branch_mode_failed.is_empty();
+    if all_merge_failed {
         println!("\n{} Next steps for merge-pending branches:", "→".cyan());
         println!("  1. Review each branch:  git log <branch> --oneline -5");
         println!("  2. Auto-resolve conflicts:  chant merge --all --rebase --auto");

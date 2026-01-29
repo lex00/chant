@@ -10,7 +10,9 @@ use std::path::Path;
 use chant::config::Config;
 use chant::spec::{self, load_all_specs, Spec, SpecStatus};
 
-use crate::cmd::commits::{get_commits_for_spec, get_commits_for_spec_allow_no_commits};
+use crate::cmd::commits::{
+    get_commits_for_spec, get_commits_for_spec_allow_no_commits, get_commits_for_spec_with_branch,
+};
 use crate::cmd::model::get_model_name;
 
 /// Maximum characters to store in agent output section
@@ -42,10 +44,16 @@ pub fn finalize_spec(
     }
 
     // Use provided commits or fetch them
+    // Check the spec's branch field first if available (Issue 1 fix)
     let commits = match commits {
         Some(c) => c,
         None => {
-            if allow_no_commits {
+            // If spec has a branch field, search that branch first
+            let spec_branch = spec.frontmatter.branch.as_deref();
+            if spec_branch.is_some() && !allow_no_commits {
+                // Use branch-aware search
+                get_commits_for_spec_with_branch(&spec.id, spec_branch)?
+            } else if allow_no_commits {
                 get_commits_for_spec_allow_no_commits(&spec.id)?
             } else {
                 get_commits_for_spec(&spec.id)?
@@ -192,7 +200,12 @@ pub fn re_finalize_spec(
     }
 
     // Get the commits for this spec (may have new ones since last finalization)
-    let commits = if allow_no_commits {
+    // Check the spec's branch field first if available (Issue 1 fix)
+    let spec_branch = spec.frontmatter.branch.as_deref();
+    let commits = if spec_branch.is_some() && !allow_no_commits {
+        // Use branch-aware search
+        get_commits_for_spec_with_branch(&spec.id, spec_branch)?
+    } else if allow_no_commits {
         get_commits_for_spec_allow_no_commits(&spec.id)?
     } else {
         get_commits_for_spec(&spec.id)?
@@ -302,7 +315,12 @@ pub fn replay_finalize_spec(
     allow_no_commits: bool,
 ) -> Result<()> {
     // First, get the commits
-    let commits = if allow_no_commits {
+    // Check the spec's branch field first if available (Issue 1 fix)
+    let spec_branch = spec.frontmatter.branch.as_deref();
+    let commits = if spec_branch.is_some() && !allow_no_commits {
+        // Use branch-aware search
+        get_commits_for_spec_with_branch(&spec.id, spec_branch)?
+    } else if allow_no_commits {
         get_commits_for_spec_allow_no_commits(&spec.id)?
     } else {
         get_commits_for_spec(&spec.id)?

@@ -350,15 +350,58 @@ mod tests {
 
 /// Get commits for a spec, failing if no commits match the pattern.
 pub fn get_commits_for_spec(spec_id: &str) -> Result<Vec<String>> {
-    get_commits_for_spec_internal(spec_id, false)
+    get_commits_for_spec_internal(spec_id, None, false)
+}
+
+/// Get commits for a spec with branch context for better error messages.
+/// If spec_branch is provided, searches that branch first before current branch.
+pub fn get_commits_for_spec_with_branch(
+    spec_id: &str,
+    spec_branch: Option<&str>,
+) -> Result<Vec<String>> {
+    get_commits_for_spec_internal(spec_id, spec_branch, false)
 }
 
 /// Get commits for a spec, using HEAD as fallback if no commits match.
 pub fn get_commits_for_spec_allow_no_commits(spec_id: &str) -> Result<Vec<String>> {
-    get_commits_for_spec_internal(spec_id, true)
+    get_commits_for_spec_internal(spec_id, None, true)
 }
 
-fn get_commits_for_spec_internal(spec_id: &str, allow_no_commits: bool) -> Result<Vec<String>> {
+/// Search for commits on a specific branch matching the spec pattern.
+/// Returns Ok(commits) if found, Err if not found or git command failed.
+fn find_commits_on_branch(branch: &str, spec_id: &str) -> Result<Vec<String>> {
+    use std::process::Command;
+
+    let pattern = format!("chant({}):", spec_id);
+
+    let output = Command::new("git")
+        .args(["log", branch, "--oneline", "--grep", &pattern, "--reverse"])
+        .output()
+        .context("Failed to execute git log command")?;
+
+    if !output.status.success() {
+        // Branch might not exist or other git error
+        return Ok(vec![]);
+    }
+
+    let mut commits = Vec::new();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        if let Some(hash) = line.split_whitespace().next() {
+            if !hash.is_empty() {
+                commits.push(hash.to_string());
+            }
+        }
+    }
+
+    Ok(commits)
+}
+
+fn get_commits_for_spec_internal(
+    spec_id: &str,
+    spec_branch: Option<&str>,
+    allow_no_commits: bool,
+) -> Result<Vec<String>> {
     use std::process::Command;
 
     // Look for all commits with the chant(spec_id): pattern
@@ -370,6 +413,26 @@ fn get_commits_for_spec_internal(spec_id: &str, allow_no_commits: bool) -> Resul
         "→".cyan(),
         pattern
     );
+
+    // If a spec branch is specified, check that branch first
+    if let Some(branch) = spec_branch {
+        eprintln!(
+            "{} Checking spec branch '{}' for commits",
+            "→".cyan(),
+            branch
+        );
+        if let Ok(branch_commits) = find_commits_on_branch(branch, spec_id) {
+            if !branch_commits.is_empty() {
+                eprintln!(
+                    "{} Found {} commit(s) on branch '{}'",
+                    "→".cyan(),
+                    branch_commits.len(),
+                    branch
+                );
+                return Ok(branch_commits);
+            }
+        }
+    }
 
     let output = Command::new("git")
         .args(["log", "--oneline", "--grep", &pattern, "--reverse"])
@@ -439,6 +502,23 @@ fn get_commits_for_spec_internal(spec_id: &str, allow_no_commits: bool) -> Resul
             }
         } else {
             // Default behavior: fail loudly with actionable message
+            // Check if commits exist on the spec's branch to provide better error message
+            let default_branch = format!("chant/{}", spec_id);
+            let branch_to_check = spec_branch.unwrap_or(&default_branch);
+            if let Ok(branch_commits) = find_commits_on_branch(branch_to_check, spec_id) {
+                if !branch_commits.is_empty() {
+                    let error_msg = format!(
+                        "No matching commits found on main\n\
+                         Found {} commit(s) on branch {}\n\
+                         Run 'chant merge {}' to merge the branch first",
+                        branch_commits.len(),
+                        branch_to_check,
+                        spec_id
+                    );
+                    eprintln!("{} {}", "✗".red(), error_msg);
+                    return Err(anyhow::anyhow!(CommitError::NoMatchingCommits));
+                }
+            }
             let error_msg =
                 chant::merge_errors::no_commits_found(spec_id, &format!("chant/{}", spec_id));
             eprintln!("{} {}", "✗".red(), error_msg);

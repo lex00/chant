@@ -217,6 +217,9 @@ enum Commands {
         /// Maximum number of specs to chain (0 = unlimited, only with --chain)
         #[arg(long, default_value = "0")]
         chain_max: usize,
+        /// Disable auto-merge after parallel execution (branches are kept for manual merge)
+        #[arg(long)]
+        no_merge: bool,
     },
     /// Start MCP server (Model Context Protocol)
     Mcp,
@@ -317,6 +320,9 @@ enum Commands {
         /// Auto-resolve conflicts using agent (requires --rebase)
         #[arg(long)]
         auto: bool,
+        /// Mark specs as completed after successful merge
+        #[arg(long)]
+        finalize: bool,
     },
     /// Diagnose spec execution issues
     Diagnose {
@@ -646,6 +652,7 @@ fn run() -> Result<()> {
             skip_approval,
             chain,
             chain_max,
+            no_merge,
         } => cmd::work::cmd_work(
             &ids,
             prompt.as_deref(),
@@ -661,6 +668,7 @@ fn run() -> Result<()> {
             skip_approval,
             chain,
             chain_max,
+            no_merge,
         ),
         Commands::Mcp => mcp::run_server(),
         Commands::Status { global, repo } => cmd::spec::cmd_status(global, repo.as_deref()),
@@ -708,6 +716,7 @@ fn run() -> Result<()> {
             yes,
             rebase,
             auto,
+            finalize,
         } => cmd::lifecycle::cmd_merge(
             &ids,
             all,
@@ -718,6 +727,7 @@ fn run() -> Result<()> {
             yes,
             rebase,
             auto,
+            finalize,
         ),
         Commands::Diagnose { id } => cmd::lifecycle::cmd_diagnose(&id),
         Commands::Drift { id } => cmd::lifecycle::cmd_drift(id.as_deref()),

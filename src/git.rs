@@ -365,20 +365,31 @@ pub fn merge_single_spec(
 
     // Delete branch if requested and merge was successful
     let mut branch_delete_warning: Option<String> = None;
+    let mut branch_actually_deleted = false;
     if should_delete_branch && merge_success {
         if let Err(e) = delete_branch(spec_branch, dry_run) {
             // Log warning but don't fail overall
             branch_delete_warning = Some(format!("Warning: Failed to delete branch: {}", e));
+        } else {
+            branch_actually_deleted = true;
         }
     }
 
-    // Return to original branch (always do this, even in dry_run)
-    if let Err(e) = checkout_branch(&original_branch, false) {
-        anyhow::bail!(
-            "Failed to return to original branch '{}': {}",
-            original_branch,
-            e
-        );
+    // Return to original branch, BUT not if:
+    // 1. We're already on main (no need to switch)
+    // 2. The original branch was the spec branch that we just deleted
+    let should_checkout_original = original_branch != main_branch
+        && !(branch_actually_deleted && original_branch == spec_branch);
+
+    if should_checkout_original {
+        if let Err(e) = checkout_branch(&original_branch, false) {
+            // If we can't checkout the original branch, stay on main
+            // This can happen if the original branch was deleted elsewhere
+            eprintln!(
+                "Warning: Could not return to original branch '{}': {}. Staying on {}.",
+                original_branch, e, main_branch
+            );
+        }
     }
 
     Ok(MergeResult {

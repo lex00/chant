@@ -11,7 +11,7 @@
 use anyhow::{Context, Result};
 use chrono::Local;
 use colored::Colorize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use chant::config::Config;
 use chant::diagnose;
@@ -1296,10 +1296,12 @@ fn execute_merge(
     yes: bool,
     final_rebase: bool,
     auto_resolve: bool,
+    finalize: bool,
     all_specs: &[Spec],
     config: &Config,
     branch_prefix: &str,
     main_branch: &str,
+    specs_dir: &Path,
 ) -> Result<()> {
     // Get specs to merge using the merge module function
     let mut specs_to_merge = merge::get_specs_to_merge(final_ids, all, all_specs)?;
@@ -1510,13 +1512,72 @@ fn execute_merge(
         println!("{}", git::format_merge_summary(result));
     }
 
+    // Finalize specs if --finalize flag is set
+    let mut finalized_count = 0;
+    let mut finalize_errors: Vec<(String, String)> = Vec::new();
+
+    if finalize && !dry_run {
+        println!("\n{} Finalizing merged specs...", "→".cyan());
+        for result in &merge_results {
+            if result.success {
+                // Reload the spec from disk (it may have changed during merge)
+                match spec::resolve_spec(specs_dir, &result.spec_id) {
+                    Ok(mut spec) => {
+                        // Update spec status to completed
+                        spec.frontmatter.status = SpecStatus::Completed;
+
+                        // Add completed_at if not present
+                        if spec.frontmatter.completed_at.is_none() {
+                            spec.frontmatter.completed_at =
+                                Some(chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string());
+                        }
+
+                        // Save the spec
+                        let spec_path = specs_dir.join(format!("{}.md", result.spec_id));
+                        match spec.save(&spec_path) {
+                            Ok(_) => {
+                                finalized_count += 1;
+                                println!("  {} {} finalized", "✓".green(), result.spec_id);
+                            }
+                            Err(e) => {
+                                finalize_errors.push((
+                                    result.spec_id.clone(),
+                                    format!("Failed to save: {}", e),
+                                ));
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        finalize_errors.push((
+                            result.spec_id.clone(),
+                            format!("Failed to load spec: {}", e),
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
     // Display summary
     println!("\n{} Summary", "→".cyan());
     println!("{}", "─".repeat(60));
     println!("  {} Specs merged: {}", "✓".green(), merge_results.len());
+    if finalize && finalized_count > 0 {
+        println!("  {} Specs finalized: {}", "✓".green(), finalized_count);
+    }
     if !errors.is_empty() {
         println!("  {} Specs failed: {}", "✗".red(), errors.len());
         for (spec_id, error_msg) in &errors {
+            println!("    - {}: {}", spec_id, error_msg);
+        }
+    }
+    if !finalize_errors.is_empty() {
+        println!(
+            "  {} Specs failed to finalize: {}",
+            "⚠".yellow(),
+            finalize_errors.len()
+        );
+        for (spec_id, error_msg) in &finalize_errors {
             println!("    - {}: {}", spec_id, error_msg);
         }
     }
@@ -1536,7 +1597,22 @@ fn execute_merge(
         return Ok(());
     }
 
-    println!("\n{} All specs merged successfully.", "✓".green());
+    if finalize {
+        if finalize_errors.is_empty() {
+            println!(
+                "\n{} All specs merged and finalized successfully.",
+                "✓".green()
+            );
+        } else {
+            println!("\n{}", "Some specs failed to finalize.".yellow());
+            println!(
+                "Run {} for failed specs.",
+                "chant finalize <spec-id>".bold()
+            );
+        }
+    } else {
+        println!("\n{} All specs merged successfully.", "✓".green());
+    }
     Ok(())
 }
 
@@ -1552,6 +1628,7 @@ pub fn cmd_merge(
     yes: bool,
     rebase: bool,
     auto_resolve: bool,
+    finalize: bool,
 ) -> Result<()> {
     let specs_dir = crate::cmd::ensure_initialized()?;
 
@@ -1609,10 +1686,12 @@ pub fn cmd_merge(
             yes,
             final_rebase,
             auto_resolve,
+            finalize,
             &all_specs,
             &config,
             branch_prefix,
             &main_branch,
+            &specs_dir,
         );
     }
 
@@ -1640,10 +1719,12 @@ pub fn cmd_merge(
         yes,
         final_rebase,
         auto_resolve,
+        finalize,
         &all_specs,
         &config,
         branch_prefix,
         &main_branch,
+        &specs_dir,
     )
 }
 
@@ -1911,6 +1992,7 @@ pub fn cmd_resume(
             false, // skip_approval
             false, // chain
             0,     // chain_max
+            false, // no_merge
         )?;
     }
 
@@ -2048,6 +2130,7 @@ pub fn cmd_replay(
         true,  // skip_approval - replays should skip approval check
         false, // chain
         0,     // chain_max
+        false, // no_merge
     );
 
     // Handle result: cmd_work will have set the status to completed or failed
