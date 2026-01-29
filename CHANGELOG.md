@@ -5,6 +5,89 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-01-29
+
+### Added
+
+- **`chant work --chain`**: Autonomous chaining through ready specs
+  - `--chain` flag loops through ready specs until none remain or failure
+  - `--chain-max N` limits chain length
+  - Respects dependencies and label filters
+  - Shows progress `[N/M]` with elapsed time
+  - Graceful Ctrl+C handling
+  - Perfect for overnight work queues, CI/CD, batch processing
+
+- **Auto-merge for parallel + branch workflow**
+  - Parallel execution now auto-merges completed branches to main
+  - `chant work --parallel --no-merge` disables auto-merge for manual review
+  - `chant merge --finalize` atomically merges and marks specs completed
+  - Fixes 5 workflow issues: branch finalization, status preservation, cleanup errors
+
+- **Automatic merge driver setup**
+  - `chant init` now automatically configures git merge driver for spec files
+  - No more manual `chant merge-driver-setup` needed
+  - Graceful handling when outside git repo
+  - Intelligent merging of status, commits, timestamps
+
+- **Shell autocomplete support**
+  - `chant completion <shell>` generates completions for bash, zsh, fish, PowerShell, elvish
+  - Completes commands, flags, and options
+  - Installation instructions in README and docs
+
+- **Enterprise documentation**
+  - Research workflow guide with ASCII dependency graph
+  - Dual paths: academic (PhD student) and developer (staff engineer)
+  - Shows how spec types coordinate across research phases
+  - TDD workflow guide for enterprise teams
+  - KPI/OKR terminology fixes and clarifications
+
+### Changed
+
+- **Agent configuration separation** (Breaking)
+  - Agent configs moved from `.chant/config.md` (project) to `~/.config/chant/config.md` (global)
+  - Optional `.chant/agents.md` for project-specific agent overrides (gitignored)
+  - Config merge order: global → project → agents.md
+  - **Migration**: Move `parallel.agents` section from `.chant/config.md` to global config
+  - Keeps sensitive agent settings (API keys, accounts) out of git
+
+- **Improved finalization**
+  - Finalization now checks spec's branch field before main branch
+  - Better error messages: suggests running `chant merge` when commits found on branch
+  - Fixes parallel + branch workflow finalization failures
+
+- **Merge improvements**
+  - No longer tries to checkout deleted branches after successful merge
+  - Preserves completed status from branch during merge (via custom merge driver)
+  - Better error handling and status reporting
+
+- **Default .gitignore updates**
+  - `logs/` now included in `.chant/.gitignore` template
+  - User-specific execution logs no longer accidentally committed
+  - `agents.md` also gitignored by default
+
+### Fixed
+
+- **Windows CI**: Fixed stack overflow on Windows by spawning main logic on 8MB thread
+- **Git-dependent tests**: Fixed integration tests to use temp repos with proper git setup
+- **Branch initialization**: Fixed `git init -b main` for consistent branch naming
+- **Documentation**: Fixed 20+ inaccuracies from audit (removed non-existent commands, moved planned features to planning/)
+- **Config cleanup**: Removed stale `pr:` field from config and 18 test fixtures
+
+### Documentation
+
+- Complete shell completion setup guide
+- Updated CLAUDE.md with agent config separation
+- Created `docs/planning/` for unimplemented features
+- `chant show` now displays frontmatter summary by default (use `--body` for full content)
+- Fixed git hooks examples to use actual commands
+
+### Licensing
+
+- **Apache 2.0**: Migrated from MIT to Apache 2.0 license
+  - Added LICENSE file with full Apache 2.0 text
+  - Added NOTICE file with dependency attributions
+  - Updated Cargo.toml, README.md, and all documentation
+
 ## [0.5.0] - 2026-01-28
 
 ### Added
