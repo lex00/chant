@@ -26,9 +26,9 @@ Revenue saved: ~$75K/month at target
 Timeline:      End of Q1 2026 (4 weeks)
 ```
 
-## Success Metrics
+## KPIs Being Tracked
 
-Sarah (VP Product) defines measurable criteria:
+Sarah (VP Product) defines the key performance indicators that the Q1 OKR targets:
 
 | Metric | Baseline | Target | How Measured |
 |--------|----------|--------|-------------|

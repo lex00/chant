@@ -1,26 +1,39 @@
 # Enterprise KPI/OKR Workflow
 
-A complete walkthrough showing how chant drives a real business KPI from data analysis through implementation.
+A complete walkthrough showing how chant drives a real business OKR from data analysis through implementation.
+
+> **OKR vs KPI — What's the difference?**
+>
+> - **KPI** (Key Performance Indicator) = An ongoing metric being tracked (e.g., churn rate, NPS score)
+> - **OKR** (Objectives and Key Results) = A time-bound goal framework targeting improvement
+>   - **Objective**: Qualitative goal ("Improve customer retention")
+>   - **Key Result**: Quantitative target ("Reduce churn from 8% to 5%")
+>
+> In this guide, churn rate is the **KPI** being tracked. The Q1 **OKR** sets a target to improve that KPI.
 
 ## The Scenario
 
-**Acme SaaS Corp** is a B2B platform with 5,000 customers. Their Q1 OKR: reduce customer churn from 8% to 5%. This guide follows their team through the full workflow — from gathering data to shipping fixes to tracking results.
+**Acme SaaS Corp** is a B2B platform with 5,000 customers. Their Q1 OKR targets improving customer retention by reducing churn. This guide follows their team through the full workflow — from gathering data to shipping fixes to tracking results.
 
 ### Team
 
 | Role | Person | Responsibility |
 |------|--------|---------------|
-| VP Product | Sarah | Defines KPIs, approves specs |
+| VP Product | Sarah | Sets OKRs, approves specs |
 | Data Analyst | Mike | Gathers data, creates digests |
 | Engineers | (managed by chant) | Implement approved changes |
 
-### KPI Definition
+### Q1 OKR
+
+**Objective:** Improve customer retention
+
+**Key Result:** Reduce monthly churn rate from 8% to 5%
 
 ```
-Metric:    Monthly customer churn rate
-Baseline:  8% (December 2025)
-Target:    5% by end of Q1 2026
-Timeline:  4 weeks
+KPI tracked:  Monthly customer churn rate
+Baseline:     8% (December 2025)
+Target:       5% by end of Q1 2026
+Timeline:     4 weeks
 ```
 
 ## Workflow Phases
