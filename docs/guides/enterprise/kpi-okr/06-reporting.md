@@ -4,7 +4,7 @@ With interventions shipped, the team tracks whether churn actually drops. This p
 
 ## Activity Tracking
 
-Chant tracks all spec activity. Sarah uses this to monitor the KPI project:
+Chant tracks all spec activity. Sarah uses this to monitor the OKR initiative:
 
 ```bash
 chant activity --label kpi-churn --since 7d
@@ -41,7 +41,7 @@ labels:
   - kpi-churn
   - q1-2026
   - reporting
-schedule: daily
+schedule: daily  # Metadata field - documents intended frequency, not a trigger
 context:
   - .chant/context/kpi-churn-q1/research-findings.md
 target_files:
@@ -60,23 +60,21 @@ Generate daily snapshot of churn KPI progress.
 - [ ] Report written to reports/kpi-churn-daily.md
 ```
 
-## Cron Configuration
+## Scheduling with External Tools
 
-Mike sets up a cron job to run the KPI report daily:
+Chant does not have built-in scheduling. Instead, you trigger chant commands from your existing automation infrastructure — cron, CI/CD pipelines, or task schedulers. The `schedule:` field in specs is metadata that documents your intended frequency for human readers; it doesn't trigger execution automatically.
 
-**File: `.chant/cron.yaml`**
+Mike sets up automated daily runs using the team's existing tools:
 
-```yaml
+### Standard Crontab
+
+```bash
+# Edit crontab with: crontab -e
 # Daily KPI report at 8am UTC
-schedules:
-  - spec_filter:
-      label: reporting
-      schedule: daily
-    cron: "0 8 * * *"
-    command: chant work --parallel --label reporting
+0 8 * * * cd /path/to/repo && chant work --parallel --label reporting
 ```
 
-Alternatively, in CI/CD (GitHub Actions):
+### GitHub Actions
 
 ```yaml
 # .github/workflows/kpi-report.yml
