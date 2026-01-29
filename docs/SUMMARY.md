@@ -50,6 +50,19 @@
   - [Writing Tests with Chant](guides/enterprise/tdd-workflow/04-execution.md)
   - [Ensuring Quality](guides/enterprise/tdd-workflow/05-consistency.md)
   - [Keeping Tests Current](guides/enterprise/tdd-workflow/06-drift-detection.md)
+- [Research Workflow Guide](guides/enterprise/research-workflow/README.md)
+  - [Academic Path]()
+    - [The Research Context](guides/enterprise/research-workflow/academic/01-scenario.md)
+    - [Literature Review](guides/enterprise/research-workflow/academic/02-literature-review.md)
+    - [Data Analysis](guides/enterprise/research-workflow/academic/03-data-analysis.md)
+    - [Pipeline Coordination](guides/enterprise/research-workflow/academic/04-pipeline.md)
+    - [Drift Detection](guides/enterprise/research-workflow/academic/05-drift-detection.md)
+  - [Developer Path]()
+    - [The Engineering Context](guides/enterprise/research-workflow/developer/01-scenario.md)
+    - [Codebase Investigation](guides/enterprise/research-workflow/developer/02-investigation.md)
+    - [Architecture Documentation](guides/enterprise/research-workflow/developer/03-documentation.md)
+    - [Implementation](guides/enterprise/research-workflow/developer/04-implementation.md)
+    - [Maintenance](guides/enterprise/research-workflow/developer/05-maintenance.md)
 
 # Reference
 
