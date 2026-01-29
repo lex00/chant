@@ -3511,7 +3511,7 @@ git:
         let config = Config::parse(config_str).unwrap();
 
         let mut spec = Spec::load(&spec_path).unwrap();
-        finalize_spec(&mut spec, &spec_path, &config, &[], true, None).unwrap();
+        finalize_spec(&mut spec, &spec_path, &config, &[], true, Some(vec![])).unwrap();
 
         // When commits list is empty, it should be None (not an empty array)
         // Note: This test assumes no commits were found (the spec we created won't have any)
@@ -3609,7 +3609,7 @@ git:
         let config = Config::parse(config_str).unwrap();
 
         let mut spec = Spec::load(&spec_path).unwrap();
-        finalize_spec(&mut spec, &spec_path, &config, &[], true, None).unwrap();
+        finalize_spec(&mut spec, &spec_path, &config, &[], true, Some(vec![])).unwrap();
 
         // Reload from disk
         let reloaded = Spec::load(&spec_path).unwrap();
