@@ -38,6 +38,7 @@ chant work 001
 
 - [Prompt Guide](guides/prompts.md)
 - [Research Workflows Guide](guides/research.md)
+- [OSS Maintainer Workflow](guides/oss-maintainer-workflow/index.md)
 - [Examples](guides/examples.md)
 - [Ecosystem Integration](guides/ecosystem.md)
 - [Approvals](roadmap/planned/approvals.md) *(Planned)*
