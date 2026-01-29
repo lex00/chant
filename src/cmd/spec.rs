@@ -3323,7 +3323,6 @@ project:
 defaults:
   prompt: standard
   branch: true
-  pr: false
   branch_prefix: "chant/"
 git:
   provider: github
@@ -3380,7 +3379,6 @@ project:
 defaults:
   prompt: standard
   branch: true
-  pr: false
   branch_prefix: "chant/"
 git:
   provider: github
@@ -3431,7 +3429,6 @@ project:
 defaults:
   prompt: standard
   branch: true
-  pr: false
   branch_prefix: "chant/"
 git:
   provider: github
@@ -3505,7 +3502,6 @@ project:
 defaults:
   prompt: standard
   branch: true
-  pr: false
   branch_prefix: "chant/"
 git:
   provider: github
@@ -3559,7 +3555,6 @@ project:
 defaults:
   prompt: standard
   branch: true
-  pr: false
   branch_prefix: "chant/"
 git:
   provider: github
@@ -3603,7 +3598,6 @@ project:
 defaults:
   prompt: standard
   branch: true
-  pr: false
   branch_prefix: "chant/"
 git:
   provider: github
@@ -4203,7 +4197,6 @@ project:
 defaults:
   prompt: standard
   branch: false
-  pr: false
   branch_prefix: "chant/"
 git:
   provider: github
@@ -4295,7 +4288,6 @@ project:
 defaults:
   prompt: standard
   branch: false
-  pr: false
   branch_prefix: "chant/"
 git:
   provider: github
@@ -4346,7 +4338,6 @@ project:
 defaults:
   prompt: standard
   branch: false
-  pr: false
   branch_prefix: "chant/"
 git:
   provider: github
@@ -4404,7 +4395,6 @@ project:
 defaults:
   prompt: standard
   branch: false
-  pr: false
   branch_prefix: "chant/"
 git:
   provider: github
@@ -4462,7 +4452,6 @@ project:
 defaults:
   prompt: standard
   branch: false
-  pr: false
   branch_prefix: "chant/"
 git:
   provider: github
@@ -4569,7 +4558,6 @@ project:
 defaults:
   prompt: standard
   branch: false
-  pr: false
   branch_prefix: "chant/"
 git:
   provider: github
@@ -4639,7 +4627,6 @@ project:
 defaults:
   prompt: standard
   branch: false
-  pr: false
   branch_prefix: "chant/"
 git:
   provider: github
@@ -4691,7 +4678,6 @@ project:
 defaults:
   prompt: standard
   branch: false
-  pr: false
   branch_prefix: "chant/"
 git:
   provider: github
@@ -4736,7 +4722,6 @@ project:
 defaults:
   prompt: standard
   branch: false
-  pr: false
   branch_prefix: "chant/"
   model: opus-4-5
 git:
@@ -4794,7 +4779,6 @@ project:
 defaults:
   prompt: standard
   branch: false
-  pr: false
   branch_prefix: "chant/"
   model: sonnet-4
 git:
@@ -4975,7 +4959,6 @@ project:
 defaults:
   prompt: standard
   branch: false
-  pr: false
   branch_prefix: "chant/"
   model: haiku
 git:

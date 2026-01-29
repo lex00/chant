@@ -88,6 +88,7 @@ defaults:
   model: null               # Model name (e.g. "claude-opus-4", "llama2")
   split_model: null         # Model for split operations (defaults to sonnet)
   main_branch: "main"       # Default main branch for merges
+  rotation_strategy: "none" # Agent rotation: none, random, round-robin
 
 # Optional - model provider endpoints
 providers:

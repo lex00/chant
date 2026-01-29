@@ -549,7 +549,6 @@ project:
   prefix: global-prefix
 defaults:
   branch: true
-  pr: true
   branch_prefix: global/
 ---
 "#,

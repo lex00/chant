@@ -5,7 +5,6 @@ project:
 defaults:
   prompt: standard
   branch: false
-  pr: false
   model: opus
   rotation_strategy: round-robin
 
