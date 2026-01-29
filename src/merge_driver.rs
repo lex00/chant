@@ -22,12 +22,12 @@
 //! ## Git Configuration
 //!
 //! To use this merge driver, add to `.gitattributes`:
-//! ```
+//! ```text
 //! .chant/specs/*.md merge=chant-spec
 //! ```
 //!
 //! Then configure git:
-//! ```
+//! ```text
 //! git config merge.chant-spec.name "Chant spec merge driver"
 //! git config merge.chant-spec.driver "chant merge-driver %O %A %B"
 //! ```
