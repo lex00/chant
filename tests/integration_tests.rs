@@ -4459,3 +4459,374 @@ Test specification for parallel workflow testing.
     let _ = std::env::set_current_dir(&original_dir);
     let _ = cleanup_test_repo(&repo_dir);
 }
+
+/// Test that `chant merge --finalize` marks specs as completed after successful merge
+#[test]
+#[serial]
+#[cfg(unix)]
+fn test_merge_finalize_flag() {
+    use chant::spec::{Spec, SpecStatus};
+
+    let repo_dir = PathBuf::from("/tmp/test-chant-merge-finalize");
+    let _ = cleanup_test_repo(&repo_dir);
+
+    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
+
+    // Initialize chant
+    let init_output =
+        run_chant(&repo_dir, &["init", "--minimal"]).expect("Failed to run chant init");
+    if !init_output.status.success() {
+        let _ = std::env::set_current_dir(&original_dir);
+        let _ = cleanup_test_repo(&repo_dir);
+        panic!(
+            "Chant init failed: {}",
+            String::from_utf8_lossy(&init_output.stderr)
+        );
+    }
+
+    // Create a spec in 'completed' state (simulating agent work done)
+    let chant_dir = repo_dir.join(".chant");
+    let specs_dir = chant_dir.join("specs");
+    fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+
+    let spec_id = "2026-01-29-001-fin";
+    // Note: Status is 'completed' to allow merge (merge only works on completed specs)
+    let spec_content = r#"---
+type: code
+status: completed
+---
+
+# Test Spec for Finalize
+
+Test spec for merge --finalize flag.
+
+## Acceptance Criteria
+
+- [x] Test feature
+"#;
+    let spec_path = specs_dir.join(format!("{}.md", spec_id));
+    fs::write(&spec_path, spec_content).expect("Failed to write spec");
+
+    // Commit the spec
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to add spec");
+    Command::new("git")
+        .args(["commit", "-m", "Add test spec"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to commit spec");
+
+    // Create a branch with changes
+    let branch = format!("chant/{}", spec_id);
+    Command::new("git")
+        .args(["checkout", "-b", &branch])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to create branch");
+
+    // Make a commit on the branch
+    fs::write(repo_dir.join("test_file.txt"), "Test content").expect("Failed to write file");
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to add file");
+    Command::new("git")
+        .args([
+            "commit",
+            "-m",
+            &format!("chant({}): Add test file", spec_id),
+        ])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to commit");
+
+    // Go back to main
+    Command::new("git")
+        .args(["checkout", "main"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to checkout main");
+
+    // Merge with --finalize flag
+    let merge_output = run_chant(
+        &repo_dir,
+        &["merge", spec_id, "--delete-branch", "--finalize"],
+    )
+    .expect("Failed to run merge");
+
+    let merge_stdout = String::from_utf8_lossy(&merge_output.stdout);
+    let merge_stderr = String::from_utf8_lossy(&merge_output.stderr);
+
+    if !merge_output.status.success() {
+        eprintln!("Merge stdout: {}", merge_stdout);
+        eprintln!("Merge stderr: {}", merge_stderr);
+    }
+
+    assert!(
+        merge_output.status.success(),
+        "Merge with --finalize should succeed"
+    );
+
+    // Verify the spec was finalized (has completed_at timestamp)
+    let spec = Spec::load(&spec_path).expect("Failed to reload spec");
+    assert_eq!(
+        spec.frontmatter.status,
+        SpecStatus::Completed,
+        "Spec should have Completed status"
+    );
+    assert!(
+        spec.frontmatter.completed_at.is_some(),
+        "Spec should have completed_at timestamp after --finalize"
+    );
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}
+
+/// Test that merge does not try to checkout a deleted branch after successful merge
+#[test]
+#[serial]
+#[cfg(unix)]
+fn test_merge_no_checkout_deleted_branch() {
+    let repo_dir = PathBuf::from("/tmp/test-chant-merge-no-checkout-deleted");
+    let _ = cleanup_test_repo(&repo_dir);
+
+    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
+
+    // Initialize chant
+    let init_output =
+        run_chant(&repo_dir, &["init", "--minimal"]).expect("Failed to run chant init");
+    if !init_output.status.success() {
+        let _ = std::env::set_current_dir(&original_dir);
+        let _ = cleanup_test_repo(&repo_dir);
+        panic!("Chant init failed");
+    }
+
+    // Create a spec
+    let chant_dir = repo_dir.join(".chant");
+    let specs_dir = chant_dir.join("specs");
+    fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+
+    let spec_id = "2026-01-29-002-del";
+    let spec_content = r#"---
+type: code
+status: completed
+---
+
+# Test Delete Branch
+
+Test that merge doesn't checkout deleted branch.
+
+## Acceptance Criteria
+
+- [x] Test
+"#;
+    let spec_path = specs_dir.join(format!("{}.md", spec_id));
+    fs::write(&spec_path, spec_content).expect("Failed to write spec");
+
+    // Commit the spec
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to add");
+    Command::new("git")
+        .args(["commit", "-m", "Add spec"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to commit");
+
+    // Create branch and make commit
+    let branch = format!("chant/{}", spec_id);
+    Command::new("git")
+        .args(["checkout", "-b", &branch])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to create branch");
+
+    fs::write(repo_dir.join("feature.txt"), "Feature").expect("Failed to write");
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to add");
+    Command::new("git")
+        .args(["commit", "-m", &format!("chant({}): Add feature", spec_id)])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to commit");
+
+    // Stay on the spec branch (the branch we will delete)
+    // This tests that merge handles the case where we're on the branch being deleted
+
+    // Merge with delete-branch - should succeed without error about checkout
+    let merge_output =
+        run_chant(&repo_dir, &["merge", spec_id, "--delete-branch"]).expect("Failed to run merge");
+
+    let merge_stdout = String::from_utf8_lossy(&merge_output.stdout);
+    let merge_stderr = String::from_utf8_lossy(&merge_output.stderr);
+
+    // Should succeed (we fixed the bug where it would fail trying to checkout deleted branch)
+    assert!(
+        merge_output.status.success(),
+        "Merge should succeed. stdout: {}, stderr: {}",
+        merge_stdout,
+        merge_stderr
+    );
+
+    // Verify branch was deleted
+    assert!(
+        !branch_exists(&repo_dir, &branch),
+        "Branch should be deleted after merge"
+    );
+
+    // Verify we're on main (not trying to be on the deleted branch)
+    let current_branch = Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to get current branch");
+    let current = String::from_utf8_lossy(&current_branch.stdout)
+        .trim()
+        .to_string();
+    assert_eq!(current, "main", "Should be on main after merge");
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}
+
+/// Test that finalization checks the spec's branch field before checking main
+#[test]
+#[serial]
+#[cfg(unix)]
+fn test_finalization_checks_spec_branch_field() {
+    use chant::spec::{Spec, SpecStatus};
+
+    let repo_dir = PathBuf::from("/tmp/test-chant-finalize-branch-field");
+    let _ = cleanup_test_repo(&repo_dir);
+
+    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
+
+    // Initialize chant
+    let init_output =
+        run_chant(&repo_dir, &["init", "--minimal"]).expect("Failed to run chant init");
+    if !init_output.status.success() {
+        let _ = std::env::set_current_dir(&original_dir);
+        let _ = cleanup_test_repo(&repo_dir);
+        panic!("Chant init failed");
+    }
+
+    // Create a spec WITH a branch field set (simulating parallel execution)
+    let chant_dir = repo_dir.join(".chant");
+    let specs_dir = chant_dir.join("specs");
+    fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+
+    let spec_id = "2026-01-29-003-brn";
+    let branch = format!("chant/{}", spec_id);
+
+    // Spec has branch field set - finalization should check this branch
+    let spec_content = format!(
+        r#"---
+type: code
+status: in_progress
+branch: {}
+---
+
+# Test Branch Field
+
+Test that finalization checks branch field.
+
+## Acceptance Criteria
+
+- [x] Test
+"#,
+        branch
+    );
+    let spec_path = specs_dir.join(format!("{}.md", spec_id));
+    fs::write(&spec_path, &spec_content).expect("Failed to write spec");
+
+    // Commit the spec
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to add");
+    Command::new("git")
+        .args(["commit", "-m", "Add spec"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to commit");
+
+    // Create the branch with a commit that matches the spec pattern
+    Command::new("git")
+        .args(["checkout", "-b", &branch])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to create branch");
+
+    fs::write(repo_dir.join("impl.txt"), "Implementation").expect("Failed to write");
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to add");
+    Command::new("git")
+        .args([
+            "commit",
+            "-m",
+            &format!("chant({}): Implement feature", spec_id),
+        ])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to commit");
+
+    // Go back to main - note: commits are ONLY on the branch, not on main
+    Command::new("git")
+        .args(["checkout", "main"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to checkout main");
+
+    // Finalization should find commits on the branch (not main) because spec has branch field
+    let finalize_output =
+        run_chant(&repo_dir, &["finalize", spec_id]).expect("Failed to run finalize");
+
+    let finalize_stdout = String::from_utf8_lossy(&finalize_output.stdout);
+    let finalize_stderr = String::from_utf8_lossy(&finalize_output.stderr);
+
+    // Finalization should succeed because it found commits on the branch
+    assert!(
+        finalize_output.status.success(),
+        "Finalize should succeed by finding commits on branch. stdout: {}, stderr: {}",
+        finalize_stdout,
+        finalize_stderr
+    );
+
+    // Verify spec is now completed
+    let spec = Spec::load(&spec_path).expect("Failed to reload spec");
+    assert_eq!(
+        spec.frontmatter.status,
+        SpecStatus::Completed,
+        "Spec should be completed"
+    );
+    assert!(
+        spec.frontmatter.commits.is_some(),
+        "Spec should have commits recorded"
+    );
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}

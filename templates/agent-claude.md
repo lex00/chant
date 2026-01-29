@@ -112,6 +112,8 @@ When implementing a spec:
 - `chant work --parallel` - Execute all ready specs in parallel
   - Supports: `--max-parallel N` to limit concurrent agents
   - Supports: `--label <LABEL>` to execute only labeled specs
+  - Supports: `--no-merge` to disable auto-merge (branches preserved for manual merge)
+  - Auto-merge behavior: Completed specs are automatically merged to main; failed specs preserve branches for debugging
 - `chant resume <spec-id>` - Resume a failed spec
 - `chant resume <spec-id> --work` - Resume and automatically re-execute
 
@@ -123,6 +125,7 @@ When implementing a spec:
 - `chant log <spec-id>` - Show spec execution log
 - `chant split <spec-id>` - Split spec into member specs
 - `chant merge --all --rebase --auto` - Merge specs with conflict auto-resolution
+- `chant merge --finalize` - Merge and mark specs as completed atomically
 - `chant finalize <spec-id>` - Finalize a completed spec (validate criteria, update status and model)
   - Automatically detects if spec has an active worktree
   - If worktree exists, finalizes in worktree and commits changes (prevents merge conflicts)
