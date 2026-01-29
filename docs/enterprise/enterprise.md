@@ -314,13 +314,17 @@ These fields are automatically populated by `chant finalize` or auto-finalize wh
 
 Combined with git history (commit author, timestamp, and message), this provides a complete audit trail of spec execution. The git commit records who performed the work and when, while the spec frontmatter records which model was used to complete it.
 
-## Enterprise vs Personal
+## Feature Compatibility
 
-| Feature | Personal | Enterprise |
-|---------|----------|------------|
-| Silent mode | ✓ | - |
+All enterprise features work with both tracked and silent mode:
+
+| Feature | Tracked `.chant/` | Silent `.chant/` |
+|---------|-------------------|------------------|
+| Silent mode | - | ✓ |
 | Derived fields | ✓ | ✓ |
 | Required fields | ✓ | ✓ |
 | Audit trail | ✓ | ✓ |
 
-All features are opt-in via the `enterprise:` config block in `.chant/config.md`.
+**Silent mode + enterprise features**: You can use derived fields, required fields, and audit trails even when `.chant/` is gitignored (silent mode). This is useful when working on corporate repos that don't officially support chant—you get enterprise metadata extraction while keeping your workflow private.
+
+All enterprise features are opt-in via the `enterprise:` config block in `.chant/config.md`.
