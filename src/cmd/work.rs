@@ -306,7 +306,7 @@ pub fn cmd_work(
             force,
             allow_no_commits,
             skip_approval,
-            starting_spec_id: ids.first().map(String::as_str),
+            specific_ids: ids,
         };
         return cmd_work_chain(&specs_dir, &prompts_dir, &config, chain_options);
     }
@@ -1082,41 +1082,105 @@ pub fn cmd_work_chain(
     config: &Config,
     options: ChainOptions,
 ) -> Result<()> {
-    use std::time::Instant;
-
     // Set up signal handler for graceful interruption
     setup_chain_signal_handler();
 
-    // Count total ready specs for progress display
-    let initial_total = count_ready_specs(specs_dir, options.labels)?;
-
-    if initial_total == 0 {
-        if !options.labels.is_empty() {
-            println!("No ready specs with specified labels.");
-        } else {
-            println!("No ready specs to execute.");
-        }
-        return Ok(());
+    // If specific IDs are provided, chain through ONLY those specs in order
+    if !options.specific_ids.is_empty() {
+        return cmd_work_chain_specific_ids(specs_dir, prompts_dir, config, &options);
     }
 
+    // No specific IDs - chain through all ready specs (existing behavior)
+    cmd_work_chain_all_ready(specs_dir, prompts_dir, config, &options)
+}
+
+/// Chain through specific spec IDs in order
+fn cmd_work_chain_specific_ids(
+    specs_dir: &Path,
+    prompts_dir: &Path,
+    config: &Config,
+    options: &ChainOptions,
+) -> Result<()> {
+    use std::time::Instant;
+
+    // Validate all IDs upfront and fail fast if any are invalid
+    let mut resolved_specs = Vec::new();
+    for spec_id in options.specific_ids {
+        match spec::resolve_spec(specs_dir, spec_id) {
+            Ok(spec) => resolved_specs.push(spec),
+            Err(e) => {
+                anyhow::bail!("Invalid spec ID '{}': {}", spec_id, e);
+            }
+        }
+    }
+
+    let total = resolved_specs.len();
     println!(
-        "\n{} Starting chain execution ({} ready specs)...\n",
+        "\n{} Starting chain execution ({} specified specs)...\n",
         "→".cyan(),
-        initial_total
+        total
     );
 
+    // Note: --label filter is ignored when specific IDs are provided
+    if !options.labels.is_empty() {
+        println!(
+            "{} Note: --label filter ignored when specific spec IDs are provided\n",
+            "→".dimmed()
+        );
+    }
+
+    let all_specs = spec::load_all_specs(specs_dir)?;
     let mut completed = 0;
+    let mut skipped = 0;
     let mut failed_spec: Option<(String, String)> = None;
     let start_time = Instant::now();
 
-    // If a starting spec was provided, execute it first
-    if let Some(starting_id) = options.starting_spec_id {
-        let spec = spec::resolve_spec(specs_dir, starting_id)?;
+    for (index, spec) in resolved_specs.iter().enumerate() {
+        // Check for interrupt
+        if is_chain_interrupted() {
+            println!("\n{} Chain interrupted by user", "→".yellow());
+            break;
+        }
+
+        // Check max limit
+        if options.max_specs > 0 && completed >= options.max_specs {
+            println!(
+                "\n{} Reached maximum chain limit ({})",
+                "✓".green(),
+                options.max_specs
+            );
+            break;
+        }
+
+        // Check if spec is ready
+        if !spec.is_ready(&all_specs) && !options.force {
+            println!(
+                "{} Skipping {}: not ready (dependencies not satisfied)",
+                "⚠".yellow(),
+                spec.id
+            );
+            skipped += 1;
+            continue;
+        }
+
+        // Check if spec is already completed
+        if spec.frontmatter.status == SpecStatus::Completed && !options.force {
+            println!("{} Skipping {}: already completed", "⚠".yellow(), spec.id);
+            skipped += 1;
+            continue;
+        }
+
+        // Check if spec is cancelled
+        if spec.frontmatter.status == SpecStatus::Cancelled {
+            println!("{} Skipping {}: cancelled", "⚠".yellow(), spec.id);
+            skipped += 1;
+            continue;
+        }
 
         println!(
             "[{}/{}] {} {}: {}",
-            completed + 1,
-            initial_total,
+            index + 1,
+            total,
             "Working".cyan(),
             spec.id,
             spec.title.as_deref().unwrap_or("")
@@ -1146,10 +1210,74 @@ pub fn cmd_work_chain(
             }
             Err(e) => {
                 println!("{} Failed {}: {}\n", "✗".red(), spec.id, e);
-                failed_spec = Some((spec.id, e.to_string()));
+                failed_spec = Some((spec.id.clone(), e.to_string()));
+                break; // Stop chain on first failure
             }
         }
     }
+
+    // Print summary
+    let total_elapsed = start_time.elapsed();
+    println!("{}", "═".repeat(60).dimmed());
+    println!("{}", "Chain execution complete:".bold());
+    println!(
+        "  {} Chained through {} spec(s) in {:.1}s",
+        "✓".green(),
+        completed,
+        total_elapsed.as_secs_f64()
+    );
+
+    if skipped > 0 {
+        println!("  {} Skipped {} spec(s)", "→".yellow(), skipped);
+    }
+
+    if let Some((spec_id, error)) = &failed_spec {
+        println!("  {} Stopped due to failure in {}", "✗".red(), spec_id);
+        println!("    Error: {}", error);
+        println!("{}", "═".repeat(60).dimmed());
+        // Exit with error code
+        std::process::exit(1);
+    }
+
+    if is_chain_interrupted() {
+        println!("  {} Interrupted by user", "→".yellow());
+    }
+
+    println!("{}", "═".repeat(60).dimmed());
+
+    Ok(())
+}
+
+/// Chain through all ready specs (original behavior when no specific IDs provided)
+fn cmd_work_chain_all_ready(
+    specs_dir: &Path,
+    prompts_dir: &Path,
+    config: &Config,
+    options: &ChainOptions,
+) -> Result<()> {
+    use std::time::Instant;
+
+    // Count total ready specs for progress display
+    let initial_total = count_ready_specs(specs_dir, options.labels)?;
+
+    if initial_total == 0 {
+        if !options.labels.is_empty() {
+            println!("No ready specs with specified labels.");
+        } else {
+            println!("No ready specs to execute.");
+        }
+        return Ok(());
+    }
+
+    println!(
+        "\n{} Starting chain execution ({} ready specs)...\n",
+        "→".cyan(),
+        initial_total
+    );
+
+    let mut completed = 0;
+    let mut failed_spec: Option<(String, String)> = None;
+    let start_time = Instant::now();
 
     // Chain loop: continue until interrupted, max reached, no more specs, or failure
     while failed_spec.is_none() {
@@ -1169,7 +1297,7 @@ pub fn cmd_work_chain(
             break;
         }
 
-        // Find next ready spec (exclude the starting spec since we already ran it)
+        // Find next ready spec
         let next_spec = find_next_ready_spec(specs_dir, options.labels, None)?;
 
         let spec = match next_spec {
@@ -1289,7 +1417,7 @@ pub struct ParallelOptions<'a> {
 pub struct ChainOptions<'a> {
     /// Maximum number of specs to chain (0 = unlimited)
     pub max_specs: usize,
-    /// Labels to filter specs
+    /// Labels to filter specs (ignored when specific_ids is not empty)
     pub labels: &'a [String],
     /// Prompt name override
     pub prompt_name: Option<&'a str>,
@@ -1301,8 +1429,8 @@ pub struct ChainOptions<'a> {
     pub allow_no_commits: bool,
     /// Skip approval check
     pub skip_approval: bool,
-    /// Optional starting spec ID (chain starts with this spec)
-    pub starting_spec_id: Option<&'a str>,
+    /// Specific spec IDs to chain through (if empty, chains through all ready specs)
+    pub specific_ids: &'a [String],
 }
 
 /// Assignment of a spec to an agent

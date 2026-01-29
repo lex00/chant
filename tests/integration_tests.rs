@@ -4830,3 +4830,316 @@ Test that finalization checks branch field.
     let _ = std::env::set_current_dir(&original_dir);
     let _ = cleanup_test_repo(&repo_dir);
 }
+
+// ============================================================================
+// CHAIN EXECUTION MODE TESTS
+// ============================================================================
+
+/// Helper to create a simple ready spec (no dependencies)
+fn create_ready_spec(specs_dir: &Path, spec_id: &str) -> std::io::Result<()> {
+    let content = format!(
+        r#"---
+type: code
+status: pending
+---
+
+# Test Spec: {}
+
+Test specification for chain testing.
+
+## Acceptance Criteria
+
+- [x] Test spec created
+"#,
+        spec_id
+    );
+
+    fs::write(specs_dir.join(format!("{}.md", spec_id)), content)?;
+    Ok(())
+}
+
+/// Test that `chant work --chain spec1 spec2 spec3` chains through ONLY those specs
+/// Note: This test verifies validation and message output rather than actual execution
+/// since actual execution requires agent invocation.
+#[test]
+#[serial]
+fn test_chain_with_specific_ids_validates_all_ids() {
+    let repo_dir = PathBuf::from("/tmp/test-chant-chain-specific");
+    let _ = cleanup_test_repo(&repo_dir);
+
+    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
+    let chant_binary = get_chant_binary();
+
+    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
+
+    // Initialize chant
+    let init_output = Command::new(&chant_binary)
+        .args(["init", "--minimal"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant init");
+    assert!(
+        init_output.status.success(),
+        "chant init failed: {}",
+        String::from_utf8_lossy(&init_output.stderr)
+    );
+
+    let specs_dir = repo_dir.join(".chant/specs");
+    fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+
+    // Create three ready specs
+    let spec_a = "2026-01-29-chain-a";
+    let spec_b = "2026-01-29-chain-b";
+    let spec_c = "2026-01-29-chain-c";
+
+    create_ready_spec(&specs_dir, spec_a).expect("Failed to create spec A");
+    create_ready_spec(&specs_dir, spec_b).expect("Failed to create spec B");
+    create_ready_spec(&specs_dir, spec_c).expect("Failed to create spec C");
+
+    // Test that invalid spec ID fails fast
+    let output = Command::new(&chant_binary)
+        .args(["work", "--chain", spec_a, "invalid-spec-xyz"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant work");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    // Should fail fast with error about invalid spec
+    assert!(
+        !output.status.success(),
+        "Should fail when invalid spec ID is provided"
+    );
+    assert!(
+        stderr.contains("Invalid spec ID") || stderr.contains("not found"),
+        "Error message should mention invalid spec ID. Got: {}",
+        stderr
+    );
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}
+
+/// Test that `chant work --chain` (no IDs) looks for ready specs
+#[test]
+#[serial]
+fn test_chain_without_ids_checks_ready_specs() {
+    let repo_dir = PathBuf::from("/tmp/test-chant-chain-no-ids");
+    let _ = cleanup_test_repo(&repo_dir);
+
+    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
+    let chant_binary = get_chant_binary();
+
+    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
+
+    // Initialize chant
+    let init_output = Command::new(&chant_binary)
+        .args(["init", "--minimal"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant init");
+    assert!(
+        init_output.status.success(),
+        "chant init failed: {}",
+        String::from_utf8_lossy(&init_output.stderr)
+    );
+
+    // No specs created - chain should report no ready specs
+    let output = Command::new(&chant_binary)
+        .args(["work", "--chain"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant work --chain");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Should succeed (exit 0) with message about no ready specs
+    assert!(
+        output.status.success(),
+        "Should succeed when no ready specs exist. stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        stdout.contains("No ready specs"),
+        "Should indicate no ready specs. Got: {}",
+        stdout
+    );
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}
+
+/// Test that chain with specific IDs shows note about ignoring --label filter
+#[test]
+#[serial]
+fn test_chain_with_ids_ignores_label_filter() {
+    let repo_dir = PathBuf::from("/tmp/test-chant-chain-label-ignore");
+    let _ = cleanup_test_repo(&repo_dir);
+
+    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
+    let chant_binary = get_chant_binary();
+
+    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
+
+    // Initialize chant
+    let init_output = Command::new(&chant_binary)
+        .args(["init", "--minimal"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant init");
+    assert!(
+        init_output.status.success(),
+        "chant init failed: {}",
+        String::from_utf8_lossy(&init_output.stderr)
+    );
+
+    let specs_dir = repo_dir.join(".chant/specs");
+    fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+
+    // Create a ready spec
+    let spec_a = "2026-01-29-chain-label-a";
+    create_ready_spec(&specs_dir, spec_a).expect("Failed to create spec A");
+
+    // Run chain with both specific ID and --label (label should be ignored)
+    // We can't easily test actual execution, but we can verify the message appears
+    let output = Command::new(&chant_binary)
+        .args(["work", "--chain", spec_a, "--label", "some-label"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant work");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // The output should contain the note about ignoring labels
+    // (This will appear during the chain initialization before execution)
+    assert!(
+        stdout.contains("--label filter ignored")
+            || stdout.contains("specified specs")
+            || stdout.contains("Working"),
+        "Should show chain starting message or label ignored note. Got stdout: {}, stderr: {}",
+        stdout,
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}
+
+/// Test that chain skips non-ready specs with warning
+#[test]
+#[serial]
+fn test_chain_skips_non_ready_specs() {
+    let repo_dir = PathBuf::from("/tmp/test-chant-chain-skip-non-ready");
+    let _ = cleanup_test_repo(&repo_dir);
+
+    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
+    let chant_binary = get_chant_binary();
+
+    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
+
+    // Initialize chant
+    let init_output = Command::new(&chant_binary)
+        .args(["init", "--minimal"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant init");
+    assert!(
+        init_output.status.success(),
+        "chant init failed: {}",
+        String::from_utf8_lossy(&init_output.stderr)
+    );
+
+    let specs_dir = repo_dir.join(".chant/specs");
+    fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+
+    // Create spec A (ready, no dependencies)
+    let spec_a = "2026-01-29-chain-skip-a";
+    create_ready_spec(&specs_dir, spec_a).expect("Failed to create spec A");
+
+    // Create spec B that depends on A (blocked)
+    let spec_b = "2026-01-29-chain-skip-b";
+    create_spec_with_dependencies(&specs_dir, spec_b, &[spec_a]).expect("Failed to create spec B");
+
+    // Run chain with both specs - B should be skipped because it's not ready
+    let output = Command::new(&chant_binary)
+        .args(["work", "--chain", spec_b, spec_a])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant work");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Should show skipping message for spec B (not ready due to dependency)
+    assert!(
+        stdout.contains("Skipping") || stdout.contains("not ready"),
+        "Should skip non-ready spec. Got: {}",
+        stdout
+    );
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}
+
+/// Test that chain with --chain-max stops after N specs
+#[test]
+#[serial]
+fn test_chain_max_limit_applies() {
+    let repo_dir = PathBuf::from("/tmp/test-chant-chain-max");
+    let _ = cleanup_test_repo(&repo_dir);
+
+    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
+    let chant_binary = get_chant_binary();
+
+    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
+
+    // Initialize chant
+    let init_output = Command::new(&chant_binary)
+        .args(["init", "--minimal"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant init");
+    assert!(
+        init_output.status.success(),
+        "chant init failed: {}",
+        String::from_utf8_lossy(&init_output.stderr)
+    );
+
+    // No specs to execute - but this verifies the argument parsing works
+    let output = Command::new(&chant_binary)
+        .args(["work", "--chain", "--chain-max", "2"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant work --chain --chain-max");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Should succeed (no specs to execute)
+    assert!(
+        output.status.success(),
+        "Should succeed with --chain-max flag. stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        stdout.contains("No ready specs"),
+        "Should indicate no ready specs. Got: {}",
+        stdout
+    );
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}

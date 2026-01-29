@@ -211,7 +211,7 @@ enum Commands {
         /// Skip approval check (for emergencies)
         #[arg(long)]
         skip_approval: bool,
-        /// Chain through ready specs until none remain or failure occurs
+        /// Chain through specs. If spec IDs provided, chains through only those IDs in order. If no IDs, chains through all ready specs.
         #[arg(long)]
         chain: bool,
         /// Maximum number of specs to chain (0 = unlimited, only with --chain)
