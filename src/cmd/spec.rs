@@ -566,6 +566,8 @@ fn validate_committer(name: &str) -> Result<bool> {
 }
 
 /// Get the creator of a file from git log (first commit author)
+/// Note: For bulk operations, use `batch_load_spec_git_metadata` instead.
+#[allow(dead_code)]
 fn get_file_creator(file_path: &Path) -> Option<String> {
     let output = Command::new("git")
         .args(["log", "--diff-filter=A", "--format=%an", "--follow", "--"])
@@ -583,6 +585,8 @@ fn get_file_creator(file_path: &Path) -> Option<String> {
 }
 
 /// Get the last modification time of a file from git log
+/// Note: For bulk operations, use `batch_load_spec_git_metadata` instead.
+#[allow(dead_code)]
 fn get_file_last_modified(file_path: &Path) -> Option<chrono::DateTime<chrono::Local>> {
     let output = Command::new("git")
         .args(["log", "-1", "--format=%aI", "--"])
@@ -599,6 +603,140 @@ fn get_file_last_modified(file_path: &Path) -> Option<chrono::DateTime<chrono::L
     chrono::DateTime::parse_from_rfc3339(timestamp_str)
         .ok()
         .map(|dt| dt.with_timezone(&chrono::Local))
+}
+
+/// Git metadata for a spec file, loaded in batch for performance
+#[derive(Debug, Clone)]
+struct SpecGitMetadata {
+    /// Author who first created the spec file
+    creator: Option<String>,
+    /// Last modification time from git log
+    last_modified: Option<chrono::DateTime<chrono::Local>>,
+}
+
+/// Batch load git metadata (creator and last_modified) for all spec files.
+/// This uses targeted git commands to minimize history traversal.
+///
+/// Performance optimization:
+/// - last_modified: Uses limited history (recent 200 commits) for fast lookup
+/// - creator: Only loaded when `include_creator` is true, as it requires full history scan
+fn batch_load_spec_git_metadata(
+    specs_dir: &Path,
+    include_creator: bool,
+) -> std::collections::HashMap<String, SpecGitMetadata> {
+    use std::collections::HashMap;
+
+    let mut metadata: HashMap<String, SpecGitMetadata> = HashMap::new();
+
+    // Get last_modified: Use limited history for fast lookup
+    // We check the last 200 commits which should cover all active specs
+    let output = Command::new("git")
+        .args([
+            "log",
+            "-200", // Limit to recent commits for speed
+            "--name-only",
+            "--format=COMMIT|%an|%aI",
+            "--",
+        ])
+        .arg(specs_dir)
+        .output();
+
+    if let Ok(ref output) = output {
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let mut current_author: Option<String> = None;
+            let mut current_timestamp: Option<chrono::DateTime<chrono::Local>> = None;
+
+            for line in stdout.lines() {
+                let line = line.trim();
+                if line.is_empty() {
+                    continue;
+                }
+
+                if let Some(commit_data) = line.strip_prefix("COMMIT|") {
+                    let parts: Vec<&str> = commit_data.splitn(2, '|').collect();
+                    if parts.len() == 2 {
+                        current_author = Some(parts[0].to_string());
+                        current_timestamp = chrono::DateTime::parse_from_rfc3339(parts[1])
+                            .ok()
+                            .map(|dt| dt.with_timezone(&chrono::Local));
+                    }
+                } else if line.starts_with(".chant/specs/") && line.ends_with(".md") {
+                    let spec_id = Path::new(line)
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .map(|s| s.to_string());
+
+                    if let Some(spec_id) = spec_id {
+                        let entry = metadata.entry(spec_id).or_insert(SpecGitMetadata {
+                            creator: None,
+                            last_modified: None,
+                        });
+
+                        // First occurrence = most recent commit = last_modified
+                        if entry.last_modified.is_none() {
+                            entry.last_modified = current_timestamp;
+                            // Also use this as tentative creator (will be overwritten if include_creator)
+                            if !include_creator {
+                                entry.creator = current_author.clone();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Get creator: Only when needed (requires scanning full history for file additions)
+    if include_creator {
+        let output = Command::new("git")
+            .args([
+                "log",
+                "--name-only",
+                "--format=COMMIT|%an|%aI",
+                "--diff-filter=A", // Only file additions
+                "--",
+            ])
+            .arg(specs_dir)
+            .output();
+
+        if let Ok(ref output) = output {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let mut current_author: Option<String> = None;
+
+                for line in stdout.lines() {
+                    let line = line.trim();
+                    if line.is_empty() {
+                        continue;
+                    }
+
+                    if let Some(commit_data) = line.strip_prefix("COMMIT|") {
+                        let parts: Vec<&str> = commit_data.splitn(2, '|').collect();
+                        if !parts.is_empty() {
+                            current_author = Some(parts[0].to_string());
+                        }
+                    } else if line.starts_with(".chant/specs/") && line.ends_with(".md") {
+                        let spec_id = Path::new(line)
+                            .file_stem()
+                            .and_then(|s| s.to_str())
+                            .map(|s| s.to_string());
+
+                        if let Some(spec_id) = spec_id {
+                            if let Some(entry) = metadata.get_mut(&spec_id) {
+                                // This is the commit that added the file = creator
+                                if let Some(ref author) = current_author {
+                                    entry.creator = Some(author.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    metadata
 }
 
 /// Format a duration as a relative time string (e.g., "2h", "3d", "1w")
@@ -1263,6 +1401,15 @@ pub fn cmd_list(
 
     specs.sort_by(|a, b| a.id.cmp(&b.id));
 
+    // Batch load git metadata for all specs (single git call instead of 2 per spec)
+    // Only load creator info when filtering by creator (requires full history scan)
+    let need_creator = created_by_filter.is_some();
+    let git_metadata = if let Some(ref dir) = specs_dir {
+        batch_load_spec_git_metadata(dir, need_creator)
+    } else {
+        std::collections::HashMap::new()
+    };
+
     // Exclude cancelled specs
     specs.retain(|s| s.frontmatter.status != spec::SpecStatus::Cancelled);
 
@@ -1334,37 +1481,35 @@ pub fn cmd_list(
         });
     }
 
-    // Filter by creator if specified
+    // Filter by creator if specified (uses batch-loaded metadata)
     if let Some(creator) = created_by_filter {
         let creator_lower = creator.to_lowercase();
         specs.retain(|s| {
-            if let Some(ref dir) = specs_dir {
-                let spec_path = dir.join(format!("{}.md", s.id));
-                if let Some(file_creator) = get_file_creator(&spec_path) {
+            if let Some(meta) = git_metadata.get(&s.id) {
+                if let Some(ref file_creator) = meta.creator {
                     file_creator.to_lowercase().contains(&creator_lower)
                 } else {
                     false
                 }
             } else {
-                false // Multi-repo mode doesn't support creator filter for now
+                false // No metadata available
             }
         });
     }
 
-    // Filter by activity since if specified
+    // Filter by activity since if specified (uses batch-loaded metadata)
     if let Some(duration_str) = activity_since_filter {
         if let Some(duration) = parse_duration(duration_str) {
             let cutoff = chrono::Local::now() - duration;
             specs.retain(|s| {
-                if let Some(ref dir) = specs_dir {
-                    let spec_path = dir.join(format!("{}.md", s.id));
-                    if let Some(last_modified) = get_file_last_modified(&spec_path) {
+                if let Some(meta) = git_metadata.get(&s.id) {
+                    if let Some(last_modified) = meta.last_modified {
                         last_modified >= cutoff
                     } else {
                         false
                     }
                 } else {
-                    false // Multi-repo mode doesn't support activity filter for now
+                    false // No metadata available
                 }
             });
         } else {
@@ -1424,18 +1569,16 @@ pub fn cmd_list(
             String::new()
         };
 
-        // Build visual indicators
+        // Build visual indicators (using batch-loaded metadata for performance)
         let mut indicators: Vec<String> = Vec::new();
 
-        // Created by indicator (from git log)
-        if let Some(ref dir) = specs_dir {
-            let spec_path = dir.join(format!("{}.md", spec.id));
-            if let Some(creator) = get_file_creator(&spec_path) {
+        // Created by and last activity indicators (from batch-loaded git metadata)
+        if let Some(meta) = git_metadata.get(&spec.id) {
+            if let Some(ref creator) = meta.creator {
                 indicators.push(format!("👤 {}", creator.dimmed()));
             }
 
-            // Last activity indicator
-            if let Some(last_modified) = get_file_last_modified(&spec_path) {
+            if let Some(last_modified) = meta.last_modified {
                 let relative = format_relative_time(last_modified);
                 indicators.push(format!("↩ {}", relative.dimmed()));
             }
