@@ -218,3 +218,70 @@ chant show 001-abc
 chant approve 001-abc --by me
 chant work 001-abc
 ```
+
+## Agent-Assisted Work Approval
+
+When AI agents (Claude, GPT, Copilot, Gemini, etc.) assist with code changes, chant can automatically require human approval before those changes can be merged. This provides a safety checkpoint for agent-written code.
+
+### How It Works
+
+1. **Detection**: During finalization, chant scans commit messages for agent co-authorship signatures (e.g., `Co-Authored-By: Claude`)
+2. **Auto-requirement**: If detected and enabled, `approval.required` is automatically set to `true`
+3. **Gate enforcement**: The spec cannot be merged until approved
+
+### Configuration
+
+Enable automatic approval requirements for agent work in your project or global config:
+
+```yaml
+# .chant/config.md or ~/.config/chant/config.md
+---
+approval:
+  require_approval_for_agent_work: true
+---
+```
+
+### Detected Agents
+
+Chant detects co-authorship from these AI assistants:
+- Claude (Anthropic)
+- GPT/ChatGPT (OpenAI)
+- Copilot (GitHub)
+- Gemini (Google)
+- Other common AI coding assistants
+
+### Workflow Example
+
+```bash
+# Agent executes spec, creates commits with Co-Authored-By
+chant work spec-id
+# → Agent completes work
+# → Commits include: Co-Authored-By: Claude <noreply@anthropic.com>
+
+# During finalization, agent co-authorship detected
+# → approval.required automatically set to true
+# Output: "⚠ Agent co-authorship detected. Approval required before merge."
+
+# Reviewer must approve
+chant approve spec-id --by reviewer-name
+
+# Now merge can proceed
+chant merge spec-id
+```
+
+### Why Use This?
+
+- **Safety**: Agent-written code may have subtle bugs or security issues
+- **Review checkpoint**: Ensures a human reviews all agent changes before deployment
+- **Audit trail**: Documents who reviewed and approved agent-assisted work
+- **Team policy**: Enforce code review for all AI-generated code
+
+### Emergency Bypass
+
+In urgent situations, use `--skip-approval` to bypass the approval check:
+
+```bash
+chant work spec-id --skip-approval
+```
+
+This should be used sparingly and documented.

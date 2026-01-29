@@ -90,6 +90,13 @@ chant work 001
 - **Verification** - Continuous checking that work meets intent
 - **Drift Detection** - Know when reality diverges from specs
 
+## Key Features
+
+- **Parallel execution** - Run multiple specs concurrently with isolated worktrees
+- **Chain execution** - Process specs sequentially (`chant work --chain`) or chain through specific IDs
+- **Approval workflow** - Gate spec execution with human approval, auto-detect agent-assisted work
+- **Branch mode** - Execute specs in feature branches with automatic merge
+
 ## Examples
 
 See the [examples/](./examples/) folder for real-world workflows:

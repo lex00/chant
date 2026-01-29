@@ -171,9 +171,12 @@ When implementing a spec:
   - Stops on first failure with proper exit code
   - Stops gracefully on Ctrl+C (SIGINT)
   - Supports: `--chain-max N` to limit number of specs to chain
-  - Supports: `--label <LABEL>` to chain through labeled specs only
-  - Supports: Starting spec ID: `chant work <spec-id> --chain` starts with that spec, then chains
-  - Use cases: Overnight processing, CI/CD, unattended execution
+  - Supports: `--label <LABEL>` to chain through labeled specs only (ignored when specific IDs provided)
+  - **With specific IDs**: `chant work --chain spec1 spec2 spec3` chains through ONLY those specs in order
+    - Invalid spec IDs fail fast before execution starts
+    - Non-ready specs are skipped with warning, chain continues
+  - **Without IDs**: `chant work --chain` chains through all ready specs
+  - Use cases: Overnight processing, CI/CD, unattended execution, targeted batch processing
 - `chant resume <spec-id>` - Resume a failed spec
 - `chant resume <spec-id> --work` - Resume and automatically re-execute
 
@@ -312,6 +315,45 @@ parallel:
 
 This file only overrides the `parallel.agents` section. Other settings come from global or project config.
 
+### Agent Approval Workflow
+
+When AI agents assist with code changes, chant can automatically require human approval before merging. This provides a safety checkpoint for agent-written code.
+
+**How it works:**
+
+1. During finalization, chant detects agent co-authorship in commits (e.g., `Co-Authored-By: Claude`)
+2. If detected and the config setting is enabled, `approval.required` is automatically set to `true`
+3. The spec cannot be merged until approved via `chant approve <spec-id> --by <name>`
+
+**Configuration:**
+
+Enable in your project or global config:
+
+```yaml
+---
+approval:
+  require_approval_for_agent_work: true
+---
+```
+
+**Detected agents:** Claude, GPT, Copilot, Gemini, and other common AI assistants.
+
+**Workflow:**
+
+```bash
+# Agent completes work with Co-Authored-By commit
+chant work spec-id
+
+# Finalization auto-sets approval.required: true
+# User must approve before merge
+chant approve spec-id --by reviewer-name
+
+# Now merge proceeds
+chant merge spec-id
+```
+
+**Emergency bypass:** Use `--skip-approval` for urgent situations.
+
 ## Spec Format and Patterns
 
 ### Spec Structure
@@ -415,24 +457,26 @@ When merging specs back to main:
 - Review enhanced error messages for specific conflict details and recovery steps
 - See [Merge Conflict Resolution](#merge-conflict-resolution) for detailed diagnostics
 
-### Finalize Workflow (Worktree-Aware)
+### Finalize Workflow (Branch Mode)
 
-When using parallel execution (`chant work --parallel`) or feature branches, finalization
-happens IN the worktree before the branch is merged to main:
+When using parallel execution (`chant work --parallel`) or feature branches (`--branch`), finalization
+is deferred until AFTER the branch is successfully merged to main:
 
-1. **Agent completes work** → Changes committed to feature branch
-2. **Auto-finalize in worktree** → Updates spec status to `completed`, adds `completed_at` and `model`
-3. **Finalization committed** → `chant(<spec-id>): finalize spec` commit in feature branch
-4. **Branch merged to main** → Both branches have same spec metadata, no conflict
+1. **Agent completes work** → Changes committed to feature branch (spec stays `in_progress`)
+2. **Branch merged to main** → Merge happens first
+3. **Finalization on main** → Status set to `completed`, adds `completed_at` and `model`
+4. **Custom merge driver** → Resolves any frontmatter conflicts automatically
 
-This prevents the merge conflict that would occur if finalization happened on main:
-- ✅ Feature branch: `status: completed`, `completed_at: ...`, `model: ...`
-- ✅ Main branch (after merge): Same metadata, clean merge
+This approach prevents the race condition where:
+- ❌ Feature branch shows `Completed` before merge
+- ❌ Merge fails but spec is already marked `Completed` on branch
+- ❌ Status mismatch between main and feature branches
 
-Without worktree-aware finalization:
-- ❌ Feature branch: `status: in_progress`
-- ❌ Main branch: `status: completed`, `completed_at: ...`, `model: ...`
-- ❌ Merge conflict on spec frontmatter
+**Current behavior (v0.6.1+):**
+- ✅ Spec stays `in_progress` until merge succeeds
+- ✅ If merge fails, spec remains `in_progress` (not `Completed`)
+- ✅ If finalization fails after merge, spec is marked `NeedsAttention` with clear error
+- ✅ No status inconsistency between branches
 
 ### Custom Merge Driver for Specs
 

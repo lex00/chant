@@ -7,7 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.6.1] - 2026-01-29
 
+### Added
+
+- **Chain with specific IDs**: `chant work --chain spec1 spec2 spec3` now chains through only those specified specs in order
+  - When spec IDs provided, chains through only those IDs (not all ready specs)
+  - Invalid spec IDs fail fast with clear error before execution starts
+  - Non-ready specs in the list are skipped with warning, chain continues
+  - `--chain-max` limit applies to specified IDs
+  - `--label` filter is ignored when specific IDs are provided
+  - Documentation: `chant work --help` for usage
+
+- **Agent approval workflow**: Automatic approval requirement for agent-assisted commits
+  - Detects agent co-authorship in commits (Co-Authored-By: Claude, GPT, Copilot, Gemini, etc.)
+  - Auto-sets `approval.required: true` when agent detected during finalization
+  - New config setting: `approval.require_approval_for_agent_work` to enable/disable
+  - Prevents merge without approval when required
+  - Works with existing `chant approve`/`chant reject` commands
+
 ### Fixed
+
+- **Race condition in branch mode finalization**: Specs are now finalized after merge, not before
+  - Previously, specs were marked `Completed` in feature branch before merge to main
+  - Now finalization is deferred until after successful merge
+  - If merge fails, spec stays `in_progress` (not `Completed`)
+  - If finalization fails after merge, spec is marked `NeedsAttention` with clear error
+  - Eliminates status mismatch between main and feature branches
+
 - **Performance**: Fix `chant list` performance regression (0.9s → 0.05s, 18x faster)
   - Batch git metadata loading instead of running 2 git commands per spec
   - Limit git history traversal to last 200 commits for speed

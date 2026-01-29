@@ -458,6 +458,71 @@ After parallel execution, chant detects and reports issues:
 → Run chant cleanup to analyze and resolve issues.
 ```
 
+### Chain Execution
+
+Execute specs sequentially, one after another:
+
+```bash
+# Chain through all ready specs until none remain or failure
+chant work --chain
+
+# Chain through specific specs in order (ONLY these specs)
+chant work --chain spec1 spec2 spec3
+
+# Limit number of specs to chain
+chant work --chain --chain-max 5
+
+# Chain through labeled specs only
+chant work --chain --label auth
+```
+
+**Two Modes of Operation:**
+
+| Command | Behavior |
+|---------|----------|
+| `chant work --chain` | Chain through ALL ready specs |
+| `chant work --chain spec1 spec2 spec3` | Chain through ONLY the specified specs |
+
+**Specific ID Behavior:**
+
+When spec IDs are provided:
+- Chains through only those IDs in the order given
+- Invalid spec IDs fail fast with clear error before execution starts
+- Non-ready specs are skipped with warning, chain continues
+- `--label` filter is ignored (IDs take precedence)
+- `--chain-max` limit still applies
+
+**Example output:**
+
+```
+→ Starting chain execution...
+
+[1/?] Working 001-abc with prompt 'standard'
+[1/?] ✓ Completed in 45s
+
+[2/?] Working 002-def with prompt 'standard'
+[2/?] ✓ Completed in 32s
+
+[3/?] ⚠ Skipping 003-ghi: not ready (blocked by: 004-jkl)
+
+[4/?] Working 005-mno with prompt 'standard'
+[4/?] ✗ Failed: Tests did not pass
+
+════════════════════════════════════════════════════════════
+Chain execution stopped:
+  ✓ 3 specs completed
+  ✗ 1 spec failed: 005-mno
+  ⚠ 1 spec skipped
+  Total time: 2m 15s
+════════════════════════════════════════════════════════════
+```
+
+**Use cases:**
+- **Overnight processing**: Run all ready specs while you sleep
+- **CI/CD integration**: Process specs in automated pipelines
+- **Targeted batch processing**: Chain through specific specs in a defined order
+- **Dependency-aware execution**: Specs become ready as their dependencies complete
+
 ## Search
 
 Search and filter specs interactively or with direct queries:
