@@ -43,6 +43,13 @@
   - [Approval Gate](guides/enterprise/kpi-okr/04-approval.md)
   - [Implementation](guides/enterprise/kpi-okr/05-implementation.md)
   - [Reporting](guides/enterprise/kpi-okr/06-reporting.md)
+- [Enterprise TDD Workflow](guides/enterprise/tdd-workflow/README.md)
+  - [The TDD Challenge](guides/enterprise/tdd-workflow/01-scenario.md)
+  - [Chant Meets TDD](guides/enterprise/tdd-workflow/02-integration.md)
+  - [Specs as Test Plans](guides/enterprise/tdd-workflow/03-test-planning.md)
+  - [Writing Tests with Chant](guides/enterprise/tdd-workflow/04-execution.md)
+  - [Ensuring Quality](guides/enterprise/tdd-workflow/05-consistency.md)
+  - [Keeping Tests Current](guides/enterprise/tdd-workflow/06-drift-detection.md)
 
 # Reference
 
