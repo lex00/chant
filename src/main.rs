@@ -851,10 +851,42 @@ fn cmd_merge_driver(base: &Path, current: &Path, other: &Path) -> Result<()> {
     }
 }
 
-/// Show setup instructions for the merge driver
+/// Set up the merge driver and show status
 fn cmd_merge_driver_setup() -> Result<()> {
-    println!("{}", chant::merge_driver::get_setup_instructions());
-    Ok(())
+    match chant::merge_driver::setup_merge_driver() {
+        Ok(result) => {
+            if result.git_config_set && result.gitattributes_updated {
+                println!("{} Merge driver fully configured", "Done!".green());
+                println!("  {} Git config updated", "✓".green());
+                println!("  {} .gitattributes updated", "✓".green());
+            } else if result.git_config_set {
+                println!("{} Merge driver configured", "Done!".green());
+                println!("  {} Git config updated", "✓".green());
+                println!("  {} .gitattributes already configured", "•".cyan());
+            } else if result.gitattributes_updated {
+                println!("{} Merge driver partially configured", "Done!".yellow());
+                println!("  {} .gitattributes updated", "✓".green());
+                if let Some(warning) = result.warning {
+                    println!("  {} {}", "⚠".yellow(), warning);
+                }
+            } else {
+                println!("{} Merge driver already configured", "ℹ".cyan());
+            }
+            println!("\n{}", "How it works:".bold());
+            println!("  The merge driver automatically resolves spec file conflicts by:");
+            println!("  • Preferring the more advanced status (completed > in_progress > pending)");
+            println!("  • Merging commit lists without duplicates");
+            println!("  • Taking completed_at and model from whichever side has them");
+            println!("  • Using 3-way merge for body content (shows conflict markers if needed)");
+            Ok(())
+        }
+        Err(e) => {
+            eprintln!("{} Failed to set up merge driver: {}", "Error:".red(), e);
+            eprintln!("\n{}", "Manual setup instructions:".bold());
+            println!("{}", chant::merge_driver::get_setup_instructions());
+            Err(e)
+        }
+    }
 }
 
 /// Generate shell completion script
@@ -1170,18 +1202,13 @@ Project initialized on {}.
         std::fs::write(&gitignore_path, gitignore_content)?;
     }
 
-    // Create .gitattributes in repo root (only if it doesn't exist)
-    // This enables the custom merge driver for spec files
-    let gitattributes_path = PathBuf::from(".gitattributes");
-    if !gitattributes_path.exists() {
-        let gitattributes_content = r#"# Chant spec files use a custom merge driver for intelligent conflict resolution
-# This driver automatically resolves frontmatter conflicts while preserving implementation content
-#
-# Setup: Run `chant merge-driver-setup` for configuration instructions
-.chant/specs/*.md merge=chant-spec
-"#;
-        std::fs::write(&gitattributes_path, gitattributes_content)?;
-    }
+    // Set up the merge driver for spec files (handles .gitattributes and git config)
+    // This ensures branch mode works correctly by auto-resolving frontmatter conflicts
+    let merge_driver_result = chant::merge_driver::setup_merge_driver();
+    let merge_driver_warning = match &merge_driver_result {
+        Ok(result) => result.warning.clone(),
+        Err(e) => Some(format!("Failed to set up merge driver: {}", e)),
+    };
 
     // Handle silent mode: add .chant/ to .git/info/exclude
     if final_silent {
@@ -1321,6 +1348,23 @@ Project initialized on {}.
             "ℹ".cyan(),
             agent_names.cyan()
         );
+    }
+
+    // Show merge driver setup status
+    if let Some(warning) = merge_driver_warning {
+        eprintln!("{} Merge driver: {}", "Warning:".yellow(), warning);
+        eprintln!(
+            "  {} Run {} for manual setup instructions",
+            "•".yellow(),
+            "chant merge-driver-setup".cyan()
+        );
+    } else if let Ok(result) = merge_driver_result {
+        if result.git_config_set {
+            println!(
+                "{} Merge driver configured (auto-resolves spec file conflicts)",
+                "ℹ".cyan()
+            );
+        }
     }
 
     if is_wizard_mode {

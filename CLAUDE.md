@@ -460,12 +460,20 @@ The merge driver:
 
 #### Installation
 
-**Automatic** (recommended):
+**Automatic** (default):
+
+The merge driver is automatically configured when you run `chant init`. This sets up:
+- `.gitattributes` with the merge pattern
+- Git config with the merge driver command
+
+**Manual** (if needed):
+
+If you need to set up the merge driver manually (e.g., after cloning an existing repo), run:
 ```bash
-chant init --install-merge-driver
+chant merge-driver-setup
 ```
 
-**Manual**:
+Or configure manually:
 1. Add to `.gitattributes` in your repository root:
    ```
    .chant/specs/*.md merge=chant-spec
@@ -475,13 +483,6 @@ chant init --install-merge-driver
    ```bash
    git config merge.chant-spec.driver "chant merge-driver %O %A %B"
    git config merge.chant-spec.name "Chant spec merge driver"
-   ```
-
-   Or add directly to `.git/config`:
-   ```ini
-   [merge "chant-spec"]
-       name = Chant spec merge driver
-       driver = chant merge-driver %O %A %B
    ```
 
 #### When It Activates

@@ -378,6 +378,104 @@ implementation code while keeping wrong metadata.
     .to_string()
 }
 
+/// Result of setting up the merge driver
+#[derive(Debug, Clone)]
+pub struct MergeDriverSetupResult {
+    /// Whether the git config was set up (false if not in a git repo)
+    pub git_config_set: bool,
+    /// Whether .gitattributes was created/updated
+    pub gitattributes_updated: bool,
+    /// Any warning message (e.g., "not in a git repository")
+    pub warning: Option<String>,
+}
+
+/// Set up the merge driver for the current repository
+///
+/// This function:
+/// 1. Configures git with the merge driver settings (if in a git repo)
+/// 2. Creates/updates .gitattributes with the merge pattern
+///
+/// Returns a result indicating what was set up, or an error if something failed.
+pub fn setup_merge_driver() -> Result<MergeDriverSetupResult> {
+    let mut result = MergeDriverSetupResult {
+        git_config_set: false,
+        gitattributes_updated: false,
+        warning: None,
+    };
+
+    // Check if we're in a git repository
+    let in_git_repo = Command::new("git")
+        .args(["rev-parse", "--git-dir"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    if in_git_repo {
+        // Configure the merge driver name
+        let name_result = Command::new("git")
+            .args(["config", "merge.chant-spec.name", "Chant spec merge driver"])
+            .output();
+
+        // Configure the merge driver command
+        let driver_result = Command::new("git")
+            .args([
+                "config",
+                "merge.chant-spec.driver",
+                "chant merge-driver %O %A %B",
+            ])
+            .output();
+
+        // Check if both commands succeeded
+        match (name_result, driver_result) {
+            (Ok(name_out), Ok(driver_out))
+                if name_out.status.success() && driver_out.status.success() =>
+            {
+                result.git_config_set = true;
+            }
+            _ => {
+                result.warning = Some("Failed to configure git merge driver".to_string());
+            }
+        }
+    } else {
+        result.warning = Some("Not in a git repository - merge driver config skipped".to_string());
+    }
+
+    // Create/update .gitattributes (this works even without git)
+    let gitattributes_path = std::path::Path::new(".gitattributes");
+    let merge_pattern = ".chant/specs/*.md merge=chant-spec";
+
+    if gitattributes_path.exists() {
+        // Check if the pattern already exists
+        let content =
+            fs::read_to_string(gitattributes_path).context("Failed to read .gitattributes")?;
+
+        if !content.contains(merge_pattern) {
+            // Append the pattern
+            let mut new_content = content;
+            if !new_content.ends_with('\n') && !new_content.is_empty() {
+                new_content.push('\n');
+            }
+            new_content.push_str("\n# Chant spec files use a custom merge driver for intelligent conflict resolution\n");
+            new_content.push_str(merge_pattern);
+            new_content.push('\n');
+            fs::write(gitattributes_path, new_content)
+                .context("Failed to update .gitattributes")?;
+            result.gitattributes_updated = true;
+        }
+        // If pattern already exists, gitattributes_updated stays false (already configured)
+    } else {
+        // Create new .gitattributes file
+        let content = format!(
+            "# Chant spec files use a custom merge driver for intelligent conflict resolution\n# This driver automatically resolves frontmatter conflicts while preserving implementation content\n#\n# The merge driver is configured automatically by `chant init`\n{}\n",
+            merge_pattern
+        );
+        fs::write(gitattributes_path, content).context("Failed to create .gitattributes")?;
+        result.gitattributes_updated = true;
+    }
+
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
