@@ -2,3 +2,6 @@
 .locks/
 .store/
 logs/
+
+# Agent configuration (contains API keys, not shared)
+agents.md

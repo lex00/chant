@@ -1156,7 +1156,7 @@ Project initialized on {}.
     // Create .gitignore (only if it doesn't exist)
     let gitignore_path = chant_dir.join(".gitignore");
     if !gitignore_path.exists() {
-        let gitignore_content = "# Local state (not shared)\n.locks/\n.store/\n";
+        let gitignore_content = "# Local state (not shared)\n.locks/\n.store/\n\n# Agent configuration (contains API keys, not shared)\nagents.md\n";
         std::fs::write(&gitignore_path, gitignore_content)?;
     }
 

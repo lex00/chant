@@ -7,26 +7,6 @@ defaults:
   branch: false
   model: opus
   rotation_strategy: round-robin
-
-parallel:
-  stagger_delay_ms: 3000
-  agents:
-    #- name: claude1
-    #  command: claude1
-    #  max_concurrent: 1
-    #  weight: 1
-    - name: claude2
-      command: claude2
-      max_concurrent: 3
-      weight: 3
-    - name: claude3
-      command: claude3
-      max_concurrent: 3
-      weight: 3
-  cleanup:
-    enabled: true
-    prompt: parallel-cleanup
-    auto_run: false
 ---
 
 # Chant Configuration

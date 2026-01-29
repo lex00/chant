@@ -302,8 +302,17 @@ impl Default for DefaultsConfig {
 }
 
 impl Config {
+    /// Load configuration with full merge semantics.
+    /// Merge order (later overrides earlier):
+    /// 1. Global config (~/.config/chant/config.md)
+    /// 2. Project config (.chant/config.md)
+    /// 3. Project agents config (.chant/agents.md) - only for parallel.agents
     pub fn load() -> Result<Self> {
-        Self::load_from(Path::new(".chant/config.md"))
+        Self::load_merged_from(
+            global_config_path().as_deref(),
+            Path::new(".chant/config.md"),
+            Some(Path::new(".chant/agents.md")),
+        )
     }
 
     pub fn load_from(path: &Path) -> Result<Self> {
@@ -323,18 +332,24 @@ impl Config {
 
     /// Load merged configuration from global and project configs.
     /// Project config values override global config values.
-    #[allow(dead_code)]
     pub fn load_merged() -> Result<Self> {
         Self::load_merged_from(
             global_config_path().as_deref(),
             Path::new(".chant/config.md"),
+            Some(Path::new(".chant/agents.md")),
         )
     }
 
-    /// Load merged configuration from specified global and project config paths.
-    /// Project config values override global config values.
-    #[allow(dead_code)]
-    pub fn load_merged_from(global_path: Option<&Path>, project_path: &Path) -> Result<Self> {
+    /// Load merged configuration from specified global, project, and agents config paths.
+    /// Merge order (later overrides earlier):
+    /// 1. Global config
+    /// 2. Project config
+    /// 3. Agents config (only for parallel.agents section)
+    pub fn load_merged_from(
+        global_path: Option<&Path>,
+        project_path: &Path,
+        agents_path: Option<&Path>,
+    ) -> Result<Self> {
         // Load global config if it exists
         let global_config = global_path
             .filter(|p| p.exists())
@@ -345,21 +360,67 @@ impl Config {
         // Load project config as partial (required, but as partial for merging)
         let project_config = PartialConfig::load_from(project_path)?;
 
-        // Merge: project overrides global, then apply defaults
-        Ok(global_config.merge_with(project_config))
+        // Load agents config if it exists (optional, gitignored)
+        let agents_config = agents_path
+            .filter(|p| p.exists())
+            .map(AgentsConfig::load_from)
+            .transpose()?;
+
+        // Merge: global < project < agents (for parallel.agents only)
+        let mut config = global_config.merge_with(project_config);
+
+        // Apply agents override if present
+        if let Some(agents) = agents_config {
+            if let Some(parallel) = agents.parallel {
+                if !parallel.agents.is_empty() {
+                    config.parallel.agents = parallel.agents;
+                }
+            }
+        }
+
+        Ok(config)
     }
 }
 
 /// Returns the path to the global config file at ~/.config/chant/config.md
-#[allow(dead_code)]
 pub fn global_config_path() -> Option<PathBuf> {
     std::env::var("HOME")
         .ok()
         .map(|home| PathBuf::from(home).join(".config/chant/config.md"))
 }
 
+/// Agents-only config for project-specific agent overrides (.chant/agents.md)
+/// This file is gitignored and contains only the parallel.agents section
+#[derive(Debug, Deserialize, Default)]
+struct AgentsConfig {
+    pub parallel: Option<AgentsParallelConfig>,
+}
+
+/// Parallel config subset for agents.md - only contains agents list
+#[derive(Debug, Deserialize, Default)]
+struct AgentsParallelConfig {
+    #[serde(default)]
+    pub agents: Vec<AgentConfig>,
+}
+
+impl AgentsConfig {
+    fn load_from(path: &Path) -> Result<Self> {
+        let content = fs::read_to_string(path)
+            .with_context(|| format!("Failed to read agents config from {}", path.display()))?;
+
+        Self::parse(&content)
+    }
+
+    fn parse(content: &str) -> Result<Self> {
+        let (frontmatter, _body) = split_frontmatter(content);
+        let frontmatter =
+            frontmatter.context("Failed to extract frontmatter from agents config")?;
+
+        serde_yaml::from_str(&frontmatter).context("Failed to parse agents config frontmatter")
+    }
+}
+
 /// Partial config for merging - all fields optional
-#[allow(dead_code)]
 #[derive(Debug, Deserialize, Default)]
 struct PartialConfig {
     pub project: Option<PartialProjectConfig>,
@@ -370,14 +431,12 @@ struct PartialConfig {
     pub approval: Option<ApprovalConfig>,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Deserialize, Default)]
 struct PartialProjectConfig {
     pub name: Option<String>,
     pub prefix: Option<String>,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Deserialize, Default)]
 struct PartialDefaultsConfig {
     pub prompt: Option<String>,
@@ -390,7 +449,6 @@ struct PartialDefaultsConfig {
     pub rotation_strategy: Option<String>,
 }
 
-#[allow(dead_code)]
 impl PartialConfig {
     fn load_from(path: &Path) -> Result<Self> {
         let content = fs::read_to_string(path)
@@ -531,7 +589,7 @@ defaults:
         )
         .unwrap();
 
-        let config = Config::load_merged_from(None, &project_path).unwrap();
+        let config = Config::load_merged_from(None, &project_path, None).unwrap();
         assert_eq!(config.project.name, "my-project");
         assert_eq!(config.defaults.prompt, "custom");
     }
@@ -567,7 +625,7 @@ defaults:
         )
         .unwrap();
 
-        let config = Config::load_merged_from(Some(&global_path), &project_path).unwrap();
+        let config = Config::load_merged_from(Some(&global_path), &project_path, None).unwrap();
 
         // Project name from project config
         assert_eq!(config.project.name, "my-project");
@@ -612,7 +670,7 @@ defaults:
         )
         .unwrap();
 
-        let config = Config::load_merged_from(Some(&global_path), &project_path).unwrap();
+        let config = Config::load_merged_from(Some(&global_path), &project_path, None).unwrap();
 
         // Project values should override global
         assert_eq!(config.defaults.prompt, "project-prompt");
@@ -635,7 +693,7 @@ project:
         )
         .unwrap();
 
-        let config = Config::load_merged_from(Some(&global_path), &project_path).unwrap();
+        let config = Config::load_merged_from(Some(&global_path), &project_path, None).unwrap();
         assert_eq!(config.project.name, "my-project");
     }
 
@@ -689,7 +747,7 @@ project:
         )
         .unwrap();
 
-        let config = Config::load_merged_from(Some(&global_path), &project_path).unwrap();
+        let config = Config::load_merged_from(Some(&global_path), &project_path, None).unwrap();
         // Global model is used when project doesn't specify
         assert_eq!(config.defaults.model, Some("claude-opus-4".to_string()));
     }
@@ -722,7 +780,7 @@ defaults:
         )
         .unwrap();
 
-        let config = Config::load_merged_from(Some(&global_path), &project_path).unwrap();
+        let config = Config::load_merged_from(Some(&global_path), &project_path, None).unwrap();
         // Project model overrides global
         assert_eq!(config.defaults.model, Some("claude-sonnet-4".to_string()));
     }
@@ -1065,7 +1123,7 @@ enterprise:
         )
         .unwrap();
 
-        let config = Config::load_merged_from(Some(&global_path), &project_path).unwrap();
+        let config = Config::load_merged_from(Some(&global_path), &project_path, None).unwrap();
 
         // Project enterprise overrides global
         assert!(config.enterprise.derived.contains_key("project_field"));
@@ -1179,7 +1237,7 @@ project:
         )
         .unwrap();
 
-        let config = Config::load_merged_from(Some(&global_path), &project_path).unwrap();
+        let config = Config::load_merged_from(Some(&global_path), &project_path, None).unwrap();
         // Global sets dependency, project doesn't override
         assert_eq!(
             config.approval.rejection_action,
@@ -1215,8 +1273,186 @@ approval:
         )
         .unwrap();
 
-        let config = Config::load_merged_from(Some(&global_path), &project_path).unwrap();
+        let config = Config::load_merged_from(Some(&global_path), &project_path, None).unwrap();
         // Project overrides global
         assert_eq!(config.approval.rejection_action, RejectionAction::Group);
+    }
+
+    // =========================================================================
+    // AGENTS CONFIG TESTS
+    // =========================================================================
+
+    #[test]
+    fn test_agents_config_overrides_project() {
+        let tmp = TempDir::new().unwrap();
+        let project_path = tmp.path().join("config.md");
+        let agents_path = tmp.path().join("agents.md");
+
+        fs::write(
+            &project_path,
+            r#"---
+project:
+  name: my-project
+parallel:
+  agents:
+    - name: project-agent
+      command: claude
+      max_concurrent: 1
+---
+"#,
+        )
+        .unwrap();
+
+        fs::write(
+            &agents_path,
+            r#"---
+parallel:
+  agents:
+    - name: override-agent
+      command: claude-override
+      max_concurrent: 5
+---
+"#,
+        )
+        .unwrap();
+
+        let config = Config::load_merged_from(None, &project_path, Some(&agents_path)).unwrap();
+
+        // Agents file should override project agents
+        assert_eq!(config.parallel.agents.len(), 1);
+        assert_eq!(config.parallel.agents[0].name, "override-agent");
+        assert_eq!(config.parallel.agents[0].command, "claude-override");
+        assert_eq!(config.parallel.agents[0].max_concurrent, 5);
+    }
+
+    #[test]
+    fn test_agents_config_overrides_global() {
+        let tmp = TempDir::new().unwrap();
+        let global_path = tmp.path().join("global.md");
+        let project_path = tmp.path().join("config.md");
+        let agents_path = tmp.path().join("agents.md");
+
+        fs::write(
+            &global_path,
+            r#"---
+parallel:
+  agents:
+    - name: global-agent
+      command: claude-global
+      max_concurrent: 2
+---
+"#,
+        )
+        .unwrap();
+
+        fs::write(
+            &project_path,
+            r#"---
+project:
+  name: my-project
+---
+"#,
+        )
+        .unwrap();
+
+        fs::write(
+            &agents_path,
+            r#"---
+parallel:
+  agents:
+    - name: local-agent
+      command: claude-local
+      max_concurrent: 3
+---
+"#,
+        )
+        .unwrap();
+
+        let config =
+            Config::load_merged_from(Some(&global_path), &project_path, Some(&agents_path))
+                .unwrap();
+
+        // Agents file should override global agents
+        assert_eq!(config.parallel.agents.len(), 1);
+        assert_eq!(config.parallel.agents[0].name, "local-agent");
+        assert_eq!(config.parallel.agents[0].command, "claude-local");
+        assert_eq!(config.parallel.agents[0].max_concurrent, 3);
+    }
+
+    #[test]
+    fn test_agents_config_not_exists_uses_global() {
+        let tmp = TempDir::new().unwrap();
+        let global_path = tmp.path().join("global.md");
+        let project_path = tmp.path().join("config.md");
+        let agents_path = tmp.path().join("nonexistent.md");
+
+        fs::write(
+            &global_path,
+            r#"---
+parallel:
+  agents:
+    - name: global-agent
+      command: claude-global
+      max_concurrent: 2
+---
+"#,
+        )
+        .unwrap();
+
+        fs::write(
+            &project_path,
+            r#"---
+project:
+  name: my-project
+---
+"#,
+        )
+        .unwrap();
+
+        let config =
+            Config::load_merged_from(Some(&global_path), &project_path, Some(&agents_path))
+                .unwrap();
+
+        // Should use global agents when agents file doesn't exist
+        assert_eq!(config.parallel.agents.len(), 1);
+        assert_eq!(config.parallel.agents[0].name, "global-agent");
+    }
+
+    #[test]
+    fn test_agents_config_empty_agents_uses_defaults() {
+        let tmp = TempDir::new().unwrap();
+        let project_path = tmp.path().join("config.md");
+        let agents_path = tmp.path().join("agents.md");
+
+        fs::write(
+            &project_path,
+            r#"---
+project:
+  name: my-project
+parallel:
+  agents:
+    - name: project-agent
+      command: claude-project
+---
+"#,
+        )
+        .unwrap();
+
+        // Empty agents list should not override
+        fs::write(
+            &agents_path,
+            r#"---
+parallel:
+  agents: []
+---
+"#,
+        )
+        .unwrap();
+
+        let config = Config::load_merged_from(None, &project_path, Some(&agents_path)).unwrap();
+
+        // Empty agents list should not override, use project agents
+        assert_eq!(config.parallel.agents.len(), 1);
+        assert_eq!(config.parallel.agents[0].name, "project-agent");
     }
 }

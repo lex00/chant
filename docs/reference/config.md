@@ -159,14 +159,19 @@ Chant supports a global config file for user-wide defaults:
 
 ### Merge Behavior
 
-Project config overrides global config. Values are merged at the key level:
+Configuration is merged from three sources (later overrides earlier):
 
 ```
 ~/.config/chant/config.md    <- Global defaults
 .chant/config.md             <- Project overrides
+.chant/agents.md             <- Agent overrides (parallel.agents only)
 ```
 
+Values are merged at the key level. The agents.md file only overrides the `parallel.agents` section.
+
 ### Example Global Config
+
+The global config is the recommended place for agent definitions since they often contain account-specific settings:
 
 ```markdown
 # ~/.config/chant/config.md
@@ -175,6 +180,17 @@ defaults:
   branch: true
   model: claude-opus-4
   provider: claude
+  rotation_strategy: round-robin
+
+parallel:
+  stagger_delay_ms: 1000
+  agents:
+    - name: main
+      command: claude
+      max_concurrent: 2
+    - name: worker1
+      command: claude-alt1
+      max_concurrent: 3
 
 providers:
   openai:
@@ -183,7 +199,7 @@ providers:
 
 # Global Chant Settings
 
-My default settings for all projects.
+My default settings and agent configuration for all projects.
 ```
 
 ### Example Project Override
@@ -200,6 +216,25 @@ defaults:
 ```
 
 In this example, the global config sets `branch: true`, but the project config overrides it to `false`.
+
+**Note**: Agent definitions should NOT be in project config since they often contain sensitive information. Use global config or `.chant/agents.md` instead.
+
+### Project Agents Override
+
+For project-specific agent overrides (rare case), create `.chant/agents.md`. This file is gitignored by default:
+
+```markdown
+# .chant/agents.md
+---
+parallel:
+  agents:
+    - name: project-specific
+      command: claude-project
+      max_concurrent: 2
+---
+```
+
+This file only overrides the `parallel.agents` section. Other parallel settings (like `stagger_delay_ms`) come from global or project config.
 
 ## Model Providers
 
@@ -360,15 +395,17 @@ If `split_model` is not specified, it defaults to `sonnet` (for Claude).
 
 Configure multiple Claude agents for parallel spec execution. Useful when you have multiple Claude accounts to distribute work across.
 
+**Important**: Agent definitions should be in global config (`~/.config/chant/config.md`) or `.chant/agents.md`, not in project config. This keeps sensitive account information out of git.
+
 ### Example Configuration
 
-```markdown
-# .chant/config.md
----
-project:
-  name: my-project
+Configure agents in your global config:
 
+```markdown
+# ~/.config/chant/config.md
+---
 parallel:
+  stagger_delay_ms: 1000
   agents:
     - name: main
       command: claude           # Shell command or wrapper script
@@ -383,6 +420,19 @@ parallel:
     enabled: true
     prompt: parallel-cleanup    # Prompt for agent-assisted recovery
     auto_run: false             # Require confirmation before cleanup
+---
+```
+
+Or for project-specific overrides (rare), use `.chant/agents.md` (gitignored):
+
+```markdown
+# .chant/agents.md
+---
+parallel:
+  agents:
+    - name: project-worker
+      command: claude-project
+      max_concurrent: 2
 ---
 ```
 

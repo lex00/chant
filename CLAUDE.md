@@ -229,48 +229,85 @@ Next steps:
 
 ## Configuration
 
-### Global Configuration File: `~/.config/chant/config.md`
+### Configuration Hierarchy
 
-The global config supports parallel execution settings and retry behavior:
+Chant uses a layered configuration system with merge semantics:
 
-```markdown
-## parallel
+1. **Global config** (`~/.config/chant/config.md`) - User-wide defaults
+2. **Project config** (`.chant/config.md`) - Project-specific settings (committed to git)
+3. **Agents config** (`.chant/agents.md`) - Agent definitions (gitignored, optional)
 
-- `stagger_delay_ms`: Delay in milliseconds between spawning agents (default: 1000)
-  - Prevents thundering herd and API rate limiting
-  - Use 500-2000ms depending on API provider limits
-  - Example: `stagger_delay_ms: 1000`
+Later configs override earlier ones. The agents config only overrides the `parallel.agents` section.
 
-## providers
+### Global Configuration: `~/.config/chant/config.md`
 
-Configure retry behavior for API providers (Ollama, OpenAI):
+The global config is the recommended place for agent definitions since they often contain API keys or account-specific settings:
 
-- `max_retries`: Maximum number of retry attempts (default: 3)
-  - Applies to HTTP 429 (rate limit), 5xx errors, and network failures
-  - Exponential backoff: 2^(attempt-1) * retry_delay_ms ± 10% jitter
-
-- `retry_delay_ms`: Initial delay for retries in milliseconds (default: 1000)
-  - First retry: ~1000ms
-  - Second retry: ~2000ms
-  - Third retry: ~4000ms
-  - Jitter prevents thundering herd on synchronized retries
-
-Example configuration:
 ```yaml
-## providers
+---
+defaults:
+  model: claude-opus-4
+  rotation_strategy: round-robin
 
-### ollama
-- max_retries: 3
-- retry_delay_ms: 1000
+parallel:
+  stagger_delay_ms: 1000
+  agents:
+    - name: main
+      command: claude
+      max_concurrent: 2
+    - name: worker1
+      command: claude-alt1
+      max_concurrent: 3
+    - name: worker2
+      command: claude-alt2
+      max_concurrent: 3
 
-### openai
-- max_retries: 5
-- retry_delay_ms: 2000
+providers:
+  ollama:
+    max_retries: 3
+    retry_delay_ms: 1000
+  openai:
+    max_retries: 5
+    retry_delay_ms: 2000
+---
+
+# Global Chant Settings
+
+My agent configuration for all projects.
 ```
 
-### Local Configuration: `.chant/config.md`
+### Project Configuration: `.chant/config.md`
 
-Local project config overrides global settings. Supports same `parallel` and `providers` sections.
+Project config contains settings that should be shared with the team (committed to git):
+
+```yaml
+---
+project:
+  name: my-project
+
+defaults:
+  prompt: standard
+  branch: false
+---
+```
+
+**Note**: Agent definitions should NOT be in project config. Use global config or `.chant/agents.md` instead.
+
+### Project Agents Override: `.chant/agents.md`
+
+For project-specific agent overrides (rare case), create `.chant/agents.md`. This file is gitignored by default:
+
+```yaml
+---
+parallel:
+  agents:
+    - name: project-specific
+      command: claude-project
+      max_concurrent: 2
+---
+```
+
+This file only overrides the `parallel.agents` section. Other settings come from global or project config.
 
 ## Spec Format and Patterns
 
