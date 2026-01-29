@@ -125,6 +125,9 @@ enum Commands {
     Show {
         /// Spec ID (full or partial) or repo:spec-id for cross-repo specs
         id: String,
+        /// Show full spec body (default: summary only)
+        #[arg(long)]
+        body: bool,
         /// Disable markdown rendering
         #[arg(long)]
         no_render: bool,
@@ -585,7 +588,11 @@ fn run() -> Result<()> {
             mentions.as_deref(),
             count,
         ),
-        Commands::Show { id, no_render } => cmd::spec::cmd_show(&id, no_render),
+        Commands::Show {
+            id,
+            body,
+            no_render,
+        } => cmd::spec::cmd_show(&id, body, no_render),
         Commands::Search {
             query,
             title_only,

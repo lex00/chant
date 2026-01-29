@@ -77,13 +77,17 @@ Git hooks enhance the workflow but are **optional** - no Chant feature depends o
 staged_specs=$(git diff --cached --name-only -- '.chant/specs/*.md')
 
 if [ -n "$staged_specs" ]; then
-    echo "$staged_specs" | xargs chant lint --files
+    # Validate all specs (staged files are a subset)
+    chant lint
     if [ $? -ne 0 ]; then
         echo "Spec validation failed. Fix errors or use --no-verify"
         exit 1
     fi
 fi
 ```
+
+> **Note:** A `--files` flag for targeted validation is under consideration.
+> See [Planned Features](../planning/lint-files.md) for details.
 
 #### commit-msg
 
@@ -109,12 +113,15 @@ exit 0
 #!/bin/sh
 # .git/hooks/post-commit
 
+# Post-commit hooks can log commits for auditing.
+# Chant automatically records commits during `chant work` execution,
+# so manual commit tracking is typically not needed.
+
 msg=$(git log -1 --format=%s)
 
 if echo "$msg" | grep -qE '^chant\([a-z0-9-]+\):'; then
     spec_id=$(echo "$msg" | sed -E 's/^chant\(([a-z0-9-]+)\):.*/\1/')
-    commit=$(git rev-parse HEAD)
-    chant update "$spec_id" --commit "$commit" 2>/dev/null || true
+    echo "Committed work for spec: $spec_id"
 fi
 ```
 
@@ -128,14 +135,11 @@ branch=$(git rev-parse --abbrev-ref HEAD)
 
 if echo "$branch" | grep -qE '^chant/'; then
     spec_id=$(echo "$branch" | sed 's/^chant\///')
-    status=$(chant show "$spec_id" --format status 2>/dev/null)
-    if [ "$status" != "completed" ]; then
-        echo "Warning: Spec $spec_id is not completed (status: $status)"
-        echo "Push anyway? [y/N]"
-        read -r response
-        if [ "$response" != "y" ]; then
-            exit 1
-        fi
+    # Check if spec exists and warn if pushing incomplete work
+    if chant show "$spec_id" >/dev/null 2>&1; then
+        echo "Pushing spec branch: $spec_id"
+    else
+        echo "Warning: Spec $spec_id not found"
     fi
 fi
 
@@ -149,8 +153,8 @@ Hooks are convenience, not enforcement:
 | Feature | With Hooks | Without Hooks |
 |---------|------------|---------------|
 | Spec validation | Automatic on commit | `chant lint` manually |
-| Commit recording | Automatic | `chant update --commit` manually |
-| Status updates | Automatic | Explicit state changes |
+| Commit recording | Automatic via `chant work` | Recorded during work execution |
+| Status updates | Automatic | `chant finalize` manually |
 
 ### Team Setup
 
@@ -186,14 +190,7 @@ When merging spec branches back to main, frontmatter conflicts commonly occur. T
 
 ### Installation
 
-**Automatic:**
-```bash
-chant init --install-merge-driver
-```
-
-**Manual:**
-
-1. Add to `.gitattributes`:
+1. Add to `.gitattributes` in your repository root:
    ```
    .chant/specs/*.md merge=chant-spec
    ```

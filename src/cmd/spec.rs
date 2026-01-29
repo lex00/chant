@@ -1475,7 +1475,7 @@ pub fn cmd_list(
     Ok(())
 }
 
-pub fn cmd_show(id: &str, no_render: bool) -> Result<()> {
+pub fn cmd_show(id: &str, show_body: bool, no_render: bool) -> Result<()> {
     let spec = if id.contains(':') {
         // Cross-repo spec ID format: "repo:spec-id"
         let parts: Vec<&str> = id.splitn(2, ':').collect();
@@ -1564,16 +1564,19 @@ pub fn cmd_show(id: &str, no_render: bool) -> Result<()> {
         }
     }
 
-    println!("\n{}", "--- Body ---".dimmed());
+    // Only show body if --body flag is passed
+    if show_body {
+        println!("\n{}", "--- Body ---".dimmed());
 
-    // Check if we should render markdown
-    let should_render =
-        !no_render && atty::is(atty::Stream::Stdout) && std::env::var("NO_COLOR").is_err();
+        // Check if we should render markdown
+        let should_render =
+            !no_render && atty::is(atty::Stream::Stdout) && std::env::var("NO_COLOR").is_err();
 
-    if should_render {
-        render::render_markdown(&spec.body);
-    } else {
-        println!("{}", spec.body);
+        if should_render {
+            render::render_markdown(&spec.body);
+        } else {
+            println!("{}", spec.body);
+        }
     }
 
     Ok(())

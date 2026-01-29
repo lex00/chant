@@ -84,7 +84,11 @@ chant work --parallel --max 3  # Limit concurrent agents
 For epic decomposition with parallel execution:
 
 ```bash
-chant split 2026-01-22-001-x7m --then work --parallel
+# Split the spec into members
+chant split 2026-01-22-001-x7m
+
+# Then work on ready members in parallel
+chant work --parallel
 ```
 
 1. Split creates members (.1, .2, .3, ...)
@@ -154,16 +158,6 @@ $ chant work 2026-01-22-003-abc --force
 4. **Testing** - Want to work on spec to test dependency resolution
 
 **Warning:** Forcing work on a truly blocked spec may lead to conflicts or incomplete work if dependencies aren't actually satisfied.
-
-## Dependency Visualization
-
-```bash
-$ chant deps 2026-01-22-003-abc
-2026-01-22-003-abc
-├── 2026-01-22-001-x7m [completed]
-└── 2026-01-22-002-q2n [pending]
-    └── 2026-01-22-004-def [in_progress]
-```
 
 ## Cross-Spec References
 

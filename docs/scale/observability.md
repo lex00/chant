@@ -86,49 +86,37 @@ Recent Completions:
 
 ### Spec History
 
+View spec history using git:
+
 ```bash
-$ chant history 001
-Spec: 001 - Add authentication
+# Spec history
+git log --oneline -- .chant/specs/001.md
 
-Timeline:
-  2026-01-22 10:00  Created
-  2026-01-22 10:15  Started (attempt 1)
-  2026-01-22 10:20  Failed - tests failed
-  2026-01-22 10:30  Started (attempt 2)
-  2026-01-22 10:45  Completed
+# What changed
+git diff HEAD~1 -- .chant/specs/001.md
 
-Commits:
-  abc123  chant(001): implement JWT validation
-  def456  chant(001): fix test failures
-
-Duration: 45m total, 15m active
+# When was spec completed
+git log -1 --format=%ci -- .chant/specs/001.md
 ```
+
+Or use `chant show` to see current spec details including status, commits, and timestamps.
 
 ### Failure Analysis
 
+List failed specs using the list command with status filter:
+
 ```bash
-$ chant failures
+$ chant list --status failed
 Recent failures:
 
-001 - Add authentication
-  Failed: 2026-01-22 10:20
-  Error: Tests failed - 2 assertions
-  Attempt: 1 of 2 (later succeeded)
+001 - Add authentication (failed)
+005 - Refactor API (failed)
 
-005 - Refactor API
-  Failed: 2026-01-22 09:00
-  Error: Merge conflict
-  Status: Unresolved
-
-$ chant show 005 --error
-Error: Merge conflict in src/api/handler.go
-
-Agent output:
-  [09:00:12] Changes complete
-  [09:00:15] Attempting merge to main
-  [09:00:16] CONFLICT: src/api/handler.go
-  [09:00:16] Aborting - manual resolution required
+# View details of a failed spec
+$ chant show 005
 ```
+
+Use `chant log <spec-id>` to view the agent execution log for debugging.
 
 ## Team Observability
 
@@ -162,34 +150,23 @@ jq 'select(.event == "spec_completed")' .chant/logs/chant.log
 | `info` | Spec starts/stops, state changes |
 | `debug` | Detailed operations, file reads |
 
-### Activity Report
+### Activity Analysis
+
+Use `chant status` for current state overview, and git for historical analysis:
 
 ```bash
-$ chant report --last 7d
-Weekly Report (2026-01-15 to 2026-01-22)
+# Current status
+$ chant status
 
-Tasks:
-  Created:    47
-  Completed:  42
-  Failed:     5 (3 retried successfully)
+# Activity over time via git
+git log --format=%ad --date=short -- .chant/specs/ | sort | uniq -c
 
-By Project:
-  auth:       12 completed
-  payments:   18 completed
-  api:        12 completed
-
-By Person:
-  alice:      15 tasks
-  bob:        12 tasks
-  carol:      15 tasks
-
-Top Failures:
-  - Test failures: 3
-  - Merge conflicts: 2
-
-Avg Duration: 12m
-Total Agent Time: 8.4h
+# Recent completions
+git log --oneline --grep="^chant(" --since="1 week ago"
 ```
+
+> **Note:** A dedicated `chant report` command for team analytics is under consideration.
+> See [Planned Features](../planning/report.md) for details.
 
 ### Git-Based Analytics
 

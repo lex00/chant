@@ -211,11 +211,7 @@ lifecycle:
     max_disk: 10G              # Clean oldest if over limit
 ```
 
-```bash
-# Manual cleanup
-chant cleanup clones --older-than 7d
-chant cleanup clones --all
-```
+Automatic cleanup runs periodically. Use `chant cleanup` for manual cleanup when needed.
 
 ### Log Rotation
 
@@ -292,13 +288,7 @@ lifecycle:
     retain_unmerged: 30d       # Keep unmerged branches for 30d
 ```
 
-```bash
-# Clean merged branches
-chant cleanup branches --merged
-
-# List stale branches
-chant cleanup branches --dry-run
-```
+Branches are cleaned up automatically when specs are completed. Use `chant cleanup` for manual cleanup when needed.
 
 ## Disk Usage
 
