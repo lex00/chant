@@ -211,6 +211,12 @@ enum Commands {
         /// Skip approval check (for emergencies)
         #[arg(long)]
         skip_approval: bool,
+        /// Chain through ready specs until none remain or failure occurs
+        #[arg(long)]
+        chain: bool,
+        /// Maximum number of specs to chain (0 = unlimited, only with --chain)
+        #[arg(long, default_value = "0")]
+        chain_max: usize,
     },
     /// Start MCP server (Model Context Protocol)
     Mcp,
@@ -638,6 +644,8 @@ fn run() -> Result<()> {
             no_cleanup,
             cleanup,
             skip_approval,
+            chain,
+            chain_max,
         } => cmd::work::cmd_work(
             &ids,
             prompt.as_deref(),
@@ -651,6 +659,8 @@ fn run() -> Result<()> {
             no_cleanup,
             cleanup,
             skip_approval,
+            chain,
+            chain_max,
         ),
         Commands::Mcp => mcp::run_server(),
         Commands::Status { global, repo } => cmd::spec::cmd_status(global, repo.as_deref()),

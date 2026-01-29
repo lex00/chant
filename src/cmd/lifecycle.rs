@@ -1909,6 +1909,8 @@ pub fn cmd_resume(
             false, // no_cleanup
             false, // cleanup
             false, // skip_approval
+            false, // chain
+            0,     // chain_max
         )?;
     }
 
@@ -2044,6 +2046,8 @@ pub fn cmd_replay(
         false, // no_cleanup
         false, // cleanup
         true,  // skip_approval - replays should skip approval check
+        false, // chain
+        0,     // chain_max
     );
 
     // Handle result: cmd_work will have set the status to completed or failed

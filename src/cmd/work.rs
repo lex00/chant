@@ -264,6 +264,8 @@ pub fn cmd_work(
     no_cleanup: bool,
     force_cleanup: bool,
     skip_approval: bool,
+    chain: bool,
+    chain_max: usize,
 ) -> Result<()> {
     let specs_dir = crate::cmd::ensure_initialized()?;
     let prompts_dir = PathBuf::from(PROMPTS_DIR);
@@ -290,6 +292,21 @@ pub fn cmd_work(
             specific_ids: ids,
         };
         return cmd_work_parallel(&specs_dir, &prompts_dir, &config, options);
+    }
+
+    // Handle chain mode: loop through ready specs until none remain or failure
+    if chain {
+        let chain_options = ChainOptions {
+            max_specs: chain_max,
+            labels,
+            prompt_name,
+            cli_branch: cli_branch.as_deref(),
+            force,
+            allow_no_commits,
+            skip_approval,
+            starting_spec_id: ids.first().map(String::as_str),
+        };
+        return cmd_work_chain(&specs_dir, &prompts_dir, &config, chain_options);
     }
 
     // If no ID and not parallel, check for TTY
@@ -747,6 +764,489 @@ pub fn cmd_work(
     Ok(())
 }
 
+// ============================================================================
+// CHAIN EXECUTION MODE
+// ============================================================================
+
+/// Global flag for chain interrupt handling
+static CHAIN_INTERRUPTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Set up SIGINT handler for graceful chain interruption
+fn setup_chain_signal_handler() {
+    CHAIN_INTERRUPTED.store(false, std::sync::atomic::Ordering::SeqCst);
+    let _ = ctrlc::set_handler(move || {
+        if CHAIN_INTERRUPTED.load(std::sync::atomic::Ordering::SeqCst) {
+            // Already interrupted once, force exit
+            eprintln!("\n{} Force exit", "✗".red());
+            std::process::exit(130);
+        }
+        eprintln!(
+            "\n{} Interrupt received - finishing current spec before stopping...",
+            "→".yellow()
+        );
+        eprintln!("  {} Press Ctrl+C again to force exit", "→".dimmed());
+        CHAIN_INTERRUPTED.store(true, std::sync::atomic::Ordering::SeqCst);
+    });
+}
+
+/// Check if chain execution was interrupted
+fn is_chain_interrupted() -> bool {
+    CHAIN_INTERRUPTED.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// Find the next ready spec respecting filters
+fn find_next_ready_spec(
+    specs_dir: &Path,
+    labels: &[String],
+    skip_spec_id: Option<&str>,
+) -> Result<Option<Spec>> {
+    let all_specs = spec::load_all_specs(specs_dir)?;
+
+    // Filter to ready specs
+    let mut ready_specs: Vec<Spec> = all_specs
+        .iter()
+        .filter(|s| {
+            // Exclude cancelled specs
+            s.frontmatter.status != SpecStatus::Cancelled
+                // Must be ready (dependencies satisfied)
+                && s.is_ready(&all_specs)
+                // Skip the specified spec (if any - used when a specific starting spec was provided)
+                && skip_spec_id.is_none_or(|id| s.id != id)
+        })
+        .cloned()
+        .collect();
+
+    // Filter by labels if specified
+    if !labels.is_empty() {
+        ready_specs.retain(|s| {
+            if let Some(spec_labels) = &s.frontmatter.labels {
+                labels.iter().any(|l| spec_labels.contains(l))
+            } else {
+                false
+            }
+        });
+    }
+
+    // Return the first ready spec (could add sorting strategy here in the future)
+    Ok(ready_specs.into_iter().next())
+}
+
+/// Count total ready specs matching filters
+fn count_ready_specs(specs_dir: &Path, labels: &[String]) -> Result<usize> {
+    let all_specs = spec::load_all_specs(specs_dir)?;
+
+    let mut ready_specs: Vec<&Spec> = all_specs
+        .iter()
+        .filter(|s| s.frontmatter.status != SpecStatus::Cancelled && s.is_ready(&all_specs))
+        .collect();
+
+    if !labels.is_empty() {
+        ready_specs.retain(|s| {
+            if let Some(spec_labels) = &s.frontmatter.labels {
+                labels.iter().any(|l| spec_labels.contains(l))
+            } else {
+                false
+            }
+        });
+    }
+
+    Ok(ready_specs.len())
+}
+
+/// Execute a single spec in chain mode (simplified version of cmd_work for single spec)
+#[allow(clippy::too_many_arguments)]
+fn execute_single_spec_in_chain(
+    spec_id: &str,
+    specs_dir: &Path,
+    prompts_dir: &Path,
+    config: &Config,
+    prompt_name: Option<&str>,
+    cli_branch: Option<&str>,
+    force: bool,
+    allow_no_commits: bool,
+    skip_approval: bool,
+) -> Result<()> {
+    // Resolve spec
+    let mut spec = spec::resolve_spec(specs_dir, spec_id)?;
+    let spec_path = specs_dir.join(format!("{}.md", spec.id));
+
+    // Reject cancelled specs
+    if spec.frontmatter.status == SpecStatus::Cancelled {
+        anyhow::bail!(
+            "Cannot work on cancelled spec '{}'. Cancelled specs are not eligible for execution.",
+            spec.id
+        );
+    }
+
+    // Check approval requirements
+    if spec.requires_approval() && !skip_approval {
+        let approval = spec.frontmatter.approval.as_ref().unwrap();
+        if approval.status == spec::ApprovalStatus::Rejected {
+            let by_info = approval
+                .by
+                .as_ref()
+                .map(|b| format!(" by {}", b))
+                .unwrap_or_default();
+            anyhow::bail!(
+                "Cannot work on spec '{}' - it has been rejected{}. \
+                 Address the feedback and get approval first.",
+                spec.id,
+                by_info
+            );
+        } else {
+            anyhow::bail!(
+                "Spec '{}' requires approval before work can begin. Use --skip-approval to bypass.",
+                spec.id
+            );
+        }
+    }
+
+    // Check if already completed
+    if spec.frontmatter.status == SpecStatus::Completed && !force {
+        println!(
+            "{} Spec {} already completed, skipping.",
+            "→".cyan(),
+            spec.id
+        );
+        return Ok(());
+    }
+
+    // Check if dependencies are satisfied
+    let all_specs = spec::load_all_specs(specs_dir)?;
+    if !spec.is_ready(&all_specs) && !force {
+        let blockers = spec.get_blocking_dependencies(&all_specs, specs_dir);
+        if !blockers.is_empty() {
+            let blocking_ids: Vec<String> = blockers.iter().map(|b| b.spec_id.clone()).collect();
+            anyhow::bail!(
+                "Spec '{}' is blocked by dependencies: {}",
+                spec.id,
+                blocking_ids.join(", ")
+            );
+        }
+    }
+
+    // Handle branch creation if requested
+    let create_branch = cli_branch.is_some() || config.defaults.branch;
+    let use_branch_prefix = cli_branch.unwrap_or(&config.defaults.branch_prefix);
+    let _branch_name = if create_branch {
+        let branch_name = format!("{}{}", use_branch_prefix, spec.id);
+        create_or_switch_branch(&branch_name)?;
+        spec.frontmatter.branch = Some(branch_name.clone());
+        Some(branch_name)
+    } else {
+        None
+    };
+
+    // Resolve prompt
+    let resolved_prompt_name = prompt_name
+        .map(std::string::ToString::to_string)
+        .or_else(|| spec.frontmatter.prompt.clone())
+        .or_else(|| auto_select_prompt_for_type(&spec, prompts_dir))
+        .unwrap_or_else(|| config.defaults.prompt.clone());
+
+    let prompt_path = prompts_dir.join(format!("{}.md", resolved_prompt_name));
+    if !prompt_path.exists() {
+        anyhow::bail!("Prompt not found: {}", resolved_prompt_name);
+    }
+
+    // Update status to in_progress
+    spec.frontmatter.status = SpecStatus::InProgress;
+    spec.save(&spec_path)?;
+
+    // Mark driver as in_progress if this is a member spec
+    spec::mark_driver_in_progress(specs_dir, &spec.id)?;
+
+    // Assemble prompt
+    let message = prompt::assemble(&spec, &prompt_path, config)?;
+
+    // Select agent for execution
+    let agent_command =
+        if config.defaults.rotation_strategy != "none" && !config.parallel.agents.is_empty() {
+            match cmd::agent_rotation::select_agent_for_work(
+                &config.defaults.rotation_strategy,
+                &config.parallel,
+            ) {
+                Ok(cmd) => Some(cmd),
+                Err(e) => {
+                    println!("{} Failed to select agent: {}", "⚠".yellow(), e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+    // Invoke agent
+    let result = if let Some(agent_cmd) = agent_command {
+        cmd::agent::invoke_agent_with_command_override(
+            &message,
+            &spec,
+            &resolved_prompt_name,
+            config,
+            Some(&agent_cmd),
+        )
+    } else {
+        cmd::agent::invoke_agent(&message, &spec, &resolved_prompt_name, config)
+    };
+
+    match result {
+        Ok(agent_output) => {
+            // Reload spec (it may have been modified by the agent)
+            let mut spec = spec::resolve_spec(specs_dir, &spec.id)?;
+
+            // Check for commits
+            let found_commits = match if allow_no_commits {
+                cmd::commits::get_commits_for_spec_allow_no_commits(&spec.id)
+            } else {
+                cmd::commits::get_commits_for_spec(&spec.id)
+            } {
+                Ok(commits) => {
+                    if commits.is_empty() {
+                        spec.frontmatter.status = SpecStatus::Failed;
+                        spec.save(&spec_path)?;
+                        anyhow::bail!("No commits found - agent did not make any changes");
+                    }
+                    commits
+                }
+                Err(e) => {
+                    if allow_no_commits {
+                        vec![]
+                    } else {
+                        spec.frontmatter.status = SpecStatus::Failed;
+                        spec.save(&spec_path)?;
+                        return Err(e);
+                    }
+                }
+            };
+
+            // Check acceptance criteria
+            let unchecked_count = spec.count_unchecked_checkboxes();
+            if unchecked_count > 0 && !force {
+                spec.frontmatter.status = SpecStatus::Failed;
+                spec.save(&spec_path)?;
+                anyhow::bail!("Spec has {} unchecked acceptance criteria", unchecked_count);
+            }
+
+            // Auto-finalize the spec
+            let all_specs = spec::load_all_specs(specs_dir)?;
+            let commits_to_pass = if found_commits.is_empty() {
+                None
+            } else {
+                Some(found_commits)
+            };
+            finalize_spec(
+                &mut spec,
+                &spec_path,
+                config,
+                &all_specs,
+                allow_no_commits,
+                commits_to_pass,
+            )?;
+
+            // Check if driver should be auto-completed
+            let all_specs = spec::load_all_specs(specs_dir)?;
+            if spec::auto_complete_driver_if_ready(&spec.id, &all_specs, specs_dir)? {
+                println!(
+                    "  {} Auto-completed driver spec: {}",
+                    "✓".green(),
+                    spec::extract_driver_id(&spec.id).unwrap()
+                );
+            }
+
+            // Append agent output to spec body
+            append_agent_output(&mut spec, &agent_output);
+            spec.save(&spec_path)?;
+
+            // Create transcript commit
+            commit_transcript(&spec.id, &spec_path)?;
+
+            Ok(())
+        }
+        Err(e) => {
+            // Update spec to failed
+            let mut spec = spec::resolve_spec(specs_dir, &spec.id)?;
+            spec.frontmatter.status = SpecStatus::Failed;
+            spec.save(&spec_path)?;
+            Err(e)
+        }
+    }
+}
+
+/// Chain execution mode: loop through ready specs until none remain or failure
+pub fn cmd_work_chain(
+    specs_dir: &Path,
+    prompts_dir: &Path,
+    config: &Config,
+    options: ChainOptions,
+) -> Result<()> {
+    use std::time::Instant;
+
+    // Set up signal handler for graceful interruption
+    setup_chain_signal_handler();
+
+    // Count total ready specs for progress display
+    let initial_total = count_ready_specs(specs_dir, options.labels)?;
+
+    if initial_total == 0 {
+        if !options.labels.is_empty() {
+            println!("No ready specs with specified labels.");
+        } else {
+            println!("No ready specs to execute.");
+        }
+        return Ok(());
+    }
+
+    println!(
+        "\n{} Starting chain execution ({} ready specs)...\n",
+        "→".cyan(),
+        initial_total
+    );
+
+    let mut completed = 0;
+    let mut failed_spec: Option<(String, String)> = None;
+    let start_time = Instant::now();
+
+    // If a starting spec was provided, execute it first
+    if let Some(starting_id) = options.starting_spec_id {
+        let spec = spec::resolve_spec(specs_dir, starting_id)?;
+
+        println!(
+            "[{}/{}] {} {}: {}",
+            completed + 1,
+            initial_total,
+            "Working".cyan(),
+            spec.id,
+            spec.title.as_deref().unwrap_or("")
+        );
+
+        let spec_start = Instant::now();
+        match execute_single_spec_in_chain(
+            &spec.id,
+            specs_dir,
+            prompts_dir,
+            config,
+            options.prompt_name,
+            options.cli_branch,
+            options.force,
+            options.allow_no_commits,
+            options.skip_approval,
+        ) {
+            Ok(()) => {
+                let elapsed = spec_start.elapsed();
+                println!(
+                    "{} Completed {} in {:.1}s\n",
+                    "✓".green(),
+                    spec.id,
+                    elapsed.as_secs_f64()
+                );
+                completed += 1;
+            }
+            Err(e) => {
+                println!("{} Failed {}: {}\n", "✗".red(), spec.id, e);
+                failed_spec = Some((spec.id, e.to_string()));
+            }
+        }
+    }
+
+    // Chain loop: continue until interrupted, max reached, no more specs, or failure
+    while failed_spec.is_none() {
+        // Check for interrupt
+        if is_chain_interrupted() {
+            println!("\n{} Chain interrupted by user", "→".yellow());
+            break;
+        }
+
+        // Check max limit
+        if options.max_specs > 0 && completed >= options.max_specs {
+            println!(
+                "\n{} Reached maximum chain limit ({})",
+                "✓".green(),
+                options.max_specs
+            );
+            break;
+        }
+
+        // Find next ready spec (exclude the starting spec since we already ran it)
+        let next_spec = find_next_ready_spec(specs_dir, options.labels, None)?;
+
+        let spec = match next_spec {
+            Some(s) => s,
+            None => {
+                println!("\n{} No more ready specs", "✓".green());
+                break;
+            }
+        };
+
+        // Get current count for progress display
+        let current_total = count_ready_specs(specs_dir, options.labels)?;
+        let display_total = initial_total.max(completed + current_total);
+
+        println!(
+            "[{}/{}] {} {}: {}",
+            completed + 1,
+            display_total,
+            "Working".cyan(),
+            spec.id,
+            spec.title.as_deref().unwrap_or("")
+        );
+
+        let spec_start = Instant::now();
+        match execute_single_spec_in_chain(
+            &spec.id,
+            specs_dir,
+            prompts_dir,
+            config,
+            options.prompt_name,
+            options.cli_branch,
+            options.force,
+            options.allow_no_commits,
+            options.skip_approval,
+        ) {
+            Ok(()) => {
+                let elapsed = spec_start.elapsed();
+                println!(
+                    "{} Completed {} in {:.1}s\n",
+                    "✓".green(),
+                    spec.id,
+                    elapsed.as_secs_f64()
+                );
+                completed += 1;
+            }
+            Err(e) => {
+                println!("{} Failed {}: {}\n", "✗".red(), spec.id, e);
+                failed_spec = Some((spec.id, e.to_string()));
+            }
+        }
+    }
+
+    // Print summary
+    let total_elapsed = start_time.elapsed();
+    println!("{}", "═".repeat(60).dimmed());
+    println!("{}", "Chain execution complete:".bold());
+    println!(
+        "  {} Chained through {} spec(s) in {:.1}s",
+        "✓".green(),
+        completed,
+        total_elapsed.as_secs_f64()
+    );
+
+    if let Some((spec_id, error)) = &failed_spec {
+        println!("  {} Stopped due to failure in {}", "✗".red(), spec_id);
+        println!("    Error: {}", error);
+        println!("{}", "═".repeat(60).dimmed());
+        // Exit with error code
+        std::process::exit(1);
+    }
+
+    if is_chain_interrupted() {
+        println!("  {} Interrupted by user", "→".yellow());
+    }
+
+    println!("{}", "═".repeat(60).dimmed());
+
+    Ok(())
+}
+
 /// Result of a single spec execution in parallel mode
 #[allow(dead_code)]
 #[derive(Clone)]
@@ -778,6 +1278,26 @@ pub struct ParallelOptions<'a> {
     pub prompt_name: Option<&'a str>,
     /// Specific spec IDs to run (if empty, runs all ready specs)
     pub specific_ids: &'a [String],
+}
+
+/// Options for chain execution mode
+pub struct ChainOptions<'a> {
+    /// Maximum number of specs to chain (0 = unlimited)
+    pub max_specs: usize,
+    /// Labels to filter specs
+    pub labels: &'a [String],
+    /// Prompt name override
+    pub prompt_name: Option<&'a str>,
+    /// CLI branch prefix override
+    pub cli_branch: Option<&'a str>,
+    /// Force execution (skip validation checks)
+    pub force: bool,
+    /// Allow spec completion without matching commits
+    pub allow_no_commits: bool,
+    /// Skip approval check
+    pub skip_approval: bool,
+    /// Optional starting spec ID (chain starts with this spec)
+    pub starting_spec_id: Option<&'a str>,
 }
 
 /// Assignment of a spec to an agent
@@ -2737,5 +3257,185 @@ mod tests {
         );
 
         assert!(!should_warn, "Should NOT warn when using default prompt");
+    }
+
+    // =========================================================================
+    // CHAIN EXECUTION TESTS
+    // =========================================================================
+
+    fn create_test_spec_file(
+        specs_dir: &Path,
+        id: &str,
+        status: SpecStatus,
+        labels: Option<Vec<String>>,
+    ) {
+        let spec_content = format!(
+            r#"---
+type: code
+status: {}
+{}---
+# Test Spec {}
+
+Test body content
+"#,
+            format!("{:?}", status).to_lowercase(),
+            labels
+                .map(|l| format!(
+                    "labels:\n{}",
+                    l.iter()
+                        .map(|s| format!("  - {}", s))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                ))
+                .unwrap_or_default(),
+            id
+        );
+        std::fs::write(specs_dir.join(format!("{}.md", id)), spec_content).unwrap();
+    }
+
+    #[test]
+    fn test_find_next_ready_spec_empty_dir() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        let result = find_next_ready_spec(specs_dir, &[], None);
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    #[test]
+    fn test_find_next_ready_spec_finds_ready() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        // Create a pending spec (should be found as ready with no dependencies)
+        create_test_spec_file(specs_dir, "2026-01-01-001-abc", SpecStatus::Pending, None);
+
+        let result = find_next_ready_spec(specs_dir, &[], None);
+        assert!(result.is_ok());
+        let spec = result.unwrap();
+        assert!(spec.is_some());
+        assert_eq!(spec.unwrap().id, "2026-01-01-001-abc");
+    }
+
+    #[test]
+    fn test_find_next_ready_spec_skips_cancelled() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        // Create only cancelled specs
+        create_test_spec_file(specs_dir, "2026-01-01-001-abc", SpecStatus::Cancelled, None);
+
+        let result = find_next_ready_spec(specs_dir, &[], None);
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    #[test]
+    fn test_find_next_ready_spec_respects_labels() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        // Create spec with label
+        create_test_spec_file(
+            specs_dir,
+            "2026-01-01-001-abc",
+            SpecStatus::Pending,
+            Some(vec!["autonomous".to_string()]),
+        );
+        // Create spec without label
+        create_test_spec_file(specs_dir, "2026-01-01-002-def", SpecStatus::Pending, None);
+
+        // Search with label filter
+        let result = find_next_ready_spec(specs_dir, &["autonomous".to_string()], None);
+        assert!(result.is_ok());
+        let spec = result.unwrap();
+        assert!(spec.is_some());
+        assert_eq!(spec.unwrap().id, "2026-01-01-001-abc");
+
+        // Search with non-matching label
+        let result = find_next_ready_spec(specs_dir, &["nonexistent".to_string()], None);
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    #[test]
+    fn test_find_next_ready_spec_respects_skip_id() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        // Create two pending specs
+        create_test_spec_file(specs_dir, "2026-01-01-001-abc", SpecStatus::Pending, None);
+        create_test_spec_file(specs_dir, "2026-01-01-002-def", SpecStatus::Pending, None);
+
+        // Skip the first spec
+        let result = find_next_ready_spec(specs_dir, &[], Some("2026-01-01-001-abc"));
+        assert!(result.is_ok());
+        let spec = result.unwrap();
+        assert!(spec.is_some());
+        assert_eq!(spec.unwrap().id, "2026-01-01-002-def");
+    }
+
+    #[test]
+    fn test_count_ready_specs() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        // Create specs with various statuses
+        create_test_spec_file(specs_dir, "2026-01-01-001-abc", SpecStatus::Pending, None);
+        create_test_spec_file(specs_dir, "2026-01-01-002-def", SpecStatus::Pending, None);
+        create_test_spec_file(specs_dir, "2026-01-01-003-ghi", SpecStatus::Completed, None);
+        create_test_spec_file(specs_dir, "2026-01-01-004-jkl", SpecStatus::Cancelled, None);
+
+        let count = count_ready_specs(specs_dir, &[]);
+        assert!(count.is_ok());
+        // Only pending specs without dependencies are ready (2 specs)
+        assert_eq!(count.unwrap(), 2);
+    }
+
+    #[test]
+    fn test_count_ready_specs_with_labels() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        create_test_spec_file(
+            specs_dir,
+            "2026-01-01-001-abc",
+            SpecStatus::Pending,
+            Some(vec!["autonomous".to_string()]),
+        );
+        create_test_spec_file(specs_dir, "2026-01-01-002-def", SpecStatus::Pending, None);
+
+        let count = count_ready_specs(specs_dir, &["autonomous".to_string()]);
+        assert!(count.is_ok());
+        assert_eq!(count.unwrap(), 1);
+    }
+
+    #[test]
+    fn test_chain_interrupted_flag() {
+        // Reset the flag first
+        CHAIN_INTERRUPTED.store(false, std::sync::atomic::Ordering::SeqCst);
+
+        assert!(!is_chain_interrupted());
+
+        CHAIN_INTERRUPTED.store(true, std::sync::atomic::Ordering::SeqCst);
+        assert!(is_chain_interrupted());
+
+        // Reset for other tests
+        CHAIN_INTERRUPTED.store(false, std::sync::atomic::Ordering::SeqCst);
     }
 }

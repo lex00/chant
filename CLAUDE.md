@@ -164,6 +164,14 @@ When implementing a spec:
 - `chant work --parallel` - Execute all ready specs in parallel
   - Supports: `--max-parallel N` to limit concurrent agents
   - Supports: `--label <LABEL>` to execute only labeled specs
+- `chant work --chain` - Chain through ready specs until none remain or failure
+  - Executes specs sequentially, one after another
+  - Stops on first failure with proper exit code
+  - Stops gracefully on Ctrl+C (SIGINT)
+  - Supports: `--chain-max N` to limit number of specs to chain
+  - Supports: `--label <LABEL>` to chain through labeled specs only
+  - Supports: Starting spec ID: `chant work <spec-id> --chain` starts with that spec, then chains
+  - Use cases: Overnight processing, CI/CD, unattended execution
 - `chant resume <spec-id>` - Resume a failed spec
 - `chant resume <spec-id> --work` - Resume and automatically re-execute
 
