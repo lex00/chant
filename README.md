@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/lex00/chant/actions/workflows/ci.yml/badge.svg)](https://github.com/lex00/chant/actions/workflows/ci.yml)
 [![Release](https://github.com/lex00/chant/actions/workflows/release.yml/badge.svg)](https://github.com/lex00/chant/actions/workflows/release.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Latest Release](https://img.shields.io/github/v/release/lex00/chant)](https://github.com/lex00/chant/releases/latest)
 [![API Docs](https://img.shields.io/badge/docs-rustdoc-blue.svg)](https://lex00.github.io/chant/api/chant/)
 
@@ -111,4 +111,4 @@ just docs-serve
 
 ## License
 
-MIT
+Apache-2.0. See [LICENSE](LICENSE) for details.
