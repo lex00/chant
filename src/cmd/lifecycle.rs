@@ -1318,6 +1318,35 @@ fn execute_merge(
         return Ok(());
     }
 
+    // Check for specs requiring approval before merge
+    let mut unapproved_specs: Vec<(String, String)> = Vec::new();
+    for (spec_id, spec) in &specs_to_merge {
+        if spec.requires_approval() {
+            let title = spec.title.as_deref().unwrap_or("(no title)").to_string();
+            unapproved_specs.push((spec_id.clone(), title));
+        }
+    }
+
+    if !unapproved_specs.is_empty() {
+        println!(
+            "{} {} spec(s) require approval before merge:",
+            "✗".red(),
+            unapproved_specs.len()
+        );
+        for (spec_id, title) in &unapproved_specs {
+            println!("  {} {} {}", "·".red(), spec_id, title.dimmed());
+        }
+        println!();
+        println!(
+            "Run {} to approve specs before merging.",
+            "chant approve <spec-id> --by <approver>".cyan()
+        );
+        anyhow::bail!(
+            "Cannot merge: {} spec(s) require approval",
+            unapproved_specs.len()
+        );
+    }
+
     // Display what would be merged
     println!(
         "{} {} merge {} spec(s){}:",

@@ -11,7 +11,8 @@ use chant::config::Config;
 use chant::spec::{self, load_all_specs, Spec, SpecStatus};
 
 use crate::cmd::commits::{
-    get_commits_for_spec, get_commits_for_spec_allow_no_commits, get_commits_for_spec_with_branch,
+    detect_agent_in_commit, get_commits_for_spec, get_commits_for_spec_allow_no_commits,
+    get_commits_for_spec_with_branch,
 };
 use crate::cmd::model::get_model_name;
 
@@ -60,6 +61,11 @@ pub fn finalize_spec(
             }
         }
     };
+
+    // Check for agent co-authorship if config requires approval for agent work
+    if config.approval.require_approval_for_agent_work {
+        check_and_set_agent_approval(spec, &commits, config)?;
+    }
 
     // Update spec to completed
     spec.frontmatter.status = SpecStatus::Completed;
@@ -409,6 +415,72 @@ pub fn replay_finalize_spec(
         saved_spec.frontmatter.original_completed_at.is_some(),
         "Persisted spec is missing original_completed_at - save may have failed"
     );
+
+    Ok(())
+}
+
+/// Check commits for agent co-authorship and set approval requirement if found.
+/// This is called during finalization when require_approval_for_agent_work is enabled.
+fn check_and_set_agent_approval(
+    spec: &mut Spec,
+    commits: &[String],
+    config: &Config,
+) -> Result<()> {
+    use chant::spec::{Approval, ApprovalStatus};
+
+    // Skip if approval is already set (don't override existing approval settings)
+    if spec.frontmatter.approval.is_some() {
+        return Ok(());
+    }
+
+    // Check each commit for agent co-authorship
+    for commit in commits {
+        match detect_agent_in_commit(commit) {
+            Ok(result) if result.has_agent => {
+                // Agent detected - set approval requirement
+                let agent_sig = result
+                    .agent_signature
+                    .unwrap_or_else(|| "AI Agent".to_string());
+                eprintln!(
+                    "{} Agent co-authorship detected in commit {}: {}",
+                    "⚠".yellow(),
+                    commit,
+                    agent_sig
+                );
+                eprintln!(
+                    "{} Auto-setting approval requirement (config: require_approval_for_agent_work={})",
+                    "→".cyan(),
+                    config.approval.require_approval_for_agent_work
+                );
+
+                // Set approval requirement
+                spec.frontmatter.approval = Some(Approval {
+                    required: true,
+                    status: ApprovalStatus::Pending,
+                    by: None,
+                    at: None,
+                });
+
+                eprintln!(
+                    "{} Spec requires approval before merge. Run: chant approve {} --by <approver>",
+                    "ℹ".blue(),
+                    spec.id
+                );
+
+                return Ok(());
+            }
+            Ok(_) => {
+                // No agent found in this commit, continue
+            }
+            Err(e) => {
+                // Log warning but continue checking other commits
+                eprintln!(
+                    "Warning: Failed to check commit {} for agent: {}",
+                    commit, e
+                );
+            }
+        }
+    }
 
     Ok(())
 }

@@ -346,6 +346,191 @@ mod tests {
 
         Ok(())
     }
+
+    // =========================================================================
+    // AGENT DETECTION TESTS
+    // =========================================================================
+
+    /// Helper to create a test repository with specific commit messages
+    fn setup_test_repo_with_messages(
+        repo_dir: &std::path::Path,
+        messages: &[&str],
+    ) -> Result<Vec<String>> {
+        // Ensure repo directory exists
+        std::fs::create_dir_all(repo_dir).context("Failed to create repo directory")?;
+
+        // Initialize repo
+        let init = Command::new("git")
+            .args(["init"])
+            .current_dir(repo_dir)
+            .output()
+            .context("Failed to git init")?;
+        if !init.status.success() {
+            return Err(anyhow::anyhow!(
+                "git init failed: {}",
+                String::from_utf8_lossy(&init.stderr)
+            ));
+        }
+
+        // Configure git
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo_dir)
+            .output()
+            .context("Failed to set git user.email")?;
+
+        Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo_dir)
+            .output()
+            .context("Failed to set git user.name")?;
+
+        // Create commits and collect hashes
+        let mut commit_hashes = Vec::new();
+        for (i, message) in messages.iter().enumerate() {
+            let file_path = repo_dir.join("test_file.txt");
+            std::fs::write(&file_path, format!("content {}", i))
+                .context("Failed to write test file")?;
+
+            Command::new("git")
+                .args(["add", "test_file.txt"])
+                .current_dir(repo_dir)
+                .output()
+                .context("Failed to git add")?;
+
+            Command::new("git")
+                .args(["commit", "-m", message])
+                .current_dir(repo_dir)
+                .output()
+                .context("Failed to git commit")?;
+
+            // Get the commit hash
+            let hash_output = Command::new("git")
+                .args(["rev-parse", "--short=7", "HEAD"])
+                .current_dir(repo_dir)
+                .output()
+                .context("Failed to get commit hash")?;
+            let hash = String::from_utf8_lossy(&hash_output.stdout)
+                .trim()
+                .to_string();
+            commit_hashes.push(hash);
+        }
+
+        Ok(commit_hashes)
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_detect_agent_claude_co_authored_by() -> Result<()> {
+        let repo_dir = TempDir::new()?.path().to_path_buf();
+        let message = "chant(test-spec): Fix bug\n\nCo-Authored-By: Claude <noreply@anthropic.com>";
+        let hashes = setup_test_repo_with_messages(&repo_dir, &[message])?;
+
+        let original_dir = std::env::current_dir().ok();
+        std::env::set_current_dir(&repo_dir)?;
+
+        let result = detect_agent_in_commit(&hashes[0]);
+
+        if let Some(dir) = original_dir {
+            let _ = std::env::set_current_dir(&dir);
+        }
+
+        let detection = result?;
+        assert!(detection.has_agent, "Should detect Claude co-authorship");
+        assert!(
+            detection.agent_signature.is_some(),
+            "Should capture agent signature"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_detect_agent_gpt_co_authored_by() -> Result<()> {
+        let repo_dir = TempDir::new()?.path().to_path_buf();
+        let message = "chant(test-spec): Add feature\n\nCo-authored-by: GPT-4 <noreply@openai.com>";
+        let hashes = setup_test_repo_with_messages(&repo_dir, &[message])?;
+
+        let original_dir = std::env::current_dir().ok();
+        std::env::set_current_dir(&repo_dir)?;
+
+        let result = detect_agent_in_commit(&hashes[0]);
+
+        if let Some(dir) = original_dir {
+            let _ = std::env::set_current_dir(&dir);
+        }
+
+        let detection = result?;
+        assert!(detection.has_agent, "Should detect GPT co-authorship");
+
+        Ok(())
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_no_agent_detected_for_human_commit() -> Result<()> {
+        let repo_dir = TempDir::new()?.path().to_path_buf();
+        let message = "chant(test-spec): Human-only commit\n\nThis is a regular commit.";
+        let hashes = setup_test_repo_with_messages(&repo_dir, &[message])?;
+
+        let original_dir = std::env::current_dir().ok();
+        std::env::set_current_dir(&repo_dir)?;
+
+        let result = detect_agent_in_commit(&hashes[0]);
+
+        if let Some(dir) = original_dir {
+            let _ = std::env::set_current_dir(&dir);
+        }
+
+        let detection = result?;
+        assert!(
+            !detection.has_agent,
+            "Should not detect agent in human commit"
+        );
+        assert!(
+            detection.agent_signature.is_none(),
+            "Should have no agent signature"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_detect_agent_case_insensitive() -> Result<()> {
+        let repo_dir = TempDir::new()?.path().to_path_buf();
+        let message =
+            "chant(test-spec): Test\n\nco-authored-by: claude opus 4.5 <noreply@anthropic.com>";
+        let hashes = setup_test_repo_with_messages(&repo_dir, &[message])?;
+
+        let original_dir = std::env::current_dir().ok();
+        std::env::set_current_dir(&repo_dir)?;
+
+        let result = detect_agent_in_commit(&hashes[0]);
+
+        if let Some(dir) = original_dir {
+            let _ = std::env::set_current_dir(&dir);
+        }
+
+        let detection = result?;
+        assert!(
+            detection.has_agent,
+            "Should detect agent with case-insensitive matching"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_known_agent_signatures_constant() {
+        // Verify our constant list has the expected patterns
+        assert!(KNOWN_AGENT_SIGNATURES.contains(&"Co-Authored-By: Claude"));
+        assert!(KNOWN_AGENT_SIGNATURES.contains(&"Co-authored-by: Claude"));
+        assert!(KNOWN_AGENT_SIGNATURES.contains(&"Co-Authored-By: GPT"));
+        assert!(KNOWN_AGENT_SIGNATURES.contains(&"Co-Authored-By: Copilot"));
+        assert!(KNOWN_AGENT_SIGNATURES.contains(&"Co-Authored-By: Gemini"));
+    }
 }
 
 /// Get commits for a spec, failing if no commits match the pattern.
@@ -527,4 +712,145 @@ fn get_commits_for_spec_internal(
     }
 
     Ok(commits)
+}
+
+/// Known AI agent signatures in Co-Authored-By trailer format.
+/// These patterns are used to detect agent-assisted commits.
+const KNOWN_AGENT_SIGNATURES: &[&str] = &[
+    "Co-Authored-By: Claude",
+    "Co-authored-by: Claude",
+    "Co-Authored-By: GPT",
+    "Co-authored-by: GPT",
+    "Co-Authored-By: Copilot",
+    "Co-authored-by: Copilot",
+    "Co-Authored-By: Gemini",
+    "Co-authored-by: Gemini",
+    "Co-Authored-By: Cursor",
+    "Co-authored-by: Cursor",
+    // Add more agent signatures as needed
+];
+
+/// Result of agent detection for a commit.
+#[derive(Debug, Clone)]
+pub struct AgentDetectionResult {
+    /// The commit hash that was checked
+    pub commit_hash: String,
+    /// Whether an agent co-authorship was detected
+    pub has_agent: bool,
+    /// The agent signature found (if any)
+    pub agent_signature: Option<String>,
+}
+
+/// Check if a single commit has agent co-authorship.
+/// Returns the detection result with details about what was found.
+pub fn detect_agent_in_commit(commit_hash: &str) -> Result<AgentDetectionResult> {
+    use std::process::Command;
+
+    // Get the full commit message including trailers
+    let output = Command::new("git")
+        .args(["log", "-1", "--format=%B", commit_hash])
+        .output()
+        .context("Failed to execute git log command")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!(
+            "Failed to get commit message for {}: {}",
+            commit_hash,
+            stderr
+        );
+    }
+
+    let commit_message = String::from_utf8_lossy(&output.stdout);
+
+    // Check for known agent signatures
+    for signature in KNOWN_AGENT_SIGNATURES {
+        if commit_message.contains(signature) {
+            return Ok(AgentDetectionResult {
+                commit_hash: commit_hash.to_string(),
+                has_agent: true,
+                agent_signature: Some(signature.to_string()),
+            });
+        }
+    }
+
+    // Also check for partial matches (case-insensitive) for "Co-Authored-By:" trailer
+    let lower_message = commit_message.to_lowercase();
+    if lower_message.contains("co-authored-by:") {
+        // Extract the co-authored-by line
+        for line in commit_message.lines() {
+            let lower_line = line.to_lowercase();
+            if lower_line.starts_with("co-authored-by:") {
+                // Check if this mentions any AI-related terms
+                let ai_terms = [
+                    "claude",
+                    "gpt",
+                    "copilot",
+                    "gemini",
+                    "cursor",
+                    "anthropic",
+                    "openai",
+                    "ai",
+                    "assistant",
+                ];
+                for term in ai_terms {
+                    if lower_line.contains(term) {
+                        return Ok(AgentDetectionResult {
+                            commit_hash: commit_hash.to_string(),
+                            has_agent: true,
+                            agent_signature: Some(line.trim().to_string()),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(AgentDetectionResult {
+        commit_hash: commit_hash.to_string(),
+        has_agent: false,
+        agent_signature: None,
+    })
+}
+
+/// Check if any commits for a spec have agent co-authorship.
+/// Returns a list of all commits that have agent signatures.
+#[allow(dead_code)]
+pub fn detect_agents_in_spec_commits(spec_id: &str) -> Result<Vec<AgentDetectionResult>> {
+    // Get commits for this spec (allowing no commits)
+    let commits = match get_commits_for_spec_allow_no_commits(spec_id) {
+        Ok(c) => c,
+        Err(_) => return Ok(vec![]), // No commits found, no agents
+    };
+
+    let mut results = Vec::new();
+    for commit in commits {
+        match detect_agent_in_commit(&commit) {
+            Ok(result) if result.has_agent => {
+                results.push(result);
+            }
+            Ok(_) => {
+                // No agent found in this commit, continue
+            }
+            Err(e) => {
+                // Log warning but continue checking other commits
+                eprintln!(
+                    "Warning: Failed to check commit {} for agent: {}",
+                    commit, e
+                );
+            }
+        }
+    }
+
+    Ok(results)
+}
+
+/// Check if any commits for a spec have agent co-authorship.
+/// Simplified helper that returns just a boolean.
+#[allow(dead_code)]
+pub fn has_agent_coauthorship(spec_id: &str) -> bool {
+    match detect_agents_in_spec_commits(spec_id) {
+        Ok(results) => !results.is_empty(),
+        Err(_) => false,
+    }
 }

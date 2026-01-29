@@ -44,6 +44,9 @@ pub struct ApprovalConfig {
     /// Action to take when a spec is rejected
     #[serde(default)]
     pub rejection_action: RejectionAction,
+    /// Require approval for specs worked by agents (auto-detected via Co-Authored-By)
+    #[serde(default)]
+    pub require_approval_for_agent_work: bool,
 }
 
 /// Enterprise configuration for derived frontmatter and validation
@@ -1190,6 +1193,33 @@ project:
 "#;
         let config = Config::parse(content).unwrap();
         assert_eq!(config.approval.rejection_action, RejectionAction::Manual);
+        assert!(!config.approval.require_approval_for_agent_work);
+    }
+
+    #[test]
+    fn test_approval_config_require_approval_for_agent_work() {
+        let content = r#"---
+project:
+  name: test-project
+approval:
+  require_approval_for_agent_work: true
+---
+"#;
+        let config = Config::parse(content).unwrap();
+        assert!(config.approval.require_approval_for_agent_work);
+    }
+
+    #[test]
+    fn test_approval_config_require_approval_for_agent_work_false() {
+        let content = r#"---
+project:
+  name: test-project
+approval:
+  require_approval_for_agent_work: false
+---
+"#;
+        let config = Config::parse(content).unwrap();
+        assert!(!config.approval.require_approval_for_agent_work);
     }
 
     #[test]
