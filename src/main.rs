@@ -1025,6 +1025,82 @@ fn handle_agent_update(chant_dir: &Path, agents: &[String], force: bool) -> Resu
         );
     }
 
+    // Create MCP config if any provider supports it
+    let mut mcp_created = false;
+    for provider in &parsed_agents {
+        if provider.mcp_config_filename().is_some() {
+            // Update global ~/.claude/mcp.json (actually used by Claude Code)
+            match update_claude_mcp_config() {
+                Ok(result) => {
+                    if result.created {
+                        println!(
+                            "{} Created {} with chant MCP server",
+                            "✓".green(),
+                            result.path.display()
+                        );
+                    } else if result.updated {
+                        println!(
+                            "{} Added chant MCP server to {}",
+                            "✓".green(),
+                            result.path.display()
+                        );
+                    } else {
+                        println!(
+                            "{} Updated chant MCP server in {}",
+                            "✓".green(),
+                            result.path.display()
+                        );
+                    }
+                    if let Some(warning) = result.warning {
+                        eprintln!("{} {}", "Warning:".yellow(), warning);
+                    }
+                    mcp_created = true;
+                }
+                Err(e) => {
+                    eprintln!("{} Failed to update global MCP config: {}", "✗".red(), e);
+                }
+            }
+
+            // Also create project-local .mcp.json as reference
+            let mcp_path = PathBuf::from(".mcp.json");
+            if !mcp_path.exists() || force {
+                let mcp_config = r#"{
+  "mcpServers": {
+    "chant": {
+      "type": "stdio",
+      "command": "chant",
+      "args": ["mcp"]
+    }
+  }
+}
+"#;
+                if let Err(e) = std::fs::write(&mcp_path, mcp_config) {
+                    // Project-local write failure is non-critical
+                    eprintln!(
+                        "{} Could not create {} (reference copy): {}",
+                        "•".yellow(),
+                        mcp_path.display(),
+                        e
+                    );
+                } else {
+                    println!(
+                        "{} {} (reference copy)",
+                        "Created".green(),
+                        mcp_path.display()
+                    );
+                }
+            }
+
+            if mcp_created {
+                println!(
+                    "{} Restart Claude Code to activate MCP integration",
+                    "ℹ".cyan()
+                );
+            }
+            break; // Only create one MCP config file
+        }
+    }
+
     Ok(())
 }
 
