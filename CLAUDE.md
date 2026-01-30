@@ -580,6 +580,78 @@ git merge chant/spec-id  # Should auto-resolve frontmatter conflicts
 - Run tests frequently during implementation
 - Ensure all tests pass before marking spec complete
 
+## MCP Integration
+
+Chant includes a Model Context Protocol (MCP) server that provides structured tools for spec management. This enables AI agents to interact with chant without shelling out to the CLI.
+
+### Setup
+
+MCP configuration is automatically created when running `chant init --agent claude`. This creates a `.mcp.json` file in the project root:
+
+```json
+{
+  "mcpServers": {
+    "chant": {
+      "type": "stdio",
+      "command": "chant",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+### Available MCP Tools
+
+**Query Tools (read-only, safe for any context):**
+- `chant_spec_list` - List all specs, optionally filtered by status
+- `chant_spec_get` - Get full spec details including body content
+- `chant_ready` - List specs ready to be worked (no unmet dependencies)
+- `chant_status` - Get project summary with spec counts by status
+- `chant_log` - Read execution log for a spec
+- `chant_search` - Search specs by title and body content
+- `chant_diagnose` - Diagnose issues with a spec
+
+**Mutating Tools:**
+- `chant_spec_update` - Update a spec's status or append output
+- `chant_add` - Create a new spec with description
+- `chant_finalize` - Mark a spec as completed
+- `chant_resume` - Reset a failed spec to pending
+- `chant_cancel` - Cancel a spec
+- `chant_archive` - Move a completed spec to archive
+
+### Orchestrator Usage
+
+As an orchestrator, use MCP tools for fast, structured operations:
+
+```
+# Check project status
+chant_status {}
+
+# List ready specs
+chant_ready {}
+
+# Get spec details
+chant_spec_get {"id": "00k-u5r"}
+
+# Read execution log
+chant_log {"id": "00k-u5r", "lines": 100}
+
+# Diagnose a struggling spec
+chant_diagnose {"id": "00k-u5r"}
+```
+
+**Note:** `chant work` is intentionally NOT exposed via MCP because it spawns an agent process. Use the CLI for spec execution:
+```bash
+chant work <spec-id>
+```
+
+### Manual MCP Server Testing
+
+Test the MCP server directly:
+```bash
+echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | chant mcp
+```
+
 ## Interactive Wizard Modes
 
 Several commands support interactive wizards for easier operation. Wizards only activate in TTY (terminal) contexts:

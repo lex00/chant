@@ -1640,6 +1640,28 @@ Project initialized on {}.
             created_agents.push(target_path);
             created_agent_names.push(provider.as_str());
         }
+
+        // Create MCP config if any provider supports it
+        for provider in &parsed_agents {
+            if let Some(mcp_filename) = provider.mcp_config_filename() {
+                let mcp_path = PathBuf::from(mcp_filename);
+                if !mcp_path.exists() || force {
+                    let mcp_config = r#"{
+  "mcpServers": {
+    "chant": {
+      "type": "stdio",
+      "command": "chant",
+      "args": ["mcp"]
+    }
+  }
+}
+"#;
+                    std::fs::write(&mcp_path, mcp_config)?;
+                    println!("{} {}", "Created".green(), mcp_path.display());
+                }
+                break; // Only create one MCP config file
+            }
+        }
     }
 
     println!("{} .chant/config.md", "Created".green());

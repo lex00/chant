@@ -35,6 +35,27 @@ impl AgentProvider {
             Self::Generic => ".ai-instructions",
         }
     }
+
+    /// Returns true if this provider supports MCP and should generate config.
+    /// Note: Currently used only for documentation/tests. Init uses mcp_config_filename() directly.
+    #[allow(dead_code)]
+    pub fn supports_mcp(&self) -> bool {
+        match self {
+            Self::Claude => true,
+            Self::Cursor => false, // Future: set to true, add mcp_config_filename
+            Self::AmazonQ => false,
+            Self::Generic => false,
+        }
+    }
+
+    /// Get MCP config filename if provider supports MCP
+    pub fn mcp_config_filename(&self) -> Option<&'static str> {
+        match self {
+            Self::Claude => Some(".mcp.json"),
+            // Future: Self::Cursor => Some(".cursor/mcp.json"),
+            _ => None,
+        }
+    }
 }
 
 impl fmt::Display for AgentProvider {
@@ -141,6 +162,25 @@ mod tests {
             ".amazonq/rules.md"
         );
         assert_eq!(AgentProvider::Generic.config_filename(), ".ai-instructions");
+    }
+
+    #[test]
+    fn test_agent_provider_supports_mcp() {
+        assert!(AgentProvider::Claude.supports_mcp());
+        assert!(!AgentProvider::Cursor.supports_mcp());
+        assert!(!AgentProvider::AmazonQ.supports_mcp());
+        assert!(!AgentProvider::Generic.supports_mcp());
+    }
+
+    #[test]
+    fn test_agent_provider_mcp_config_filename() {
+        assert_eq!(
+            AgentProvider::Claude.mcp_config_filename(),
+            Some(".mcp.json")
+        );
+        assert_eq!(AgentProvider::Cursor.mcp_config_filename(), None);
+        assert_eq!(AgentProvider::AmazonQ.mcp_config_filename(), None);
+        assert_eq!(AgentProvider::Generic.mcp_config_filename(), None);
     }
 
     #[test]
