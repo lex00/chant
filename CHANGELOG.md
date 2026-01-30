@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-01-30
+
+### Added
+
+- **`chant worktree status` command**: View active worktrees with comprehensive details
+  - Shows path, branch, HEAD commit, size, and age for each worktree
+  - Useful for debugging and monitoring parallel execution
+  - Helps identify stale worktrees that need cleanup
+
+- **Worktree environment variables for agents**: Context injection during spec execution
+  - `CHANT_WORKTREE` - Set to "true" when agent runs in a worktree
+  - `CHANT_WORKTREE_PATH` - Absolute path to the worktree directory
+  - `CHANT_BRANCH` - Name of the feature branch
+  - Enables agents to detect and adapt to worktree execution context
+
+- **Worktree context in agent prompts**: Template variables for prompt customization
+  - `{{worktree.active}}` - Boolean indicating worktree execution
+  - `{{worktree.path}}` - Path to worktree directory
+  - `{{worktree.branch}}` - Feature branch name
+  - Allows prompts to include worktree-specific instructions
+
+- **MCP support for Cursor IDE**: Model Context Protocol configuration for Cursor
+  - `chant init --agent cursor` now generates `.cursor/mcp.json`
+  - Enables Cursor to use chant's MCP tools for spec management
+  - Same tool surface as Claude: query, mutate, and manage specs
+
+### Fixed
+
+- **`chant init` agent update wizard creates MCP config**: Fixed missing MCP configuration on agent updates
+  - Previously, running `chant init` to update agent configuration skipped MCP config creation
+  - Now properly generates `.mcp.json` (for Claude) or `.cursor/mcp.json` (for Cursor) during updates
+  - Ensures consistent configuration whether initializing new projects or updating existing ones
+
 ## [0.6.1] - 2026-01-29
 
 ### Added
