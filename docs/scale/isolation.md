@@ -163,6 +163,21 @@ On completion:
 > - Sparse checkout + worktree combination
 > - Cleanup reliability
 
+## Inspecting Active Worktrees
+
+Use `chant worktree status` to inspect active chant worktrees:
+
+```bash
+chant worktree status
+```
+
+This displays all chant-related worktrees with their associated spec, branch, disk usage, and health status. Useful for:
+- Debugging worktree state during parallel execution
+- Identifying orphaned worktrees
+- Monitoring disk usage
+
+See [CLI Reference: Worktree](../reference/cli.md#worktree) for full command documentation.
+
 ## Automatic Cleanup
 
 ```rust

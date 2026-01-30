@@ -1462,6 +1462,104 @@ Activity is deduplicated, showing the first occurrence of each (spec_id, activit
 
 ---
 
+## Worktree
+
+Inspect and manage chant worktrees used during parallel and isolated execution.
+
+### Status
+
+Display status information about active chant worktrees:
+
+```bash
+chant worktree status                 # Show all chant worktrees
+```
+
+**Example output:**
+
+```
+Found 3 chant worktrees:
+
+  /tmp/chant-2026-01-27-001-abc
+    Branch: chant/2026-01-27-001-abc
+    HEAD:   a1b2c3d
+    Spec:   2026-01-27-001-abc
+    Title:  Add user authentication
+    Status: in_progress
+    Size:   234 MB  Age: 2h
+
+  /tmp/chant-2026-01-27-002-def [prunable]
+    Branch: chant/2026-01-27-002-def
+    HEAD:   e4f5g6h
+    Spec:   2026-01-27-002-def
+    Title:  Fix login bug
+    Status: completed
+    Size:   189 MB  Age: 1d
+    Reason: gitdir file points to non-existent location
+
+  /tmp/chant-2026-01-27-003-ghi
+    Branch: chant/2026-01-27-003-ghi
+    HEAD:   i7j8k9l
+    Spec:   2026-01-27-003-ghi
+    Status: unknown (spec not found)
+    Size:   156 MB  Age: 3d
+
+⚠ 1 prunable worktree (run chant cleanup to clean up)
+Total disk usage: 579 MB
+```
+
+**Output columns:**
+
+| Field | Description |
+|-------|-------------|
+| Path | Absolute path to the worktree directory |
+| Branch | Git branch checked out in the worktree (format: `chant/<spec-id>`) |
+| HEAD | Short commit hash (7 characters) of current HEAD |
+| Spec | Associated spec ID extracted from branch or path |
+| Title | Spec title (if spec file exists) |
+| Status | Spec status: `pending`, `ready`, `in_progress`, `completed`, `failed`, `blocked`, `cancelled` |
+| Size | Disk space used by the worktree |
+| Age | Time since worktree was last modified |
+
+**Flags:**
+
+| Flag | Meaning |
+|------|---------|
+| `[prunable]` (red) | Worktree can be safely removed (orphaned or corrupted) |
+
+**Use cases:**
+- Debug issues with worktree state during parallel execution
+- Identify orphaned worktrees that can be cleaned up
+- Monitor disk usage of active worktrees
+- Check which specs have active worktrees
+
+### Environment Variables for Agents
+
+When agents run in worktree mode (during parallel execution), chant sets environment variables to help agents understand their execution context:
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `CHANT_WORKTREE` | Set to `1` when running in a worktree | `1` |
+| `CHANT_WORKTREE_PATH` | Absolute path to the worktree directory | `/tmp/chant-2026-01-27-001-abc` |
+| `CHANT_BRANCH` | Git branch name for this spec | `chant/2026-01-27-001-abc` |
+
+These variables are only set when the agent is invoked with a working directory parameter, which indicates worktree mode. Agents can use these variables to:
+
+- Detect they're running in an isolated environment
+- Understand their changes won't affect main until merged
+- Log or reference the worktree path for debugging
+- Check the branch name for commit messages
+
+**Example agent check:**
+
+```bash
+if [ -n "$CHANT_WORKTREE" ]; then
+    echo "Running in worktree: $CHANT_WORKTREE_PATH"
+    echo "Branch: $CHANT_BRANCH"
+fi
+```
+
+---
+
 ## Planned Commands
 
 The following commands are planned but not yet implemented:
