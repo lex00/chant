@@ -76,6 +76,15 @@ const CURSOR_TEMPLATE: &str = include_str!("../templates/agent-cursor.md");
 const AMAZONQ_TEMPLATE: &str = include_str!("../templates/agent-amazonq.md");
 const GENERIC_TEMPLATE: &str = include_str!("../templates/agent-generic.md");
 
+/// Compact chant section for injection into existing CLAUDE.md files
+const CHANT_SECTION: &str = include_str!("../templates/chant-section.md");
+/// Even more compact section when MCP is available (agent discovers commands via tools)
+const CHANT_SECTION_MCP: &str = include_str!("../templates/chant-section-mcp.md");
+
+/// Markers for the chant section in CLAUDE.md
+pub const CHANT_SECTION_BEGIN: &str = "<!-- chant:begin -->";
+pub const CHANT_SECTION_END: &str = "<!-- chant:end -->";
+
 /// Get a template by provider name (case-insensitive)
 pub fn get_template(provider_str: &str) -> Result<AgentTemplate> {
     let provider = match provider_str.to_lowercase().as_str() {
@@ -139,6 +148,92 @@ pub fn parse_agent_providers(agent_specs: &[String]) -> Result<Vec<AgentProvider
     let mut result: Vec<_> = providers.into_iter().collect();
     result.sort_by_key(|p| p.as_str());
     Ok(result)
+}
+
+/// Get the compact chant section for injection into existing files
+///
+/// # Arguments
+/// * `has_mcp` - If true, returns the even more compact MCP version
+pub fn get_chant_section(has_mcp: bool) -> &'static str {
+    if has_mcp {
+        CHANT_SECTION_MCP
+    } else {
+        CHANT_SECTION
+    }
+}
+
+/// Result of injecting the chant section into a file
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InjectionResult {
+    /// Created new file with just the chant section
+    Created(String),
+    /// Appended section to existing file
+    Appended(String),
+    /// Replaced existing section between markers
+    Replaced(String),
+    /// File already has up-to-date section
+    Unchanged,
+}
+
+/// Inject or update the chant section in an existing CLAUDE.md file
+///
+/// # Behavior
+/// - If `existing_content` is None: Returns just the chant section (for new files)
+/// - If content has no markers: Appends chant section at end
+/// - If content has markers: Replaces content between markers
+///
+/// # Arguments
+/// * `existing_content` - The current file content, or None if file doesn't exist
+/// * `has_mcp` - If true, uses the compact MCP-aware template
+pub fn inject_chant_section(existing_content: Option<&str>, has_mcp: bool) -> InjectionResult {
+    let section = get_chant_section(has_mcp);
+
+    match existing_content {
+        None => {
+            // No existing file - create with just the chant section
+            InjectionResult::Created(section.to_string())
+        }
+        Some(content) => {
+            // Check if markers exist
+            let begin_pos = content.find(CHANT_SECTION_BEGIN);
+            let end_pos = content.find(CHANT_SECTION_END);
+
+            match (begin_pos, end_pos) {
+                (Some(begin), Some(end)) if begin < end => {
+                    // Both markers found in correct order - replace between them
+                    let end_marker_end = end + CHANT_SECTION_END.len();
+
+                    // Include trailing newline in the section boundary if present
+                    let section_end = if content[end_marker_end..].starts_with('\n') {
+                        end_marker_end + 1
+                    } else {
+                        end_marker_end
+                    };
+
+                    let before = &content[..begin];
+                    let after = &content[section_end..];
+
+                    // Check if existing section matches new section
+                    let existing_section = &content[begin..section_end];
+                    if existing_section == section {
+                        return InjectionResult::Unchanged;
+                    }
+
+                    let new_content = format!("{}{}{}", before, section, after);
+                    InjectionResult::Replaced(new_content)
+                }
+                _ => {
+                    // No markers or invalid order - append at end
+                    let new_content = if content.ends_with('\n') {
+                        format!("{}\n{}", content, section)
+                    } else {
+                        format!("{}\n\n{}", content, section)
+                    };
+                    InjectionResult::Appended(new_content)
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -268,5 +363,120 @@ mod tests {
         let specs = vec!["all".to_string(), "claude".to_string()];
         let providers = parse_agent_providers(&specs).unwrap();
         assert_eq!(providers.len(), 4); // "all" expands to all 4, claude is already included
+    }
+
+    #[test]
+    fn test_get_chant_section_standard() {
+        let section = get_chant_section(false);
+        assert!(section.starts_with(CHANT_SECTION_BEGIN));
+        // Section ends with end marker followed by newline
+        assert!(section.trim_end().ends_with(CHANT_SECTION_END));
+        assert!(section.contains("orchestrator"));
+        assert!(section.contains("chant work"));
+    }
+
+    #[test]
+    fn test_get_chant_section_mcp() {
+        let section = get_chant_section(true);
+        assert!(section.starts_with(CHANT_SECTION_BEGIN));
+        // Section ends with end marker followed by newline
+        assert!(section.trim_end().ends_with(CHANT_SECTION_END));
+        assert!(section.contains("orchestrator"));
+        assert!(section.contains("MCP")); // MCP-specific content
+    }
+
+    #[test]
+    fn test_inject_chant_section_no_existing_file() {
+        let result = inject_chant_section(None, false);
+        match result {
+            InjectionResult::Created(content) => {
+                assert!(content.starts_with(CHANT_SECTION_BEGIN));
+                // Content ends with end marker followed by newline
+                assert!(content.trim_end().ends_with(CHANT_SECTION_END));
+            }
+            _ => panic!("Expected Created result"),
+        }
+    }
+
+    #[test]
+    fn test_inject_chant_section_existing_no_markers() {
+        let existing = "# My Project\n\nSome existing content.\n";
+        let result = inject_chant_section(Some(existing), false);
+        match result {
+            InjectionResult::Appended(content) => {
+                // Should preserve original content
+                assert!(content.starts_with("# My Project"));
+                // Should have markers at end
+                assert!(content.contains(CHANT_SECTION_BEGIN));
+                // Content ends with end marker followed by newline
+                assert!(content.trim_end().ends_with(CHANT_SECTION_END));
+            }
+            _ => panic!("Expected Appended result"),
+        }
+    }
+
+    #[test]
+    fn test_inject_chant_section_existing_with_markers() {
+        let existing = format!(
+            "# My Project\n\n{}\nOld chant content\n{}\n\n## Other section",
+            CHANT_SECTION_BEGIN, CHANT_SECTION_END
+        );
+        let result = inject_chant_section(Some(&existing), false);
+        match result {
+            InjectionResult::Replaced(content) => {
+                // Should preserve content before and after
+                assert!(content.starts_with("# My Project"));
+                assert!(content.contains("## Other section"));
+                // Should NOT have old content
+                assert!(!content.contains("Old chant content"));
+                // Should have new markers
+                assert!(content.contains(CHANT_SECTION_BEGIN));
+                assert!(content.contains(CHANT_SECTION_END));
+            }
+            _ => panic!("Expected Replaced result"),
+        }
+    }
+
+    #[test]
+    fn test_inject_chant_section_idempotent() {
+        // First injection
+        let result1 = inject_chant_section(None, false);
+        let content1 = match result1 {
+            InjectionResult::Created(c) => c,
+            _ => panic!("Expected Created"),
+        };
+
+        // Second injection on same content
+        let result2 = inject_chant_section(Some(&content1), false);
+        assert_eq!(result2, InjectionResult::Unchanged);
+    }
+
+    #[test]
+    fn test_inject_chant_section_preserves_surrounding_content() {
+        let existing = "# Header\n\nIntro paragraph.\n\n## Code Style\n\nUse TypeScript.\n";
+        let result = inject_chant_section(Some(existing), false);
+        match result {
+            InjectionResult::Appended(content) => {
+                // All original content should be preserved
+                assert!(content.contains("# Header"));
+                assert!(content.contains("Intro paragraph."));
+                assert!(content.contains("## Code Style"));
+                assert!(content.contains("Use TypeScript."));
+            }
+            _ => panic!("Expected Appended result"),
+        }
+    }
+
+    #[test]
+    fn test_inject_chant_section_mcp_variant() {
+        let result = inject_chant_section(None, true);
+        match result {
+            InjectionResult::Created(content) => {
+                // MCP version should mention MCP tools
+                assert!(content.contains("MCP"));
+                assert!(content.contains("chant_"));
+            }
+            _ => panic!("Expected Created result"),
+        }
     }
 }

@@ -1035,6 +1035,99 @@ fn parse_provider_string(s: &str) -> Option<&'static str> {
     }
 }
 
+/// Result of writing an agent config file
+#[derive(Debug)]
+enum AgentFileResult {
+    /// File was created new
+    Created,
+    /// Existing file was updated (section injected/replaced)
+    Updated,
+    /// File was skipped (user declined or non-TTY)
+    Skipped,
+    /// File was unchanged (already up-to-date)
+    Unchanged,
+}
+
+/// Write agent configuration file, using section injection for Claude's CLAUDE.md
+///
+/// For Claude provider: Uses section injection to preserve existing CLAUDE.md content
+/// For other providers: Uses full template replacement
+fn write_agent_config_file(
+    provider: &templates::AgentProvider,
+    template: &templates::AgentTemplate,
+    target_path: &Path,
+    force: bool,
+    has_mcp: bool,
+) -> Result<AgentFileResult> {
+    // For Claude provider, use section injection to preserve user content
+    if *provider == templates::AgentProvider::Claude {
+        let existing_content = if target_path.exists() {
+            Some(std::fs::read_to_string(target_path)?)
+        } else {
+            None
+        };
+
+        let result = templates::inject_chant_section(existing_content.as_deref(), has_mcp);
+
+        match result {
+            templates::InjectionResult::Created(content) => {
+                std::fs::write(target_path, content)?;
+                return Ok(AgentFileResult::Created);
+            }
+            templates::InjectionResult::Appended(content) => {
+                std::fs::write(target_path, content)?;
+                return Ok(AgentFileResult::Updated);
+            }
+            templates::InjectionResult::Replaced(content) => {
+                std::fs::write(target_path, content)?;
+                return Ok(AgentFileResult::Updated);
+            }
+            templates::InjectionResult::Unchanged => {
+                return Ok(AgentFileResult::Unchanged);
+            }
+        }
+    }
+
+    // For non-Claude providers, use full template replacement
+    if target_path.exists() && !force {
+        if atty::is(atty::Stream::Stdin) {
+            let should_overwrite = dialoguer::Confirm::new()
+                .with_prompt(format!(
+                    "{} already exists. Overwrite?",
+                    target_path.display()
+                ))
+                .default(false)
+                .interact()?;
+
+            if !should_overwrite {
+                return Ok(AgentFileResult::Skipped);
+            }
+        } else {
+            eprintln!(
+                "{} {} already exists. Use {} to overwrite.",
+                "•".yellow(),
+                target_path.display(),
+                "--force".cyan()
+            );
+            return Ok(AgentFileResult::Skipped);
+        }
+    }
+
+    // Write the full template for non-Claude providers
+    if let Some(parent) = target_path.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent)?;
+        }
+    }
+    std::fs::write(target_path, template.content)?;
+
+    if target_path.exists() && force {
+        Ok(AgentFileResult::Updated)
+    } else {
+        Ok(AgentFileResult::Created)
+    }
+}
+
 /// Handle updating only agent configuration files (used for re-running init with --agent)
 fn handle_agent_update(chant_dir: &Path, agents: &[String], force: bool) -> Result<()> {
     let parsed_agents = templates::parse_agent_providers(agents)?;
@@ -1047,8 +1140,12 @@ fn handle_agent_update(chant_dir: &Path, agents: &[String], force: bool) -> Resu
     // Create agents directory
     std::fs::create_dir_all(chant_dir.join("agents"))?;
 
+    // Check if MCP is configured (affects which chant section template to use)
+    let has_mcp = PathBuf::from(".mcp.json").exists();
+
     let mut created_agents = Vec::new();
-    let mut created_agent_names = Vec::new();
+    let mut updated_agents = Vec::new();
+    let mut unchanged_agents = Vec::new();
 
     for provider in &parsed_agents {
         let template = templates::get_template(provider.as_str())?;
@@ -1062,49 +1159,50 @@ fn handle_agent_update(chant_dir: &Path, agents: &[String], force: bool) -> Resu
             filename => PathBuf::from(filename),
         };
 
-        // Check if file already exists
-        if target_path.exists() && !force {
-            if atty::is(atty::Stream::Stdin) {
-                let should_overwrite = dialoguer::Confirm::new()
-                    .with_prompt(format!(
-                        "{} already exists. Overwrite?",
-                        target_path.display()
-                    ))
-                    .default(false)
-                    .interact()?;
+        // Write the agent config file using the helper
+        let result = write_agent_config_file(provider, &template, &target_path, force, has_mcp)?;
 
-                if !should_overwrite {
-                    continue;
-                }
-            } else {
-                eprintln!(
-                    "{} {} already exists. Use {} to overwrite.",
-                    "•".yellow(),
-                    target_path.display(),
-                    "--force".cyan()
-                );
-                continue;
+        match result {
+            AgentFileResult::Created => {
+                created_agents.push((target_path, provider.as_str()));
+            }
+            AgentFileResult::Updated => {
+                updated_agents.push((target_path, provider.as_str()));
+            }
+            AgentFileResult::Unchanged => {
+                unchanged_agents.push((target_path, provider.as_str()));
+            }
+            AgentFileResult::Skipped => {
+                // Already logged in write_agent_config_file
             }
         }
-
-        // Write the template
-        if let Some(parent) = target_path.parent() {
-            if !parent.as_os_str().is_empty() {
-                std::fs::create_dir_all(parent)?;
-            }
-        }
-        std::fs::write(&target_path, template.content)?;
-        created_agents.push(target_path);
-        created_agent_names.push(provider.as_str());
     }
 
-    if created_agents.is_empty() {
+    // Report results
+    for (target_path, _) in &created_agents {
+        println!("{} {}", "Created".green(), target_path.display());
+    }
+    for (target_path, _) in &updated_agents {
+        println!("{} {}", "Updated".green(), target_path.display());
+    }
+    for (target_path, _) in &unchanged_agents {
+        println!(
+            "{} {} (already up-to-date)",
+            "•".cyan(),
+            target_path.display()
+        );
+    }
+
+    let all_modified: Vec<_> = created_agents
+        .iter()
+        .chain(updated_agents.iter())
+        .map(|(_, name)| *name)
+        .collect();
+
+    if all_modified.is_empty() && unchanged_agents.is_empty() {
         println!("{}", "No agent files were updated.".yellow());
-    } else {
-        for target_path in &created_agents {
-            println!("{} {}", "Updated".green(), target_path.display());
-        }
-        let agent_names = created_agent_names.join(", ");
+    } else if !all_modified.is_empty() {
+        let agent_names = all_modified.join(", ");
         println!(
             "{} Agent configuration updated for: {}",
             "✓".green(),
@@ -1903,10 +2001,18 @@ Project initialized on {}.
     // Handle agent configuration if specified
     let parsed_agents = templates::parse_agent_providers(&final_agents)?;
     let mut created_agents = Vec::new();
-    let mut created_agent_names = Vec::new();
+    let mut updated_agents = Vec::new();
+    let mut unchanged_agents = Vec::new();
     if !parsed_agents.is_empty() {
         // Create agents directory
         std::fs::create_dir_all(chant_dir.join("agents"))?;
+
+        // Check if MCP will be created (affects which chant section template to use)
+        // MCP is created for Claude provider, so if Claude is in the list, we'll have MCP
+        let will_have_mcp = parsed_agents
+            .iter()
+            .any(|p| p.mcp_config_filename().is_some())
+            || PathBuf::from(".mcp.json").exists();
 
         // Create agent configuration files for each provider
         for provider in &parsed_agents {
@@ -1925,44 +2031,24 @@ Project initialized on {}.
                 }
             };
 
-            // Check if file already exists
-            if target_path.exists() && !force {
-                // File exists and --force not specified
-                // Handle TTY vs non-TTY scenarios
-                if atty::is(atty::Stream::Stdin) {
-                    // TTY mode: prompt for confirmation
-                    let should_overwrite = dialoguer::Confirm::new()
-                        .with_prompt(format!(
-                            "{} already exists. Overwrite?",
-                            target_path.display()
-                        ))
-                        .default(false)
-                        .interact()?;
+            // Write the agent config file using the helper
+            let result =
+                write_agent_config_file(provider, &template, &target_path, force, will_have_mcp)?;
 
-                    if !should_overwrite {
-                        continue; // Skip this file
-                    }
-                } else {
-                    // Non-TTY mode: show usage hint and skip
-                    eprintln!(
-                        "{} {} already exists. Use {} to overwrite.",
-                        "•".yellow(),
-                        target_path.display(),
-                        "--force".cyan()
-                    );
-                    continue;
+            match result {
+                AgentFileResult::Created => {
+                    created_agents.push((target_path, provider.as_str()));
+                }
+                AgentFileResult::Updated => {
+                    updated_agents.push((target_path, provider.as_str()));
+                }
+                AgentFileResult::Unchanged => {
+                    unchanged_agents.push((target_path, provider.as_str()));
+                }
+                AgentFileResult::Skipped => {
+                    // Already logged in write_agent_config_file
                 }
             }
-
-            // Write the template
-            if let Some(parent) = target_path.parent() {
-                if !parent.as_os_str().is_empty() {
-                    std::fs::create_dir_all(parent)?;
-                }
-            }
-            std::fs::write(&target_path, template.content)?;
-            created_agents.push(target_path);
-            created_agent_names.push(provider.as_str());
         }
 
         // Create MCP config if any provider supports it
@@ -2050,9 +2136,19 @@ Project initialized on {}.
     }
     println!("{} .chant/specs/", "Created".green());
 
-    // Print agent files that were actually created
-    for target_path in &created_agents {
+    // Print agent files that were created/updated
+    for (target_path, _) in &created_agents {
         println!("{} {}", "Created".green(), target_path.display());
+    }
+    for (target_path, _) in &updated_agents {
+        println!("{} {}", "Updated".green(), target_path.display());
+    }
+    for (target_path, _) in &unchanged_agents {
+        println!(
+            "{} {} (already up-to-date)",
+            "•".cyan(),
+            target_path.display()
+        );
     }
 
     println!("\nChant initialized for project: {}", project_name.cyan());
@@ -2087,10 +2183,17 @@ Project initialized on {}.
         );
     }
 
-    if !created_agent_names.is_empty() {
-        let agent_names = created_agent_names.join(", ");
+    // Summarize agent configuration changes
+    let all_modified: Vec<_> = created_agents
+        .iter()
+        .chain(updated_agents.iter())
+        .map(|(_, name)| *name)
+        .collect();
+
+    if !all_modified.is_empty() {
+        let agent_names = all_modified.join(", ");
         println!(
-            "{} Agent configuration created for: {}",
+            "{} Agent configuration created/updated for: {}",
             "ℹ".cyan(),
             agent_names.cyan()
         );
