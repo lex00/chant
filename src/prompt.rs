@@ -13,6 +13,7 @@ use std::path::Path;
 use crate::config::Config;
 use crate::paths::SPECS_DIR;
 use crate::spec::{split_frontmatter, Spec};
+use crate::validation;
 
 /// Ask user for confirmation with a yes/no prompt.
 /// Returns true if user confirms (y/yes), false if user declines (n/no).
@@ -106,6 +107,27 @@ fn substitute(template: &str, spec: &Spec, config: &Config, inject_commit: bool)
         result = result.replace("{{spec.context}}", "");
     }
 
+    // Inject output schema section if present
+    if let Some(ref schema_path) = spec.frontmatter.output_schema {
+        let schema_path = Path::new(schema_path);
+        if schema_path.exists() {
+            match validation::generate_schema_prompt_section(schema_path) {
+                Ok(schema_section) => {
+                    result.push_str(&schema_section);
+                }
+                Err(e) => {
+                    // Log warning but don't fail prompt assembly
+                    eprintln!("Warning: Failed to generate schema prompt section: {}", e);
+                }
+            }
+        } else {
+            eprintln!(
+                "Warning: Output schema file not found: {}",
+                schema_path.display()
+            );
+        }
+    }
+
     // Inject commit instruction if not already present (and if enabled)
     if inject_commit && !result.to_lowercase().contains("commit your work") {
         let commit_instruction = "\n\n## Required: Commit Your Work\n\n\
@@ -161,6 +183,7 @@ mod tests {
             repos: vec![],
             enterprise: crate::config::EnterpriseConfig::default(),
             approval: crate::config::ApprovalConfig::default(),
+            validation: crate::config::OutputValidationConfig::default(),
         }
     }
 

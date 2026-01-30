@@ -68,6 +68,7 @@ pub mod replay;
 pub mod spec;
 pub mod spec_group;
 pub mod tools;
+pub mod validation;
 pub mod worktree;
 
 /// Default path constants for chant directory structure.

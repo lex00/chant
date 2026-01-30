@@ -49,6 +49,14 @@ pub struct ApprovalConfig {
     pub require_approval_for_agent_work: bool,
 }
 
+/// Output validation configuration
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct OutputValidationConfig {
+    /// If true, fail spec when output doesn't match schema; if false, warn only
+    #[serde(default)]
+    pub strict_output_validation: bool,
+}
+
 /// Enterprise configuration for derived frontmatter and validation
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct EnterpriseConfig {
@@ -112,6 +120,8 @@ pub struct Config {
     pub enterprise: EnterpriseConfig,
     #[serde(default)]
     pub approval: ApprovalConfig,
+    #[serde(default)]
+    pub validation: OutputValidationConfig,
 }
 
 /// Configuration for a single repository in cross-repo dependency resolution
@@ -432,6 +442,7 @@ struct PartialConfig {
     pub repos: Option<Vec<RepoConfig>>,
     pub enterprise: Option<EnterpriseConfig>,
     pub approval: Option<ApprovalConfig>,
+    pub validation: Option<OutputValidationConfig>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -522,6 +533,8 @@ impl PartialConfig {
             enterprise: project.enterprise.or(self.enterprise).unwrap_or_default(),
             // Approval config: project overrides global, or use default
             approval: project.approval.or(self.approval).unwrap_or_default(),
+            // Validation config: project overrides global, or use default
+            validation: project.validation.or(self.validation).unwrap_or_default(),
         }
     }
 }

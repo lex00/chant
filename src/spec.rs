@@ -141,6 +141,9 @@ pub struct SpecFrontmatter {
     // Driver/group member tracking
     #[serde(skip_serializing_if = "Option::is_none")]
     pub members: Option<Vec<String>>,
+    // Output schema validation
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_schema: Option<String>,
 }
 
 fn default_type() -> String {
@@ -179,6 +182,7 @@ impl Default for SpecFrontmatter {
             derived_fields: None,
             approval: None,
             members: None,
+            output_schema: None,
         }
     }
 }
@@ -600,6 +604,7 @@ impl Spec {
             "original_completed_at" => self.frontmatter.original_completed_at.is_some(),
             "approval" => self.frontmatter.approval.is_some(),
             "members" => self.frontmatter.members.is_some(),
+            "output_schema" => self.frontmatter.output_schema.is_some(),
             _ => false, // Unknown field
         }
     }

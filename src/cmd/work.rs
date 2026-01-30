@@ -18,6 +18,7 @@ use chant::conflict;
 use chant::paths::PROMPTS_DIR;
 use chant::prompt;
 use chant::spec::{self, BlockingDependency, Spec, SpecStatus};
+use chant::validation;
 use chant::worktree;
 use dialoguer::Select;
 
@@ -701,6 +702,63 @@ pub fn cmd_work(
                     "→".cyan(),
                     lint_result.warned
                 );
+            }
+
+            // Validate output against schema if output_schema is defined
+            if let Some(ref schema_path_str) = spec.frontmatter.output_schema {
+                let schema_path = Path::new(schema_path_str);
+                if schema_path.exists() {
+                    match validation::validate_agent_output(&spec.id, schema_path, &agent_output) {
+                        Ok(result) => {
+                            if result.is_valid {
+                                println!(
+                                    "\n{} Output validation passed (schema: {})",
+                                    "✓".green(),
+                                    schema_path_str
+                                );
+                            } else {
+                                println!(
+                                    "\n{} Output validation failed (schema: {})",
+                                    "✗".red(),
+                                    schema_path_str
+                                );
+                                for error in &result.errors {
+                                    println!("  - {}", error);
+                                }
+                                println!("  → Review .chant/logs/{}.log for details", spec.id);
+
+                                // Check if strict validation is enabled
+                                if config.validation.strict_output_validation {
+                                    spec.frontmatter.status = SpecStatus::NeedsAttention;
+                                    spec.save(&spec_path)?;
+                                    anyhow::bail!(
+                                        "Output validation failed: {} error(s)",
+                                        result.errors.len()
+                                    );
+                                } else {
+                                    println!(
+                                        "  {} Proceeding anyway (strict_output_validation=false)",
+                                        "→".cyan()
+                                    );
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            println!("\n{} Failed to validate output: {}", "⚠".yellow(), e);
+                            if config.validation.strict_output_validation {
+                                spec.frontmatter.status = SpecStatus::NeedsAttention;
+                                spec.save(&spec_path)?;
+                                return Err(e);
+                            }
+                        }
+                    }
+                } else {
+                    println!(
+                        "\n{} Output schema file not found: {}",
+                        "⚠".yellow(),
+                        schema_path_str
+                    );
+                }
             }
 
             // All criteria are checked, auto-finalize the spec
@@ -2793,6 +2851,7 @@ mod tests {
             repos: vec![],
             enterprise: chant::config::EnterpriseConfig::default(),
             approval: chant::config::ApprovalConfig::default(),
+            validation: chant::config::OutputValidationConfig::default(),
         }
     }
 

@@ -274,6 +274,7 @@ mod tests {
             repos: vec![],
             enterprise: crate::config::EnterpriseConfig::default(),
             approval: crate::config::ApprovalConfig::default(),
+            validation: crate::config::OutputValidationConfig::default(),
         }
     }
 

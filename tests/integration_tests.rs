@@ -5143,3 +5143,206 @@ fn test_chain_max_limit_applies() {
     let _ = std::env::set_current_dir(&original_dir);
     let _ = cleanup_test_repo(&repo_dir);
 }
+
+// ============================================================================
+// OUTPUT SCHEMA VALIDATION TESTS
+// ============================================================================
+
+#[test]
+fn test_output_schema_validation_valid_output() {
+    use chant::validation;
+    use tempfile::TempDir;
+
+    let tmp = TempDir::new().unwrap();
+    let schema_path = tmp.path().join("schema.json");
+
+    // Create a simple schema
+    let schema = r#"{
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "required": ["spec_id", "status"],
+        "properties": {
+            "spec_id": {"type": "string"},
+            "status": {"type": "string", "enum": ["success", "failure"]}
+        }
+    }"#;
+    fs::write(&schema_path, schema).unwrap();
+
+    // Simulate agent output with valid JSON
+    let agent_output = r#"
+Here is my analysis:
+
+```json
+{"spec_id": "test-001", "status": "success"}
+```
+
+End of report.
+"#;
+
+    let result = validation::validate_agent_output("test-001", &schema_path, agent_output).unwrap();
+
+    assert!(result.is_valid, "Expected validation to pass");
+    assert!(result.errors.is_empty(), "Expected no errors");
+    assert!(result.extracted_json.is_some(), "Expected extracted JSON");
+}
+
+#[test]
+fn test_output_schema_validation_missing_required_field() {
+    use chant::validation;
+    use tempfile::TempDir;
+
+    let tmp = TempDir::new().unwrap();
+    let schema_path = tmp.path().join("schema.json");
+
+    // Schema requires spec_id
+    let schema = r#"{
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "required": ["spec_id"],
+        "properties": {
+            "spec_id": {"type": "string"},
+            "value": {"type": "number"}
+        }
+    }"#;
+    fs::write(&schema_path, schema).unwrap();
+
+    // Agent output missing required field
+    let agent_output = r#"{"value": 42}"#;
+
+    let result = validation::validate_agent_output("test-001", &schema_path, agent_output).unwrap();
+
+    assert!(!result.is_valid, "Expected validation to fail");
+    assert!(!result.errors.is_empty(), "Expected errors");
+    // Check that error mentions missing field
+    let error_text = result.errors.join(" ");
+    assert!(
+        error_text.contains("spec_id") || error_text.contains("required"),
+        "Error should mention missing required field: {}",
+        error_text
+    );
+}
+
+#[test]
+fn test_output_schema_validation_no_json_in_output() {
+    use chant::validation;
+    use tempfile::TempDir;
+
+    let tmp = TempDir::new().unwrap();
+    let schema_path = tmp.path().join("schema.json");
+
+    let schema = r#"{
+        "type": "object",
+        "properties": {"x": {"type": "string"}}
+    }"#;
+    fs::write(&schema_path, schema).unwrap();
+
+    let agent_output = "Just some plain text without any JSON.";
+
+    let result = validation::validate_agent_output("test-001", &schema_path, agent_output).unwrap();
+
+    assert!(!result.is_valid, "Expected validation to fail");
+    assert!(
+        result.extracted_json.is_none(),
+        "Expected no extracted JSON"
+    );
+    assert!(
+        result.errors[0].contains("No JSON found"),
+        "Error should indicate no JSON found"
+    );
+}
+
+#[test]
+fn test_output_schema_json_extraction_from_code_block() {
+    use chant::validation;
+
+    let output = r#"
+Analysis complete.
+
+```json
+{
+  "findings": ["Issue A", "Issue B"],
+  "severity": "high"
+}
+```
+
+Recommendation: Fix immediately.
+"#;
+
+    let json = validation::extract_json_from_output(output);
+    assert!(json.is_some(), "Expected JSON to be extracted");
+
+    let json = json.unwrap();
+    assert!(json["findings"].is_array());
+    assert_eq!(json["severity"], "high");
+}
+
+#[test]
+fn test_output_schema_json_extraction_bare_json() {
+    use chant::validation;
+
+    let output = r#"{"key": "value", "count": 5}"#;
+
+    let json = validation::extract_json_from_output(output);
+    assert!(json.is_some(), "Expected JSON to be extracted");
+
+    let json = json.unwrap();
+    assert_eq!(json["key"], "value");
+    assert_eq!(json["count"], 5);
+}
+
+#[test]
+fn test_output_schema_json_extraction_embedded_json() {
+    use chant::validation;
+
+    let output = r#"
+The result is: {"status": "ok", "data": [1, 2, 3]} which indicates success.
+"#;
+
+    let json = validation::extract_json_from_output(output);
+    assert!(
+        json.is_some(),
+        "Expected JSON to be extracted from embedded text"
+    );
+
+    let json = json.unwrap();
+    assert_eq!(json["status"], "ok");
+    assert!(json["data"].is_array());
+}
+
+#[test]
+fn test_generate_schema_prompt_section() {
+    use chant::validation;
+    use tempfile::TempDir;
+
+    let tmp = TempDir::new().unwrap();
+    let schema_path = tmp.path().join("schema.json");
+
+    let schema = r#"{
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "required": ["spec_id", "findings"],
+        "properties": {
+            "spec_id": {"type": "string"},
+            "findings": {"type": "array", "items": {"type": "string"}}
+        }
+    }"#;
+    fs::write(&schema_path, schema).unwrap();
+
+    let section = validation::generate_schema_prompt_section(&schema_path).unwrap();
+
+    // Verify the section contains expected content
+    assert!(
+        section.contains("## Output Format"),
+        "Should have Output Format header"
+    );
+    assert!(section.contains("spec_id"), "Should mention spec_id field");
+    assert!(
+        section.contains("findings"),
+        "Should mention findings field"
+    );
+    assert!(
+        section.contains("Required fields"),
+        "Should list required fields"
+    );
+    assert!(section.contains("Example"), "Should include example");
+}

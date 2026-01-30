@@ -126,3 +126,128 @@ Agent can then fix and retry.
 
 The format is human-readable AND machine-validatable. Chant chooses human-first with machine validation.
 
+## Output Schema Validation
+
+For task specs that produce structured output (research reports, analysis results, etc.), you can enforce a JSON Schema on agent output.
+
+### Defining an Output Schema
+
+Add `output_schema` to spec frontmatter pointing to a JSON Schema file:
+
+```yaml
+---
+type: task
+status: ready
+output_schema: .chant/schemas/research-report.json
+---
+
+# Research issue #1234
+
+Investigate root cause and produce structured report.
+```
+
+### Creating Schema Files
+
+Create JSON Schema files in `.chant/schemas/`:
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["spec_id", "findings", "recommendation"],
+  "properties": {
+    "spec_id": {
+      "type": "string",
+      "pattern": "^[A-Z]\\.[0-9]+\\.[0-9]+$"
+    },
+    "findings": {
+      "type": "array",
+      "items": {"type": "string"},
+      "minItems": 1
+    },
+    "recommendation": {
+      "type": "string"
+    }
+  }
+}
+```
+
+### How It Works
+
+1. **Prompt Injection**: When `output_schema` is present, chant automatically injects an "Output Format" section into the agent prompt with the schema definition, required fields, and an example.
+
+2. **Post-Execution Validation**: After the agent completes, chant extracts JSON from the agent output and validates it against the schema.
+
+3. **Linter Integration**: `chant lint` validates output for completed specs that have `output_schema` defined.
+
+### Configuration
+
+Control validation strictness in `config.md`:
+
+```yaml
+---
+validation:
+  strict_output_validation: false  # Default: warn but allow
+---
+```
+
+When `strict_output_validation: true`:
+- Specs fail if output doesn't match schema
+- Status is set to `needs_attention`
+
+When `strict_output_validation: false` (default):
+- Warning is shown but spec proceeds to completion
+- Useful for gradual adoption
+
+### Validation Output
+
+**Success:**
+```bash
+✓ Output validation passed (schema: .chant/schemas/research-report.json)
+```
+
+**Failure:**
+```bash
+✗ Output validation failed (schema: .chant/schemas/research-report.json)
+  - missing required field 'spec_id'
+  - at '/findings': expected array, got string
+  → Review .chant/logs/2026-01-29-001-abc.log for details
+```
+
+### JSON Extraction
+
+Chant uses multiple strategies to extract JSON from agent output:
+
+1. **Code blocks**: ```` ```json ... ``` ```` or ```` ``` ... ``` ````
+2. **Bare JSON**: Entire output is valid JSON
+3. **Embedded JSON**: `{...}` or `[...]` patterns in text
+
+### Example Workflow
+
+1. Create schema:
+   ```bash
+   mkdir -p .chant/schemas
+   cat > .chant/schemas/research.json << 'EOF'
+   {
+     "$schema": "https://json-schema.org/draft/2020-12/schema",
+     "type": "object",
+     "required": ["spec_id", "root_cause"],
+     "properties": {
+       "spec_id": {"type": "string"},
+       "root_cause": {"type": "string"},
+       "affected_files": {"type": "array", "items": {"type": "string"}}
+     }
+   }
+   EOF
+   ```
+
+2. Create spec with schema reference:
+   ```bash
+   chant add "Research bug #123"
+   # Edit spec to add: output_schema: .chant/schemas/research.json
+   ```
+
+3. Work the spec - agent sees schema in prompt
+4. Validation runs automatically on completion
+5. Check all specs: `chant lint`
+

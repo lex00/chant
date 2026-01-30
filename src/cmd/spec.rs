@@ -19,6 +19,7 @@ use chant::git;
 use chant::id;
 use chant::paths::{ARCHIVE_DIR, LOGS_DIR};
 use chant::spec::{self, Spec, SpecStatus};
+use chant::validation;
 use chant::worktree;
 
 use crate::render;
@@ -339,6 +340,53 @@ pub fn validate_approval_schema(spec: &Spec) -> Vec<String> {
         // If 'by' is set but status is still pending, that's inconsistent
         if approval.status == spec::ApprovalStatus::Pending && approval.by.is_some() {
             warnings.push("Approval has 'by' field set but status is still 'pending'".to_string());
+        }
+    }
+
+    warnings
+}
+
+/// Validate output schema for completed specs.
+/// If a spec has output_schema defined and is completed, check that the agent log
+/// contains valid JSON matching the schema.
+pub fn validate_output_schema(spec: &Spec) -> Vec<String> {
+    let mut warnings = Vec::new();
+
+    // Only validate completed specs with output_schema defined
+    if spec.frontmatter.status != SpecStatus::Completed {
+        return warnings;
+    }
+
+    let schema_path_str = match &spec.frontmatter.output_schema {
+        Some(path) => path,
+        None => return warnings,
+    };
+
+    let schema_path = Path::new(schema_path_str);
+
+    // Check if schema file exists
+    if !schema_path.exists() {
+        warnings.push(format!("Output schema file not found: {}", schema_path_str));
+        return warnings;
+    }
+
+    // Check if log file exists
+    let logs_dir = PathBuf::from(LOGS_DIR);
+    match validation::validate_spec_output_from_log(&spec.id, schema_path, &logs_dir) {
+        Ok(Some(result)) => {
+            if !result.is_valid {
+                warnings.push(format!(
+                    "Output validation failed: {}",
+                    result.errors.join("; ")
+                ));
+            }
+        }
+        Ok(None) => {
+            // No log file - this is expected for specs not yet executed
+            // Don't warn since completion may have been set manually or from archive
+        }
+        Err(e) => {
+            warnings.push(format!("Failed to validate output: {}", e));
         }
     }
 
@@ -2072,12 +2120,16 @@ pub fn cmd_lint() -> Result<()> {
         // Approval schema validation
         let approval_warnings = validate_approval_schema(spec);
 
+        // Output schema validation for completed specs
+        let output_warnings = validate_output_schema(spec);
+
         // Combine all warnings
         let mut spec_warnings = type_warnings;
         spec_warnings.extend(complexity_warnings);
         spec_warnings.extend(coupling_warnings);
         spec_warnings.extend(model_warnings);
         spec_warnings.extend(approval_warnings);
+        spec_warnings.extend(output_warnings);
 
         if spec_issues.is_empty() && spec_warnings.is_empty() {
             println!("{} {}", "✓".green(), spec.id);
