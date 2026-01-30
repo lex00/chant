@@ -1188,6 +1188,7 @@ fn update_claude_mcp_config() -> Result<McpConfigResult> {
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn cmd_init(
     subcommand: Option<&str>,
     name: Option<String>,
