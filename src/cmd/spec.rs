@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use chant::config::{Config, RejectionAction};
-use chant::derivation::{DerivationContext, DerivationEngine};
+use chant::derivation::{self, DerivationEngine};
 use chant::git;
 use chant::id;
 use chant::paths::{ARCHIVE_DIR, LOGS_DIR};
@@ -28,35 +28,6 @@ use crate::render;
 use crate::cmd;
 #[cfg(test)]
 use chant::spec::SpecFrontmatter;
-
-// ============================================================================
-// DERIVATION HELPERS
-// ============================================================================
-
-/// Build a DerivationContext with all available sources for spec creation.
-/// Returns a context with branch name, spec path, environment variables, and git user info.
-fn build_derivation_context(spec_id: &str, specs_dir: &Path) -> Result<DerivationContext> {
-    let mut context = DerivationContext::new();
-
-    // Get current branch
-    if let Ok(branch) = git::get_current_branch() {
-        context.branch_name = Some(branch);
-    }
-
-    // Get spec path
-    let spec_path = specs_dir.join(format!("{}.md", spec_id));
-    context.spec_path = Some(spec_path);
-
-    // Capture environment variables
-    context.env_vars = std::env::vars().collect();
-
-    // Get git user info
-    let (name, email) = git::get_git_user_info();
-    context.git_user_name = name;
-    context.git_user_email = email;
-
-    Ok(context)
-}
 
 // ============================================================================
 // MULTI-REPO HELPERS
@@ -509,7 +480,7 @@ status: pending
         let mut spec = spec::Spec::load(&filepath)?;
 
         // Build derivation context
-        let context = build_derivation_context(&id, &specs_dir)?;
+        let context = derivation::build_context(&id, &specs_dir);
 
         // Derive fields using the engine
         let engine = DerivationEngine::new(config.enterprise.clone());
@@ -6603,22 +6574,6 @@ This is a test spec.
         assert_eq!(labels[0], "tag1");
         assert_eq!(labels[1], "tag2");
         assert_eq!(labels[2], "tag3");
-    }
-
-    #[test]
-    fn test_build_derivation_context_basic() {
-        // Test that build_derivation_context creates a context with expected fields
-        let temp_dir = TempDir::new().unwrap();
-        let specs_dir = temp_dir.path().to_path_buf();
-
-        let result = super::build_derivation_context("test-spec-123", &specs_dir);
-        assert!(result.is_ok());
-
-        let context = result.unwrap();
-        // Spec path should be set
-        assert!(context.spec_path.is_some());
-        // Environment variables should be captured
-        assert!(!context.env_vars.is_empty());
     }
 
     // =========================================================================

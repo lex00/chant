@@ -8,12 +8,10 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
 use std::io::{self, Write};
-use std::path::Path;
 use std::process::Command;
 
 use chant::config::Config;
-use chant::derivation::{DerivationContext, DerivationEngine};
-use chant::git;
+use chant::derivation::{self, DerivationEngine};
 use chant::id;
 use chant::spec_template::{find_template, load_all_templates, parse_var_args, TemplateSource};
 
@@ -249,7 +247,7 @@ pub fn cmd_add_from_template(
     let config = Config::load()?;
     if !config.enterprise.derived.is_empty() {
         let mut spec = chant::spec::Spec::load(&filepath)?;
-        let context = build_derivation_context(&id, &specs_dir)?;
+        let context = derivation::build_context(&id, &specs_dir);
         let engine = DerivationEngine::new(config.enterprise.clone());
         let derived_fields = engine.derive_fields(&context);
         spec.add_derived_fields(derived_fields);
@@ -299,26 +297,6 @@ pub fn cmd_add_from_template(
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
-
-/// Build derivation context for a newly created spec
-fn build_derivation_context(spec_id: &str, specs_dir: &Path) -> Result<DerivationContext> {
-    let mut context = chant::derivation::DerivationContext::new();
-
-    if let Ok(branch) = git::get_current_branch() {
-        context.branch_name = Some(branch);
-    }
-
-    let spec_path = specs_dir.join(format!("{}.md", spec_id));
-    context.spec_path = Some(spec_path);
-    context.env_vars = std::env::vars().collect();
-
-    // Get git user info
-    let (name, email) = git::get_git_user_info();
-    context.git_user_name = name;
-    context.git_user_email = email;
-
-    Ok(context)
-}
 
 /// Add approval section to spec frontmatter
 fn add_approval_to_frontmatter(content: &str) -> Result<String> {

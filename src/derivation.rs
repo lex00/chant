@@ -68,6 +68,40 @@ impl Default for DerivationContext {
     }
 }
 
+/// Build a DerivationContext populated with current environment data.
+///
+/// This creates a fully populated context with:
+/// - Current git branch name
+/// - Spec file path (constructed from spec_id and specs_dir)
+/// - All environment variables
+/// - Git user name and email from config
+///
+/// This is the canonical way to build a context for derivation operations.
+pub fn build_context(spec_id: &str, specs_dir: &std::path::Path) -> DerivationContext {
+    use crate::git;
+
+    let mut context = DerivationContext::new();
+
+    // Get current branch
+    if let Ok(branch) = git::get_current_branch() {
+        context.branch_name = Some(branch);
+    }
+
+    // Get spec path
+    let spec_path = specs_dir.join(format!("{}.md", spec_id));
+    context.spec_path = Some(spec_path);
+
+    // Capture environment variables
+    context.env_vars = std::env::vars().collect();
+
+    // Get git user info
+    let (name, email) = git::get_git_user_info();
+    context.git_user_name = name;
+    context.git_user_email = email;
+
+    context
+}
+
 /// Engine for deriving field values from configured sources
 #[derive(Debug, Clone)]
 pub struct DerivationEngine {

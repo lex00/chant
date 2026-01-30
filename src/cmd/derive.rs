@@ -8,11 +8,9 @@
 
 use anyhow::{Context, Result};
 use colored::Colorize;
-use std::path::Path;
 
 use chant::config::Config;
-use chant::derivation::{DerivationContext, DerivationEngine};
-use chant::git;
+use chant::derivation::{self, DerivationEngine};
 use chant::spec;
 
 /// Derive fields for one or all specs
@@ -38,7 +36,7 @@ pub fn cmd_derive(spec_id: Option<String>, all: bool, dry_run: bool) -> Result<(
     // Process each spec
     for spec in specs {
         let spec_path = specs_dir.join(format!("{}.md", spec.id));
-        let context = build_derivation_context(&spec.id, &specs_dir)?;
+        let context = derivation::build_context(&spec.id, &specs_dir);
         let engine = DerivationEngine::new(config.enterprise.clone());
         let derived = engine.derive_fields(&context);
 
@@ -66,31 +64,6 @@ pub fn cmd_derive(spec_id: Option<String>, all: bool, dry_run: bool) -> Result<(
     }
 
     Ok(())
-}
-
-/// Build a DerivationContext with all available sources for derivation.
-/// Returns a context with branch name, spec path, environment variables, and git user info.
-fn build_derivation_context(spec_id: &str, specs_dir: &Path) -> Result<DerivationContext> {
-    let mut context = DerivationContext::new();
-
-    // Get current branch
-    if let Ok(branch) = git::get_current_branch() {
-        context.branch_name = Some(branch);
-    }
-
-    // Get spec path
-    let spec_path = specs_dir.join(format!("{}.md", spec_id));
-    context.spec_path = Some(spec_path);
-
-    // Capture environment variables
-    context.env_vars = std::env::vars().collect();
-
-    // Get git user info
-    let (name, email) = git::get_git_user_info();
-    context.git_user_name = name;
-    context.git_user_email = email;
-
-    Ok(context)
 }
 
 /// Print derived fields to stdout in a human-readable format
