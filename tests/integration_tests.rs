@@ -5346,3 +5346,260 @@ fn test_generate_schema_prompt_section() {
     );
     assert!(section.contains("Example"), "Should include example");
 }
+
+/// Test that finalize command validates output schema when present
+#[test]
+#[serial]
+fn test_finalize_validates_output_schema() {
+    use chant::spec::{Spec, SpecFrontmatter, SpecStatus};
+
+    let original_dir = std::env::current_dir().expect("Failed to get current dir");
+    let repo_dir = PathBuf::from("/tmp/test-chant-finalize-validation");
+    let _ = cleanup_test_repo(&repo_dir);
+
+    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+
+    // Set working directory to repo
+    let _ = std::env::set_current_dir(&repo_dir);
+
+    // Set up .chant directory
+    let chant_dir = repo_dir.join(".chant");
+    std::fs::create_dir_all(&chant_dir).expect("Failed to create .chant dir");
+
+    // Create config
+    let config_path = chant_dir.join("config.md");
+    let config_content = r#"---
+project:
+  name: test-project
+
+validation:
+  strict_output_validation: false
+---
+
+# Config
+"#;
+    std::fs::write(&config_path, config_content).expect("Failed to write config");
+
+    // Create schemas directory and schema file
+    let schemas_dir = chant_dir.join("schemas");
+    std::fs::create_dir_all(&schemas_dir).expect("Failed to create schemas dir");
+
+    let schema_content = r#"{
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "required": ["spec_id", "status"],
+        "properties": {
+            "spec_id": {"type": "string"},
+            "status": {"type": "string"}
+        }
+    }"#;
+    let schema_path = schemas_dir.join("test-schema.json");
+    std::fs::write(&schema_path, schema_content).expect("Failed to write schema");
+
+    // Create specs directory
+    let specs_dir = chant_dir.join("specs");
+    std::fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+
+    // Create a spec with output_schema
+    let spec_id = "2026-01-29-finalize-validation-test";
+    let spec = Spec {
+        id: spec_id.to_string(),
+        frontmatter: SpecFrontmatter {
+            status: SpecStatus::InProgress,
+            output_schema: Some(".chant/schemas/test-schema.json".to_string()),
+            ..Default::default()
+        },
+        title: Some("Test Finalize Validation".to_string()),
+        body: r#"# Test Finalize Validation
+
+## Acceptance Criteria
+
+- [x] Test criterion
+"#
+        .to_string(),
+    };
+    let spec_path = specs_dir.join(format!("{}.md", spec_id));
+    spec.save(&spec_path).expect("Failed to save spec");
+
+    // Create logs directory and log file with valid JSON
+    let logs_dir = chant_dir.join("logs");
+    std::fs::create_dir_all(&logs_dir).expect("Failed to create logs dir");
+
+    let log_content = r#"
+Agent working on spec...
+
+```json
+{"spec_id": "2026-01-29-finalize-validation-test", "status": "completed"}
+```
+
+Done.
+"#;
+    let log_path = logs_dir.join(format!("{}.log", spec_id));
+    std::fs::write(&log_path, log_content).expect("Failed to write log file");
+
+    // Create a git commit to associate with the spec
+    let test_file = repo_dir.join("test_changes.txt");
+    std::fs::write(&test_file, "Some changes").expect("Failed to write test file");
+
+    let _ = Command::new("git")
+        .args(["add", "."])
+        .current_dir(&repo_dir)
+        .output();
+
+    let _ = Command::new("git")
+        .args([
+            "commit",
+            "-m",
+            &format!("chant({}): test commit", spec_id),
+        ])
+        .current_dir(&repo_dir)
+        .output();
+
+    // Run chant finalize
+    let chant_binary = get_chant_binary();
+    let output = Command::new(&chant_binary)
+        .args(["finalize", spec_id])
+        .current_dir(&repo_dir)
+        .env("CHANT_TEST_MODE", "1")
+        .output()
+        .expect("Failed to run chant finalize");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    // Should indicate validation passed
+    assert!(
+        stdout.contains("Output validation passed") || stderr.contains("Output validation passed"),
+        "Should show validation passed. stdout: {}, stderr: {}",
+        stdout,
+        stderr
+    );
+
+    // Clean up
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}
+
+/// Test that finalize command fails in strict mode when validation fails
+#[test]
+#[serial]
+fn test_finalize_strict_mode_validation_failure() {
+    use chant::spec::{Spec, SpecFrontmatter, SpecStatus};
+
+    let original_dir = std::env::current_dir().expect("Failed to get current dir");
+    let repo_dir = PathBuf::from("/tmp/test-chant-finalize-strict");
+    let _ = cleanup_test_repo(&repo_dir);
+
+    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+
+    // Set working directory to repo
+    let _ = std::env::set_current_dir(&repo_dir);
+
+    // Set up .chant directory
+    let chant_dir = repo_dir.join(".chant");
+    std::fs::create_dir_all(&chant_dir).expect("Failed to create .chant dir");
+
+    // Create config with strict mode enabled
+    let config_path = chant_dir.join("config.md");
+    let config_content = r#"---
+project:
+  name: test-project
+
+validation:
+  strict_output_validation: true
+---
+
+# Config
+"#;
+    std::fs::write(&config_path, config_content).expect("Failed to write config");
+
+    // Create schemas directory and schema file
+    let schemas_dir = chant_dir.join("schemas");
+    std::fs::create_dir_all(&schemas_dir).expect("Failed to create schemas dir");
+
+    // Schema requires spec_id field
+    let schema_content = r#"{
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "required": ["spec_id"],
+        "properties": {
+            "spec_id": {"type": "string"}
+        }
+    }"#;
+    let schema_path = schemas_dir.join("test-schema.json");
+    std::fs::write(&schema_path, schema_content).expect("Failed to write schema");
+
+    // Create specs directory
+    let specs_dir = chant_dir.join("specs");
+    std::fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+
+    // Create a spec with output_schema
+    let spec_id = "2026-01-29-finalize-strict-test";
+    let spec = Spec {
+        id: spec_id.to_string(),
+        frontmatter: SpecFrontmatter {
+            status: SpecStatus::InProgress,
+            output_schema: Some(".chant/schemas/test-schema.json".to_string()),
+            ..Default::default()
+        },
+        title: Some("Test Finalize Strict Mode".to_string()),
+        body: r#"# Test Finalize Strict Mode
+
+## Acceptance Criteria
+
+- [x] Test criterion
+"#
+        .to_string(),
+    };
+    let spec_path = specs_dir.join(format!("{}.md", spec_id));
+    spec.save(&spec_path).expect("Failed to save spec");
+
+    // Create logs directory with invalid JSON (missing required field)
+    let logs_dir = chant_dir.join("logs");
+    std::fs::create_dir_all(&logs_dir).expect("Failed to create logs dir");
+
+    // This JSON is missing the required "spec_id" field
+    let log_content = r#"
+Agent working on spec...
+
+```json
+{"status": "completed", "other_field": "value"}
+```
+
+Done.
+"#;
+    let log_path = logs_dir.join(format!("{}.log", spec_id));
+    std::fs::write(&log_path, log_content).expect("Failed to write log file");
+
+    // Run chant finalize - should fail due to strict validation
+    let chant_binary = get_chant_binary();
+    let output = Command::new(&chant_binary)
+        .args(["finalize", spec_id])
+        .current_dir(&repo_dir)
+        .env("CHANT_TEST_MODE", "1")
+        .output()
+        .expect("Failed to run chant finalize");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    // Should fail with validation error in strict mode
+    assert!(
+        !output.status.success(),
+        "Finalize should fail in strict mode. stdout: {}, stderr: {}",
+        stdout,
+        stderr
+    );
+
+    // Should indicate validation failed
+    assert!(
+        stdout.contains("Output validation failed") || stderr.contains("Output validation failed"),
+        "Should show validation failed. stdout: {}, stderr: {}",
+        stdout,
+        stderr
+    );
+
+    // Clean up
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}

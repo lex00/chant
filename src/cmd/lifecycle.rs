@@ -2198,6 +2198,7 @@ pub fn cmd_replay(
 pub fn cmd_finalize(id: &str, specs_dir: &std::path::Path) -> Result<()> {
     use crate::cmd::finalize;
     use chant::spec;
+    use chant::validation;
     use chant::worktree;
 
     // Resolve the spec
@@ -2229,8 +2230,86 @@ pub fn cmd_finalize(id: &str, specs_dir: &std::path::Path) -> Result<()> {
         );
     }
 
-    // Load the config for model information
+    // Load the config for model information and validation settings
     let config = Config::load()?;
+
+    // Validate output against schema if output_schema is defined
+    if let Some(ref schema_path_str) = spec.frontmatter.output_schema {
+        let schema_path = std::path::Path::new(schema_path_str);
+        if schema_path.exists() {
+            // Read agent output from log file
+            let log_path = specs_dir
+                .parent()
+                .unwrap_or(specs_dir)
+                .join("logs")
+                .join(format!("{}.log", spec_id));
+
+            if log_path.exists() {
+                let agent_output = std::fs::read_to_string(&log_path)
+                    .with_context(|| format!("Failed to read agent log: {}", log_path.display()))?;
+
+                match validation::validate_agent_output(&spec_id, schema_path, &agent_output) {
+                    Ok(result) => {
+                        if result.is_valid {
+                            println!(
+                                "{} Output validation passed (schema: {})",
+                                "✓".green(),
+                                schema_path_str
+                            );
+                        } else {
+                            println!(
+                                "{} Output validation failed (schema: {})",
+                                "✗".red(),
+                                schema_path_str
+                            );
+                            for error in &result.errors {
+                                println!("  - {}", error);
+                            }
+                            println!("  → Review .chant/logs/{}.log for details", spec_id);
+
+                            // Check if strict validation is enabled
+                            if config.validation.strict_output_validation {
+                                anyhow::bail!(
+                                    "Cannot finalize: output validation failed ({} error(s), strict mode enabled)",
+                                    result.errors.len()
+                                );
+                            } else {
+                                println!(
+                                    "  {} Proceeding with finalization (strict_output_validation=false)",
+                                    "→".cyan()
+                                );
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        println!("{} Failed to validate output: {}", "⚠".yellow(), e);
+                        if config.validation.strict_output_validation {
+                            anyhow::bail!(
+                                "Cannot finalize: output validation error (strict mode enabled)"
+                            );
+                        } else {
+                            println!(
+                                "  {} Proceeding with finalization (strict_output_validation=false)",
+                                "→".cyan()
+                            );
+                        }
+                    }
+                }
+            } else {
+                println!(
+                    "{} No log file found at {}, skipping output validation",
+                    "⚠".yellow(),
+                    log_path.display()
+                );
+            }
+        } else {
+            println!(
+                "{} Output schema file not found: {}, skipping validation",
+                "⚠".yellow(),
+                schema_path.display()
+            );
+        }
+    }
 
     // Check if this spec has an active worktree - if so, finalize there
     if let Some(worktree_path) = worktree::get_active_worktree(&spec_id) {
