@@ -1865,6 +1865,7 @@ pub fn cmd_work_parallel(
         let is_direct_mode_clone = is_direct_mode;
         let agent_command = assignment.agent_command.clone();
         let config_clone = config.clone();
+        let branch_name_clone = branch_for_cleanup.clone();
 
         let handle = thread::spawn(move || {
             let result = cmd::agent::invoke_agent_with_command(
@@ -1874,6 +1875,7 @@ pub fn cmd_work_parallel(
                 config_model.as_deref(),
                 worktree_path_clone.as_deref(),
                 &agent_command,
+                branch_name_clone.as_deref(),
             );
             let (success, commits, error, agent_completed) = match result {
                 Ok(_) => {

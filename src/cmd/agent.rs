@@ -116,8 +116,17 @@ pub fn invoke_agent_with_prefix(
     prompt_name: &str,
     config_model: Option<&str>,
     cwd: Option<&Path>,
+    branch_name: Option<&str>,
 ) -> Result<()> {
-    invoke_agent_with_command(message, spec_id, prompt_name, config_model, cwd, "claude")
+    invoke_agent_with_command(
+        message,
+        spec_id,
+        prompt_name,
+        config_model,
+        cwd,
+        "claude",
+        branch_name,
+    )
 }
 
 /// Invoke an agent with a custom command and prefix output with spec ID
@@ -129,6 +138,7 @@ pub fn invoke_agent_with_command(
     config_model: Option<&str>,
     cwd: Option<&Path>,
     agent_command: &str,
+    branch_name: Option<&str>,
 ) -> Result<()> {
     use std::io::{BufRead, BufReader};
     use std::process::{Command, Stdio};
@@ -167,9 +177,15 @@ pub fn invoke_agent_with_command(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    // Set working directory if provided
+    // Set working directory and worktree environment variables if provided
     if let Some(path) = cwd {
         cmd.current_dir(path);
+        // Set worktree environment variables
+        cmd.env("CHANT_WORKTREE", "1");
+        cmd.env("CHANT_WORKTREE_PATH", path);
+        if let Some(branch) = branch_name {
+            cmd.env("CHANT_BRANCH", branch);
+        }
     }
 
     let mut child = cmd.spawn().with_context(|| {
