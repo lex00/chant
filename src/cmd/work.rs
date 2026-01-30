@@ -312,6 +312,19 @@ pub fn cmd_work(
         return cmd_work_chain(&specs_dir, &prompts_dir, &config, chain_options);
     }
 
+    // Reject multiple IDs without --chain or --parallel
+    if ids.len() > 1 {
+        anyhow::bail!(
+            "Multiple spec IDs provided without --chain or --parallel.\n\
+             Use --chain to execute specs sequentially: chant work --chain {} {}\n\
+             Use --parallel to execute specs concurrently: chant work --parallel {} {}",
+            ids[0],
+            ids[1],
+            ids[0],
+            ids[1]
+        );
+    }
+
     // If no ID and not parallel, check for TTY
     let (final_id, final_prompt, final_branch) = if ids.is_empty() {
         // If not a TTY, print usage hint instead of launching wizard
