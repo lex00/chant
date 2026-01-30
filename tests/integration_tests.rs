@@ -5447,11 +5447,7 @@ Done.
         .output();
 
     let _ = Command::new("git")
-        .args([
-            "commit",
-            "-m",
-            &format!("chant({}): test commit", spec_id),
-        ])
+        .args(["commit", "-m", &format!("chant({}): test commit", spec_id)])
         .current_dir(&repo_dir)
         .output();
 
@@ -5600,6 +5596,311 @@ Done.
     );
 
     // Clean up
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}
+
+/// Test that --status blocked correctly identifies specs with incomplete dependencies
+#[test]
+#[serial]
+fn test_status_blocked_filter_with_dependencies() {
+    let chant_binary = get_chant_binary();
+    let original_dir = std::env::current_dir().expect("Failed to get current dir");
+    let repo_dir = PathBuf::from("/tmp/test-blocked-filter-deps");
+
+    let _ = cleanup_test_repo(&repo_dir);
+    setup_test_repo(&repo_dir).expect("Failed to setup test repo");
+
+    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
+
+    // Initialize chant
+    let init_output = Command::new(&chant_binary)
+        .args(["init", "--minimal"])
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("Failed to run chant init");
+    assert!(init_output.status.success(), "chant init failed");
+
+    // Create dependency chain: A (no deps) -> B (depends on A) -> C (depends on B)
+    let specs_dir = repo_dir.join(".chant/specs");
+    fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+
+    let spec_a = "2026-01-29-blocked-a";
+    let spec_b = "2026-01-29-blocked-b";
+    let spec_c = "2026-01-29-blocked-c";
+
+    create_spec_with_dependencies(&specs_dir, spec_a, &[]).expect("Failed to create spec A");
+    create_spec_with_dependencies(&specs_dir, spec_b, &[spec_a]).expect("Failed to create spec B");
+    create_spec_with_dependencies(&specs_dir, spec_c, &[spec_b]).expect("Failed to create spec C");
+
+    // Test 1: List with --status blocked should show B and C (they have incomplete deps)
+    let blocked_output = Command::new(&chant_binary)
+        .args(["list", "--status", "blocked"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant list --status blocked");
+
+    let stdout = String::from_utf8_lossy(&blocked_output.stdout);
+    assert!(
+        blocked_output.status.success(),
+        "chant list --status blocked should succeed"
+    );
+
+    // B and C should be blocked (they have incomplete dependencies)
+    assert!(
+        stdout.contains(spec_b),
+        "Spec B should appear in blocked list (depends on incomplete A). Output: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains(spec_c),
+        "Spec C should appear in blocked list (depends on incomplete B). Output: {}",
+        stdout
+    );
+    // A should NOT appear (it has no dependencies)
+    assert!(
+        !stdout.contains(spec_a),
+        "Spec A should NOT appear in blocked list (no dependencies). Output: {}",
+        stdout
+    );
+
+    // Test 2: Complete spec A and verify B is no longer blocked, but C still is
+    update_spec_status(&specs_dir, spec_a, "completed").expect("Failed to update spec A status");
+
+    let blocked_output2 = Command::new(&chant_binary)
+        .args(["list", "--status", "blocked"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant list --status blocked");
+
+    let stdout2 = String::from_utf8_lossy(&blocked_output2.stdout);
+
+    // Now only C should be blocked
+    assert!(
+        !stdout2.contains(spec_b),
+        "Spec B should NOT be blocked after A is completed. Output: {}",
+        stdout2
+    );
+    assert!(
+        stdout2.contains(spec_c),
+        "Spec C should still be blocked (B not completed). Output: {}",
+        stdout2
+    );
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}
+
+/// Test --status blocked with no blocked specs returns empty
+#[test]
+#[serial]
+fn test_status_blocked_filter_no_blocked_specs() {
+    let chant_binary = get_chant_binary();
+    let original_dir = std::env::current_dir().expect("Failed to get current dir");
+    let repo_dir = PathBuf::from("/tmp/test-blocked-filter-none");
+
+    let _ = cleanup_test_repo(&repo_dir);
+    setup_test_repo(&repo_dir).expect("Failed to setup test repo");
+
+    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
+
+    // Initialize chant
+    let init_output = Command::new(&chant_binary)
+        .args(["init", "--minimal"])
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("Failed to run chant init");
+    assert!(init_output.status.success(), "chant init failed");
+
+    // Create independent specs (no dependencies)
+    let specs_dir = repo_dir.join(".chant/specs");
+    fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+
+    create_spec_with_dependencies(&specs_dir, "2026-01-29-ind-a", &[])
+        .expect("Failed to create spec A");
+    create_spec_with_dependencies(&specs_dir, "2026-01-29-ind-b", &[])
+        .expect("Failed to create spec B");
+
+    // List with --status blocked should return "No specs" message
+    let blocked_output = Command::new(&chant_binary)
+        .args(["list", "--status", "blocked"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant list --status blocked");
+
+    let stdout = String::from_utf8_lossy(&blocked_output.stdout);
+    assert!(
+        blocked_output.status.success(),
+        "chant list --status blocked should succeed"
+    );
+    assert!(
+        stdout.contains("No specs") || stdout.trim().is_empty() || !stdout.contains("2026-01-29"),
+        "Should show no blocked specs. Output: {}",
+        stdout
+    );
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}
+
+/// Test --status blocked when all specs are blocked
+#[test]
+#[serial]
+fn test_status_blocked_filter_all_blocked() {
+    let chant_binary = get_chant_binary();
+    let original_dir = std::env::current_dir().expect("Failed to get current dir");
+    let repo_dir = PathBuf::from("/tmp/test-blocked-filter-all");
+
+    let _ = cleanup_test_repo(&repo_dir);
+    setup_test_repo(&repo_dir).expect("Failed to setup test repo");
+
+    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
+
+    // Initialize chant
+    let init_output = Command::new(&chant_binary)
+        .args(["init", "--minimal"])
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("Failed to run chant init");
+    assert!(init_output.status.success(), "chant init failed");
+
+    // Create specs that all depend on a non-existent spec (all blocked)
+    let specs_dir = repo_dir.join(".chant/specs");
+    fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+
+    let spec_a = "2026-01-29-allblk-a";
+    let spec_b = "2026-01-29-allblk-b";
+    let spec_c = "2026-01-29-allblk-c";
+    // Dependency that doesn't exist, making all specs blocked
+    let missing_dep = "2026-01-29-missing-dep";
+
+    create_spec_with_dependencies(&specs_dir, spec_a, &[missing_dep])
+        .expect("Failed to create spec A");
+    create_spec_with_dependencies(&specs_dir, spec_b, &[missing_dep])
+        .expect("Failed to create spec B");
+    create_spec_with_dependencies(&specs_dir, spec_c, &[missing_dep])
+        .expect("Failed to create spec C");
+
+    // List with --status blocked should show all three specs
+    let blocked_output = Command::new(&chant_binary)
+        .args(["list", "--status", "blocked"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant list --status blocked");
+
+    let stdout = String::from_utf8_lossy(&blocked_output.stdout);
+    assert!(
+        blocked_output.status.success(),
+        "chant list --status blocked should succeed"
+    );
+
+    assert!(
+        stdout.contains(spec_a),
+        "Spec A should appear in blocked list. Output: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains(spec_b),
+        "Spec B should appear in blocked list. Output: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains(spec_c),
+        "Spec C should appear in blocked list. Output: {}",
+        stdout
+    );
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}
+
+/// Test --status blocked with mixed statuses (pending, completed, in_progress)
+#[test]
+#[serial]
+fn test_status_blocked_filter_mixed_statuses() {
+    let chant_binary = get_chant_binary();
+    let original_dir = std::env::current_dir().expect("Failed to get current dir");
+    let repo_dir = PathBuf::from("/tmp/test-blocked-filter-mixed");
+
+    let _ = cleanup_test_repo(&repo_dir);
+    setup_test_repo(&repo_dir).expect("Failed to setup test repo");
+
+    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
+
+    // Initialize chant
+    let init_output = Command::new(&chant_binary)
+        .args(["init", "--minimal"])
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("Failed to run chant init");
+    assert!(init_output.status.success(), "chant init failed");
+
+    let specs_dir = repo_dir.join(".chant/specs");
+    fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+
+    // Create a completed spec
+    let spec_completed = "2026-01-29-mixed-completed";
+    create_spec_with_dependencies(&specs_dir, spec_completed, &[])
+        .expect("Failed to create completed spec");
+    update_spec_status(&specs_dir, spec_completed, "completed")
+        .expect("Failed to update status to completed");
+
+    // Create an in_progress spec that depends on completed (not blocked because dep is done)
+    let spec_in_progress = "2026-01-29-mixed-in-progress";
+    create_spec_with_dependencies(&specs_dir, spec_in_progress, &[spec_completed])
+        .expect("Failed to create in_progress spec");
+    update_spec_status(&specs_dir, spec_in_progress, "in_progress")
+        .expect("Failed to update status to in_progress");
+
+    // Create a pending spec that depends on in_progress spec (blocked)
+    let spec_blocked = "2026-01-29-mixed-blocked";
+    create_spec_with_dependencies(&specs_dir, spec_blocked, &[spec_in_progress])
+        .expect("Failed to create blocked spec");
+
+    // Create a pending spec with no dependencies (not blocked)
+    let spec_ready = "2026-01-29-mixed-ready";
+    create_spec_with_dependencies(&specs_dir, spec_ready, &[])
+        .expect("Failed to create ready spec");
+
+    // List with --status blocked should only show the blocked spec
+    let blocked_output = Command::new(&chant_binary)
+        .args(["list", "--status", "blocked"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant list --status blocked");
+
+    let stdout = String::from_utf8_lossy(&blocked_output.stdout);
+    assert!(
+        blocked_output.status.success(),
+        "chant list --status blocked should succeed"
+    );
+
+    // Only the blocked spec should appear
+    assert!(
+        stdout.contains(spec_blocked),
+        "Blocked spec should appear. Output: {}",
+        stdout
+    );
+    assert!(
+        !stdout.contains(spec_completed),
+        "Completed spec should NOT appear in blocked list. Output: {}",
+        stdout
+    );
+    assert!(
+        !stdout.contains(spec_in_progress),
+        "In-progress spec should NOT appear in blocked list. Output: {}",
+        stdout
+    );
+    assert!(
+        !stdout.contains(spec_ready),
+        "Ready (no deps) spec should NOT appear in blocked list. Output: {}",
+        stdout
+    );
+
+    // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
     let _ = cleanup_test_repo(&repo_dir);
 }

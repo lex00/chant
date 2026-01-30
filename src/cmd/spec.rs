@@ -1473,19 +1473,38 @@ pub fn cmd_list(
 
     // Filter by status if specified
     if let Some(status_val) = status_filter {
-        let target_status = match status_val.to_lowercase().as_str() {
-            "pending" => SpecStatus::Pending,
-            "in_progress" | "inprogress" => SpecStatus::InProgress,
-            "completed" => SpecStatus::Completed,
-            "failed" => SpecStatus::Failed,
-            "blocked" => SpecStatus::NeedsAttention,
-            "cancelled" => SpecStatus::NeedsAttention,
-            "ready" => SpecStatus::Ready,
-            _ => {
-                anyhow::bail!("Invalid status filter: {}. Valid options: pending, in_progress, completed, failed, blocked, cancelled, ready", status_val);
+        let status_lower = status_val.to_lowercase();
+        match status_lower.as_str() {
+            "blocked" => {
+                // "blocked" is a computed state: pending specs with incomplete dependencies
+                // or specs explicitly marked with status: blocked
+                let all_specs_clone = specs.clone();
+                specs.retain(|s| {
+                    s.frontmatter.status == SpecStatus::Blocked
+                        || (s.frontmatter.status == SpecStatus::Pending
+                            && s.is_blocked(&all_specs_clone))
+                });
             }
-        };
-        specs.retain(|s| s.frontmatter.status == target_status);
+            "ready" => {
+                // "ready" is a computed state: pending with all dependencies met
+                let all_specs_clone = specs.clone();
+                specs.retain(|s| s.is_ready(&all_specs_clone));
+            }
+            _ => {
+                let target_status = match status_lower.as_str() {
+                    "pending" => SpecStatus::Pending,
+                    "in_progress" | "inprogress" => SpecStatus::InProgress,
+                    "completed" => SpecStatus::Completed,
+                    "failed" => SpecStatus::Failed,
+                    "needs_attention" | "needsattention" => SpecStatus::NeedsAttention,
+                    "cancelled" => SpecStatus::Cancelled,
+                    _ => {
+                        anyhow::bail!("Invalid status filter: {}. Valid options: pending, in_progress, completed, failed, blocked, cancelled, ready, needs_attention", status_val);
+                    }
+                };
+                specs.retain(|s| s.frontmatter.status == target_status);
+            }
+        }
     }
 
     // Filter by labels if specified (OR logic - show specs with any matching label)
