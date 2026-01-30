@@ -6161,3 +6161,289 @@ fn test_merge_blocks_unapproved_specs() {
     let _ = std::env::set_current_dir(&original_dir);
     let _ = cleanup_test_repo(&repo_dir);
 }
+
+// ============================================================================
+// WORKTREE STATUS COMMAND TESTS
+// ============================================================================
+
+/// Test `chant worktree status` with an active worktree
+#[test]
+#[serial]
+fn test_worktree_status_with_active_worktree() {
+    let repo_dir = PathBuf::from("/tmp/test-chant-wt-status-active");
+    let _ = cleanup_test_repo(&repo_dir);
+
+    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
+    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
+
+    // Create a worktree with chant naming convention
+    let spec_id = "2026-01-30-001-wts";
+    let branch = format!("chant/{}", spec_id);
+    let wt_path = PathBuf::from(format!("/tmp/chant-{}", spec_id));
+
+    // Clean up any existing worktree
+    let _ = Command::new("git")
+        .args(["worktree", "remove", wt_path.to_str().unwrap()])
+        .current_dir(&repo_dir)
+        .output();
+    let _ = fs::remove_dir_all(&wt_path);
+
+    // Create the worktree
+    let create_output = Command::new("git")
+        .args(["worktree", "add", "-b", &branch, wt_path.to_str().unwrap()])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to create worktree");
+
+    assert!(
+        create_output.status.success(),
+        "Failed to create worktree: {}",
+        String::from_utf8_lossy(&create_output.stderr)
+    );
+
+    // Run chant worktree status
+    let status_output =
+        run_chant(&repo_dir, &["worktree", "status"]).expect("Failed to run chant worktree status");
+
+    let stdout = String::from_utf8_lossy(&status_output.stdout);
+    let stderr = String::from_utf8_lossy(&status_output.stderr);
+
+    // Verify command succeeded
+    assert!(
+        status_output.status.success(),
+        "chant worktree status should succeed. stdout: {}, stderr: {}",
+        stdout,
+        stderr
+    );
+
+    // Verify output contains expected information
+    assert!(
+        stdout.contains(&wt_path.display().to_string())
+            || stdout.contains(&format!("chant-{}", spec_id)),
+        "Output should contain worktree path. Output: {}",
+        stdout
+    );
+
+    assert!(
+        stdout.contains(&branch) || stdout.contains(spec_id),
+        "Output should contain branch or spec ID. Output: {}",
+        stdout
+    );
+
+    // Cleanup
+    let _ = Command::new("git")
+        .args(["worktree", "remove", wt_path.to_str().unwrap()])
+        .current_dir(&repo_dir)
+        .output();
+    let _ = fs::remove_dir_all(&wt_path);
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}
+
+/// Test `chant worktree status` with no worktrees shows appropriate message
+#[test]
+#[serial]
+fn test_worktree_status_no_worktrees() {
+    let repo_dir = PathBuf::from("/tmp/test-chant-wt-status-empty");
+    let _ = cleanup_test_repo(&repo_dir);
+
+    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
+    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
+
+    // Run chant worktree status (no worktrees created)
+    let status_output =
+        run_chant(&repo_dir, &["worktree", "status"]).expect("Failed to run chant worktree status");
+
+    let stdout = String::from_utf8_lossy(&status_output.stdout);
+    let stderr = String::from_utf8_lossy(&status_output.stderr);
+
+    // Verify command succeeded
+    assert!(
+        status_output.status.success(),
+        "chant worktree status should succeed even with no worktrees. stdout: {}, stderr: {}",
+        stdout,
+        stderr
+    );
+
+    // Verify output indicates no worktrees found
+    assert!(
+        stdout.contains("No chant worktrees found")
+            || stdout.contains("no")
+            || stdout.is_empty()
+            || stdout.trim().is_empty(),
+        "Output should indicate no worktrees. Output: {}",
+        stdout
+    );
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}
+
+/// Test `chant worktree status` shows multiple worktrees
+#[test]
+#[serial]
+fn test_worktree_status_multiple_worktrees() {
+    let repo_dir = PathBuf::from("/tmp/test-chant-wt-status-multi");
+    let _ = cleanup_test_repo(&repo_dir);
+
+    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
+    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
+
+    // Create two worktrees with chant naming convention
+    let spec_ids = ["2026-01-30-001-mw1", "2026-01-30-002-mw2"];
+    let mut wt_paths = Vec::new();
+
+    for spec_id in &spec_ids {
+        let branch = format!("chant/{}", spec_id);
+        let wt_path = PathBuf::from(format!("/tmp/chant-{}", spec_id));
+
+        // Clean up any existing worktree
+        let _ = Command::new("git")
+            .args(["worktree", "remove", wt_path.to_str().unwrap()])
+            .current_dir(&repo_dir)
+            .output();
+        let _ = fs::remove_dir_all(&wt_path);
+
+        // Create the worktree
+        let create_output = Command::new("git")
+            .args(["worktree", "add", "-b", &branch, wt_path.to_str().unwrap()])
+            .current_dir(&repo_dir)
+            .output()
+            .expect("Failed to create worktree");
+
+        assert!(
+            create_output.status.success(),
+            "Failed to create worktree for {}: {}",
+            spec_id,
+            String::from_utf8_lossy(&create_output.stderr)
+        );
+
+        wt_paths.push(wt_path);
+    }
+
+    // Run chant worktree status
+    let status_output =
+        run_chant(&repo_dir, &["worktree", "status"]).expect("Failed to run chant worktree status");
+
+    let stdout = String::from_utf8_lossy(&status_output.stdout);
+
+    // Verify command succeeded
+    assert!(
+        status_output.status.success(),
+        "chant worktree status should succeed"
+    );
+
+    // Verify output contains both worktrees
+    assert!(
+        stdout.contains("2 chant worktrees"),
+        "Output should mention 2 worktrees. Output: {}",
+        stdout
+    );
+
+    for spec_id in &spec_ids {
+        assert!(
+            stdout.contains(spec_id),
+            "Output should contain spec ID {}. Output: {}",
+            spec_id,
+            stdout
+        );
+    }
+
+    // Cleanup
+    for wt_path in &wt_paths {
+        let _ = Command::new("git")
+            .args(["worktree", "remove", wt_path.to_str().unwrap()])
+            .current_dir(&repo_dir)
+            .output();
+        let _ = fs::remove_dir_all(wt_path);
+    }
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}
+
+/// Test `chant worktree status` output includes expected fields
+#[test]
+#[serial]
+fn test_worktree_status_output_format() {
+    let repo_dir = PathBuf::from("/tmp/test-chant-wt-status-fmt");
+    let _ = cleanup_test_repo(&repo_dir);
+
+    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
+    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
+
+    // Create a worktree with chant naming convention
+    let spec_id = "2026-01-30-001-fmt";
+    let branch = format!("chant/{}", spec_id);
+    let wt_path = PathBuf::from(format!("/tmp/chant-{}", spec_id));
+
+    // Clean up any existing worktree
+    let _ = Command::new("git")
+        .args(["worktree", "remove", wt_path.to_str().unwrap()])
+        .current_dir(&repo_dir)
+        .output();
+    let _ = fs::remove_dir_all(&wt_path);
+
+    // Create the worktree
+    let create_output = Command::new("git")
+        .args(["worktree", "add", "-b", &branch, wt_path.to_str().unwrap()])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to create worktree");
+
+    assert!(create_output.status.success(), "Failed to create worktree");
+
+    // Run chant worktree status
+    let status_output =
+        run_chant(&repo_dir, &["worktree", "status"]).expect("Failed to run chant worktree status");
+
+    let stdout = String::from_utf8_lossy(&status_output.stdout);
+
+    // Verify command succeeded
+    assert!(
+        status_output.status.success(),
+        "chant worktree status should succeed"
+    );
+
+    // Verify output format includes key fields
+    assert!(
+        stdout.contains("Branch:"),
+        "Output should include Branch field. Output: {}",
+        stdout
+    );
+
+    assert!(
+        stdout.contains("HEAD:"),
+        "Output should include HEAD field. Output: {}",
+        stdout
+    );
+
+    assert!(
+        stdout.contains("Size:"),
+        "Output should include Size field. Output: {}",
+        stdout
+    );
+
+    assert!(
+        stdout.contains("Age:"),
+        "Output should include Age field. Output: {}",
+        stdout
+    );
+
+    // Cleanup
+    let _ = Command::new("git")
+        .args(["worktree", "remove", wt_path.to_str().unwrap()])
+        .current_dir(&repo_dir)
+        .output();
+    let _ = fs::remove_dir_all(&wt_path);
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}

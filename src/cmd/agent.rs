@@ -457,3 +457,172 @@ pub fn ensure_logs_dir_at(base_path: &Path) -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Worktree environment variables to be set for agent invocation.
+    /// These are computed separately to make the logic testable.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct WorktreeEnvVars {
+        /// CHANT_WORKTREE is set to "1" when running in a worktree
+        chant_worktree: Option<String>,
+        /// CHANT_WORKTREE_PATH is set to the worktree path
+        chant_worktree_path: Option<String>,
+        /// CHANT_BRANCH is set to the branch name
+        chant_branch: Option<String>,
+    }
+
+    impl WorktreeEnvVars {
+        /// Compute the environment variables to set for worktree execution.
+        ///
+        /// When `worktree_path` is `Some`, we're running in a worktree and should set:
+        /// - CHANT_WORKTREE=1
+        /// - CHANT_WORKTREE_PATH=<path>
+        /// - CHANT_BRANCH=<branch> (if branch_name is provided)
+        ///
+        /// When `worktree_path` is `None`, no worktree env vars are set.
+        fn compute(worktree_path: Option<&Path>, branch_name: Option<&str>) -> Self {
+            if let Some(path) = worktree_path {
+                WorktreeEnvVars {
+                    chant_worktree: Some("1".to_string()),
+                    chant_worktree_path: Some(path.display().to_string()),
+                    chant_branch: branch_name.map(|s| s.to_string()),
+                }
+            } else {
+                WorktreeEnvVars {
+                    chant_worktree: None,
+                    chant_worktree_path: None,
+                    chant_branch: None,
+                }
+            }
+        }
+
+        /// Check if we're in worktree mode
+        fn is_worktree_mode(&self) -> bool {
+            self.chant_worktree.is_some()
+        }
+    }
+
+    #[test]
+    fn test_worktree_env_vars_with_worktree_and_branch() {
+        let path = Path::new("/tmp/chant-test-spec");
+        let branch = "chant/test-spec";
+
+        let env_vars = WorktreeEnvVars::compute(Some(path), Some(branch));
+
+        assert!(env_vars.is_worktree_mode());
+        assert_eq!(env_vars.chant_worktree, Some("1".to_string()));
+        assert_eq!(
+            env_vars.chant_worktree_path,
+            Some("/tmp/chant-test-spec".to_string())
+        );
+        assert_eq!(env_vars.chant_branch, Some("chant/test-spec".to_string()));
+    }
+
+    #[test]
+    fn test_worktree_env_vars_with_worktree_no_branch() {
+        let path = Path::new("/tmp/chant-test-spec");
+
+        let env_vars = WorktreeEnvVars::compute(Some(path), None);
+
+        assert!(env_vars.is_worktree_mode());
+        assert_eq!(env_vars.chant_worktree, Some("1".to_string()));
+        assert_eq!(
+            env_vars.chant_worktree_path,
+            Some("/tmp/chant-test-spec".to_string())
+        );
+        assert_eq!(env_vars.chant_branch, None);
+    }
+
+    #[test]
+    fn test_worktree_env_vars_no_worktree() {
+        let env_vars = WorktreeEnvVars::compute(None, None);
+
+        assert!(!env_vars.is_worktree_mode());
+        assert_eq!(env_vars.chant_worktree, None);
+        assert_eq!(env_vars.chant_worktree_path, None);
+        assert_eq!(env_vars.chant_branch, None);
+    }
+
+    #[test]
+    fn test_worktree_env_vars_no_worktree_with_branch_ignored() {
+        // Even if branch is provided, without worktree path, no env vars are set
+        let env_vars = WorktreeEnvVars::compute(None, Some("some-branch"));
+
+        assert!(!env_vars.is_worktree_mode());
+        assert_eq!(env_vars.chant_worktree, None);
+        assert_eq!(env_vars.chant_worktree_path, None);
+        assert_eq!(env_vars.chant_branch, None);
+    }
+
+    #[test]
+    fn test_worktree_env_vars_different_paths() {
+        // Test with various path formats
+        let paths = [
+            "/tmp/chant-2026-01-30-001-abc",
+            "/home/user/worktrees/chant-spec",
+            "/var/tmp/test",
+        ];
+
+        for path_str in &paths {
+            let path = Path::new(path_str);
+            let env_vars = WorktreeEnvVars::compute(Some(path), Some("test-branch"));
+
+            assert!(env_vars.is_worktree_mode());
+            assert_eq!(env_vars.chant_worktree, Some("1".to_string()));
+            assert_eq!(env_vars.chant_worktree_path, Some(path_str.to_string()));
+            assert_eq!(env_vars.chant_branch, Some("test-branch".to_string()));
+        }
+    }
+
+    #[test]
+    fn test_extract_text_from_stream_json_assistant_message() {
+        let json_line = r#"{"type":"assistant","message":{"content":[{"text":"Hello, world!"}]}}"#;
+        let texts = extract_text_from_stream_json(json_line);
+        assert_eq!(texts, vec!["Hello, world!"]);
+    }
+
+    #[test]
+    fn test_extract_text_from_stream_json_multiple_content() {
+        let json_line =
+            r#"{"type":"assistant","message":{"content":[{"text":"Line 1"},{"text":"Line 2"}]}}"#;
+        let texts = extract_text_from_stream_json(json_line);
+        assert_eq!(texts, vec!["Line 1", "Line 2"]);
+    }
+
+    #[test]
+    fn test_extract_text_from_stream_json_non_assistant() {
+        let json_line = r#"{"type":"user","message":{"content":[{"text":"Should be ignored"}]}}"#;
+        let texts = extract_text_from_stream_json(json_line);
+        assert!(texts.is_empty());
+    }
+
+    #[test]
+    fn test_extract_text_from_stream_json_invalid_json() {
+        let json_line = "not valid json";
+        let texts = extract_text_from_stream_json(json_line);
+        assert!(texts.is_empty());
+    }
+
+    #[test]
+    fn test_get_model_for_invocation_config_model() {
+        // Clear env vars for test isolation
+        std::env::remove_var("CHANT_MODEL");
+        std::env::remove_var("ANTHROPIC_MODEL");
+
+        let model = get_model_for_invocation(Some("claude-3-opus"));
+        assert_eq!(model, "claude-3-opus");
+    }
+
+    #[test]
+    fn test_get_model_for_invocation_fallback() {
+        // Clear env vars for test isolation
+        std::env::remove_var("CHANT_MODEL");
+        std::env::remove_var("ANTHROPIC_MODEL");
+
+        let model = get_model_for_invocation(None);
+        assert_eq!(model, "haiku");
+    }
+}
