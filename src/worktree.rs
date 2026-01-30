@@ -177,7 +177,6 @@ pub fn remove_worktree(path: &Path) -> Result<()> {
 /// Result of a merge operation
 #[derive(Debug, Clone)]
 pub struct MergeCleanupResult {
-    #[allow(dead_code)]
     pub success: bool,
     pub has_conflict: bool,
     pub error: Option<String>,

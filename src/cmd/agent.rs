@@ -107,28 +107,6 @@ pub fn invoke_agent_with_command_override(
     Ok(captured_output)
 }
 
-/// Invoke an agent with a message and prefix output with spec ID
-/// Used for parallel execution of multiple specs
-#[allow(dead_code)]
-pub fn invoke_agent_with_prefix(
-    message: &str,
-    spec_id: &str,
-    prompt_name: &str,
-    config_model: Option<&str>,
-    cwd: Option<&Path>,
-    branch_name: Option<&str>,
-) -> Result<()> {
-    invoke_agent_with_command(
-        message,
-        spec_id,
-        prompt_name,
-        config_model,
-        cwd,
-        "claude",
-        branch_name,
-    )
-}
-
 /// Invoke an agent with a custom command and prefix output with spec ID
 /// Used for parallel execution with multiple Claude accounts
 pub fn invoke_agent_with_command(

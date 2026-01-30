@@ -733,8 +733,8 @@ const KNOWN_AGENT_SIGNATURES: &[&str] = &[
 /// Result of agent detection for a commit.
 #[derive(Debug, Clone)]
 pub struct AgentDetectionResult {
-    /// The commit hash that was checked
-    #[allow(dead_code)]
+    /// The commit hash that was checked. Kept for debugging and future tooling.
+    #[allow(dead_code)] // Useful for debugging and future tooling
     pub commit_hash: String,
     /// Whether an agent co-authorship was detected
     pub has_agent: bool,
@@ -816,7 +816,8 @@ pub fn detect_agent_in_commit(commit_hash: &str) -> Result<AgentDetectionResult>
 
 /// Check if any commits for a spec have agent co-authorship.
 /// Returns a list of all commits that have agent signatures.
-#[allow(dead_code)]
+/// Designed for future approval workflow integration.
+#[allow(dead_code)] // Public API for future approval workflow
 pub fn detect_agents_in_spec_commits(spec_id: &str) -> Result<Vec<AgentDetectionResult>> {
     // Get commits for this spec (allowing no commits)
     let commits = match get_commits_for_spec_allow_no_commits(spec_id) {
@@ -848,7 +849,8 @@ pub fn detect_agents_in_spec_commits(spec_id: &str) -> Result<Vec<AgentDetection
 
 /// Check if any commits for a spec have agent co-authorship.
 /// Simplified helper that returns just a boolean.
-#[allow(dead_code)]
+/// Designed for future approval workflow integration.
+#[allow(dead_code)] // Public API for future approval workflow
 pub fn has_agent_coauthorship(spec_id: &str) -> bool {
     match detect_agents_in_spec_commits(spec_id) {
         Ok(results) => !results.is_empty(),

@@ -40,24 +40,6 @@ pub fn create_or_switch_branch(branch_name: &str) -> Result<()> {
     )
 }
 
-/// Push a branch to the remote origin with upstream tracking.
-#[allow(dead_code)]
-pub fn push_branch(branch_name: &str) -> Result<()> {
-    use std::process::Command;
-
-    let output = Command::new("git")
-        .args(["push", "-u", "origin", branch_name])
-        .output()
-        .context("Failed to run git push")?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("Failed to push branch '{}': {}", branch_name, stderr);
-    }
-
-    Ok(())
-}
-
 /// Commit the spec file as a transcript record.
 ///
 /// Handles the case where there's nothing to commit (returns Ok).

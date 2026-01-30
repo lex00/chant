@@ -65,7 +65,7 @@ struct ChatResponse {
 
 #[derive(Debug, Deserialize)]
 struct ResponseMessage {
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Required for serde deserialization completeness
     role: String,
     content: String,
     #[serde(default)]

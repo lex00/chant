@@ -689,7 +689,6 @@ fn apply_blocked_status(specs: &mut [Spec]) {
 
 /// Apply blocked status considering both local and cross-repo dependencies.
 /// This version supports cross-repo dependency checking when repos config is available.
-#[allow(dead_code)]
 pub fn apply_blocked_status_with_repos(
     specs: &mut [Spec],
     specs_dir: &std::path::Path,

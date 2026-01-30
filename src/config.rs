@@ -253,7 +253,6 @@ impl Default for CleanupConfig {
 #[derive(Debug, Clone, Deserialize)]
 pub struct ProjectConfig {
     pub name: String,
-    #[allow(dead_code)]
     pub prefix: Option<String>,
 }
 
@@ -272,7 +271,6 @@ pub struct DefaultsConfig {
     #[serde(default)]
     pub split_model: Option<String>,
     /// Default main branch name for merges (defaults to "main")
-    #[allow(dead_code)]
     #[serde(default = "default_main_branch")]
     pub main_branch: String,
     /// Default provider (claude, ollama, openai)

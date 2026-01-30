@@ -231,29 +231,10 @@ pub fn mark_driver_in_progress(specs_dir: &Path, member_id: &str) -> Result<()> 
         if driver_path.exists() {
             let mut driver = Spec::load(&driver_path)?;
             if driver.frontmatter.status == SpecStatus::Pending {
-                eprintln!(
-                    "[DEBUG] Marking driver spec {} as in_progress (first member {} started)",
-                    driver_id, member_id
-                );
                 driver.frontmatter.status = SpecStatus::InProgress;
                 driver.save(&driver_path)?;
-            } else {
-                eprintln!(
-                    "[DEBUG] Driver spec {} already has status {:?}, not updating",
-                    driver_id, driver.frontmatter.status
-                );
             }
-        } else {
-            eprintln!(
-                "[DEBUG] Driver spec {} not found at {:?}, skipping",
-                driver_id, driver_path
-            );
         }
-    } else {
-        eprintln!(
-            "[DEBUG] {} is not a member spec (no driver ID found)",
-            member_id
-        );
     }
     Ok(())
 }
@@ -290,44 +271,23 @@ pub fn auto_complete_driver_if_ready(
 ) -> Result<bool> {
     // Only member specs can trigger driver auto-completion
     let Some(driver_id) = extract_driver_id(member_id) else {
-        eprintln!(
-            "[DEBUG] {} is not a member spec (no driver ID found)",
-            member_id
-        );
         return Ok(false);
     };
 
     // Find the driver spec
     let Some(driver_spec) = all_specs.iter().find(|s| s.id == driver_id) else {
-        eprintln!("[DEBUG] Driver spec {} not found in specs list", driver_id);
         return Ok(false);
     };
 
     // Only auto-complete if driver is in_progress
     if driver_spec.frontmatter.status != SpecStatus::InProgress {
-        eprintln!(
-            "[DEBUG] Driver spec {} is in status {:?}, not in_progress (cannot auto-complete)",
-            driver_id, driver_spec.frontmatter.status
-        );
         return Ok(false);
     }
 
     // Check if all members are completed
     if !all_members_completed(&driver_id, all_specs) {
-        let incomplete = get_incomplete_members(&driver_id, all_specs);
-        eprintln!(
-            "[DEBUG] Driver spec {} has {} incomplete member(s): {}",
-            driver_id,
-            incomplete.len(),
-            incomplete.join(", ")
-        );
         return Ok(false);
     }
-
-    eprintln!(
-        "[DEBUG] All members of driver {} are completed, auto-completing driver",
-        driver_id
-    );
 
     // All members are completed, so auto-complete the driver
     let driver_path = specs_dir.join(format!("{}.md", driver_id));
@@ -342,11 +302,6 @@ pub fn auto_complete_driver_if_ready(
     driver.frontmatter.model = Some("auto-completed".to_string());
 
     driver.save(&driver_path)?;
-
-    eprintln!(
-        "[DEBUG] Driver spec {} successfully auto-completed",
-        driver_id
-    );
 
     Ok(true)
 }

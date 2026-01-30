@@ -442,7 +442,6 @@ pub struct MergeResult {
 }
 
 /// Format the merge result as a human-readable summary.
-#[allow(dead_code)]
 pub fn format_merge_summary(result: &MergeResult) -> String {
     let mut output = String::new();
 

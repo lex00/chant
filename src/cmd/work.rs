@@ -1437,7 +1437,6 @@ fn cmd_work_chain_all_ready(
 }
 
 /// Result of a single spec execution in parallel mode
-#[allow(dead_code)]
 #[derive(Clone)]
 struct ParallelResult {
     spec_id: String,
@@ -2517,17 +2516,17 @@ pub struct Pitfall {
     pub spec_id: Option<String>,
     pub message: String,
     pub severity: PitfallSeverity,
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Used in tests for pitfall categorization
     pub pitfall_type: PitfallType,
 }
 
 /// Types of parallel execution pitfalls
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
 pub enum PitfallType {
     ApiConcurrencyError,
     MergeConflict,
     PartialFailure,
+    #[allow(dead_code)] // Reserved for future uncommitted changes detection
     UncommittedChanges,
     StaleWorktree,
     AgentError,

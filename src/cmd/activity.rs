@@ -48,8 +48,8 @@ impl ActivityType {
 /// A single activity entry
 #[derive(Debug, Clone)]
 pub struct Activity {
-    /// Commit hash (used for deduplication)
-    #[allow(dead_code)]
+    /// Commit hash, used for deduplication in activity tracking
+    #[allow(dead_code)] // Field used for deduplication, kept for future use/debugging
     pub commit: String,
     /// Author name
     pub author: String,

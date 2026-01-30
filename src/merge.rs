@@ -83,8 +83,8 @@ pub fn get_specs_to_merge(
     Ok(result)
 }
 
-/// Validate that a spec can be merged
-#[allow(dead_code)]
+/// Validate that a spec can be merged. Public API used in tests.
+#[allow(dead_code)] // Public API method used in tests
 pub fn validate_spec_can_merge(spec: &Spec, branch_exists: bool) -> Result<()> {
     // Check status is Completed
     match &spec.frontmatter.status {

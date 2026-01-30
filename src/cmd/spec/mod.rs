@@ -30,12 +30,8 @@ pub use show::cmd_show;
 mod tests {
     use super::*;
     use crate::cmd;
-    use crate::cmd::commits::{
-        get_commits_for_spec, get_commits_for_spec_allow_no_commits, CommitError,
-    };
-    use crate::cmd::finalize::{
-        append_agent_output, finalize_spec, re_finalize_spec, MAX_AGENT_OUTPUT_CHARS,
-    };
+    use crate::cmd::commits::CommitError;
+    use crate::cmd::finalize::finalize_spec;
     use crate::cmd::model::{get_model_name, get_model_name_with_default};
     use crate::{lookup_log_file, LogLookupResult};
     use chant::config::Config;

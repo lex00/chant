@@ -81,7 +81,8 @@ pub trait ModelProvider {
         callback: &mut dyn FnMut(&str) -> Result<()>,
     ) -> Result<String>;
 
-    #[allow(dead_code)]
+    /// Returns the provider name. Part of the trait API, used in tests.
+    #[allow(dead_code)] // Trait method used in tests
     fn name(&self) -> &'static str;
 }
 

@@ -58,12 +58,14 @@ pub struct DiagnosticReport {
 }
 
 impl DiagnosticReport {
-    #[allow(dead_code)]
+    /// Returns true if all diagnostic checks passed. Used in tests.
+    #[allow(dead_code)] // Public API method used in tests
     pub fn all_passed(&self) -> bool {
         self.checks.iter().all(|c| c.passed)
     }
 
-    #[allow(dead_code)]
+    /// Returns the list of failed checks. Used in tests.
+    #[allow(dead_code)] // Public API method used in tests
     pub fn failed_checks(&self) -> Vec<&CheckResult> {
         self.checks.iter().filter(|c| !c.passed).collect()
     }
