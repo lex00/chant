@@ -5904,3 +5904,260 @@ fn test_status_blocked_filter_mixed_statuses() {
     let _ = std::env::set_current_dir(&original_dir);
     let _ = cleanup_test_repo(&repo_dir);
 }
+
+/// Helper to create a spec that requires approval
+fn create_spec_with_approval(
+    specs_dir: &Path,
+    spec_id: &str,
+    status: &str,
+    approval_required: bool,
+    approval_status: &str,
+) -> std::io::Result<()> {
+    let content = format!(
+        r#"---
+type: code
+status: {}
+approval:
+  required: {}
+  status: {}
+---
+
+# Test Spec: {}
+
+Test specification for approval testing.
+
+## Acceptance Criteria
+
+- [x] Test spec created
+"#,
+        status, approval_required, approval_status, spec_id
+    );
+
+    fs::write(specs_dir.join(format!("{}.md", spec_id)), content)?;
+    Ok(())
+}
+
+/// Test that pending specs requiring unapproved approval show as blocked
+#[test]
+#[serial]
+fn test_status_blocked_filter_with_approval_requirements() {
+    let chant_binary = get_chant_binary();
+    let original_dir = std::env::current_dir().expect("Failed to get current dir");
+    let repo_dir = PathBuf::from("/tmp/test-blocked-filter-approval");
+
+    let _ = cleanup_test_repo(&repo_dir);
+    setup_test_repo(&repo_dir).expect("Failed to setup test repo");
+
+    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
+
+    // Initialize chant
+    let init_output = Command::new(&chant_binary)
+        .args(["init", "--minimal"])
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("Failed to run chant init");
+    assert!(init_output.status.success(), "chant init failed");
+
+    let specs_dir = repo_dir.join(".chant/specs");
+    fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+
+    // Create specs with various approval states
+    let spec_pending_unapproved = "2026-01-29-approv-a";
+    let spec_pending_approved = "2026-01-29-approv-b";
+    let spec_pending_no_approval = "2026-01-29-approv-c";
+
+    // Pending spec that requires approval but is not approved - should be blocked
+    create_spec_with_approval(
+        &specs_dir,
+        spec_pending_unapproved,
+        "pending",
+        true,
+        "pending",
+    )
+    .expect("Failed to create unapproved spec");
+
+    // Pending spec that requires approval and IS approved - should NOT be blocked
+    create_spec_with_approval(
+        &specs_dir,
+        spec_pending_approved,
+        "pending",
+        true,
+        "approved",
+    )
+    .expect("Failed to create approved spec");
+
+    // Pending spec with no approval requirement - should NOT be blocked
+    create_spec_with_dependencies(&specs_dir, spec_pending_no_approval, &[])
+        .expect("Failed to create no-approval spec");
+
+    // Test: List with --status blocked should show only the unapproved spec
+    let blocked_output = Command::new(&chant_binary)
+        .args(["list", "--status", "blocked"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant list --status blocked");
+
+    let stdout = String::from_utf8_lossy(&blocked_output.stdout);
+    assert!(
+        blocked_output.status.success(),
+        "chant list --status blocked should succeed. stderr: {}",
+        String::from_utf8_lossy(&blocked_output.stderr)
+    );
+
+    // Spec with required unapproved approval should be blocked
+    assert!(
+        stdout.contains(spec_pending_unapproved),
+        "Pending spec requiring unapproved approval should be blocked. Output: {}",
+        stdout
+    );
+
+    // Spec with approved approval should NOT be blocked
+    assert!(
+        !stdout.contains(spec_pending_approved),
+        "Pending spec with approved approval should NOT be blocked. Output: {}",
+        stdout
+    );
+
+    // Spec with no approval requirement should NOT be blocked
+    assert!(
+        !stdout.contains(spec_pending_no_approval),
+        "Pending spec without approval requirement should NOT be blocked. Output: {}",
+        stdout
+    );
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}
+
+/// Test that completed specs with required approval do NOT show as blocked (Approach A)
+#[test]
+#[serial]
+fn test_completed_specs_with_approval_not_blocked() {
+    let chant_binary = get_chant_binary();
+    let original_dir = std::env::current_dir().expect("Failed to get current dir");
+    let repo_dir = PathBuf::from("/tmp/test-blocked-filter-completed-approval");
+
+    let _ = cleanup_test_repo(&repo_dir);
+    setup_test_repo(&repo_dir).expect("Failed to setup test repo");
+
+    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
+
+    // Initialize chant
+    let init_output = Command::new(&chant_binary)
+        .args(["init", "--minimal"])
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("Failed to run chant init");
+    assert!(init_output.status.success(), "chant init failed");
+
+    let specs_dir = repo_dir.join(".chant/specs");
+    fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+
+    // Create a completed spec that still has pending approval
+    // This could happen if a spec was worked and completed but approval was added after
+    let spec_completed_pending_approval = "2026-01-29-completed-approv";
+
+    create_spec_with_approval(
+        &specs_dir,
+        spec_completed_pending_approval,
+        "completed",
+        true,
+        "pending",
+    )
+    .expect("Failed to create completed spec with pending approval");
+
+    // Test: List with --status blocked should NOT show the completed spec
+    let blocked_output = Command::new(&chant_binary)
+        .args(["list", "--status", "blocked"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant list --status blocked");
+
+    let stdout = String::from_utf8_lossy(&blocked_output.stdout);
+    assert!(
+        blocked_output.status.success(),
+        "chant list --status blocked should succeed. stderr: {}",
+        String::from_utf8_lossy(&blocked_output.stderr)
+    );
+
+    // Completed spec should NOT be in blocked list, even if it requires approval
+    assert!(
+        !stdout.contains(spec_completed_pending_approval),
+        "Completed spec with pending approval should NOT be blocked (Approach A). Output: {}",
+        stdout
+    );
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}
+
+/// Test that merge blocks specs requiring unapproved approval
+#[test]
+#[serial]
+fn test_merge_blocks_unapproved_specs() {
+    let chant_binary = get_chant_binary();
+    let original_dir = std::env::current_dir().expect("Failed to get current dir");
+    let repo_dir = PathBuf::from("/tmp/test-merge-blocks-unapproved");
+
+    let _ = cleanup_test_repo(&repo_dir);
+    setup_test_repo(&repo_dir).expect("Failed to setup test repo");
+
+    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
+
+    // Initialize chant
+    let init_output = Command::new(&chant_binary)
+        .args(["init", "--minimal"])
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("Failed to run chant init");
+    assert!(init_output.status.success(), "chant init failed");
+
+    let specs_dir = repo_dir.join(".chant/specs");
+    fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+
+    // Create a completed spec that requires approval but is not approved
+    let spec_id = "2026-01-29-merge-approv";
+
+    create_spec_with_approval(&specs_dir, spec_id, "completed", true, "pending")
+        .expect("Failed to create spec with pending approval");
+
+    // Create a fake branch for this spec so merge has something to merge
+    let branch_name = format!("chant/{}", spec_id);
+    Command::new("git")
+        .args(["branch", &branch_name])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to create branch");
+
+    // Try to merge - should fail because approval is required but not granted
+    let merge_output = Command::new(&chant_binary)
+        .args(["merge", spec_id, "--yes"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant merge");
+
+    let stderr = String::from_utf8_lossy(&merge_output.stderr);
+    let stdout = String::from_utf8_lossy(&merge_output.stdout);
+
+    // Merge should fail
+    assert!(
+        !merge_output.status.success(),
+        "chant merge should fail for unapproved spec. stdout: {}, stderr: {}",
+        stdout,
+        stderr
+    );
+
+    // Error message should mention approval
+    let combined_output = format!("{}{}", stdout, stderr);
+    assert!(
+        combined_output.contains("approval") || combined_output.contains("approve"),
+        "Error should mention approval. Output: {}",
+        combined_output
+    );
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}

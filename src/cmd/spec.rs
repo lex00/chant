@@ -2218,6 +2218,11 @@ pub fn cmd_export(
     )
 }
 
+/// Delete a spec permanently, removing the spec file and optionally related artifacts.
+///
+/// Note: Deletion is allowed regardless of approval status. A spec that requires
+/// approval but hasn't been approved can still be deleted - this is intentional
+/// since deletion is a cleanup operation that doesn't need approval.
 pub fn cmd_delete(
     id: &str,
     force: bool,
@@ -2434,6 +2439,10 @@ pub fn cmd_delete(
 
 /// Cancel a spec (soft-delete) by setting its status to cancelled.
 /// Preserves the spec file and git history.
+///
+/// Note: Cancellation is allowed regardless of approval status. A spec that requires
+/// approval but hasn't been approved can still be cancelled - this is intentional
+/// since cancelling doesn't need approval (it's just removing the spec from active work).
 pub fn cmd_cancel(id: &str, force: bool, dry_run: bool, yes: bool) -> Result<()> {
     let specs_dir = crate::cmd::ensure_initialized()?;
 

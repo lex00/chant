@@ -413,8 +413,11 @@ impl Spec {
         }
     }
 
-    /// Check if this spec has unmet dependencies that would block it.
-    /// Returns true if the spec has dependencies pointing to incomplete specs.
+    /// Check if this spec has unmet dependencies or approval requirements that would block it.
+    /// Returns true if:
+    /// - The spec has dependencies pointing to incomplete specs, OR
+    /// - The spec is pending AND requires approval that hasn't been granted yet
+    ///
     /// Note: This only checks local dependencies. For cross-repo dependencies,
     /// use the is_blocked method from the deps module.
     pub fn is_blocked(&self, all_specs: &[Spec]) -> bool {
@@ -427,6 +430,12 @@ impl Spec {
                     _ => return true, // Found an unmet dependency
                 }
             }
+        }
+
+        // Check approval requirements (only for pending specs - Approach A)
+        // Completed specs with required approval do NOT show as blocked
+        if self.frontmatter.status == SpecStatus::Pending && self.requires_approval() {
+            return true;
         }
 
         false
