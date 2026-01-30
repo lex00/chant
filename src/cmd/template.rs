@@ -312,23 +312,10 @@ fn build_derivation_context(spec_id: &str, specs_dir: &Path) -> Result<Derivatio
     context.spec_path = Some(spec_path);
     context.env_vars = std::env::vars().collect();
 
-    if let Ok(output) = Command::new("git").args(["config", "user.name"]).output() {
-        if output.status.success() {
-            let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !name.is_empty() {
-                context.git_user_name = Some(name);
-            }
-        }
-    }
-
-    if let Ok(output) = Command::new("git").args(["config", "user.email"]).output() {
-        if output.status.success() {
-            let email = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !email.is_empty() {
-                context.git_user_email = Some(email);
-            }
-        }
-    }
+    // Get git user info
+    let (name, email) = git::get_git_user_info();
+    context.git_user_name = name;
+    context.git_user_email = email;
 
     Ok(context)
 }

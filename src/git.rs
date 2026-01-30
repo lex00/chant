@@ -8,6 +8,32 @@
 use anyhow::{Context, Result};
 use std::process::Command;
 
+/// Get a git config value by key.
+///
+/// Returns `Some(value)` if the config key exists and has a non-empty value,
+/// `None` otherwise.
+pub fn get_git_config(key: &str) -> Option<String> {
+    let output = Command::new("git").args(["config", key]).output().ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value)
+    }
+}
+
+/// Get git user name and email from config.
+///
+/// Returns a tuple of (user.name, user.email), where each is `Some` if configured.
+pub fn get_git_user_info() -> (Option<String>, Option<String>) {
+    (get_git_config("user.name"), get_git_config("user.email"))
+}
+
 /// Get the current branch name.
 /// Returns the branch name for the current HEAD, including "HEAD" for detached HEAD state.
 pub fn get_current_branch() -> Result<String> {
