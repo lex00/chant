@@ -1053,6 +1053,141 @@ fn update_config_field(config_path: &Path, field: &str, value: &str) -> Result<(
     Ok(())
 }
 
+/// Result of updating the global Claude MCP config
+#[derive(Debug)]
+struct McpConfigResult {
+    /// Whether the global config was created (new file)
+    created: bool,
+    /// Whether the global config was updated (existing file merged)
+    updated: bool,
+    /// Path to the global config file
+    path: PathBuf,
+    /// Warning message if something went wrong but we recovered
+    warning: Option<String>,
+}
+
+/// Update the global Claude MCP config at ~/.claude/mcp.json
+///
+/// This function:
+/// - Creates ~/.claude/ directory if it doesn't exist
+/// - Creates a new mcp.json if it doesn't exist
+/// - Merges with existing mcp.json without overwriting other servers
+/// - Creates a backup if the existing file has invalid JSON
+fn update_claude_mcp_config() -> Result<McpConfigResult> {
+    let home_dir =
+        dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
+
+    let global_mcp_path = home_dir.join(".claude").join("mcp.json");
+
+    // Ensure ~/.claude/ directory exists
+    if let Some(parent) = global_mcp_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            anyhow::anyhow!("Failed to create directory {}: {}", parent.display(), e)
+        })?;
+    }
+
+    // Define the chant MCP server config
+    let chant_server = serde_json::json!({
+        "type": "stdio",
+        "command": "chant",
+        "args": ["mcp"]
+    });
+
+    // Read existing config if it exists
+    let (mut config, is_new, warning) = if global_mcp_path.exists() {
+        let content = std::fs::read_to_string(&global_mcp_path)
+            .map_err(|e| anyhow::anyhow!("Failed to read {}: {}", global_mcp_path.display(), e))?;
+
+        match serde_json::from_str::<serde_json::Value>(&content) {
+            Ok(parsed) => (parsed, false, None),
+            Err(_) => {
+                // Invalid JSON - create backup and show manual instructions
+                let backup_path = home_dir.join(".claude").join("mcp.json.backup");
+                std::fs::copy(&global_mcp_path, &backup_path)?;
+
+                // Print the manual instructions
+                eprintln!(
+                    "{} Could not parse existing {}",
+                    "✗".red(),
+                    global_mcp_path.display()
+                );
+                eprintln!("{} Please manually add the chant MCP server:", "→".cyan());
+                eprintln!();
+                eprintln!(
+                    r#"{{
+  "mcpServers": {{
+    "chant": {{
+      "type": "stdio",
+      "command": "chant",
+      "args": ["mcp"]
+    }}
+  }}
+}}"#
+                );
+                eprintln!();
+                eprintln!("{} Backup saved to: {}", "ℹ".cyan(), backup_path.display());
+
+                // Start fresh with a new config
+                let warning_msg = format!(
+                    "Existing {} had invalid JSON. Backup saved to {}",
+                    global_mcp_path.display(),
+                    backup_path.display()
+                );
+                (
+                    serde_json::json!({
+                        "mcpServers": {}
+                    }),
+                    true,
+                    Some(warning_msg),
+                )
+            }
+        }
+    } else {
+        // Create new config structure
+        (
+            serde_json::json!({
+                "mcpServers": {}
+            }),
+            true,
+            None,
+        )
+    };
+
+    // Ensure mcpServers object exists
+    if config.get("mcpServers").is_none() {
+        config["mcpServers"] = serde_json::json!({});
+    }
+
+    // Check if chant server already exists (for reporting purposes)
+    let already_had_chant = config
+        .get("mcpServers")
+        .and_then(|s| s.get("chant"))
+        .is_some();
+
+    // Add or update chant MCP server
+    if let Some(servers) = config.get_mut("mcpServers") {
+        servers["chant"] = chant_server;
+    }
+
+    // Write updated config
+    let formatted = serde_json::to_string_pretty(&config)
+        .map_err(|e| anyhow::anyhow!("Failed to serialize MCP config: {}", e))?;
+    std::fs::write(&global_mcp_path, formatted).map_err(|e| {
+        anyhow::anyhow!(
+            "Failed to write {}: {} (permission denied?)",
+            global_mcp_path.display(),
+            e
+        )
+    })?;
+
+    Ok(McpConfigResult {
+        created: is_new,
+        updated: !is_new && !already_had_chant,
+        path: global_mcp_path,
+        warning,
+    })
+}
+
 fn cmd_init(
     subcommand: Option<&str>,
     name: Option<String>,
@@ -1652,9 +1787,43 @@ Project initialized on {}.
         }
 
         // Create MCP config if any provider supports it
+        let mut mcp_created = false;
         for provider in &parsed_agents {
-            if let Some(mcp_filename) = provider.mcp_config_filename() {
-                let mcp_path = PathBuf::from(mcp_filename);
+            if provider.mcp_config_filename().is_some() {
+                // Update global ~/.claude/mcp.json (actually used by Claude Code)
+                match update_claude_mcp_config() {
+                    Ok(result) => {
+                        if result.created {
+                            println!(
+                                "{} Created {} with chant MCP server",
+                                "✓".green(),
+                                result.path.display()
+                            );
+                        } else if result.updated {
+                            println!(
+                                "{} Added chant MCP server to {}",
+                                "✓".green(),
+                                result.path.display()
+                            );
+                        } else {
+                            println!(
+                                "{} Updated chant MCP server in {}",
+                                "✓".green(),
+                                result.path.display()
+                            );
+                        }
+                        if let Some(warning) = result.warning {
+                            eprintln!("{} {}", "Warning:".yellow(), warning);
+                        }
+                        mcp_created = true;
+                    }
+                    Err(e) => {
+                        eprintln!("{} Failed to update global MCP config: {}", "✗".red(), e);
+                    }
+                }
+
+                // Also create project-local .mcp.json as reference
+                let mcp_path = PathBuf::from(".mcp.json");
                 if !mcp_path.exists() || force {
                     let mcp_config = r#"{
   "mcpServers": {
@@ -1666,8 +1835,28 @@ Project initialized on {}.
   }
 }
 "#;
-                    std::fs::write(&mcp_path, mcp_config)?;
-                    println!("{} {}", "Created".green(), mcp_path.display());
+                    if let Err(e) = std::fs::write(&mcp_path, mcp_config) {
+                        // Project-local write failure is non-critical
+                        eprintln!(
+                            "{} Could not create {} (reference copy): {}",
+                            "•".yellow(),
+                            mcp_path.display(),
+                            e
+                        );
+                    } else {
+                        println!(
+                            "{} {} (reference copy)",
+                            "Created".green(),
+                            mcp_path.display()
+                        );
+                    }
+                }
+
+                if mcp_created {
+                    println!(
+                        "{} Restart Claude Code to activate MCP integration",
+                        "ℹ".cyan()
+                    );
                 }
                 break; // Only create one MCP config file
             }
