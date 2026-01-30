@@ -40,17 +40,23 @@ When stuck: Stop agent → Split spec into research + implementation phases → 
 
 Use `chant work --parallel` or `chant work --chain` for multi-spec execution.
 
-## Quick Reference
+## MCP Tools (Preferred)
 
+When MCP is configured, use these tools instead of CLI for read operations:
+
+- `chant_spec_list` - List specs
+- `chant_spec_get` - Get spec details
+- `chant_ready` - List ready specs
+- `chant_status` - Project summary
+- `chant_log` - Read execution log
+- `chant_add` - Create spec
+- `chant_finalize` - Mark complete
+
+**CLI required for** (spawns agents, not exposed via MCP):
 ```bash
-chant add "desc"          # Create spec
-chant work <id>           # Execute (dispatches agent)
+chant work <id>           # Execute spec
 chant work --parallel     # All ready specs in parallel
 chant work --chain        # Sequential until done/failure
-chant log <id>            # Monitor agent
-chant finalize <id>       # Mark complete
-chant list                # List specs
-chant show <id>           # View spec
 ```
 
 ## This Repository
