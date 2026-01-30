@@ -67,6 +67,7 @@ pub mod provider;
 pub mod replay;
 pub mod spec;
 pub mod spec_group;
+pub mod spec_template;
 pub mod tools;
 pub mod validation;
 pub mod worktree;

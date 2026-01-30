@@ -22,6 +22,7 @@ pub mod prep;
 pub mod refresh;
 pub mod search;
 pub mod spec;
+pub mod template;
 pub mod verify;
 pub mod work;
 pub mod worktree;

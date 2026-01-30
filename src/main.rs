@@ -70,7 +70,8 @@ enum Commands {
     },
     /// Add a new spec
     Add {
-        /// Description of what to implement
+        /// Description of what to implement (ignored when using --template)
+        #[arg(default_value = "")]
         description: String,
         /// Prompt to use for execution
         #[arg(long)]
@@ -78,6 +79,17 @@ enum Commands {
         /// Require approval before this spec can be worked
         #[arg(long)]
         needs_approval: bool,
+        /// Create spec from a template
+        #[arg(long, value_name = "NAME")]
+        template: Option<String>,
+        /// Set template variable (can be specified multiple times, format: key=value)
+        #[arg(long = "var", value_name = "KEY=VALUE")]
+        vars: Vec<String>,
+    },
+    /// Manage spec templates
+    Template {
+        #[command(subcommand)]
+        command: TemplateCommands,
     },
     /// Approve a spec for work
     Approve {
@@ -564,6 +576,18 @@ enum WorktreeCommands {
     Status,
 }
 
+/// Subcommands for template management
+#[derive(Subcommand)]
+enum TemplateCommands {
+    /// List available templates
+    List,
+    /// Show template details
+    Show {
+        /// Template name
+        name: String,
+    },
+}
+
 fn main() -> Result<()> {
     // Spawn the real work on a thread with a larger stack size.
     // Windows defaults to a 1MB stack which is insufficient for this binary
@@ -609,7 +633,32 @@ fn run() -> Result<()> {
             description,
             prompt,
             needs_approval,
-        } => cmd::spec::cmd_add(&description, prompt.as_deref(), needs_approval),
+            template,
+            vars,
+        } => {
+            if let Some(template_name) = template {
+                cmd::template::cmd_add_from_template(
+                    &template_name,
+                    &vars,
+                    prompt.as_deref(),
+                    needs_approval,
+                )
+            } else {
+                if description.is_empty() {
+                    anyhow::bail!(
+                        "Description is required when not using --template.\n\n\
+                         Usage:\n  \
+                         chant add \"description of work\"\n  \
+                         chant add --template <name> [--var key=value...]"
+                    );
+                }
+                cmd::spec::cmd_add(&description, prompt.as_deref(), needs_approval)
+            }
+        }
+        Commands::Template { command } => match command {
+            TemplateCommands::List => cmd::template::cmd_template_list(),
+            TemplateCommands::Show { name } => cmd::template::cmd_template_show(&name),
+        },
         Commands::Approve { id, by } => cmd::spec::cmd_approve(&id, &by),
         Commands::Reject { id, by, reason } => cmd::spec::cmd_reject(&id, &by, &reason),
         Commands::List {
