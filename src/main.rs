@@ -51,6 +51,12 @@ enum Commands {
         /// Can be specified multiple times
         #[arg(long, value_name = "PROVIDER")]
         agent: Vec<String>,
+        /// Set default model provider (claude, ollama, openai)
+        #[arg(long, value_name = "PROVIDER")]
+        provider: Option<String>,
+        /// Set default model (opus, sonnet, haiku, or custom model name)
+        #[arg(long, value_name = "MODEL")]
+        model: Option<String>,
     },
     /// Add a new spec
     Add {
@@ -565,7 +571,18 @@ fn run() -> Result<()> {
             force,
             minimal,
             agent,
-        } => cmd_init(subcommand.as_deref(), name, silent, force, minimal, agent),
+            provider,
+            model,
+        } => cmd_init(
+            subcommand.as_deref(),
+            name,
+            silent,
+            force,
+            minimal,
+            agent,
+            provider,
+            model,
+        ),
         Commands::Add {
             description,
             prompt,
@@ -896,6 +913,136 @@ fn cmd_completion(shell: Shell) -> Result<()> {
     Ok(())
 }
 
+/// Parse a provider string into a normalized form
+fn parse_provider_string(s: &str) -> Option<&'static str> {
+    match s.to_lowercase().as_str() {
+        "claude" | "claude-cli" => Some("claude"),
+        "ollama" | "local" => Some("ollama"),
+        "openai" | "gpt" => Some("openai"),
+        _ => None,
+    }
+}
+
+/// Handle updating only agent configuration files (used for re-running init with --agent)
+fn handle_agent_update(chant_dir: &Path, agents: &[String], force: bool) -> Result<()> {
+    let parsed_agents = templates::parse_agent_providers(agents)?;
+
+    if parsed_agents.is_empty() {
+        println!("{}", "No agents specified.".yellow());
+        return Ok(());
+    }
+
+    // Create agents directory
+    std::fs::create_dir_all(chant_dir.join("agents"))?;
+
+    let mut created_agents = Vec::new();
+    let mut created_agent_names = Vec::new();
+
+    for provider in &parsed_agents {
+        let template = templates::get_template(provider.as_str())?;
+
+        // Determine the target path based on provider
+        let target_path = match provider.config_filename() {
+            ".amazonq/rules.md" => {
+                std::fs::create_dir_all(".amazonq")?;
+                PathBuf::from(".amazonq/rules.md")
+            }
+            filename => PathBuf::from(filename),
+        };
+
+        // Check if file already exists
+        if target_path.exists() && !force {
+            if atty::is(atty::Stream::Stdin) {
+                let should_overwrite = dialoguer::Confirm::new()
+                    .with_prompt(format!(
+                        "{} already exists. Overwrite?",
+                        target_path.display()
+                    ))
+                    .default(false)
+                    .interact()?;
+
+                if !should_overwrite {
+                    continue;
+                }
+            } else {
+                eprintln!(
+                    "{} {} already exists. Use {} to overwrite.",
+                    "•".yellow(),
+                    target_path.display(),
+                    "--force".cyan()
+                );
+                continue;
+            }
+        }
+
+        // Write the template
+        if let Some(parent) = target_path.parent() {
+            if !parent.as_os_str().is_empty() {
+                std::fs::create_dir_all(parent)?;
+            }
+        }
+        std::fs::write(&target_path, template.content)?;
+        created_agents.push(target_path);
+        created_agent_names.push(provider.as_str());
+    }
+
+    if created_agents.is_empty() {
+        println!("{}", "No agent files were updated.".yellow());
+    } else {
+        for target_path in &created_agents {
+            println!("{} {}", "Updated".green(), target_path.display());
+        }
+        let agent_names = created_agent_names.join(", ");
+        println!(
+            "{} Agent configuration updated for: {}",
+            "✓".green(),
+            agent_names.cyan()
+        );
+    }
+
+    Ok(())
+}
+
+/// Update config.md with surgical changes to specific fields
+fn update_config_field(config_path: &Path, field: &str, value: &str) -> Result<()> {
+    let content = std::fs::read_to_string(config_path)?;
+
+    // Split into frontmatter and body
+    let (frontmatter_opt, body) = chant::spec::split_frontmatter(&content);
+    let frontmatter = frontmatter_opt.ok_or_else(|| anyhow::anyhow!("No frontmatter found"))?;
+
+    // Parse YAML into a Value for manipulation
+    let mut yaml: serde_yaml::Value = serde_yaml::from_str(&frontmatter)?;
+
+    // Navigate to the appropriate field and update it
+    match field {
+        "provider" => {
+            // Ensure defaults section exists
+            if yaml.get("defaults").is_none() {
+                yaml["defaults"] = serde_yaml::Value::Mapping(serde_yaml::Mapping::new());
+            }
+            yaml["defaults"]["provider"] = serde_yaml::Value::String(value.to_string());
+        }
+        "model" => {
+            // Ensure defaults section exists
+            if yaml.get("defaults").is_none() {
+                yaml["defaults"] = serde_yaml::Value::Mapping(serde_yaml::Mapping::new());
+            }
+            yaml["defaults"]["model"] = serde_yaml::Value::String(value.to_string());
+        }
+        _ => anyhow::bail!("Unknown field: {}", field),
+    }
+
+    // Serialize back to YAML
+    let new_frontmatter = serde_yaml::to_string(&yaml)?;
+
+    // Reconstruct the file content
+    let new_content = format!("---\n{}---\n{}", new_frontmatter, body);
+    std::fs::write(config_path, new_content)?;
+
+    Ok(())
+}
+
 fn cmd_init(
     subcommand: Option<&str>,
     name: Option<String>,
@@ -903,6 +1050,8 @@ fn cmd_init(
     force: bool,
     minimal: bool,
     agents: Vec<String>,
+    provider: Option<String>,
+    model: Option<String>,
 ) -> Result<()> {
     // Handle 'prompts' subcommand for upgrading prompts on existing projects
     if let Some("prompts") = subcommand {
@@ -916,71 +1065,332 @@ fn cmd_init(
     }
 
     let chant_dir = PathBuf::from(".chant");
+    let config_path = chant_dir.join("config.md");
 
-    // Detect if we're in wizard mode (no flags provided)
-    let is_wizard_mode = name.is_none() && !silent && !force && !minimal && agents.is_empty();
+    // Check if this is an existing project
+    let already_initialized = chant_dir.exists() && config_path.exists();
+
+    // For existing projects with --silent flag: validate git tracking status first
+    // This is checked here because we may return early below for surgical updates
+    if already_initialized && silent {
+        let ls_output = std::process::Command::new("git")
+            .args(["ls-files", "--error-unmatch", ".chant/config.md"])
+            .output();
+
+        if let Ok(output) = ls_output {
+            if output.status.success() {
+                anyhow::bail!(
+                    "Cannot enable silent mode: .chant/ is already tracked in git. \
+                     Silent mode requires .chant/ to be local-only. \
+                     Either remove .chant/ from git tracking or initialize without --silent."
+                );
+            }
+        }
+    }
+
+    // Handle surgical updates for existing projects (--provider or --model flags only)
+    if already_initialized && !force {
+        // Check if this is a surgical update (only --provider or --model specified)
+        let is_surgical_provider =
+            provider.is_some() && name.is_none() && agents.is_empty() && model.is_none();
+        let is_surgical_model =
+            model.is_some() && name.is_none() && agents.is_empty() && provider.is_none();
+        let is_surgical_both =
+            provider.is_some() && model.is_some() && name.is_none() && agents.is_empty();
+        let is_agent_only =
+            !agents.is_empty() && name.is_none() && provider.is_none() && model.is_none();
+
+        if is_surgical_provider || is_surgical_model || is_surgical_both {
+            // Surgical config update
+            if let Some(ref prov) = provider {
+                let normalized = parse_provider_string(prov).ok_or_else(|| {
+                    anyhow::anyhow!("Invalid provider: {}. Use claude, ollama, or openai.", prov)
+                })?;
+                update_config_field(&config_path, "provider", normalized)?;
+                println!("{} Updated provider to: {}", "✓".green(), normalized.cyan());
+            }
+            if let Some(ref m) = model {
+                update_config_field(&config_path, "model", m)?;
+                println!("{} Updated model to: {}", "✓".green(), m.cyan());
+            }
+            return Ok(());
+        }
+
+        if is_agent_only {
+            // Only update agent files, don't touch config
+            return handle_agent_update(&chant_dir, &agents, force);
+        }
+
+        // No specific flags - show configuration menu in TTY mode
+        if atty::is(atty::Stream::Stdin)
+            && name.is_none()
+            && !silent
+            && !minimal
+            && agents.is_empty()
+            && provider.is_none()
+            && model.is_none()
+        {
+            // Read current project name from config
+            let current_name = if let Ok(config) = chant::config::Config::load() {
+                config.project.name
+            } else {
+                "unknown".to_string()
+            };
+
+            println!(
+                "\n{} {}",
+                "Chant already initialized for:".cyan(),
+                current_name.bold()
+            );
+
+            let config_options = vec![
+                "Add/update agent configuration",
+                "Change default model provider",
+                "Change default model",
+                "Exit (no changes)",
+            ];
+
+            let selection = dialoguer::Select::new()
+                .with_prompt("What would you like to configure?")
+                .items(&config_options)
+                .default(3)
+                .interact()?;
+
+            match selection {
+                0 => {
+                    // Add/update agent configuration
+                    let agent_options = vec![
+                        "Claude Code (CLAUDE.md)",
+                        "Cursor (.cursorrules)",
+                        "Amazon Q (.amazonq/rules.md)",
+                        "Generic (.ai-instructions)",
+                        "All of the above",
+                    ];
+
+                    let agent_selection = dialoguer::Select::new()
+                        .with_prompt("Which agent configuration?")
+                        .items(&agent_options)
+                        .default(0)
+                        .interact()?;
+
+                    let selected_agents = match agent_selection {
+                        0 => vec!["claude".to_string()],
+                        1 => vec!["cursor".to_string()],
+                        2 => vec!["amazonq".to_string()],
+                        3 => vec!["generic".to_string()],
+                        4 => vec!["all".to_string()],
+                        _ => vec![],
+                    };
+
+                    return handle_agent_update(&chant_dir, &selected_agents, force);
+                }
+                1 => {
+                    // Change default model provider
+                    let provider_options =
+                        vec!["Claude CLI (recommended)", "Ollama (local)", "OpenAI API"];
+
+                    let provider_selection = dialoguer::Select::new()
+                        .with_prompt("Default model provider?")
+                        .items(&provider_options)
+                        .default(0)
+                        .interact()?;
+
+                    let selected_provider = match provider_selection {
+                        0 => "claude",
+                        1 => "ollama",
+                        2 => "openai",
+                        _ => "claude",
+                    };
+
+                    update_config_field(&config_path, "provider", selected_provider)?;
+                    println!(
+                        "{} Updated provider to: {}",
+                        "✓".green(),
+                        selected_provider.cyan()
+                    );
+                    return Ok(());
+                }
+                2 => {
+                    // Change default model
+                    let model_options = vec![
+                        "opus (most capable)",
+                        "sonnet (balanced)",
+                        "haiku (fastest)",
+                        "Custom model name",
+                    ];
+
+                    let model_selection = dialoguer::Select::new()
+                        .with_prompt("Default model?")
+                        .items(&model_options)
+                        .default(1)
+                        .interact()?;
+
+                    let selected_model = match model_selection {
+                        0 => "claude-opus-4".to_string(),
+                        1 => "claude-sonnet-4".to_string(),
+                        2 => "claude-haiku-4".to_string(),
+                        3 => dialoguer::Input::new()
+                            .with_prompt("Custom model name")
+                            .interact_text()?,
+                        _ => "claude-sonnet-4".to_string(),
+                    };
+
+                    update_config_field(&config_path, "model", &selected_model)?;
+                    println!(
+                        "{} Updated model to: {}",
+                        "✓".green(),
+                        selected_model.cyan()
+                    );
+                    return Ok(());
+                }
+                _ => {
+                    println!("{}", "No changes made.".yellow());
+                    return Ok(());
+                }
+            }
+        }
+
+        // Non-TTY mode without specific flags
+        println!("{}", "Chant already initialized.".yellow());
+        return Ok(());
+    }
+
+    // Detect if we're in wizard mode (no flags provided for fresh init)
+    let is_wizard_mode = name.is_none()
+        && !silent
+        && !force
+        && !minimal
+        && agents.is_empty()
+        && provider.is_none()
+        && model.is_none();
 
     // Gather parameters - either from wizard or from flags
-    let (final_name, final_silent, final_minimal, final_agents) = if is_wizard_mode {
-        // Detect default project name for wizard
-        let detected_name = detect_project_name().unwrap_or_else(|| "my-project".to_string());
+    let (final_name, final_silent, final_minimal, final_agents, final_provider, final_model) =
+        if is_wizard_mode && atty::is(atty::Stream::Stdin) {
+            // Detect default project name for wizard
+            let detected_name = detect_project_name().unwrap_or_else(|| "my-project".to_string());
 
-        // Prompt for project name
-        let project_name = dialoguer::Input::new()
-            .with_prompt("Project name")
-            .default(detected_name.clone())
-            .interact_text()?;
+            // Prompt for project name
+            let project_name = dialoguer::Input::new()
+                .with_prompt("Project name")
+                .default(detected_name.clone())
+                .interact_text()?;
 
-        // Prompt for prompt templates
-        let include_templates = dialoguer::Confirm::new()
-            .with_prompt("Include prompt templates?")
-            .default(true)
-            .interact()?;
+            // Prompt for prompt templates
+            let include_templates = dialoguer::Confirm::new()
+                .with_prompt("Include prompt templates?")
+                .default(true)
+                .interact()?;
 
-        // Prompt for silent mode
-        let enable_silent = dialoguer::Confirm::new()
-            .with_prompt("Keep .chant/ local only (gitignored)?")
-            .default(false)
-            .interact()?;
+            // Prompt for silent mode
+            let enable_silent = dialoguer::Confirm::new()
+                .with_prompt("Keep .chant/ local only (gitignored)?")
+                .default(false)
+                .interact()?;
 
-        // Prompt for agent configuration
-        let agent_options = vec![
-            "None",
-            "Claude Code (CLAUDE.md)",
-            "Cursor (.cursorrules)",
-            "Amazon Q (.amazonq/rules.md)",
-            "Generic (.ai-instructions)",
-            "All of the above",
-        ];
+            // Prompt for model provider
+            let provider_options = vec!["Claude CLI (recommended)", "Ollama (local)", "OpenAI API"];
 
-        let agent_selection = dialoguer::Select::new()
-            .with_prompt("Initialize agent configuration?")
-            .items(&agent_options)
-            .default(0)
-            .interact()?;
+            let provider_selection = dialoguer::Select::new()
+                .with_prompt("Default model provider?")
+                .items(&provider_options)
+                .default(0)
+                .interact()?;
 
-        let selected_agents = match agent_selection {
-            0 => vec![], // None
-            1 => vec!["claude".to_string()],
-            2 => vec!["cursor".to_string()],
-            3 => vec!["amazonq".to_string()],
-            4 => vec!["generic".to_string()],
-            5 => vec!["all".to_string()],
-            _ => vec![],
+            let selected_provider = match provider_selection {
+                0 => Some("claude".to_string()),
+                1 => Some("ollama".to_string()),
+                2 => Some("openai".to_string()),
+                _ => None,
+            };
+
+            // Prompt for default model
+            let model_options = vec![
+                "opus (most capable)",
+                "sonnet (balanced)",
+                "haiku (fastest)",
+                "Custom model name",
+                "None (use provider default)",
+            ];
+
+            let model_selection = dialoguer::Select::new()
+                .with_prompt("Default model?")
+                .items(&model_options)
+                .default(1)
+                .interact()?;
+
+            let selected_model = match model_selection {
+                0 => Some("claude-opus-4".to_string()),
+                1 => Some("claude-sonnet-4".to_string()),
+                2 => Some("claude-haiku-4".to_string()),
+                3 => {
+                    let custom: String = dialoguer::Input::new()
+                        .with_prompt("Custom model name")
+                        .interact_text()?;
+                    Some(custom)
+                }
+                _ => None,
+            };
+
+            // Prompt for agent configuration
+            let agent_options = vec![
+                "None",
+                "Claude Code (CLAUDE.md)",
+                "Cursor (.cursorrules)",
+                "Amazon Q (.amazonq/rules.md)",
+                "Generic (.ai-instructions)",
+                "All of the above",
+            ];
+
+            let agent_selection = dialoguer::Select::new()
+                .with_prompt("Initialize agent configuration?")
+                .items(&agent_options)
+                .default(0)
+                .interact()?;
+
+            let selected_agents = match agent_selection {
+                0 => vec![], // None
+                1 => vec!["claude".to_string()],
+                2 => vec!["cursor".to_string()],
+                3 => vec!["amazonq".to_string()],
+                4 => vec!["generic".to_string()],
+                5 => vec!["all".to_string()],
+                _ => vec![],
+            };
+
+            (
+                project_name,
+                enable_silent,
+                !include_templates, // invert: minimal is "no templates"
+                selected_agents,
+                selected_provider,
+                selected_model,
+            )
+        } else {
+            // Direct mode: use provided values
+            let project_name = name.unwrap_or_else(|| {
+                detect_project_name().unwrap_or_else(|| "my-project".to_string())
+            });
+
+            // Validate provider if specified
+            let validated_provider = if let Some(ref p) = provider {
+                let normalized = parse_provider_string(p).ok_or_else(|| {
+                    anyhow::anyhow!("Invalid provider: {}. Use claude, ollama, or openai.", p)
+                })?;
+                Some(normalized.to_string())
+            } else {
+                None
+            };
+
+            (
+                project_name,
+                silent,
+                minimal,
+                agents,
+                validated_provider,
+                model,
+            )
         };
-
-        (
-            project_name,
-            enable_silent,
-            !include_templates, // invert: minimal is "no templates"
-            selected_agents,
-        )
-    } else {
-        // Direct mode: use provided values
-        let project_name = name
-            .unwrap_or_else(|| detect_project_name().unwrap_or_else(|| "my-project".to_string()));
-        (project_name, silent, minimal, agents)
-    };
 
     // For silent mode: validate that .chant/ is not already tracked in git
     // Do this check BEFORE the exists check so we catch tracking issues even if dir exists
@@ -1000,161 +1410,77 @@ fn cmd_init(
         }
     }
 
-    if chant_dir.exists() {
-        // If agents are specified, allow proceeding to update agent files
-        // Otherwise, check if --force is set for full reinitialization
-        if final_agents.is_empty() && !force {
-            println!("{}", "Chant already initialized.".yellow());
-            return Ok(());
+    if chant_dir.exists() && force {
+        // force flag: do full reinitialization (preserve specs/config)
+        let specs_backup = chant_dir.join("specs");
+        let config_backup = chant_dir.join("config.md");
+        let prompts_backup = chant_dir.join("prompts");
+        let gitignore_backup = chant_dir.join(".gitignore");
+        let locks_backup = chant_dir.join(".locks");
+        let store_backup = chant_dir.join(".store");
+
+        // Check which directories exist before deletion
+        let has_specs = specs_backup.exists();
+        let has_config = config_backup.exists();
+        let has_prompts = prompts_backup.exists();
+        let has_gitignore = gitignore_backup.exists();
+        let has_locks = locks_backup.exists();
+        let has_store = store_backup.exists();
+
+        // Temporarily move important files
+        let temp_dir = PathBuf::from(".chant_temp_backup");
+        std::fs::create_dir_all(&temp_dir)?;
+
+        if has_specs {
+            std::fs::rename(&specs_backup, temp_dir.join("specs"))?;
+        }
+        if has_config {
+            std::fs::rename(&config_backup, temp_dir.join("config.md"))?;
+        }
+        if has_prompts {
+            std::fs::rename(&prompts_backup, temp_dir.join("prompts"))?;
+        }
+        if has_gitignore {
+            std::fs::rename(&gitignore_backup, temp_dir.join(".gitignore"))?;
+        }
+        if has_locks {
+            std::fs::rename(&locks_backup, temp_dir.join(".locks"))?;
+        }
+        if has_store {
+            std::fs::rename(&store_backup, temp_dir.join(".store"))?;
         }
 
-        // If agents are specified and chant already exists, we continue without full reinitialization
-        // If --force is set (and no agents), do full reinitialization below
-        if force && !final_agents.is_empty() {
-            // force flag with agents: reinitialize everything (preserve specs/config)
-            // This allows updating agent instructions without losing existing specs/config
-            let specs_backup = chant_dir.join("specs");
-            let config_backup = chant_dir.join("config.md");
-            let prompts_backup = chant_dir.join("prompts");
-            let gitignore_backup = chant_dir.join(".gitignore");
-            let locks_backup = chant_dir.join(".locks");
-            let store_backup = chant_dir.join(".store");
+        // Remove the old .chant directory
+        std::fs::remove_dir_all(&chant_dir)?;
 
-            // Check which directories exist before deletion
-            let has_specs = specs_backup.exists();
-            let has_config = config_backup.exists();
-            let has_prompts = prompts_backup.exists();
-            let has_gitignore = gitignore_backup.exists();
-            let has_locks = locks_backup.exists();
-            let has_store = store_backup.exists();
+        // Create fresh directory structure
+        std::fs::create_dir_all(chant_dir.join("specs"))?;
+        std::fs::create_dir_all(chant_dir.join("prompts"))?;
+        std::fs::create_dir_all(chant_dir.join(".locks"))?;
+        std::fs::create_dir_all(chant_dir.join(".store"))?;
 
-            // Temporarily move important files
-            let temp_dir = PathBuf::from(".chant_temp_backup");
-            std::fs::create_dir_all(&temp_dir)?;
-
-            if has_specs {
-                std::fs::rename(&specs_backup, temp_dir.join("specs"))?;
-            }
-            if has_config {
-                std::fs::rename(&config_backup, temp_dir.join("config.md"))?;
-            }
-            if has_prompts {
-                std::fs::rename(&prompts_backup, temp_dir.join("prompts"))?;
-            }
-            if has_gitignore {
-                std::fs::rename(&gitignore_backup, temp_dir.join(".gitignore"))?;
-            }
-            if has_locks {
-                std::fs::rename(&locks_backup, temp_dir.join(".locks"))?;
-            }
-            if has_store {
-                std::fs::rename(&store_backup, temp_dir.join(".store"))?;
-            }
-
-            // Remove the old .chant directory
-            std::fs::remove_dir_all(&chant_dir)?;
-
-            // Create fresh directory structure
-            std::fs::create_dir_all(chant_dir.join("specs"))?;
-            std::fs::create_dir_all(chant_dir.join("prompts"))?;
-            std::fs::create_dir_all(chant_dir.join(".locks"))?;
-            std::fs::create_dir_all(chant_dir.join(".store"))?;
-
-            // Restore backed-up files
-            if has_specs {
-                std::fs::rename(temp_dir.join("specs"), chant_dir.join("specs"))?;
-            }
-            if has_config {
-                std::fs::rename(temp_dir.join("config.md"), chant_dir.join("config.md"))?;
-            }
-            if has_prompts {
-                std::fs::rename(temp_dir.join("prompts"), chant_dir.join("prompts"))?;
-            }
-            if has_gitignore {
-                std::fs::rename(temp_dir.join(".gitignore"), chant_dir.join(".gitignore"))?;
-            }
-            if has_locks {
-                std::fs::rename(temp_dir.join(".locks"), chant_dir.join(".locks"))?;
-            }
-            if has_store {
-                std::fs::rename(temp_dir.join(".store"), chant_dir.join(".store"))?;
-            }
-
-            // Clean up temp directory
-            let _ = std::fs::remove_dir(&temp_dir);
-        } else if force && final_agents.is_empty() {
-            // force flag without agents: do full reinitialization (classic behavior)
-            let specs_backup = chant_dir.join("specs");
-            let config_backup = chant_dir.join("config.md");
-            let prompts_backup = chant_dir.join("prompts");
-            let gitignore_backup = chant_dir.join(".gitignore");
-            let locks_backup = chant_dir.join(".locks");
-            let store_backup = chant_dir.join(".store");
-
-            // Check which directories exist before deletion
-            let has_specs = specs_backup.exists();
-            let has_config = config_backup.exists();
-            let has_prompts = prompts_backup.exists();
-            let has_gitignore = gitignore_backup.exists();
-            let has_locks = locks_backup.exists();
-            let has_store = store_backup.exists();
-
-            // Temporarily move important files
-            let temp_dir = PathBuf::from(".chant_temp_backup");
-            std::fs::create_dir_all(&temp_dir)?;
-
-            if has_specs {
-                std::fs::rename(&specs_backup, temp_dir.join("specs"))?;
-            }
-            if has_config {
-                std::fs::rename(&config_backup, temp_dir.join("config.md"))?;
-            }
-            if has_prompts {
-                std::fs::rename(&prompts_backup, temp_dir.join("prompts"))?;
-            }
-            if has_gitignore {
-                std::fs::rename(&gitignore_backup, temp_dir.join(".gitignore"))?;
-            }
-            if has_locks {
-                std::fs::rename(&locks_backup, temp_dir.join(".locks"))?;
-            }
-            if has_store {
-                std::fs::rename(&store_backup, temp_dir.join(".store"))?;
-            }
-
-            // Remove the old .chant directory
-            std::fs::remove_dir_all(&chant_dir)?;
-
-            // Create fresh directory structure
-            std::fs::create_dir_all(chant_dir.join("specs"))?;
-            std::fs::create_dir_all(chant_dir.join("prompts"))?;
-            std::fs::create_dir_all(chant_dir.join(".locks"))?;
-            std::fs::create_dir_all(chant_dir.join(".store"))?;
-
-            // Restore backed-up files
-            if has_specs {
-                std::fs::rename(temp_dir.join("specs"), chant_dir.join("specs"))?;
-            }
-            if has_config {
-                std::fs::rename(temp_dir.join("config.md"), chant_dir.join("config.md"))?;
-            }
-            if has_prompts {
-                std::fs::rename(temp_dir.join("prompts"), chant_dir.join("prompts"))?;
-            }
-            if has_gitignore {
-                std::fs::rename(temp_dir.join(".gitignore"), chant_dir.join(".gitignore"))?;
-            }
-            if has_locks {
-                std::fs::rename(temp_dir.join(".locks"), chant_dir.join(".locks"))?;
-            }
-            if has_store {
-                std::fs::rename(temp_dir.join(".store"), chant_dir.join(".store"))?;
-            }
-
-            // Clean up temp directory
-            let _ = std::fs::remove_dir(&temp_dir);
+        // Restore backed-up files
+        if has_specs {
+            std::fs::rename(temp_dir.join("specs"), chant_dir.join("specs"))?;
         }
-        // If agents are specified and no --force: just continue to update agent files
+        if has_config {
+            std::fs::rename(temp_dir.join("config.md"), chant_dir.join("config.md"))?;
+        }
+        if has_prompts {
+            std::fs::rename(temp_dir.join("prompts"), chant_dir.join("prompts"))?;
+        }
+        if has_gitignore {
+            std::fs::rename(temp_dir.join(".gitignore"), chant_dir.join(".gitignore"))?;
+        }
+        if has_locks {
+            std::fs::rename(temp_dir.join(".locks"), chant_dir.join(".locks"))?;
+        }
+        if has_store {
+            std::fs::rename(temp_dir.join(".store"), chant_dir.join(".store"))?;
+        }
+
+        // Clean up temp directory
+        let _ = std::fs::remove_dir(&temp_dir);
     }
 
     // Detect project name
@@ -1169,14 +1495,25 @@ fn cmd_init(
     // Create config.md only if it doesn't exist (preserve during --force)
     let config_path = chant_dir.join("config.md");
     if !config_path.exists() {
+        // Build defaults section with optional provider and model
+        let mut defaults_lines = vec![
+            "  prompt: standard".to_string(),
+            "  branch: false".to_string(),
+        ];
+        if let Some(ref prov) = final_provider {
+            defaults_lines.push(format!("  provider: {}", prov));
+        }
+        if let Some(ref m) = final_model {
+            defaults_lines.push(format!("  model: {}", m));
+        }
+
         let config_content = format!(
             r#"---
 project:
   name: {}
 
 defaults:
-  prompt: standard
-  branch: false
+{}
 ---
 
 # Chant Configuration
@@ -1184,6 +1521,7 @@ defaults:
 Project initialized on {}.
 "#,
             project_name,
+            defaults_lines.join("\n"),
             chrono::Local::now().format("%Y-%m-%d")
         );
         std::fs::write(&config_path, config_content)?;
@@ -1318,6 +1656,14 @@ Project initialized on {}.
     }
 
     println!("\nChant initialized for project: {}", project_name.cyan());
+
+    // Show provider and model settings
+    if let Some(ref prov) = final_provider {
+        println!("{} Default provider: {}", "ℹ".cyan(), prov.cyan());
+    }
+    if let Some(ref m) = final_model {
+        println!("{} Default model: {}", "ℹ".cyan(), m.cyan());
+    }
 
     if final_silent {
         println!(
@@ -1503,6 +1849,8 @@ mod tests {
                 false,
                 false,
                 vec![],
+                None,
+                None,
             );
 
             assert!(result.is_ok());
@@ -1529,6 +1877,8 @@ mod tests {
                 false,
                 true,
                 vec![],
+                None,
+                None,
             );
 
             assert!(result.is_ok());
@@ -1556,6 +1906,8 @@ mod tests {
                 false,
                 false,
                 vec!["claude".to_string()],
+                None,
+                None,
             );
 
             assert!(result.is_ok());
@@ -1574,14 +1926,32 @@ mod tests {
 
         if std::env::set_current_dir(&temp_dir).is_ok() {
             // First init
-            let result1 = cmd_init(None, Some("test".to_string()), false, false, false, vec![]);
+            let result1 = cmd_init(
+                None,
+                Some("test".to_string()),
+                false,
+                false,
+                false,
+                vec![],
+                None,
+                None,
+            );
             assert!(result1.is_ok());
 
             // Verify files were created
             assert!(temp_dir.path().join(".chant/config.md").exists());
 
             // Second init without --force should gracefully exit (not fail)
-            let result2 = cmd_init(None, Some("test".to_string()), false, false, false, vec![]);
+            let result2 = cmd_init(
+                None,
+                Some("test".to_string()),
+                false,
+                false,
+                false,
+                vec![],
+                None,
+                None,
+            );
             assert!(result2.is_ok()); // Should still be Ok, just skip re-initialization
 
             // Third init with --force should succeed and reinitialize
@@ -1592,6 +1962,8 @@ mod tests {
                 true,
                 false,
                 vec![],
+                None,
+                None,
             );
             assert!(result3.is_ok());
 
@@ -1623,7 +1995,16 @@ mod tests {
 
         if std::env::set_current_dir(&temp_dir).is_ok() {
             // First init
-            let result1 = cmd_init(None, Some("test".to_string()), false, false, false, vec![]);
+            let result1 = cmd_init(
+                None,
+                Some("test".to_string()),
+                false,
+                false,
+                false,
+                vec![],
+                None,
+                None,
+            );
             assert!(result1.is_ok());
             assert!(temp_dir.path().join(".chant/config.md").exists());
 
@@ -1644,6 +2025,8 @@ mod tests {
                 true,
                 false,
                 vec![],
+                None,
+                None,
             );
             assert!(result2.is_ok());
 
@@ -1673,6 +2056,8 @@ mod tests {
                 false,
                 false,
                 vec!["claude".to_string()],
+                None,
+                None,
             );
             assert!(result1.is_ok());
             assert!(temp_dir.path().join("CLAUDE.md").exists());
@@ -1688,6 +2073,8 @@ mod tests {
                 true,
                 false,
                 vec!["claude".to_string()],
+                None,
+                None,
             );
             assert!(result2.is_ok());
             assert!(temp_dir.path().join("CLAUDE.md").exists());
@@ -1695,6 +2082,162 @@ mod tests {
             // Verify content is still the same (agent files are updated)
             let new_content = fs::read_to_string("CLAUDE.md").unwrap();
             assert_eq!(original_content, new_content);
+
+            let _ = std::env::set_current_dir(orig_dir);
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_init_with_provider_and_model() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let orig_dir = std::env::current_dir().unwrap();
+
+        if std::env::set_current_dir(&temp_dir).is_ok() {
+            // Test init with --provider and --model flags
+            let result = cmd_init(
+                None,
+                Some("test-project".to_string()),
+                false,
+                false,
+                false,
+                vec![],
+                Some("ollama".to_string()),
+                Some("llama3".to_string()),
+            );
+
+            assert!(result.is_ok());
+            assert!(temp_dir.path().join(".chant/config.md").exists());
+
+            // Verify config contains provider and model
+            let config_content = fs::read_to_string(".chant/config.md").unwrap();
+            assert!(config_content.contains("provider: ollama"));
+            assert!(config_content.contains("model: llama3"));
+
+            let _ = std::env::set_current_dir(orig_dir);
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_init_surgical_provider_update() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let orig_dir = std::env::current_dir().unwrap();
+
+        if std::env::set_current_dir(&temp_dir).is_ok() {
+            // First init without provider
+            let result1 = cmd_init(
+                None,
+                Some("test".to_string()),
+                false,
+                false,
+                false,
+                vec![],
+                None,
+                None,
+            );
+            assert!(result1.is_ok());
+
+            // Verify initial config doesn't have provider
+            let config_content = fs::read_to_string(".chant/config.md").unwrap();
+            assert!(!config_content.contains("provider:"));
+
+            // Second init with only --provider should surgically update
+            let result2 = cmd_init(
+                None,
+                None, // no name
+                false,
+                false,
+                false,
+                vec![],
+                Some("ollama".to_string()),
+                None,
+            );
+            assert!(result2.is_ok());
+
+            // Verify config now contains provider
+            let config_content = fs::read_to_string(".chant/config.md").unwrap();
+            assert!(config_content.contains("provider: ollama"));
+
+            let _ = std::env::set_current_dir(orig_dir);
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_init_surgical_model_update() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let orig_dir = std::env::current_dir().unwrap();
+
+        if std::env::set_current_dir(&temp_dir).is_ok() {
+            // First init without model
+            let result1 = cmd_init(
+                None,
+                Some("test".to_string()),
+                false,
+                false,
+                false,
+                vec![],
+                None,
+                None,
+            );
+            assert!(result1.is_ok());
+
+            // Second init with only --model should surgically update
+            let result2 = cmd_init(
+                None,
+                None, // no name
+                false,
+                false,
+                false,
+                vec![],
+                None,
+                Some("claude-opus-4".to_string()),
+            );
+            assert!(result2.is_ok());
+
+            // Verify config now contains model
+            let config_content = fs::read_to_string(".chant/config.md").unwrap();
+            assert!(config_content.contains("model: claude-opus-4"));
+
+            let _ = std::env::set_current_dir(orig_dir);
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_init_agent_only_update() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let orig_dir = std::env::current_dir().unwrap();
+
+        if std::env::set_current_dir(&temp_dir).is_ok() {
+            // First init without agent
+            let result1 = cmd_init(
+                None,
+                Some("test".to_string()),
+                false,
+                false,
+                false,
+                vec![],
+                None,
+                None,
+            );
+            assert!(result1.is_ok());
+            assert!(!temp_dir.path().join("CLAUDE.md").exists());
+
+            // Second init with only --agent should only add agent file
+            let result2 = cmd_init(
+                None,
+                None,
+                false,
+                false,
+                false,
+                vec!["claude".to_string()],
+                None,
+                None,
+            );
+            assert!(result2.is_ok());
+            assert!(temp_dir.path().join("CLAUDE.md").exists());
 
             let _ = std::env::set_current_dir(orig_dir);
         }

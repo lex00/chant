@@ -130,8 +130,17 @@ mod tests {
 
         if std::env::set_current_dir(&temp_dir).is_ok() {
             // Initialize chant
-            crate::cmd_init(None, Some("test".to_string()), false, false, false, vec![])
-                .expect("Failed to init chant");
+            crate::cmd_init(
+                None,
+                Some("test".to_string()),
+                false,
+                false,
+                false,
+                vec![],
+                None,
+                None,
+            )
+            .expect("Failed to init chant");
 
             // Run derive with no enterprise config
             let result = cmd_derive(None, true, false);
@@ -149,8 +158,17 @@ mod tests {
 
         if std::env::set_current_dir(&temp_dir).is_ok() {
             // Initialize chant
-            crate::cmd_init(None, Some("test".to_string()), false, false, false, vec![])
-                .expect("Failed to init chant");
+            crate::cmd_init(
+                None,
+                Some("test".to_string()),
+                false,
+                false,
+                false,
+                vec![],
+                None,
+                None,
+            )
+            .expect("Failed to init chant");
 
             // Create a spec
             let specs_dir = temp_dir.path().join(".chant/specs");
