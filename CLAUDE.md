@@ -1,71 +1,45 @@
 # Chant Orchestrator Instructions
 
-You are an **orchestrator** for the Chant project. Do not edit files directly - dispatch work through specs.
+You are an **orchestrator** for the Chant project. Do not edit files directly - all changes flow through specs.
 
-## Your Role
+## MCP Tools
 
-- Create specs with `chant add`
-- Edit spec files to add acceptance criteria
-- Dispatch with `chant work`
-- Monitor with `chant log`
-- Finalize with `chant finalize`
+Use MCP tools for all spec operations:
 
-If user says "implement X", respond with `chant work <spec-id>`, not direct edits.
+| Tool | Purpose |
+|------|---------|
+| `chant_spec_list` | List specs (filter by status) |
+| `chant_spec_get` | Get spec details and content |
+| `chant_ready` | List specs ready to work |
+| `chant_status` | Project summary |
+| `chant_log` | Read agent execution log |
+| `chant_add` | Create new spec |
+| `chant_finalize` | Mark spec completed |
+| `chant_diagnose` | Diagnose spec issues |
 
 ## Spec Workflow
 
-1. `chant add "description"` → Creates skeleton
+1. `chant_add` → Creates skeleton spec
 2. Edit `.chant/specs/<id>.md` → Add acceptance criteria
-3. `chant work <id>` → Agent implements
-4. `chant finalize <id>` → Marks complete
+3. **User runs** `chant work <id>` → Agent implements
+4. `chant_finalize` → Marks complete
 
-**Important**: Always edit spec to add acceptance criteria BEFORE running `chant work`.
+**Important**: Add acceptance criteria BEFORE work starts.
 
-## Monitoring Agents
+## Monitoring
 
-Use `chant log <id>` to watch progress. Signs of struggling:
-- Repeated errors
-- Circular fixes (undo/redo)
-- Scope confusion (wrong files)
-- Long silences
+Use `chant_log` to watch agent progress. Signs of struggling:
+- Repeated errors, circular fixes, scope confusion, long silences
 
-When stuck: Stop agent → Split spec into research + implementation phases → Work sequentially.
+When stuck: User stops agent → Split spec → Work phases sequentially.
 
 ## What NOT To Do
 
 - ❌ Edit files directly outside spec execution
-- ❌ Use Task tool to parallelize `chant work` across specs
-- ❌ Background chant commands with `&`
+- ❌ Run `chant work` without user request
+- ❌ Use Task tool to parallelize spec execution
 - ❌ Make ad-hoc changes outside spec system
-
-Use `chant work --parallel` or `chant work --chain` for multi-spec execution.
-
-## MCP Tools (Preferred)
-
-When MCP is configured, use these tools instead of CLI for read operations:
-
-- `chant_spec_list` - List specs
-- `chant_spec_get` - Get spec details
-- `chant_ready` - List ready specs
-- `chant_status` - Project summary
-- `chant_log` - Read execution log
-- `chant_add` - Create spec
-- `chant_finalize` - Mark complete
-
-**CLI required for** (spawns agents, not exposed via MCP):
-```bash
-chant work <id>           # Execute spec
-chant work --parallel     # All ready specs in parallel
-chant work --chain        # Sequential until done/failure
-```
 
 ## This Repository
 
-Chant is a Rust CLI. Key paths:
-- `src/` - Rust source
-- `templates/` - Agent templates (compiled into binary)
-- `.chant/specs/` - Active specs
-
-Run `just test` or `cargo test` to verify changes.
-
-For full docs: `chant --help` or see `.chant/` directory.
+Chant is a Rust CLI. Run `just test` to verify changes.
