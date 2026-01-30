@@ -141,6 +141,58 @@ The `--rebase` and `--auto` flags:
 | Show status | `just chant status` |
 | Export specs | `just chant export` |
 
+## MCP Integration
+
+Chant exposes a Model Context Protocol (MCP) server that provides structured tools for spec management. When MCP is configured, prefer using these tools over shelling out to the CLI - they're faster and provide structured responses.
+
+### Setup
+
+MCP is automatically configured when you run `chant init --agent cursor`. The `.cursor/mcp.json` file contains:
+
+```json
+{
+  "mcpServers": {
+    "chant": {
+      "type": "stdio",
+      "command": "chant",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+### Available Tools
+
+**Query Tools (read-only):**
+- `chant_spec_list` - List all specs, optionally filtered by status
+- `chant_spec_get` - Get full details of a spec including body content
+- `chant_ready` - List specs that are ready to be worked (no unmet dependencies)
+- `chant_status` - Get project summary with spec counts by status
+- `chant_log` - Read execution log for a spec
+- `chant_search` - Search specs by title and body content
+- `chant_diagnose` - Diagnose issues with a spec (checks file, log, locks, commits, criteria)
+
+**Mutating Tools:**
+- `chant_spec_update` - Update a spec's status or append output
+- `chant_add` - Create a new spec with description
+- `chant_finalize` - Mark a spec as completed (validates all criteria are checked)
+- `chant_resume` - Reset a failed spec to pending for rework
+- `chant_cancel` - Cancel a spec (sets status to cancelled)
+- `chant_archive` - Move a completed spec to the archive directory
+
+### When to Use MCP vs CLI
+
+**Use MCP tools when:**
+- Checking spec status or listing specs
+- Reading spec details or logs
+- Creating, updating, or finalizing specs
+- You need structured JSON responses
+
+**Use CLI (`chant`) when:**
+- Executing specs with `chant work` (spawns agent process - not available via MCP)
+- Running interactive commands in a terminal
+- Operations that need human confirmation
+
 ## Notes
 
 - Cursor should respect the Chant workflow and spec system

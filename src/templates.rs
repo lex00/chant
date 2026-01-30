@@ -42,7 +42,7 @@ impl AgentProvider {
     pub fn supports_mcp(&self) -> bool {
         match self {
             Self::Claude => true,
-            Self::Cursor => false, // Future: set to true, add mcp_config_filename
+            Self::Cursor => true,
             Self::AmazonQ => false,
             Self::Generic => false,
         }
@@ -52,7 +52,7 @@ impl AgentProvider {
     pub fn mcp_config_filename(&self) -> Option<&'static str> {
         match self {
             Self::Claude => Some(".mcp.json"),
-            // Future: Self::Cursor => Some(".cursor/mcp.json"),
+            Self::Cursor => Some(".cursor/mcp.json"),
             _ => None,
         }
     }
@@ -167,7 +167,7 @@ mod tests {
     #[test]
     fn test_agent_provider_supports_mcp() {
         assert!(AgentProvider::Claude.supports_mcp());
-        assert!(!AgentProvider::Cursor.supports_mcp());
+        assert!(AgentProvider::Cursor.supports_mcp());
         assert!(!AgentProvider::AmazonQ.supports_mcp());
         assert!(!AgentProvider::Generic.supports_mcp());
     }
@@ -178,7 +178,10 @@ mod tests {
             AgentProvider::Claude.mcp_config_filename(),
             Some(".mcp.json")
         );
-        assert_eq!(AgentProvider::Cursor.mcp_config_filename(), None);
+        assert_eq!(
+            AgentProvider::Cursor.mcp_config_filename(),
+            Some(".cursor/mcp.json")
+        );
         assert_eq!(AgentProvider::AmazonQ.mcp_config_filename(), None);
         assert_eq!(AgentProvider::Generic.mcp_config_filename(), None);
     }
