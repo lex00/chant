@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}Changelog - {{ site_title }}{% endblock %}
+
+{% block content %}
+<h1>Changelog</h1>
+<p class="page-description">Completed specs grouped by date</p>
+
+{% for group in changelog_groups %}
+<section class="changelog-group">
+    <h2>{{ group.date }}</h2>
+    <ul class="changelog-list">
+        {% for spec in group.specs %}
+        <li>
+            <a href="{{ base_url }}specs/{{ spec.id }}.html">{{ spec.id }}</a>
+            <span class="changelog-title">{{ spec.title | default(value="Untitled") }}</span>
+            {% for label in spec.labels %}
+            <span class="label-badge small">{{ label }}</span>
+            {% endfor %}
+        </li>
+        {% endfor %}
+    </ul>
+</section>
+{% endfor %}
+
+{% if changelog_groups | length == 0 %}
+<p class="empty-state">No completed specs to display</p>
+{% endif %}
+{% endblock %}

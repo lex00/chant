@@ -122,6 +122,186 @@ pub struct Config {
     pub approval: ApprovalConfig,
     #[serde(default)]
     pub validation: OutputValidationConfig,
+    #[serde(default)]
+    pub site: SiteConfig,
+}
+
+/// Configuration for static site generation
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct SiteConfig {
+    /// Output directory for generated site (default: ./public/)
+    #[serde(default = "default_site_output_dir")]
+    pub output_dir: String,
+    /// Base URL for the site (default: /)
+    #[serde(default = "default_site_base_url")]
+    pub base_url: String,
+    /// Site title (default: "Project Specs")
+    #[serde(default = "default_site_title")]
+    pub title: String,
+    /// Content filtering - what to include
+    #[serde(default)]
+    pub include: SiteIncludeConfig,
+    /// Content filtering - what to exclude
+    #[serde(default)]
+    pub exclude: SiteExcludeConfig,
+    /// Feature toggles for different page types
+    #[serde(default)]
+    pub features: SiteFeaturesConfig,
+    /// Graph visualization options
+    #[serde(default)]
+    pub graph: SiteGraphConfig,
+    /// Timeline visualization options
+    #[serde(default)]
+    pub timeline: SiteTimelineConfig,
+}
+
+fn default_site_output_dir() -> String {
+    "./public/".to_string()
+}
+
+fn default_site_base_url() -> String {
+    "/".to_string()
+}
+
+fn default_site_title() -> String {
+    "Project Specs".to_string()
+}
+
+/// Configuration for what specs to include in the site
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SiteIncludeConfig {
+    /// Statuses to include (default: completed, in_progress, pending)
+    #[serde(default = "default_include_statuses")]
+    pub statuses: Vec<String>,
+    /// Labels to include (empty = all)
+    #[serde(default)]
+    pub labels: Vec<String>,
+}
+
+fn default_include_statuses() -> Vec<String> {
+    vec![
+        "completed".to_string(),
+        "in_progress".to_string(),
+        "pending".to_string(),
+    ]
+}
+
+impl Default for SiteIncludeConfig {
+    fn default() -> Self {
+        Self {
+            statuses: default_include_statuses(),
+            labels: vec![],
+        }
+    }
+}
+
+/// Configuration for what to exclude from the site
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct SiteExcludeConfig {
+    /// Labels to exclude from output
+    #[serde(default)]
+    pub labels: Vec<String>,
+    /// Fields to redact from output (e.g., cost_usd, tokens)
+    #[serde(default)]
+    pub fields: Vec<String>,
+}
+
+/// Feature toggles for site pages
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SiteFeaturesConfig {
+    /// Generate changelog page
+    #[serde(default = "default_true")]
+    pub changelog: bool,
+    /// Generate dependency graph page
+    #[serde(default = "default_true")]
+    pub dependency_graph: bool,
+    /// Generate timeline page
+    #[serde(default = "default_true")]
+    pub timeline: bool,
+    /// Generate status index pages
+    #[serde(default = "default_true")]
+    pub status_indexes: bool,
+    /// Generate label index pages
+    #[serde(default = "default_true")]
+    pub label_indexes: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl Default for SiteFeaturesConfig {
+    fn default() -> Self {
+        Self {
+            changelog: true,
+            dependency_graph: true,
+            timeline: true,
+            status_indexes: true,
+            label_indexes: true,
+        }
+    }
+}
+
+/// Graph detail level for dependency visualization
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum GraphDetailLevel {
+    /// Show only spec IDs
+    Minimal,
+    /// Show IDs and titles
+    Titles,
+    /// Show IDs, titles, status, and labels
+    #[default]
+    Full,
+}
+
+/// Configuration for dependency graph visualization
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SiteGraphConfig {
+    /// Level of detail in the graph
+    #[serde(default)]
+    pub detail: GraphDetailLevel,
+}
+
+impl Default for SiteGraphConfig {
+    fn default() -> Self {
+        Self {
+            detail: GraphDetailLevel::Full,
+        }
+    }
+}
+
+/// Timeline grouping option
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TimelineGroupBy {
+    /// Group by day
+    #[default]
+    Day,
+    /// Group by week
+    Week,
+    /// Group by month
+    Month,
+}
+
+/// Configuration for timeline visualization
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SiteTimelineConfig {
+    /// How to group timeline entries
+    #[serde(default)]
+    pub group_by: TimelineGroupBy,
+    /// Whether to include pending specs in timeline
+    #[serde(default)]
+    pub include_pending: bool,
+}
+
+impl Default for SiteTimelineConfig {
+    fn default() -> Self {
+        Self {
+            group_by: TimelineGroupBy::Day,
+            include_pending: false,
+        }
+    }
 }
 
 /// Configuration for a single repository in cross-repo dependency resolution
@@ -441,6 +621,7 @@ struct PartialConfig {
     pub enterprise: Option<EnterpriseConfig>,
     pub approval: Option<ApprovalConfig>,
     pub validation: Option<OutputValidationConfig>,
+    pub site: Option<SiteConfig>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -533,6 +714,8 @@ impl PartialConfig {
             approval: project.approval.or(self.approval).unwrap_or_default(),
             // Validation config: project overrides global, or use default
             validation: project.validation.or(self.validation).unwrap_or_default(),
+            // Site config: project overrides global, or use default
+            site: project.site.or(self.site).unwrap_or_default(),
         }
     }
 }

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}{{ label }} - {{ site_title }}{% endblock %}
+
+{% block content %}
+<h1>Label: {{ label }}</h1>
+<p class="page-description">{{ specs | length }} spec(s) with this label</p>
+
+{% if specs | length > 0 %}
+<table class="spec-table">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Title</th>
+            <th>Status</th>
+            <th>Type</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for spec in specs %}
+        <tr>
+            <td><a href="{{ base_url }}specs/{{ spec.id }}.html">{{ spec.short_id }}</a></td>
+            <td><a href="{{ base_url }}specs/{{ spec.id }}.html">{{ spec.title | default(value="Untitled") }}</a></td>
+            <td><span class="status-badge status-{{ spec.status | slugify }}">{{ spec.status }}</span></td>
+            <td>{{ spec.type }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="empty-state">No specs with label "{{ label }}"</p>
+{% endif %}
+{% endblock %}

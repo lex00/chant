@@ -144,6 +144,9 @@ pub struct SpecFrontmatter {
     // Output schema validation
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output_schema: Option<String>,
+    // Site generation control - set to false to exclude from site
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub public: Option<bool>,
 }
 
 fn default_type() -> String {
@@ -183,6 +186,7 @@ impl Default for SpecFrontmatter {
             approval: None,
             members: None,
             output_schema: None,
+            public: None,
         }
     }
 }

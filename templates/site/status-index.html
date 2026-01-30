@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}{{ status_display }} Specs - {{ site_title }}{% endblock %}
+
+{% block content %}
+<h1>{{ status_display }} Specs</h1>
+<p class="page-description">{{ specs | length }} spec(s) with status: {{ status_display }}</p>
+
+{% if specs | length > 0 %}
+<table class="spec-table">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Title</th>
+            <th>Type</th>
+            <th>Labels</th>
+            {% if status == "completed" %}
+            <th>Completed</th>
+            {% endif %}
+        </tr>
+    </thead>
+    <tbody>
+        {% for spec in specs %}
+        <tr>
+            <td><a href="{{ base_url }}specs/{{ spec.id }}.html">{{ spec.short_id }}</a></td>
+            <td><a href="{{ base_url }}specs/{{ spec.id }}.html">{{ spec.title | default(value="Untitled") }}</a></td>
+            <td>{{ spec.type }}</td>
+            <td>
+                {% for label in spec.labels %}
+                <span class="label-badge">{{ label }}</span>
+                {% endfor %}
+            </td>
+            {% if status == "completed" %}
+            <td>{{ spec.completed_at | default(value="-") }}</td>
+            {% endif %}
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="empty-state">No specs with status "{{ status_display }}"</p>
+{% endif %}
+{% endblock %}

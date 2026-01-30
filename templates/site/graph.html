@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Dependency Graph - {{ site_title }}{% endblock %}
+
+{% block content %}
+<h1>Dependency Graph</h1>
+<p class="page-description">Spec dependencies visualized</p>
+
+<div class="graph-container">
+    <pre class="ascii-graph">{{ ascii_graph }}</pre>
+</div>
+
+<section class="graph-legend">
+    <h2>Legend</h2>
+    <ul>
+        <li><code>───▶</code> depends on</li>
+        <li><code>┌───┐</code> spec box</li>
+    </ul>
+</section>
+
+{% if roots | length > 0 %}
+<section class="graph-roots">
+    <h2>Root Specs (no dependencies)</h2>
+    <ul>
+        {% for root in roots %}
+        <li><a href="{{ base_url }}specs/{{ root.id }}.html">{{ root.id }}</a> - {{ root.title | default(value="Untitled") }}</li>
+        {% endfor %}
+    </ul>
+</section>
+{% endif %}
+
+{% if leaves | length > 0 %}
+<section class="graph-leaves">
+    <h2>Leaf Specs (nothing depends on them)</h2>
+    <ul>
+        {% for leaf in leaves %}
+        <li><a href="{{ base_url }}specs/{{ leaf.id }}.html">{{ leaf.id }}</a> - {{ leaf.title | default(value="Untitled") }}</li>
+        {% endfor %}
+    </ul>
+</section>
+{% endif %}
+{% endblock %}

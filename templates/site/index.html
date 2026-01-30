@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}{{ site_title }}{% endblock %}
+
+{% block content %}
+<h1>{{ site_title }}</h1>
+
+<section class="stats-summary">
+    <div class="stat-card">
+        <span class="stat-number">{{ stats.total }}</span>
+        <span class="stat-label">Total Specs</span>
+    </div>
+    <div class="stat-card completed">
+        <span class="stat-number">{{ stats.completed }}</span>
+        <span class="stat-label">Completed</span>
+    </div>
+    <div class="stat-card in-progress">
+        <span class="stat-number">{{ stats.in_progress }}</span>
+        <span class="stat-label">In Progress</span>
+    </div>
+    <div class="stat-card pending">
+        <span class="stat-number">{{ stats.pending }}</span>
+        <span class="stat-label">Pending</span>
+    </div>
+</section>
+
+<section class="recent-specs">
+    <h2>Recent Specs</h2>
+    <table class="spec-table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Title</th>
+                <th>Status</th>
+                <th>Type</th>
+                <th>Labels</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for spec in specs %}
+            <tr>
+                <td><a href="{{ base_url }}specs/{{ spec.id }}.html">{{ spec.short_id }}</a></td>
+                <td><a href="{{ base_url }}specs/{{ spec.id }}.html">{{ spec.title | default(value="Untitled") }}</a></td>
+                <td><span class="status-badge status-{{ spec.status | slugify }}">{{ spec.status }}</span></td>
+                <td>{{ spec.type }}</td>
+                <td>
+                    {% for label in spec.labels %}
+                    <span class="label-badge">{{ label }}</span>
+                    {% endfor %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+{% endblock %}

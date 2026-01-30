@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}Timeline - {{ site_title }}{% endblock %}
+
+{% block content %}
+<h1>Timeline</h1>
+<p class="page-description">Spec activity over time</p>
+
+<div class="timeline">
+{% for group in timeline_groups %}
+<div class="timeline-group">
+    <h2 class="timeline-date">{{ group.date }}</h2>
+    <div class="timeline-entries">
+        <pre class="ascii-timeline">{{ group.ascii_tree }}</pre>
+    </div>
+</div>
+{% endfor %}
+</div>
+
+{% if timeline_groups | length == 0 %}
+<p class="empty-state">No timeline entries to display</p>
+{% endif %}
+{% endblock %}

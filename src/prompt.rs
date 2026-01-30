@@ -264,6 +264,7 @@ mod tests {
             enterprise: crate::config::EnterpriseConfig::default(),
             approval: crate::config::ApprovalConfig::default(),
             validation: crate::config::OutputValidationConfig::default(),
+            site: crate::config::SiteConfig::default(),
         }
     }
 

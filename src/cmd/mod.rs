@@ -21,6 +21,7 @@ pub mod model;
 pub mod prep;
 pub mod refresh;
 pub mod search;
+pub mod site;
 pub mod spec;
 pub mod template;
 pub mod verify;

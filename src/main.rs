@@ -567,6 +567,11 @@ enum Commands {
         #[arg(value_enum)]
         shell: Shell,
     },
+    /// Static site generation for spec documentation
+    Site {
+        #[command(subcommand)]
+        command: SiteCommands,
+    },
 }
 
 /// Subcommands for worktree management
@@ -585,6 +590,32 @@ enum TemplateCommands {
     Show {
         /// Template name
         name: String,
+    },
+}
+
+/// Subcommands for site generation
+#[derive(Subcommand)]
+enum SiteCommands {
+    /// Initialize theme directory with default templates for customization
+    Init {
+        /// Overwrite existing theme files
+        #[arg(long)]
+        force: bool,
+    },
+    /// Build the static site
+    Build {
+        /// Output directory (overrides config)
+        #[arg(long, short)]
+        output: Option<String>,
+    },
+    /// Start a local HTTP server to preview the site
+    Serve {
+        /// Port to serve on (default: 3000)
+        #[arg(long, short, default_value = "3000")]
+        port: u16,
+        /// Output directory to serve (default: from config)
+        #[arg(long, short)]
+        output: Option<String>,
     },
 }
 
@@ -920,6 +951,13 @@ fn run() -> Result<()> {
         } => cmd_merge_driver(&base, &current, &other),
         Commands::MergeDriverSetup => cmd_merge_driver_setup(),
         Commands::Completion { shell } => cmd_completion(shell),
+        Commands::Site { command } => match command {
+            SiteCommands::Init { force } => cmd::site::cmd_site_init(force),
+            SiteCommands::Build { output } => cmd::site::cmd_site_build(output.as_deref()),
+            SiteCommands::Serve { port, output } => {
+                cmd::site::cmd_site_serve(port, output.as_deref())
+            }
+        },
     }
 }
 

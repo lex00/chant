@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}{{ spec.title | default(value=spec.id) }} - {{ site_title }}{% endblock %}
+
+{% block content %}
+<article class="spec-page">
+    <header class="spec-header">
+        <h1>{{ spec.title | default(value="Untitled Spec") }}</h1>
+        <div class="spec-meta">
+            <span class="spec-id">{{ spec.id }}</span>
+            <span class="status-badge status-{{ spec.status | slugify }}">{{ spec.status }}</span>
+            <span class="type-badge">{{ spec.type }}</span>
+        </div>
+    </header>
+
+    <section class="spec-details">
+        <dl class="spec-properties">
+            {% if spec.completed_at %}
+            <dt>Completed</dt>
+            <dd>{{ spec.completed_at }}</dd>
+            {% endif %}
+
+            {% if spec.model %}
+            <dt>Model</dt>
+            <dd>{{ spec.model }}</dd>
+            {% endif %}
+
+            {% if spec.labels | length > 0 %}
+            <dt>Labels</dt>
+            <dd>
+                {% for label in spec.labels %}
+                <a href="{{ base_url }}labels/{{ label | slugify }}.html" class="label-badge">{{ label }}</a>
+                {% endfor %}
+            </dd>
+            {% endif %}
+
+            {% if spec.depends_on | length > 0 %}
+            <dt>Dependencies</dt>
+            <dd>
+                {% for dep in spec.depends_on %}
+                <a href="{{ base_url }}specs/{{ dep }}.html">{{ dep }}</a>{% if not loop.last %}, {% endif %}
+                {% endfor %}
+            </dd>
+            {% endif %}
+
+            {% if spec.target_files | length > 0 %}
+            <dt>Target Files</dt>
+            <dd>
+                <ul class="file-list">
+                    {% for file in spec.target_files %}
+                    <li><code>{{ file }}</code></li>
+                    {% endfor %}
+                </ul>
+            </dd>
+            {% endif %}
+        </dl>
+    </section>
+
+    <section class="spec-body">
+        {{ spec.body_html | safe }}
+    </section>
+</article>
+
+<nav class="spec-nav">
+    {% if prev_spec %}
+    <a href="{{ base_url }}specs/{{ prev_spec.id }}.html" class="nav-prev">&larr; {{ prev_spec.title | default(value=prev_spec.id) }}</a>
+    {% endif %}
+    {% if next_spec %}
+    <a href="{{ base_url }}specs/{{ next_spec.id }}.html" class="nav-next">{{ next_spec.title | default(value=next_spec.id) }} &rarr;</a>
+    {% endif %}
+</nav>
+{% endblock %}
