@@ -91,13 +91,30 @@ MCP provides a standardized way to expose tools to AI agents.
 
 ## Tools
 
-The MCP server exposes these tools:
+The MCP server exposes 13 tools organized into query (read-only) and mutating categories.
+
+### Query Tools (read-only)
 
 | Tool | Description | Parameters |
 |------|-------------|------------|
 | `chant_spec_list` | List all specs | `status` (optional) |
-| `chant_spec_get` | Get spec details | `id` (required, partial match supported) |
+| `chant_spec_get` | Get spec details including body content | `id` (required, partial match supported) |
+| `chant_ready` | List specs ready to be worked (no unmet dependencies) | (none) |
+| `chant_status` | Get project status summary with spec counts | (none) |
+| `chant_log` | Read execution log for a spec | `id` (required), `lines` (optional, default: 100) |
+| `chant_search` | Search specs by title and body content | `query` (required), `status` (optional) |
+| `chant_diagnose` | Diagnose issues with a spec | `id` (required) |
+
+### Mutating Tools
+
+| Tool | Description | Parameters |
+|------|-------------|------------|
 | `chant_spec_update` | Update spec status/output | `id` (required), `status`, `output` (optional) |
+| `chant_add` | Create a new spec | `description` (required), `prompt` (optional) |
+| `chant_finalize` | Mark a spec as completed | `id` (required) |
+| `chant_resume` | Reset a failed spec to pending | `id` (required) |
+| `chant_cancel` | Cancel a spec | `id` (required) |
+| `chant_archive` | Move a completed spec to archive | `id` (required) |
 
 ### chant_spec_list
 
@@ -241,7 +258,7 @@ Implementation complete. All tests passing.
 
 ## Tool Schemas
 
-Full JSON schemas as returned by `tools/list`:
+Full JSON schemas as returned by `tools/list`. Only showing key tools; run `echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | chant mcp` for the complete list.
 
 ```json
 {
@@ -254,14 +271,80 @@ Full JSON schemas as returned by `tools/list`:
         "properties": {
           "status": {
             "type": "string",
-            "description": "Filter by status (pending, in_progress, completed, failed)"
+            "description": "Filter by status (pending, in_progress, completed, failed, ready, blocked)"
           }
         }
       }
     },
     {
       "name": "chant_spec_get",
-      "description": "Get details of a chant spec",
+      "description": "Get details of a chant spec including full body content",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Spec ID (full or partial)"
+          }
+        },
+        "required": ["id"]
+      }
+    },
+    {
+      "name": "chant_ready",
+      "description": "List all specs that are ready to be worked (no unmet dependencies)",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "chant_status",
+      "description": "Get project status summary with spec counts by status",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "chant_log",
+      "description": "Read execution log for a spec",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Spec ID (full or partial)"
+          },
+          "lines": {
+            "type": "integer",
+            "description": "Number of lines to return (default: 100)"
+          }
+        },
+        "required": ["id"]
+      }
+    },
+    {
+      "name": "chant_search",
+      "description": "Search specs by title and body content",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search query (case-insensitive substring match)"
+          },
+          "status": {
+            "type": "string",
+            "description": "Filter by status"
+          }
+        },
+        "required": ["query"]
+      }
+    },
+    {
+      "name": "chant_diagnose",
+      "description": "Diagnose issues with a spec (check file, log, locks, commits, criteria)",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -275,7 +358,7 @@ Full JSON schemas as returned by `tools/list`:
     },
     {
       "name": "chant_spec_update",
-      "description": "Update a chant spec status or append output. Output is appended under an '## Output' section without timestamps or automatic truncation.",
+      "description": "Update a chant spec status or add output",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -289,7 +372,81 @@ Full JSON schemas as returned by `tools/list`:
           },
           "output": {
             "type": "string",
-            "description": "Output text to append to spec body. Appended under '## Output' section without timestamps or automatic code block wrapping."
+            "description": "Output text to append to spec body"
+          }
+        },
+        "required": ["id"]
+      }
+    },
+    {
+      "name": "chant_add",
+      "description": "Create a new spec with description",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string",
+            "description": "Description of work to be done (becomes spec title)"
+          },
+          "prompt": {
+            "type": "string",
+            "description": "Optional prompt template name to use"
+          }
+        },
+        "required": ["description"]
+      }
+    },
+    {
+      "name": "chant_finalize",
+      "description": "Mark a spec as completed (validates all criteria are checked)",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Spec ID (full or partial)"
+          }
+        },
+        "required": ["id"]
+      }
+    },
+    {
+      "name": "chant_resume",
+      "description": "Reset a failed spec to pending status so it can be reworked",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Spec ID (full or partial)"
+          }
+        },
+        "required": ["id"]
+      }
+    },
+    {
+      "name": "chant_cancel",
+      "description": "Cancel a spec (sets status to cancelled)",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Spec ID (full or partial)"
+          }
+        },
+        "required": ["id"]
+      }
+    },
+    {
+      "name": "chant_archive",
+      "description": "Move a completed spec to the archive directory",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Spec ID (full or partial)"
           }
         },
         "required": ["id"]

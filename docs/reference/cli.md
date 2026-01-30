@@ -50,6 +50,8 @@ Use flags to skip the wizard and initialize directly:
 - `--minimal`: Only create config.md (skip prompt templates)
 - `--silent`: Keep .chant/ local-only, not tracked in git
 - `--agent PROVIDER`: Create configuration for an AI agent provider (can be specified multiple times)
+- `--provider PROVIDER`: Set default model provider (`claude`, `ollama`, `openai`)
+- `--model MODEL`: Set default model (`opus`, `sonnet`, `haiku`, or custom model name)
 - `--force`: Overwrite existing .chant/ directory
 
 Supported agent providers: `claude`, `cursor`, `amazonq`, `generic`, `all`
@@ -137,7 +139,7 @@ chant list --status ready                    # Ready specs (shortcut: --ready)
 chant list --status in_progress              # In-progress specs
 chant list --status completed                # Completed specs
 chant list --status failed                   # Failed specs
-chant list --status blocked                  # Blocked specs (waiting on dependencies)
+chant list --status blocked                  # Blocked specs (waiting on dependencies or approval)
 chant list --status cancelled                # Cancelled specs
 
 # Combine filters
