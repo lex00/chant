@@ -16,17 +16,35 @@ A prompt is a markdown file that tells the agent what to do. It contains instruc
 
 ## Your First 5 Minutes
 
+### 1. Run the Interactive Setup Wizard
+
 ```bash
-# 1. Initialize
 chant init
+```
 
-# 2. Look at the default prompt
+The wizard guides you through all configuration:
+- **Project name**: Auto-detected from package.json, Cargo.toml, or directory name
+- **Model provider**: Claude CLI (recommended), Ollama (local), or OpenAI API
+- **Default model**: opus, sonnet, haiku, or custom
+- **Agent configuration**: Creates CLAUDE.md and .mcp.json when Claude is selected
+
+> **Tip:** For CI/CD or scripts, use flags directly: `chant init --agent claude --provider claude`
+
+### 2. Look at the Default Prompt
+
+```bash
 cat .chant/prompts/standard.md
+```
 
-# 3. Create a spec
+### 3. Create a Spec
+
+```bash
 chant add "Fix the login bug"
+```
 
-# 4. Run it (agent uses standard.md prompt)
+### 4. Run It
+
+```bash
 chant work 001
 ```
 

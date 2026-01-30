@@ -48,6 +48,26 @@ This workflow ensures:
 - Work matches expectations
 - All specs are thoroughly documented
 
+## Project Initialization
+
+When starting a new chant project, run the interactive setup wizard:
+
+```bash
+chant init
+```
+
+The wizard guides you through all configuration options including:
+- Project name and settings
+- Model provider selection (Claude CLI, Ollama, OpenAI)
+- Default model selection
+- Agent configuration (creates CLAUDE.md and .mcp.json automatically)
+
+For CI/CD or scripted setups, use flags directly:
+
+```bash
+chant init --agent claude --provider claude --model opus
+```
+
 ## Primary Rules
 
 ### 1. Always Use `chant` for CLI Operations

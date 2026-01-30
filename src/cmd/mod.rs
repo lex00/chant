@@ -32,7 +32,12 @@ pub mod work;
 pub fn ensure_initialized() -> Result<PathBuf> {
     let specs_dir = PathBuf::from(SPECS_DIR);
     if !specs_dir.exists() {
-        anyhow::bail!("Chant not initialized. Run `chant init` first.");
+        anyhow::bail!(
+            "Not a chant project (no .chant/ directory found)\n\n\
+             To initialize chant, run:\n    \
+             chant init\n\n\
+             This starts an interactive wizard to configure your project."
+        );
     }
     Ok(specs_dir)
 }

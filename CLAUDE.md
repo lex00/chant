@@ -100,6 +100,39 @@ Split a spec into multiple specs when:
 - The acceptance criteria are all closely related aspects of one feature
 - Splitting would create specs that can't be tested independently
 
+## Initialization
+
+### Interactive Wizard (Recommended)
+
+For first-time setup, run `chant init` with no arguments:
+
+```bash
+chant init
+```
+
+The wizard guides you through all configuration options:
+- Project name and settings
+- Model provider selection (Claude CLI, Ollama, OpenAI)
+- Default model selection
+- Agent configuration (creates CLAUDE.md and .mcp.json automatically)
+
+The wizard is the best path for new users because it:
+- Asks all the right questions in order
+- Explains each option with clear prompts
+- Automatically creates MCP config when Claude is selected
+- Provides sensible defaults
+- Prevents configuration mistakes
+
+### Direct Configuration (for scripts/automation)
+
+For CI/CD pipelines or scripted setups, use flags directly:
+
+```bash
+chant init --agent claude --provider claude --model opus
+```
+
+See `chant init --help` for all available options.
+
 ## Primary Rules
 
 ### 1. Always Use `chant` for CLI Operations

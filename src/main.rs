@@ -23,6 +23,9 @@ use std::path::{Path, PathBuf};
 #[command(name = "chant")]
 #[command(version)]
 #[command(about = "Intent Driven Development", long_about = None)]
+#[command(
+    after_help = "GETTING STARTED:\n    chant init                 Interactive setup wizard (recommended)\n    chant init --help           Show all initialization options\n\n    The wizard guides you through project setup, model selection, and agent configuration."
+)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -31,6 +34,13 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Initialize chant in the current directory
+    ///
+    /// TIP: Run 'chant init' with no arguments for an interactive setup wizard.
+    /// The wizard guides you through all configuration options including:
+    ///   - Project name and settings
+    ///   - Model provider selection (Claude CLI, Ollama, OpenAI)
+    ///   - Default model selection
+    ///   - Agent configuration (creates CLAUDE.md, .mcp.json automatically)
     Init {
         /// Optional subcommand: 'prompts' to install/update prompts on existing projects
         #[arg(value_name = "SUBCOMMAND")]

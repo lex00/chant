@@ -1,12 +1,44 @@
 # Initialization
 
-## Command
+## Interactive Setup Wizard (Recommended)
+
+For first-time setup, run `chant init` with no arguments:
 
 ```bash
 chant init
 ```
 
-Creates the `.chant/` directory structure in current repo.
+The wizard guides you through all configuration options:
+- **Project name**: Auto-detected from package.json, Cargo.toml, go.mod, or directory name
+- **Prompt templates**: Include ready-to-use prompts (recommended) or skip for minimal setup
+- **Silent mode**: Keep .chant/ local only (gitignored) for enterprise environments
+- **Model provider**: Claude CLI (recommended), Ollama (local), or OpenAI API
+- **Default model**: opus, sonnet, haiku, or custom model name
+- **Agent configuration**: Claude Code (CLAUDE.md), Cursor, Amazon Q, Generic, or all
+
+The wizard is the best path for new users because it:
+- Asks all the right questions in order
+- Explains each option with clear prompts
+- Automatically creates MCP config when Claude is selected
+- Provides sensible defaults
+- Prevents configuration mistakes
+
+## What the Wizard Creates
+
+When you select Claude agent configuration, the wizard creates:
+- `.chant/` directory with config, prompts, and specs
+- `CLAUDE.md` with agent instructions
+- `.mcp.json` for MCP server integration
+
+## Direct Configuration (for scripts/automation)
+
+For CI/CD pipelines or scripted setups, use flags directly:
+
+```bash
+chant init --agent claude --provider claude --model opus
+```
+
+This creates the `.chant/` directory structure in current repo.
 
 ## What Gets Created
 

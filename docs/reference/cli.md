@@ -34,7 +34,13 @@ The wizard will:
 1. Auto-detect your project name from `package.json`, `Cargo.toml`, `go.mod`, or directory name
 2. Ask if you want prompt templates (standard and split prompts)
 3. Ask if you want silent mode (.chant/ local-only)
-4. Offer to create agent configuration files (Claude Code, Cursor, Amazon Q, etc.)
+4. Ask for your preferred model provider (Claude CLI, Ollama, OpenAI)
+5. Ask for your default model (opus, sonnet, haiku, or custom)
+6. Offer to create agent configuration files (Claude Code, Cursor, Amazon Q, etc.)
+
+When Claude agent is selected, the wizard also creates `.mcp.json` for MCP server integration.
+
+> **Tip:** The wizard is the recommended path for new users - it explains each option and prevents configuration mistakes.
 
 ### Direct Mode
 

@@ -6,6 +6,30 @@ Chant exposes an MCP (Model Context Protocol) server for tool integration with A
 
 **Role**: Chant is an MCP **server**, not client. Agents connect to Chant for tools.
 
+## Setup
+
+The easiest way to configure MCP is through the interactive wizard:
+
+```bash
+chant init
+```
+
+When you select Claude agent configuration, the wizard automatically creates `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "chant": {
+      "type": "stdio",
+      "command": "chant",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+For direct setup: `chant init --agent claude`
+
 ## Usage
 
 ```bash
