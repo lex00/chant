@@ -734,6 +734,7 @@ const KNOWN_AGENT_SIGNATURES: &[&str] = &[
 #[derive(Debug, Clone)]
 pub struct AgentDetectionResult {
     /// The commit hash that was checked
+    #[allow(dead_code)]
     pub commit_hash: String,
     /// Whether an agent co-authorship was detected
     pub has_agent: bool,
