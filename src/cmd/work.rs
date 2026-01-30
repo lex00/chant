@@ -1770,20 +1770,6 @@ pub fn cmd_work_parallel(
             assignment.agent_name.dimmed()
         );
 
-        // Assemble the prompt message
-        let message = match prompt::assemble(&spec_clone, &prompt_path, config) {
-            Ok(m) => m,
-            Err(e) => {
-                println!(
-                    "{} [{}] Failed to assemble prompt: {}",
-                    "✗".red(),
-                    spec.id,
-                    e
-                );
-                continue;
-            }
-        };
-
         // Determine branch mode
         // Priority: CLI --branch flag > spec frontmatter.branch > config defaults.branch
         // IMPORTANT: Parallel execution forces branch mode internally for isolation
@@ -1842,6 +1828,31 @@ pub fn cmd_work_parallel(
                 continue;
             }
         };
+
+        // Assemble the prompt message with worktree context
+        // Now that we know the worktree path and branch, we can provide this context to the agent
+        let worktree_ctx = prompt::WorktreeContext {
+            worktree_path: worktree_path.clone(),
+            branch_name: Some(branch_name.clone()),
+            is_isolated: true, // Parallel execution always uses isolated worktrees
+        };
+        let message =
+            match prompt::assemble_with_context(&spec_clone, &prompt_path, config, &worktree_ctx) {
+                Ok(m) => m,
+                Err(e) => {
+                    println!(
+                        "{} [{}] Failed to assemble prompt: {}",
+                        "✗".red(),
+                        spec.id,
+                        e
+                    );
+                    // Clean up worktree since we failed
+                    if let Some(ref path) = worktree_path {
+                        let _ = worktree::remove_worktree(path);
+                    }
+                    continue;
+                }
+            };
 
         // Clone data for the thread
         let tx_clone = tx.clone();

@@ -8,12 +8,27 @@
 use anyhow::{Context, Result};
 use std::fs;
 use std::io::{self, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::config::Config;
 use crate::paths::SPECS_DIR;
 use crate::spec::{split_frontmatter, Spec};
 use crate::validation;
+
+/// Context about the execution environment (worktree, branch, isolation).
+///
+/// This information is passed to prompt assembly so agents can be aware
+/// of their execution context - whether they're running in an isolated
+/// worktree, what branch they're on, etc.
+#[derive(Debug, Clone, Default)]
+pub struct WorktreeContext {
+    /// Path to the worktree directory (e.g., `/tmp/chant-{spec-id}`)
+    pub worktree_path: Option<PathBuf>,
+    /// Branch name the agent is working on
+    pub branch_name: Option<String>,
+    /// Whether execution is isolated (in a worktree vs main repo)
+    pub is_isolated: bool,
+}
 
 /// Ask user for confirmation with a yes/no prompt.
 /// Returns true if user confirms (y/yes), false if user declines (n/no).
@@ -47,7 +62,23 @@ pub fn confirm(message: &str) -> Result<bool> {
 }
 
 /// Assemble a prompt by substituting template variables.
+///
+/// This version uses default (empty) worktree context. For parallel execution
+/// in isolated worktrees, use `assemble_with_context` instead.
 pub fn assemble(spec: &Spec, prompt_path: &Path, config: &Config) -> Result<String> {
+    assemble_with_context(spec, prompt_path, config, &WorktreeContext::default())
+}
+
+/// Assemble a prompt with explicit worktree context.
+///
+/// Use this when the agent will run in an isolated worktree and should be
+/// aware of its execution environment (worktree path, branch, isolation status).
+pub fn assemble_with_context(
+    spec: &Spec,
+    prompt_path: &Path,
+    config: &Config,
+    worktree_ctx: &WorktreeContext,
+) -> Result<String> {
     let prompt_content = fs::read_to_string(prompt_path)
         .with_context(|| format!("Failed to read prompt from {}", prompt_path.display()))?;
 
@@ -61,12 +92,18 @@ pub fn assemble(spec: &Spec, prompt_path: &Path, config: &Config) -> Result<Stri
         .unwrap_or(false);
 
     // Substitute template variables and inject commit instruction (except for split)
-    let message = substitute(body, spec, config, !is_split_prompt);
+    let message = substitute(body, spec, config, !is_split_prompt, worktree_ctx);
 
     Ok(message)
 }
 
-fn substitute(template: &str, spec: &Spec, config: &Config, inject_commit: bool) -> String {
+fn substitute(
+    template: &str,
+    spec: &Spec,
+    config: &Config,
+    inject_commit: bool,
+    worktree_ctx: &WorktreeContext,
+) -> String {
     let mut result = template.to_string();
 
     // Project variables
@@ -105,6 +142,49 @@ fn substitute(template: &str, spec: &Spec, config: &Config, inject_commit: bool)
         result = result.replace("{{spec.context}}", &context_content);
     } else {
         result = result.replace("{{spec.context}}", "");
+    }
+
+    // Worktree context variables
+    result = result.replace(
+        "{{worktree.path}}",
+        worktree_ctx
+            .worktree_path
+            .as_ref()
+            .map(|p| p.display().to_string())
+            .as_deref()
+            .unwrap_or(""),
+    );
+    result = result.replace(
+        "{{worktree.branch}}",
+        worktree_ctx.branch_name.as_deref().unwrap_or(""),
+    );
+    result = result.replace(
+        "{{worktree.isolated}}",
+        if worktree_ctx.is_isolated {
+            "true"
+        } else {
+            "false"
+        },
+    );
+
+    // Inject execution environment section if running in a worktree
+    // This gives agents awareness of their isolated context
+    if worktree_ctx.is_isolated {
+        let env_section = format!(
+            "\n\n## Execution Environment\n\n\
+             You are running in an **isolated worktree**:\n\
+             - **Working directory:** `{}`\n\
+             - **Branch:** `{}`\n\
+             - **Isolation:** Changes are isolated from the main repository until merged\n\n\
+             This means your changes will not affect the main branch until explicitly merged.\n",
+            worktree_ctx
+                .worktree_path
+                .as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_default(),
+            worktree_ctx.branch_name.as_deref().unwrap_or("unknown"),
+        );
+        result.push_str(&env_section);
     }
 
     // Inject output schema section if present
@@ -201,8 +281,9 @@ mod tests {
         let template = "Project: {{project.name}}\nSpec: {{spec.id}}\nTitle: {{spec.title}}";
         let spec = make_test_spec();
         let config = make_test_config();
+        let worktree_ctx = WorktreeContext::default();
 
-        let result = substitute(template, &spec, &config, true);
+        let result = substitute(template, &spec, &config, true, &worktree_ctx);
 
         assert!(result.contains("Project: test-project"));
         assert!(result.contains("Spec: 2026-01-22-001-x7m"));
@@ -214,8 +295,9 @@ mod tests {
         let template = "Edit {{spec.path}} to check off criteria";
         let spec = make_test_spec();
         let config = make_test_config();
+        let worktree_ctx = WorktreeContext::default();
 
-        let result = substitute(template, &spec, &config, true);
+        let result = substitute(template, &spec, &config, true, &worktree_ctx);
 
         assert!(result.contains(".chant/specs/2026-01-22-001-x7m.md"));
     }
@@ -237,8 +319,9 @@ Body content here."#;
         let template = "# Do some work\n\nThis is a test prompt.";
         let spec = make_test_spec();
         let config = make_test_config();
+        let worktree_ctx = WorktreeContext::default();
 
-        let result = substitute(template, &spec, &config, true);
+        let result = substitute(template, &spec, &config, true, &worktree_ctx);
 
         // Should contain commit instruction
         assert!(result.contains("## Required: Commit Your Work"));
@@ -251,8 +334,9 @@ Body content here."#;
             "# Do some work\n\n## Required: Commit Your Work\n\nAlready has instruction.";
         let spec = make_test_spec();
         let config = make_test_config();
+        let worktree_ctx = WorktreeContext::default();
 
-        let result = substitute(template, &spec, &config, true);
+        let result = substitute(template, &spec, &config, true, &worktree_ctx);
 
         // Count occurrences of the section header
         let count = result.matches("## Required: Commit Your Work").count();
@@ -264,13 +348,78 @@ Body content here."#;
         let template = "# Analyze something\n\nJust output text.";
         let spec = make_test_spec();
         let config = make_test_config();
+        let worktree_ctx = WorktreeContext::default();
 
-        let result = substitute(template, &spec, &config, false);
+        let result = substitute(template, &spec, &config, false, &worktree_ctx);
 
         // Should NOT contain commit instruction
         assert!(
             !result.contains("## Required: Commit Your Work"),
             "Commit instruction should not be injected when disabled"
         );
+    }
+
+    #[test]
+    fn test_worktree_context_substitution() {
+        let template =
+            "Path: {{worktree.path}}\nBranch: {{worktree.branch}}\nIsolated: {{worktree.isolated}}";
+        let spec = make_test_spec();
+        let config = make_test_config();
+        let worktree_ctx = WorktreeContext {
+            worktree_path: Some(PathBuf::from("/tmp/chant-test-spec")),
+            branch_name: Some("chant/test-spec".to_string()),
+            is_isolated: true,
+        };
+
+        let result = substitute(template, &spec, &config, false, &worktree_ctx);
+
+        assert!(result.contains("Path: /tmp/chant-test-spec"));
+        assert!(result.contains("Branch: chant/test-spec"));
+        assert!(result.contains("Isolated: true"));
+    }
+
+    #[test]
+    fn test_worktree_context_empty_when_not_isolated() {
+        let template = "Path: '{{worktree.path}}'\nBranch: '{{worktree.branch}}'\nIsolated: {{worktree.isolated}}";
+        let spec = make_test_spec();
+        let config = make_test_config();
+        let worktree_ctx = WorktreeContext::default();
+
+        let result = substitute(template, &spec, &config, false, &worktree_ctx);
+
+        assert!(result.contains("Path: ''"));
+        assert!(result.contains("Branch: ''"));
+        assert!(result.contains("Isolated: false"));
+    }
+
+    #[test]
+    fn test_execution_environment_section_injected_when_isolated() {
+        let template = "# Do some work";
+        let spec = make_test_spec();
+        let config = make_test_config();
+        let worktree_ctx = WorktreeContext {
+            worktree_path: Some(PathBuf::from("/tmp/chant-test-spec")),
+            branch_name: Some("chant/test-spec".to_string()),
+            is_isolated: true,
+        };
+
+        let result = substitute(template, &spec, &config, false, &worktree_ctx);
+
+        assert!(result.contains("## Execution Environment"));
+        assert!(result.contains("isolated worktree"));
+        assert!(result.contains("/tmp/chant-test-spec"));
+        assert!(result.contains("chant/test-spec"));
+    }
+
+    #[test]
+    fn test_execution_environment_section_not_injected_when_not_isolated() {
+        let template = "# Do some work";
+        let spec = make_test_spec();
+        let config = make_test_config();
+        let worktree_ctx = WorktreeContext::default();
+
+        let result = substitute(template, &spec, &config, false, &worktree_ctx);
+
+        assert!(!result.contains("## Execution Environment"));
     }
 }
