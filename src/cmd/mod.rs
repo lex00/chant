@@ -24,6 +24,7 @@ pub mod search;
 pub mod spec;
 pub mod verify;
 pub mod work;
+pub mod worktree;
 
 /// Ensure chant is initialized and return the specs directory path.
 ///

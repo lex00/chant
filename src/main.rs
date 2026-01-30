@@ -486,6 +486,11 @@ enum Commands {
         #[arg(long)]
         worktrees: bool,
     },
+    /// Worktree management commands
+    Worktree {
+        #[command(subcommand)]
+        command: WorktreeCommands,
+    },
     /// Verify specs meet their acceptance criteria
     Verify {
         /// Spec ID to verify (full or partial). If omitted, verifies all specs.
@@ -550,6 +555,13 @@ enum Commands {
         #[arg(value_enum)]
         shell: Shell,
     },
+}
+
+/// Subcommands for worktree management
+#[derive(Subcommand)]
+enum WorktreeCommands {
+    /// Show status of all chant worktrees
+    Status,
 }
 
 fn main() -> Result<()> {
@@ -825,6 +837,9 @@ fn run() -> Result<()> {
             yes,
             worktrees,
         } => cmd::cleanup::cmd_cleanup(dry_run, yes, worktrees),
+        Commands::Worktree { command } => match command {
+            WorktreeCommands::Status => cmd::worktree::cmd_worktree_status(),
+        },
         Commands::Verify {
             id,
             all,
