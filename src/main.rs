@@ -148,6 +148,9 @@ enum Commands {
         /// Show only count of matching specs
         #[arg(long)]
         count: bool,
+        /// Skip branch resolution for in_progress specs (debug option)
+        #[arg(long)]
+        main_only: bool,
     },
     /// Show spec details
     Show {
@@ -709,6 +712,7 @@ fn run() -> Result<()> {
             activity_since,
             mentions,
             count,
+            main_only,
         } => cmd::spec::cmd_list(
             ready,
             &label,
@@ -722,6 +726,7 @@ fn run() -> Result<()> {
             activity_since.as_deref(),
             mentions.as_deref(),
             count,
+            main_only,
         ),
         Commands::Show {
             id,
@@ -808,6 +813,7 @@ fn run() -> Result<()> {
             None,
             None,
             false,
+            false, // main_only
         ),
         Commands::Refresh { verbose } => cmd::refresh::cmd_refresh(verbose),
         Commands::Lint { format } => {

@@ -361,6 +361,7 @@ pub fn cmd_list(
     activity_since_filter: Option<&str>,
     mentions_filter: Option<&str>,
     count_only: bool,
+    main_only: bool,
 ) -> Result<()> {
     let is_multi_repo = global || repo.is_some();
 
@@ -376,7 +377,8 @@ pub fn cmd_list(
         load_specs_from_repos(repo)?
     } else {
         // Load specs from current repo only (existing behavior)
-        spec::load_all_specs(specs_dir.as_ref().unwrap())?
+        let use_branch_resolution = !main_only;
+        spec::load_all_specs_with_options(specs_dir.as_ref().unwrap(), use_branch_resolution)?
     };
 
     specs.sort_by(|a, b| a.id.cmp(&b.id));
@@ -596,6 +598,11 @@ pub fn cmd_list(
                     indicators.push(format!("✓ {}", by.green()));
                 }
             }
+        }
+
+        // Branch indicator for in_progress specs
+        if spec.frontmatter.status == spec::SpecStatus::InProgress {
+            indicators.push("[branch]".dimmed().to_string());
         }
 
         let indicators_str = if indicators.is_empty() {

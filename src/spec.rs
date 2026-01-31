@@ -9,6 +9,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 
 // Re-export group/driver functions from spec_group for backward compatibility
 pub use crate::spec_group::{
@@ -358,6 +359,37 @@ impl Spec {
             .ok_or_else(|| anyhow::anyhow!("Invalid spec filename"))?;
 
         Self::parse(id, &content)
+    }
+
+    /// Load a spec, optionally resolving from its working branch.
+    ///
+    /// If the spec is in_progress and has a branch (frontmatter.branch or chant/{id}),
+    /// attempt to read the spec content from that branch for live progress.
+    pub fn load_with_branch_resolution(spec_path: &Path) -> Result<Self> {
+        let spec = Self::load(spec_path)?;
+
+        // Only resolve for in_progress specs
+        if spec.frontmatter.status != SpecStatus::InProgress {
+            return Ok(spec);
+        }
+
+        // Try to find the working branch
+        let branch_name = spec
+            .frontmatter
+            .branch
+            .clone()
+            .unwrap_or_else(|| format!("chant/{}", spec.id));
+
+        // Check if branch exists
+        if !branch_exists(&branch_name)? {
+            return Ok(spec);
+        }
+
+        // Read spec from branch
+        match read_spec_from_branch(&spec.id, &branch_name) {
+            Ok(branch_spec) => Ok(branch_spec),
+            Err(_) => Ok(spec), // Fall back to main version
+        }
     }
 
     /// Save the spec to a file.
@@ -727,13 +759,21 @@ pub fn apply_blocked_status_with_repos(
 }
 
 pub fn load_all_specs(specs_dir: &Path) -> Result<Vec<Spec>> {
+    load_all_specs_with_options(specs_dir, true)
+}
+
+/// Load all specs with optional branch resolution.
+pub fn load_all_specs_with_options(
+    specs_dir: &Path,
+    use_branch_resolution: bool,
+) -> Result<Vec<Spec>> {
     let mut specs = Vec::new();
 
     if !specs_dir.exists() {
         return Ok(specs);
     }
 
-    load_specs_recursive(specs_dir, &mut specs)?;
+    load_specs_recursive(specs_dir, &mut specs, use_branch_resolution)?;
 
     // Apply blocked status to specs with unmet dependencies
     apply_blocked_status(&mut specs);
@@ -742,7 +782,11 @@ pub fn load_all_specs(specs_dir: &Path) -> Result<Vec<Spec>> {
 }
 
 /// Recursively load specs from a directory and its subdirectories.
-fn load_specs_recursive(dir: &Path, specs: &mut Vec<Spec>) -> Result<()> {
+fn load_specs_recursive(
+    dir: &Path,
+    specs: &mut Vec<Spec>,
+    use_branch_resolution: bool,
+) -> Result<()> {
     if !dir.exists() {
         return Ok(());
     }
@@ -754,9 +798,15 @@ fn load_specs_recursive(dir: &Path, specs: &mut Vec<Spec>) -> Result<()> {
 
         if metadata.is_dir() {
             // Recursively load from subdirectories
-            load_specs_recursive(&path, specs)?;
+            load_specs_recursive(&path, specs, use_branch_resolution)?;
         } else if path.extension().map(|e| e == "md").unwrap_or(false) {
-            match Spec::load(&path) {
+            let load_result = if use_branch_resolution {
+                Spec::load_with_branch_resolution(&path)
+            } else {
+                Spec::load(&path)
+            };
+
+            match load_result {
                 Ok(spec) => specs.push(spec),
                 Err(e) => {
                     eprintln!("Warning: Failed to load spec {:?}: {}", path, e);
@@ -819,6 +869,29 @@ pub fn resolve_spec(specs_dir: &Path, partial_id: &str) -> Result<Spec> {
     }
 
     anyhow::bail!("Spec not found: {}", partial_id)
+}
+
+/// Check if a git branch exists.
+fn branch_exists(branch: &str) -> Result<bool> {
+    let output = Command::new("git")
+        .args(["rev-parse", "--verify", branch])
+        .output()?;
+    Ok(output.status.success())
+}
+
+/// Read a spec from a git branch.
+fn read_spec_from_branch(spec_id: &str, branch: &str) -> Result<Spec> {
+    let spec_path = format!(".chant/specs/{}.md", spec_id);
+    let output = Command::new("git")
+        .args(["show", &format!("{}:{}", branch, spec_path)])
+        .output()?;
+
+    if !output.status.success() {
+        anyhow::bail!("Spec not found on branch");
+    }
+
+    let content = String::from_utf8_lossy(&output.stdout);
+    Spec::parse(spec_id, &content)
 }
 
 #[cfg(test)]

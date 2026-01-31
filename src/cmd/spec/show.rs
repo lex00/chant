@@ -141,6 +141,18 @@ pub fn cmd_show(id: &str, show_body: bool, no_render: bool) -> Result<()> {
         spec::resolve_spec(&specs_dir, id)?
     };
 
+    // Print branch resolution header for in_progress specs
+    if spec.frontmatter.status == spec::SpecStatus::InProgress {
+        let default_branch = format!("chant/{}", spec.id);
+        let display_branch = spec.frontmatter.branch.as_ref().unwrap_or(&default_branch);
+        println!(
+            "Spec: {} (showing state from branch {})",
+            spec.id.cyan(),
+            display_branch.dimmed()
+        );
+        println!();
+    }
+
     // Print ID (not from frontmatter)
     println!("{}: {}", "ID".bold(), spec.id.cyan());
 
