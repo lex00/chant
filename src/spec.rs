@@ -769,19 +769,9 @@ fn load_specs_recursive(dir: &Path, specs: &mut Vec<Spec>) -> Result<()> {
 }
 
 /// Resolve a partial spec ID to a full spec.
-/// Searches both active specs and archived specs.
+/// Only searches active specs (in .chant/specs/), not archived specs.
 pub fn resolve_spec(specs_dir: &Path, partial_id: &str) -> Result<Spec> {
-    let mut specs = load_all_specs(specs_dir)?;
-
-    // Also load archived specs
-    let archive_dir = specs_dir
-        .parent()
-        .ok_or_else(|| anyhow::anyhow!("Cannot determine archive directory"))?
-        .join("archive");
-    if archive_dir.exists() {
-        let archived_specs = load_all_specs(&archive_dir)?;
-        specs.extend(archived_specs);
-    }
+    let specs = load_all_specs(specs_dir)?;
 
     // Exact match
     if let Some(spec) = specs.iter().find(|s| s.id == partial_id) {
@@ -1241,7 +1231,7 @@ labels:
     }
 
     #[test]
-    fn test_resolve_spec_finds_archived_specs() {
+    fn test_resolve_spec_excludes_archived_specs() {
         use tempfile::TempDir;
 
         let temp_dir = TempDir::new().unwrap();
@@ -1266,14 +1256,14 @@ labels:
         let archived_path = archive_dir.join("2026-01-24-001-abc.md");
         archived_spec.save(&archived_path).unwrap();
 
-        // Try to resolve the archived spec
-        let resolved = resolve_spec(&specs_dir, "2026-01-24-001-abc").unwrap();
-        assert_eq!(resolved.id, "2026-01-24-001-abc");
-        assert_eq!(resolved.frontmatter.status, SpecStatus::Completed);
+        // Try to resolve the archived spec - should fail
+        let result = resolve_spec(&specs_dir, "2026-01-24-001-abc");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Spec not found"));
     }
 
     #[test]
-    fn test_resolve_spec_finds_archived_by_partial_id() {
+    fn test_resolve_spec_excludes_archived_by_partial_id() {
         use tempfile::TempDir;
 
         let temp_dir = TempDir::new().unwrap();
@@ -1298,13 +1288,14 @@ labels:
         let archived_path = archive_dir.join("2026-01-24-002-def.md");
         archived_spec.save(&archived_path).unwrap();
 
-        // Try to resolve by suffix
-        let resolved = resolve_spec(&specs_dir, "def").unwrap();
-        assert_eq!(resolved.id, "2026-01-24-002-def");
+        // Try to resolve by suffix - should fail
+        let result = resolve_spec(&specs_dir, "def");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Spec not found"));
     }
 
     #[test]
-    fn test_resolve_spec_prioritizes_active_over_archived() {
+    fn test_resolve_spec_only_searches_active_specs() {
         use tempfile::TempDir;
 
         let temp_dir = TempDir::new().unwrap();
@@ -1343,9 +1334,63 @@ labels:
         let archived_path = archive_dir.join("2026-01-24-003-xyz.md");
         archived_spec.save(&archived_path).unwrap();
 
-        // Resolve should find the active one
+        // Resolve should find the active spec
         let resolved = resolve_spec(&specs_dir, "2026-01-24-003-ghi").unwrap();
         assert_eq!(resolved.id, "2026-01-24-003-ghi");
+        assert_eq!(resolved.frontmatter.status, SpecStatus::Pending);
+
+        // Archived spec should not be found
+        let result = resolve_spec(&specs_dir, "2026-01-24-003-xyz");
+        assert!(result.is_err());
+
+        // Short ID for archived spec should not be found
+        let result = resolve_spec(&specs_dir, "xyz");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_resolve_spec_short_id_no_ambiguity_with_archived() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path().join("specs");
+        let archive_dir = temp_dir.path().join("archive").join("2026-01-27");
+
+        // Create directory structure
+        fs::create_dir_all(&specs_dir).unwrap();
+        fs::create_dir_all(&archive_dir).unwrap();
+
+        // Create an active spec with short ID "2mk"
+        let active_spec = Spec {
+            id: "2026-01-30-00i-2mk".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                ..Default::default()
+            },
+            title: Some("Active spec".to_string()),
+            body: "# Active spec\n\nActive content.".to_string(),
+        };
+
+        let active_path = specs_dir.join("2026-01-30-00i-2mk.md");
+        active_spec.save(&active_path).unwrap();
+
+        // Create an archived spec with same short ID "2mk"
+        let archived_spec = Spec {
+            id: "2026-01-27-003-2mk".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                ..Default::default()
+            },
+            title: Some("Archived spec".to_string()),
+            body: "# Archived spec\n\nArchived content.".to_string(),
+        };
+
+        let archived_path = archive_dir.join("2026-01-27-003-2mk.md");
+        archived_spec.save(&archived_path).unwrap();
+
+        // Resolve using short ID should find only the active spec, no ambiguity
+        let resolved = resolve_spec(&specs_dir, "2mk").unwrap();
+        assert_eq!(resolved.id, "2026-01-30-00i-2mk");
         assert_eq!(resolved.frontmatter.status, SpecStatus::Pending);
     }
 
