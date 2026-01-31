@@ -1223,27 +1223,38 @@ fn cmd_work_chain_specific_ids(
             break;
         }
 
+        // Get fresh spec state from all_specs
+        let current_spec = all_specs
+            .iter()
+            .find(|s| s.id == spec.id)
+            .cloned()
+            .unwrap_or_else(|| spec.clone());
+
         // Check if spec is ready
-        if !spec.is_ready(&all_specs) && !options.force {
+        if !current_spec.is_ready(&all_specs) && !options.force {
             println!(
                 "{} Skipping {}: not ready (dependencies not satisfied)",
                 "⚠".yellow(),
-                spec.id
+                current_spec.id
             );
             skipped += 1;
             continue;
         }
 
         // Check if spec is already completed
-        if spec.frontmatter.status == SpecStatus::Completed && !options.force {
-            println!("{} Skipping {}: already completed", "⚠".yellow(), spec.id);
+        if current_spec.frontmatter.status == SpecStatus::Completed && !options.force {
+            println!(
+                "{} Skipping {}: already completed",
+                "⚠".yellow(),
+                current_spec.id
+            );
             skipped += 1;
             continue;
         }
 
         // Check if spec is cancelled
-        if spec.frontmatter.status == SpecStatus::Cancelled {
-            println!("{} Skipping {}: cancelled", "⚠".yellow(), spec.id);
+        if current_spec.frontmatter.status == SpecStatus::Cancelled {
+            println!("{} Skipping {}: cancelled", "⚠".yellow(), current_spec.id);
             skipped += 1;
             continue;
         }
@@ -1253,8 +1264,8 @@ fn cmd_work_chain_specific_ids(
             index + 1,
             total,
             "Working".cyan(),
-            spec.id,
-            spec.title.as_deref().unwrap_or("")
+            current_spec.id,
+            current_spec.title.as_deref().unwrap_or("")
         );
 
         let spec_start = Instant::now();
