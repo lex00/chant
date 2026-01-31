@@ -128,6 +128,110 @@ pub struct LintConfig {
     pub disable: Vec<String>,
 }
 
+/// Failure handling strategy for permanent failures
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OnPermanentFailure {
+    /// Skip the failed spec and continue watching others
+    #[default]
+    Skip,
+    /// Stop the watch command entirely
+    Stop,
+}
+
+/// Configuration for failure handling in watch command
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct FailureConfig {
+    /// Maximum number of retry attempts for transient errors
+    #[serde(default = "default_max_retries")]
+    pub max_retries: usize,
+    /// Delay in milliseconds before first retry
+    #[serde(default = "default_retry_delay_ms")]
+    pub retry_delay_ms: u64,
+    /// Multiplier for exponential backoff (must be >= 1.0)
+    #[serde(default = "default_backoff_multiplier")]
+    pub backoff_multiplier: f64,
+    /// Regex patterns for errors that should be retried
+    #[serde(default)]
+    pub retryable_patterns: Vec<String>,
+    /// Action to take on permanent failure
+    #[serde(default)]
+    pub on_permanent_failure: OnPermanentFailure,
+}
+
+fn default_max_retries() -> usize {
+    3
+}
+
+fn default_retry_delay_ms() -> u64 {
+    60_000 // 60 seconds
+}
+
+fn default_backoff_multiplier() -> f64 {
+    2.0
+}
+
+impl Default for FailureConfig {
+    fn default() -> Self {
+        Self {
+            max_retries: default_max_retries(),
+            retry_delay_ms: default_retry_delay_ms(),
+            backoff_multiplier: default_backoff_multiplier(),
+            retryable_patterns: vec![],
+            on_permanent_failure: OnPermanentFailure::default(),
+        }
+    }
+}
+
+/// Configuration for watch command behavior
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct WatchConfig {
+    /// Poll interval in milliseconds
+    #[serde(default = "default_poll_interval_ms")]
+    pub poll_interval_ms: u64,
+    /// Failure handling configuration
+    #[serde(default)]
+    pub failure: FailureConfig,
+}
+
+fn default_poll_interval_ms() -> u64 {
+    5000 // 5 seconds
+}
+
+impl Default for WatchConfig {
+    fn default() -> Self {
+        Self {
+            poll_interval_ms: default_poll_interval_ms(),
+            failure: FailureConfig::default(),
+        }
+    }
+}
+
+impl WatchConfig {
+    /// Validate watch configuration
+    pub fn validate(&self) -> Result<()> {
+        if self.poll_interval_ms == 0 {
+            anyhow::bail!("watch.poll_interval_ms must be greater than 0");
+        }
+
+        self.failure.validate()
+    }
+}
+
+impl FailureConfig {
+    /// Validate failure configuration
+    pub fn validate(&self) -> Result<()> {
+        if self.backoff_multiplier < 1.0 {
+            anyhow::bail!(
+                "watch.failure.backoff_multiplier must be >= 1.0, got {}",
+                self.backoff_multiplier
+            );
+        }
+
+        Ok(())
+    }
+}
+
 /// Enterprise configuration for derived frontmatter and validation
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct EnterpriseConfig {
@@ -197,6 +301,8 @@ pub struct Config {
     pub site: SiteConfig,
     #[serde(default)]
     pub lint: LintConfig,
+    #[serde(default)]
+    pub watch: WatchConfig,
 }
 
 /// Configuration for static site generation
@@ -595,7 +701,13 @@ impl Config {
         let (frontmatter, _body) = split_frontmatter(content);
         let frontmatter = frontmatter.context("Failed to extract frontmatter from config")?;
 
-        serde_yaml::from_str(&frontmatter).context("Failed to parse config frontmatter")
+        let config: Config =
+            serde_yaml::from_str(&frontmatter).context("Failed to parse config frontmatter")?;
+
+        // Validate watch config
+        config.watch.validate()?;
+
+        Ok(config)
     }
 
     /// Load merged configuration from global and project configs.
@@ -700,6 +812,7 @@ struct PartialConfig {
     pub validation: Option<OutputValidationConfig>,
     pub site: Option<SiteConfig>,
     pub lint: Option<LintConfig>,
+    pub watch: Option<WatchConfig>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -801,6 +914,8 @@ impl PartialConfig {
             site: project.site.or(self.site).unwrap_or_default(),
             // Lint config: project overrides global, or use default
             lint: project.lint.or(self.lint).unwrap_or_default(),
+            // Watch config: project overrides global, or use default
+            watch: project.watch.or(self.watch).unwrap_or_default(),
         }
     }
 }
@@ -1955,5 +2070,261 @@ lint:
         assert_eq!(config.lint.thresholds.complexity_criteria, 25);
         assert!(config.lint.disable.contains(&"project-rule".to_string()));
         assert!(!config.lint.disable.contains(&"global-rule".to_string()));
+    }
+
+    // =========================================================================
+    // WATCH CONFIG TESTS
+    // =========================================================================
+
+    #[test]
+    fn test_parse_watch_config_all_fields() {
+        let content = r#"---
+project:
+  name: test-project
+watch:
+  poll_interval_ms: 10000
+  failure:
+    max_retries: 5
+    retry_delay_ms: 30000
+    backoff_multiplier: 1.5
+    retryable_patterns:
+      - "network timeout"
+      - "connection refused"
+    on_permanent_failure: stop
+---
+"#;
+        let config = Config::parse(content).unwrap();
+
+        assert_eq!(config.watch.poll_interval_ms, 10000);
+        assert_eq!(config.watch.failure.max_retries, 5);
+        assert_eq!(config.watch.failure.retry_delay_ms, 30000);
+        assert_eq!(config.watch.failure.backoff_multiplier, 1.5);
+        assert_eq!(config.watch.failure.retryable_patterns.len(), 2);
+        assert!(config
+            .watch
+            .failure
+            .retryable_patterns
+            .contains(&"network timeout".to_string()));
+        assert_eq!(
+            config.watch.failure.on_permanent_failure,
+            OnPermanentFailure::Stop
+        );
+    }
+
+    #[test]
+    fn test_watch_config_defaults() {
+        let content = r#"---
+project:
+  name: test-project
+---
+"#;
+        let config = Config::parse(content).unwrap();
+
+        // Should have default values
+        assert_eq!(config.watch.poll_interval_ms, 5000);
+        assert_eq!(config.watch.failure.max_retries, 3);
+        assert_eq!(config.watch.failure.retry_delay_ms, 60000);
+        assert_eq!(config.watch.failure.backoff_multiplier, 2.0);
+        assert!(config.watch.failure.retryable_patterns.is_empty());
+        assert_eq!(
+            config.watch.failure.on_permanent_failure,
+            OnPermanentFailure::Skip
+        );
+    }
+
+    #[test]
+    fn test_parse_watch_config_missing_fields() {
+        let content = r#"---
+project:
+  name: test-project
+watch:
+  poll_interval_ms: 8000
+---
+"#;
+        let config = Config::parse(content).unwrap();
+
+        assert_eq!(config.watch.poll_interval_ms, 8000);
+        // Failure config should use defaults
+        assert_eq!(config.watch.failure.max_retries, 3);
+        assert_eq!(config.watch.failure.retry_delay_ms, 60000);
+        assert_eq!(config.watch.failure.backoff_multiplier, 2.0);
+    }
+
+    #[test]
+    fn test_parse_watch_config_on_permanent_failure_skip() {
+        let content = r#"---
+project:
+  name: test-project
+watch:
+  failure:
+    on_permanent_failure: skip
+---
+"#;
+        let config = Config::parse(content).unwrap();
+
+        assert_eq!(
+            config.watch.failure.on_permanent_failure,
+            OnPermanentFailure::Skip
+        );
+    }
+
+    #[test]
+    fn test_parse_watch_config_on_permanent_failure_stop() {
+        let content = r#"---
+project:
+  name: test-project
+watch:
+  failure:
+    on_permanent_failure: stop
+---
+"#;
+        let config = Config::parse(content).unwrap();
+
+        assert_eq!(
+            config.watch.failure.on_permanent_failure,
+            OnPermanentFailure::Stop
+        );
+    }
+
+    #[test]
+    fn test_parse_watch_config_invalid_on_permanent_failure() {
+        let content = r#"---
+project:
+  name: test-project
+watch:
+  failure:
+    on_permanent_failure: invalid_value
+---
+"#;
+        let result = Config::parse(content);
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("Failed to parse config frontmatter"));
+    }
+
+    #[test]
+    fn test_watch_config_validation_negative_interval() {
+        let content = r#"---
+project:
+  name: test-project
+watch:
+  poll_interval_ms: 0
+---
+"#;
+        let result = Config::parse(content);
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("poll_interval_ms must be greater than 0"));
+    }
+
+    #[test]
+    fn test_watch_config_validation_invalid_backoff_multiplier() {
+        let content = r#"---
+project:
+  name: test-project
+watch:
+  failure:
+    backoff_multiplier: 0.5
+---
+"#;
+        let result = Config::parse(content);
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("backoff_multiplier must be >= 1.0"));
+    }
+
+    #[test]
+    fn test_watch_config_empty_retryable_patterns() {
+        let content = r#"---
+project:
+  name: test-project
+watch:
+  failure:
+    retryable_patterns: []
+---
+"#;
+        let config = Config::parse(content).unwrap();
+
+        // Empty patterns list should be valid
+        assert!(config.watch.failure.retryable_patterns.is_empty());
+    }
+
+    #[test]
+    fn test_load_merged_watch_config() {
+        let tmp = TempDir::new().unwrap();
+        let global_path = tmp.path().join("global.md");
+        let project_path = tmp.path().join("project.md");
+
+        fs::write(
+            &global_path,
+            r#"---
+watch:
+  poll_interval_ms: 15000
+  failure:
+    max_retries: 10
+---
+"#,
+        )
+        .unwrap();
+
+        fs::write(
+            &project_path,
+            r#"---
+project:
+  name: my-project
+---
+"#,
+        )
+        .unwrap();
+
+        let config = Config::load_merged_from(Some(&global_path), &project_path, None).unwrap();
+
+        // Global watch config is used when project doesn't specify
+        assert_eq!(config.watch.poll_interval_ms, 15000);
+        assert_eq!(config.watch.failure.max_retries, 10);
+    }
+
+    #[test]
+    fn test_load_merged_watch_config_project_overrides() {
+        let tmp = TempDir::new().unwrap();
+        let global_path = tmp.path().join("global.md");
+        let project_path = tmp.path().join("project.md");
+
+        fs::write(
+            &global_path,
+            r#"---
+watch:
+  poll_interval_ms: 15000
+  failure:
+    max_retries: 10
+---
+"#,
+        )
+        .unwrap();
+
+        fs::write(
+            &project_path,
+            r#"---
+project:
+  name: my-project
+watch:
+  poll_interval_ms: 3000
+  failure:
+    max_retries: 2
+    on_permanent_failure: stop
+---
+"#,
+        )
+        .unwrap();
+
+        let config = Config::load_merged_from(Some(&global_path), &project_path, None).unwrap();
+
+        // Project watch config overrides global
+        assert_eq!(config.watch.poll_interval_ms, 3000);
+        assert_eq!(config.watch.failure.max_retries, 2);
+        assert_eq!(
+            config.watch.failure.on_permanent_failure,
+            OnPermanentFailure::Stop
+        );
     }
 }

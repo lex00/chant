@@ -432,6 +432,7 @@ mod tests {
             validation: crate::config::OutputValidationConfig::default(),
             site: crate::config::SiteConfig::default(),
             lint: crate::config::LintConfig::default(),
+            watch: crate::config::WatchConfig::default(),
         }
     }
 
