@@ -1157,4 +1157,217 @@ mod tests {
         assert!(diagnostics.iter().all(|d| d.rule == LintRule::Complexity));
         assert!(diagnostics.iter().all(|d| d.severity == Severity::Warning));
     }
+
+    #[test]
+    fn test_validate_spec_coupling_no_references() {
+        // Create a regular spec with no spec ID references
+        let spec = Spec {
+            id: "2026-01-30-001-abc".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "code".to_string(),
+                ..Default::default()
+            },
+            title: Some("Test Spec".to_string()),
+            body: "This is a spec without any spec ID references.".to_string(),
+        };
+
+        let diagnostics = validate_spec_coupling(&spec);
+
+        assert_eq!(
+            diagnostics.len(),
+            0,
+            "Should have no diagnostics when there are no spec references"
+        );
+    }
+
+    #[test]
+    fn test_validate_spec_coupling_driver_excluded() {
+        // Create a driver spec that references member specs
+        let spec = Spec {
+            id: "2026-01-30-002-def".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "driver".to_string(),
+                ..Default::default()
+            },
+            title: Some("Test Driver".to_string()),
+            body: "This driver references 2026-01-30-002-def.1 and 2026-01-30-002-def.2."
+                .to_string(),
+        };
+
+        let diagnostics = validate_spec_coupling(&spec);
+
+        assert_eq!(
+            diagnostics.len(),
+            0,
+            "Driver specs should be excluded from coupling check"
+        );
+    }
+
+    #[test]
+    fn test_validate_spec_coupling_group_excluded() {
+        // Create a group spec that references other specs
+        let spec = Spec {
+            id: "2026-01-30-003-ghi".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "group".to_string(),
+                ..Default::default()
+            },
+            title: Some("Test Group".to_string()),
+            body: "This group references 2026-01-30-003-ghi.1 and 2026-01-30-004-jkl.".to_string(),
+        };
+
+        let diagnostics = validate_spec_coupling(&spec);
+
+        assert_eq!(
+            diagnostics.len(),
+            0,
+            "Group specs should be excluded from coupling check"
+        );
+    }
+
+    #[test]
+    fn test_validate_spec_coupling_regular_spec_with_reference() {
+        // Create a regular spec that references another spec ID
+        let spec = Spec {
+            id: "2026-01-30-004-jkl".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "code".to_string(),
+                ..Default::default()
+            },
+            title: Some("Test Spec".to_string()),
+            body: "This spec depends on 2026-01-30-003-ghi for completion.".to_string(),
+        };
+
+        let diagnostics = validate_spec_coupling(&spec);
+
+        assert_eq!(
+            diagnostics.len(),
+            1,
+            "Should have one diagnostic for spec ID reference"
+        );
+        assert_eq!(diagnostics[0].rule, LintRule::Coupling);
+        assert_eq!(diagnostics[0].severity, Severity::Warning);
+        assert!(
+            diagnostics[0].message.contains("2026-01-30-003-ghi"),
+            "Message should mention the referenced spec ID"
+        );
+        assert!(
+            diagnostics[0].message.contains("use depends_on"),
+            "Message should suggest using depends_on"
+        );
+    }
+
+    #[test]
+    fn test_validate_spec_coupling_self_reference_excluded() {
+        // Create a spec that references its own ID
+        let spec = Spec {
+            id: "2026-01-30-005-mno".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "code".to_string(),
+                ..Default::default()
+            },
+            title: Some("Test Spec".to_string()),
+            body: "This spec is 2026-01-30-005-mno and references itself.".to_string(),
+        };
+
+        let diagnostics = validate_spec_coupling(&spec);
+
+        assert_eq!(
+            diagnostics.len(),
+            0,
+            "Self-references should be excluded from coupling check"
+        );
+    }
+
+    #[test]
+    fn test_validate_spec_coupling_code_block_excluded() {
+        // Create a spec with spec IDs in code blocks
+        let spec = Spec {
+            id: "2026-01-30-006-pqr".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "code".to_string(),
+                ..Default::default()
+            },
+            title: Some("Test Spec".to_string()),
+            body: r#"
+This spec shows code examples:
+
+```bash
+chant work 2026-01-30-003-ghi
+```
+
+And another example:
+```
+2026-01-30-004-jkl
+```
+
+No coupling issues here.
+"#
+            .to_string(),
+        };
+
+        let diagnostics = validate_spec_coupling(&spec);
+
+        assert_eq!(
+            diagnostics.len(),
+            0,
+            "Spec IDs in code blocks should be excluded from coupling check"
+        );
+    }
+
+    #[test]
+    fn test_validate_spec_coupling_member_spec_sibling_warning() {
+        // Create a member spec that references a sibling member
+        let spec = Spec {
+            id: "2026-01-30-007-stu.1".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "code".to_string(),
+                ..Default::default()
+            },
+            title: Some("Test Member".to_string()),
+            body: "This member depends on 2026-01-30-007-stu.2 being completed.".to_string(),
+        };
+
+        let diagnostics = validate_spec_coupling(&spec);
+
+        assert_eq!(
+            diagnostics.len(),
+            1,
+            "Should have one diagnostic for sibling reference"
+        );
+        assert_eq!(diagnostics[0].rule, LintRule::Coupling);
+        assert_eq!(diagnostics[0].severity, Severity::Warning);
+        assert!(
+            diagnostics[0].message.contains("2026-01-30-007-stu.2"),
+            "Message should mention the sibling spec ID"
+        );
+        assert!(
+            diagnostics[0]
+                .message
+                .contains("member specs should be independent"),
+            "Message should mention member independence"
+        );
+    }
+
+    #[test]
+    fn test_validate_spec_coupling_member_spec_non_sibling_ok() {
+        // Create a member spec that references a non-sibling spec (different driver)
+        let spec = Spec {
+            id: "2026-01-30-008-vwx.1".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "code".to_string(),
+                ..Default::default()
+            },
+            title: Some("Test Member".to_string()),
+            body: "This member references 2026-01-30-009-yza which is not a sibling.".to_string(),
+        };
+
+        let diagnostics = validate_spec_coupling(&spec);
+
+        assert_eq!(
+            diagnostics.len(),
+            0,
+            "Member specs should be allowed to reference non-sibling specs"
+        );
+    }
 }
