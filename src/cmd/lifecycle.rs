@@ -702,51 +702,27 @@ fn verify_target_files(spec: &Spec) -> Result<TargetFilesVerification> {
 
 /// Format a warning message when target files don't match actual changes
 fn format_target_files_warning(spec_id: &str, verification: &TargetFilesVerification) -> String {
-    let mut msg = format!(
-        "Warning: Spec {} has target_files that don't match actual changes\n\n",
-        spec_id
-    );
+    // Combine all predicted files (both with and without changes)
+    let mut all_predicted = verification.files_without_changes.clone();
+    all_predicted.extend(verification.files_with_changes.clone());
+    let predicted = all_predicted.join(", ");
 
-    // Show which declared target_files had no changes
-    msg.push_str("Declared target_files (no changes detected):\n");
-    for file in &verification.files_without_changes {
-        msg.push_str(&format!("  - {}\n", file));
-    }
-
-    // Show which declared target_files DID have changes (if any)
-    if !verification.files_with_changes.is_empty() {
-        msg.push_str("\nDeclared target_files (with changes):\n");
-        for file in &verification.files_with_changes {
-            msg.push_str(&format!("  - {}\n", file));
-        }
-    }
-
-    // Show all actual files changed
-    if !verification.actual_files_changed.is_empty() {
-        let total_actual_additions: i64 = verification
+    // Format actual files list
+    let actual = if verification.actual_files_changed.is_empty() {
+        "(none)".to_string()
+    } else {
+        verification
             .actual_files_changed
             .iter()
-            .map(|(_, net)| net)
-            .sum();
-        msg.push_str(&format!(
-            "\nActual files changed (net additions: {}):\n",
-            total_actual_additions
-        ));
-        for (file, net_additions) in &verification.actual_files_changed {
-            let sign = if *net_additions >= 0 { "+" } else { "" };
-            msg.push_str(&format!("  - {} ({}{} lines)\n", file, sign, net_additions));
-        }
-    }
+            .map(|(f, _)| f.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
 
-    msg.push_str("\nThis may indicate:\n");
-    msg.push_str("  - target_files was not updated after implementation\n");
-    msg.push_str("  - File was renamed or moved\n");
-    msg.push_str("  - Implementation went to different files than planned\n");
-    msg.push_str("  - Merge conflict resolved incorrectly\n");
-    msg.push_str("  - Implementation was lost during merge\n");
-
-    msg.push_str("\nTo fix: Update target_files in the spec, or ignore if intentional.\n");
-    msg
+    format!(
+        "Note: Spec {} predicted [{}] but changed [{}]\n      (Prediction mismatch - implementation is fine)\n",
+        spec_id, predicted, actual
+    )
 }
 
 /// Move a file using git mv, falling back to fs::rename if not in a git repo or if no_stage is true
@@ -2517,12 +2493,10 @@ mod tests {
         let warning = format_target_files_warning("2026-01-27-001-abc", &verification);
 
         assert!(warning.contains("2026-01-27-001-abc"));
-        assert!(warning.contains("don't match actual changes"));
-        assert!(warning.contains("Declared target_files (no changes detected)"));
+        assert!(warning.contains("predicted"));
         assert!(warning.contains("src/test.rs"));
         assert!(warning.contains("src/main.rs"));
-        assert!(warning.contains("target_files was not updated after implementation"));
-        assert!(warning.contains("To fix: Update target_files in the spec"));
+        assert!(warning.contains("Prediction mismatch"));
     }
 
     #[test]
@@ -2555,25 +2529,17 @@ mod tests {
 
         let warning = format_target_files_warning("2026-01-29-00a-qza", &verification);
 
-        // Check headline is clear about mismatch
-        assert!(warning.contains("don't match actual changes"));
+        // Check spec ID is present
+        assert!(warning.contains("2026-01-29-00a-qza"));
 
-        // Check declared target_files section
-        assert!(warning.contains("Declared target_files (no changes detected)"));
+        // Check predicted file is shown
         assert!(warning.contains("src/cmd/finalize.rs"));
 
-        // Check actual files changed section
-        assert!(warning.contains("Actual files changed (net additions: 118)"));
-        assert!(warning.contains("src/commands/finalize.rs (+128 lines)"));
-        assert!(warning.contains("tests/finalize_test.rs (-10 lines)"));
+        // Check actual files changed are shown
+        assert!(warning.contains("src/commands/finalize.rs"));
+        assert!(warning.contains("tests/finalize_test.rs"));
 
-        // Check benign causes are first
-        assert!(warning.contains("target_files was not updated after implementation"));
-        let pos_not_updated = warning.find("target_files was not updated").unwrap();
-        let pos_merge_conflict = warning.find("Merge conflict").unwrap();
-        assert!(pos_not_updated < pos_merge_conflict);
-
-        // Check for actionable suggestion
-        assert!(warning.contains("To fix: Update target_files in the spec"));
+        // Check reassuring message
+        assert!(warning.contains("Prediction mismatch"));
     }
 }
