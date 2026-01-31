@@ -894,6 +894,113 @@ fn read_spec_from_branch(spec_id: &str, branch: &str) -> Result<Spec> {
     Spec::parse(spec_id, &content)
 }
 
+/// Check if a spec is completed (ready for finalization).
+///
+/// A spec is considered completed if:
+/// - Status is `in_progress`
+/// - All acceptance criteria checkboxes are checked (`[x]`)
+/// - Worktree is clean (no uncommitted changes including untracked files)
+///
+/// Edge cases:
+/// - Spec with no acceptance criteria: Treated as completed if worktree clean
+/// - Spec already finalized: Returns false (status not `in_progress`)
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Spec file is unreadable
+/// - Worktree is inaccessible (git status fails)
+pub fn is_completed(spec_id: &str) -> Result<bool> {
+    // Load the spec
+    let spec_path = Path::new(".chant/specs").join(format!("{}.md", spec_id));
+    let spec = Spec::load(&spec_path)
+        .with_context(|| format!("Failed to read spec file: {}", spec_path.display()))?;
+
+    // Only in_progress specs can be completed
+    if spec.frontmatter.status != SpecStatus::InProgress {
+        return Ok(false);
+    }
+
+    // Check if all criteria are checked
+    let unchecked_count = spec.count_unchecked_checkboxes();
+    if unchecked_count > 0 {
+        return Ok(false);
+    }
+
+    // Check if worktree is clean
+    is_worktree_clean(spec_id)
+}
+
+/// Check if a spec has failed.
+///
+/// A spec is considered failed if:
+/// - Status is `in_progress`
+/// - Agent has exited (no lock file present)
+/// - Some acceptance criteria are still incomplete
+///
+/// Edge cases:
+/// - Agent still running: Returns false
+/// - Spec already finalized/failed: Returns false (status not `in_progress`)
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Spec file is unreadable
+pub fn is_failed(spec_id: &str) -> Result<bool> {
+    // Load the spec
+    let spec_path = Path::new(".chant/specs").join(format!("{}.md", spec_id));
+    let spec = Spec::load(&spec_path)
+        .with_context(|| format!("Failed to read spec file: {}", spec_path.display()))?;
+
+    // Only in_progress specs can fail
+    if spec.frontmatter.status != SpecStatus::InProgress {
+        return Ok(false);
+    }
+
+    // Check if agent is still running (lock file exists)
+    let lock_file = Path::new(crate::paths::LOCKS_DIR).join(format!("{}.lock", spec_id));
+    if lock_file.exists() {
+        return Ok(false);
+    }
+
+    // Check if criteria are incomplete
+    let unchecked_count = spec.count_unchecked_checkboxes();
+    Ok(unchecked_count > 0)
+}
+
+/// Check if worktree for a spec is clean (no uncommitted changes).
+///
+/// Uses `git status --porcelain` to check for uncommitted changes.
+/// Untracked files count as dirty for safety.
+///
+/// # Errors
+///
+/// Returns an error if git status command fails or worktree is inaccessible.
+fn is_worktree_clean(spec_id: &str) -> Result<bool> {
+    let worktree_path = Path::new("/tmp").join(format!("chant-{}", spec_id));
+
+    // If worktree doesn't exist, check in current directory
+    let check_path = if worktree_path.exists() {
+        &worktree_path
+    } else {
+        Path::new(".")
+    };
+
+    let output = Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(check_path)
+        .output()
+        .with_context(|| format!("Failed to check git status in {:?}", check_path))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("git status failed: {}", stderr);
+    }
+
+    let status_output = String::from_utf8_lossy(&output.stdout);
+    Ok(status_output.trim().is_empty())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
