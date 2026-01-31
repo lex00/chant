@@ -25,6 +25,7 @@ pub mod site;
 pub mod spec;
 pub mod template;
 pub mod verify;
+pub mod watch;
 pub mod work;
 pub mod worktree;
 
