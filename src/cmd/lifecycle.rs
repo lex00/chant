@@ -684,6 +684,7 @@ fn parse_member_specs_from_output(output: &str) -> Result<Vec<MemberSpec>> {
     let mut current_member: Option<(String, String, Vec<String>, Vec<usize>)> = None;
     let mut collecting_files = false;
     let mut collecting_dependencies = false;
+    let mut collecting_requires = false;
     let mut in_code_block = false;
 
     for line in output.lines() {
@@ -705,6 +706,7 @@ fn parse_member_specs_from_output(output: &str) -> Result<Vec<MemberSpec>> {
                 current_member = Some((title, String::new(), Vec::new(), Vec::new()));
                 collecting_files = false;
                 collecting_dependencies = false;
+                collecting_requires = false;
             }
         } else if current_member.is_some() {
             // Check for code block markers
@@ -721,6 +723,7 @@ fn parse_member_specs_from_output(output: &str) -> Result<Vec<MemberSpec>> {
             if line.contains("**Affected Files:**") || line.contains("Affected Files:") {
                 collecting_files = true;
                 collecting_dependencies = false;
+                collecting_requires = false;
                 continue;
             }
 
@@ -730,12 +733,21 @@ fn parse_member_specs_from_output(output: &str) -> Result<Vec<MemberSpec>> {
             {
                 collecting_dependencies = true;
                 collecting_files = false;
+                collecting_requires = false;
                 // Parse dependencies from same line if present
                 if let Some(deps_part) = line.split(':').nth(1) {
                     if let Some((_, _, _, ref mut deps)) = &mut current_member {
                         parse_dependencies_from_text(deps_part, deps);
                     }
                 }
+                continue;
+            }
+
+            // Check for "### Requires" header
+            if line.contains("### Requires") {
+                collecting_requires = true;
+                collecting_files = false;
+                collecting_dependencies = false;
                 continue;
             }
 
@@ -768,10 +780,23 @@ fn parse_member_specs_from_output(output: &str) -> Result<Vec<MemberSpec>> {
                 if line.starts_with("##") || line.trim().is_empty() {
                     collecting_dependencies = false;
                 }
+            } else if collecting_requires {
+                // Parse member references from Requires section
+                // Stop if we hit another section
+                if line.starts_with("###") || line.starts_with("##") {
+                    collecting_requires = false;
+                    // Don't continue - let the line be processed normally
+                } else if !line.trim().is_empty() {
+                    // Parse lines like "- Uses X from Member N" or "- Requires Member N"
+                    if let Some((_, _, _, ref mut deps)) = &mut current_member {
+                        parse_dependencies_from_text(line, deps);
+                    }
+                    continue;
+                }
             } else if !in_code_block {
-                // Skip "Provides:" and "Requires:" sections - don't include in description
-                if line.contains("### Provides") || line.contains("### Requires") {
-                    // Skip this section
+                // Skip "Provides:" section - don't include in description
+                if line.contains("### Provides") {
+                    // Skip this section header
                     continue;
                 }
                 // Preserve ### headers and all content except special sections
@@ -3257,5 +3282,109 @@ mod tests {
 
         // Check reassuring message
         assert!(warning.contains("Prediction mismatch"));
+    }
+
+    #[test]
+    fn test_parse_member_specs_requires_section() {
+        let output = r#"
+## Member 1: Base Configuration
+
+This member implements the base configuration system.
+
+### Provides
+- Config type
+- Default settings
+
+**Affected Files:**
+- src/config.rs
+
+## Member 2: Feature A
+
+This member implements feature A.
+
+### Requires
+- Uses `Config` from Member 1
+
+**Affected Files:**
+- src/feature_a.rs
+
+## Member 3: Feature B
+
+This member implements feature B.
+
+### Requires
+- Requires Member 1 for configuration
+- Uses types from Member 2
+
+**Affected Files:**
+- src/feature_b.rs
+
+## Member 4: Integration
+
+This member integrates all features.
+
+### Requires
+- Uses Member 2 and Member 3
+
+**Affected Files:**
+- src/integration.rs
+"#;
+
+        let result = parse_member_specs_from_output(output);
+        assert!(result.is_ok());
+
+        let members = result.unwrap();
+        assert_eq!(members.len(), 4);
+
+        // Member 1 should have no dependencies
+        assert_eq!(members[0].dependencies.len(), 0);
+
+        // Member 2 should depend on Member 1
+        assert_eq!(members[1].dependencies, vec![1]);
+
+        // Member 3 should depend on Members 1 and 2
+        let mut deps = members[2].dependencies.clone();
+        deps.sort();
+        assert_eq!(deps, vec![1, 2]);
+
+        // Member 4 should depend on Members 2 and 3
+        let mut deps = members[3].dependencies.clone();
+        deps.sort();
+        assert_eq!(deps, vec![2, 3]);
+    }
+
+    #[test]
+    fn test_parse_member_specs_preserves_dependencies_fallback() {
+        let output = r#"
+## Member 1: Base
+
+Base implementation.
+
+**Dependencies:** None
+
+**Affected Files:**
+- src/base.rs
+
+## Member 2: Feature
+
+Feature implementation.
+
+**Dependencies:** Member 1
+
+**Affected Files:**
+- src/feature.rs
+"#;
+
+        let result = parse_member_specs_from_output(output);
+        assert!(result.is_ok());
+
+        let members = result.unwrap();
+        assert_eq!(members.len(), 2);
+
+        // Member 1 should have no dependencies
+        assert_eq!(members[0].dependencies.len(), 0);
+
+        // Member 2 should depend on Member 1 (from **Dependencies:** section)
+        assert_eq!(members[1].dependencies, vec![1]);
     }
 }
