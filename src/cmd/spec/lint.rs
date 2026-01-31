@@ -46,6 +46,7 @@ pub enum LintRule {
 
 impl LintRule {
     /// Returns the string representation of the lint rule
+    #[allow(dead_code)]
     pub fn as_str(&self) -> &'static str {
         match self {
             LintRule::Complexity => "complexity",
@@ -75,6 +76,7 @@ pub enum Severity {
 #[derive(Debug, Clone)]
 pub struct LintDiagnostic {
     /// The spec ID this diagnostic applies to
+    #[allow(dead_code)]
     pub spec_id: String,
     /// The lint rule that triggered this diagnostic
     pub rule: LintRule,
@@ -118,6 +120,7 @@ impl LintDiagnostic {
 
 /// Complete report from linting operation
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct LintReport {
     /// All diagnostics found during linting
     pub diagnostics: Vec<LintDiagnostic>,
@@ -133,6 +136,7 @@ pub struct LintReport {
 
 impl LintReport {
     /// Check if the report has any errors
+    #[allow(dead_code)]
     pub fn has_errors(&self) -> bool {
         self.diagnostics
             .iter()
@@ -140,6 +144,7 @@ impl LintReport {
     }
 
     /// Check if the report has any warnings
+    #[allow(dead_code)]
     pub fn has_warnings(&self) -> bool {
         self.diagnostics
             .iter()
@@ -151,58 +156,72 @@ impl LintReport {
 // VALIDATION THRESHOLDS
 // ============================================================================
 
-/// Thresholds for spec complexity warnings
-const COMPLEXITY_THRESHOLD_CRITERIA: usize = 5;
-const COMPLEXITY_THRESHOLD_FILES: usize = 5;
-const COMPLEXITY_THRESHOLD_WORDS: usize = 500;
-
 /// Regex pattern for spec IDs: YYYY-MM-DD-XXX-abc with optional .N suffix
 const SPEC_ID_PATTERN: &str = r"\b\d{4}-\d{2}-\d{2}-[0-9a-z]{3}-[0-9a-z]{3}(?:\.\d+)?\b";
-
-/// Thresholds for "simple" spec detection (model waste)
-const SIMPLE_THRESHOLD_CRITERIA: usize = 3;
-const SIMPLE_THRESHOLD_FILES: usize = 2;
-const SIMPLE_THRESHOLD_WORDS: usize = 200;
 
 // ============================================================================
 // VALIDATION HELPERS
 // ============================================================================
 
-/// Validate spec complexity and return warnings.
+/// Validate spec complexity and return diagnostics.
 /// Detects specs that may be too complex for haiku execution.
-pub fn validate_spec_complexity(spec: &Spec) -> Vec<String> {
-    let mut warnings = Vec::new();
+pub fn validate_spec_complexity(
+    spec: &Spec,
+    thresholds: &chant::config::LintThresholds,
+) -> Vec<LintDiagnostic> {
+    let mut diagnostics = Vec::new();
 
     // Count total acceptance criteria
     let criteria_count = spec.count_total_checkboxes();
-    if criteria_count > COMPLEXITY_THRESHOLD_CRITERIA {
-        warnings.push(format!(
-            "Spec has {} acceptance criteria (>{}) - consider splitting for haiku",
-            criteria_count, COMPLEXITY_THRESHOLD_CRITERIA
-        ));
+    if criteria_count > thresholds.complexity_criteria {
+        diagnostics.push(
+            LintDiagnostic::warning(
+                spec.id.clone(),
+                LintRule::Complexity,
+                format!(
+                    "Spec has {} acceptance criteria (>{}) - consider splitting for haiku",
+                    criteria_count, thresholds.complexity_criteria
+                ),
+            )
+            .with_suggestion(format!("Consider using 'chant split {}'", spec.id)),
+        );
     }
 
     // Count target files
     if let Some(files) = &spec.frontmatter.target_files {
-        if files.len() > COMPLEXITY_THRESHOLD_FILES {
-            warnings.push(format!(
-                "Spec touches {} files (>{}) - consider splitting",
-                files.len(),
-                COMPLEXITY_THRESHOLD_FILES
-            ));
+        if files.len() > thresholds.complexity_files {
+            diagnostics.push(
+                LintDiagnostic::warning(
+                    spec.id.clone(),
+                    LintRule::Complexity,
+                    format!(
+                        "Spec touches {} files (>{}) - consider splitting",
+                        files.len(),
+                        thresholds.complexity_files
+                    ),
+                )
+                .with_suggestion(format!("Consider using 'chant split {}'", spec.id)),
+            );
         }
     }
 
     // Count words in body
     let word_count = spec.body.split_whitespace().count();
-    if word_count > COMPLEXITY_THRESHOLD_WORDS {
-        warnings.push(format!(
-            "Spec description is {} words (>{}) - may be too complex for haiku",
-            word_count, COMPLEXITY_THRESHOLD_WORDS
-        ));
+    if word_count > thresholds.complexity_words {
+        diagnostics.push(
+            LintDiagnostic::warning(
+                spec.id.clone(),
+                LintRule::Complexity,
+                format!(
+                    "Spec description is {} words (>{}) - may be too complex for haiku",
+                    word_count, thresholds.complexity_words
+                ),
+            )
+            .with_suggestion(format!("Consider using 'chant split {}'", spec.id)),
+        );
     }
 
-    warnings
+    diagnostics
 }
 
 /// Validate spec for coupling - detect references to other spec IDs in body text.
@@ -212,20 +231,20 @@ pub fn validate_spec_complexity(spec: &Spec) -> Vec<String> {
 /// - Drivers (type: driver/group): excluded from coupling check entirely
 /// - Member specs (.1, .2, etc): warned only for sibling references (same driver, different member)
 /// - Regular specs: warned for any spec ID reference
-pub fn validate_spec_coupling(spec: &Spec) -> Vec<String> {
+pub fn validate_spec_coupling(spec: &Spec) -> Vec<LintDiagnostic> {
     use regex::Regex;
 
-    let mut warnings = Vec::new();
+    let mut diagnostics = Vec::new();
 
     // Drivers are allowed to reference their members - skip check entirely
     if spec.frontmatter.r#type == "driver" || spec.frontmatter.r#type == "group" {
-        return warnings;
+        return diagnostics;
     }
 
     // Build regex for spec ID pattern
     let re = match Regex::new(SPEC_ID_PATTERN) {
         Ok(r) => r,
-        Err(_) => return warnings,
+        Err(_) => return diagnostics,
     };
 
     // Remove code blocks from body before searching
@@ -264,23 +283,40 @@ pub fn validate_spec_coupling(spec: &Spec) -> Vec<String> {
 
         if !sibling_refs.is_empty() {
             let ids_str = sibling_refs.join(", ");
-            warnings.push(format!(
-                "Spec references sibling spec(s): {} - member specs should be independent",
-                ids_str
-            ));
+            diagnostics.push(
+                LintDiagnostic::warning(
+                    spec.id.clone(),
+                    LintRule::Coupling,
+                    format!(
+                        "Spec references sibling spec(s): {} - member specs should be independent",
+                        ids_str
+                    ),
+                )
+                .with_suggestion(
+                    "Use depends_on for dependencies instead of referencing spec IDs in the body"
+                        .to_string(),
+                ),
+            );
         }
     } else {
         // Regular spec - warn on any spec ID reference
         if !referenced_ids.is_empty() {
             let ids_str = referenced_ids.join(", ");
-            warnings.push(format!(
-                "Spec references other spec ID(s) in body: {} - use depends_on for dependencies",
-                ids_str
-            ));
+            diagnostics.push(
+                LintDiagnostic::warning(
+                    spec.id.clone(),
+                    LintRule::Coupling,
+                    format!(
+                        "Spec references other spec ID(s) in body: {} - use depends_on for dependencies",
+                        ids_str
+                    ),
+                )
+                .with_suggestion("Use depends_on for dependencies instead of referencing spec IDs in the body".to_string()),
+            );
         }
     }
 
-    warnings
+    diagnostics
 }
 
 /// Remove code blocks from text (content between ``` markers)
@@ -304,8 +340,8 @@ fn remove_code_blocks(text: &str) -> String {
 }
 
 /// Validate approval schema - check for consistency in approval fields.
-pub fn validate_approval_schema(spec: &Spec) -> Vec<String> {
-    let mut warnings = Vec::new();
+pub fn validate_approval_schema(spec: &Spec) -> Vec<LintDiagnostic> {
+    let mut diagnostics = Vec::new();
 
     if let Some(ref approval) = spec.frontmatter.approval {
         // If approved or rejected, should have 'by' and 'at' fields
@@ -313,50 +349,66 @@ pub fn validate_approval_schema(spec: &Spec) -> Vec<String> {
             || approval.status == ApprovalStatus::Rejected
         {
             if approval.by.is_none() {
-                warnings.push(format!(
-                    "Approval status is {:?} but 'by' field is missing",
-                    approval.status
+                diagnostics.push(LintDiagnostic::error(
+                    spec.id.clone(),
+                    LintRule::Approval,
+                    format!(
+                        "Approval status is {:?} but 'by' field is missing",
+                        approval.status
+                    ),
                 ));
             }
             if approval.at.is_none() {
-                warnings.push(format!(
-                    "Approval status is {:?} but 'at' timestamp is missing",
-                    approval.status
+                diagnostics.push(LintDiagnostic::error(
+                    spec.id.clone(),
+                    LintRule::Approval,
+                    format!(
+                        "Approval status is {:?} but 'at' timestamp is missing",
+                        approval.status
+                    ),
                 ));
             }
         }
 
         // If 'by' is set but status is still pending, that's inconsistent
         if approval.status == ApprovalStatus::Pending && approval.by.is_some() {
-            warnings.push("Approval has 'by' field set but status is still 'pending'".to_string());
+            diagnostics.push(LintDiagnostic::error(
+                spec.id.clone(),
+                LintRule::Approval,
+                "Approval has 'by' field set but status is still 'pending'".to_string(),
+            ));
         }
     }
 
-    warnings
+    diagnostics
 }
 
 /// Validate output schema for completed specs.
 /// If a spec has output_schema defined and is completed, check that the agent log
 /// contains valid JSON matching the schema.
-pub fn validate_output_schema(spec: &Spec) -> Vec<String> {
-    let mut warnings = Vec::new();
+pub fn validate_output_schema(spec: &Spec) -> Vec<LintDiagnostic> {
+    let mut diagnostics = Vec::new();
 
     // Only validate completed specs with output_schema defined
     if spec.frontmatter.status != SpecStatus::Completed {
-        return warnings;
+        return diagnostics;
     }
 
     let schema_path_str = match &spec.frontmatter.output_schema {
         Some(path) => path,
-        None => return warnings,
+        None => return diagnostics,
     };
 
     let schema_path = Path::new(schema_path_str);
 
     // Check if schema file exists
     if !schema_path.exists() {
-        warnings.push(format!("Output schema file not found: {}", schema_path_str));
-        return warnings;
+        diagnostics.push(LintDiagnostic::error(
+            spec.id.clone(),
+            LintRule::Output,
+            format!("Output schema file not found: {}", schema_path_str),
+        ));
+        return diagnostics;
     }
 
     // Check if log file exists
@@ -364,9 +416,10 @@ pub fn validate_output_schema(spec: &Spec) -> Vec<String> {
     match validation::validate_spec_output_from_log(&spec.id, schema_path, &logs_dir) {
         Ok(Some(result)) => {
             if !result.is_valid {
-                warnings.push(format!(
-                    "Output validation failed: {}",
-                    result.errors.join("; ")
+                diagnostics.push(LintDiagnostic::error(
+                    spec.id.clone(),
+                    LintRule::Output,
+                    format!("Output validation failed: {}", result.errors.join("; ")),
                 ));
             }
         }
@@ -375,33 +428,40 @@ pub fn validate_output_schema(spec: &Spec) -> Vec<String> {
             // Don't warn since completion may have been set manually or from archive
         }
         Err(e) => {
-            warnings.push(format!("Failed to validate output: {}", e));
+            diagnostics.push(LintDiagnostic::error(
+                spec.id.clone(),
+                LintRule::Output,
+                format!("Failed to validate output: {}", e),
+            ));
         }
     }
 
-    warnings
+    diagnostics
 }
 
 /// Validate model usage - warn when expensive models are used on simple specs.
 /// Haiku should be used for straightforward specs; opus/sonnet for complex work.
-pub fn validate_model_waste(spec: &Spec) -> Vec<String> {
-    let mut warnings = Vec::new();
+pub fn validate_model_waste(
+    spec: &Spec,
+    thresholds: &chant::config::LintThresholds,
+) -> Vec<LintDiagnostic> {
+    let mut diagnostics = Vec::new();
 
     // Only check if model is explicitly set to opus or sonnet
     let model = match &spec.frontmatter.model {
         Some(m) => m.to_lowercase(),
-        None => return warnings,
+        None => return diagnostics,
     };
 
     let is_expensive = model.contains("opus") || model.contains("sonnet");
     if !is_expensive {
-        return warnings;
+        return diagnostics;
     }
 
     // Don't warn on driver/research specs - they benefit from smarter models
     let spec_type = spec.frontmatter.r#type.as_str();
     if spec_type == "driver" || spec_type == "group" || spec_type == "research" {
-        return warnings;
+        return diagnostics;
     }
 
     // Check if spec looks simple
@@ -414,59 +474,84 @@ pub fn validate_model_waste(spec: &Spec) -> Vec<String> {
         .unwrap_or(0);
     let word_count = spec.body.split_whitespace().count();
 
-    let is_simple = criteria_count <= SIMPLE_THRESHOLD_CRITERIA
-        && file_count <= SIMPLE_THRESHOLD_FILES
-        && word_count <= SIMPLE_THRESHOLD_WORDS;
+    let is_simple = criteria_count <= thresholds.simple_criteria
+        && file_count <= thresholds.simple_files
+        && word_count <= thresholds.simple_words;
 
     if is_simple {
-        warnings.push(format!(
-            "Spec uses '{}' but appears simple ({} criteria, {} files, {} words) - consider haiku",
-            spec.frontmatter.model.as_ref().unwrap(),
-            criteria_count,
-            file_count,
-            word_count
-        ));
+        diagnostics.push(
+            LintDiagnostic::warning(
+                spec.id.clone(),
+                LintRule::ModelWaste,
+                format!(
+                    "Spec uses '{}' but appears simple ({} criteria, {} files, {} words) - consider haiku",
+                    spec.frontmatter.model.as_ref().unwrap(),
+                    criteria_count,
+                    file_count,
+                    word_count
+                ),
+            )
+            .with_suggestion("Consider using haiku model for simple specs to reduce cost".to_string()),
+        );
     }
 
-    warnings
+    diagnostics
 }
 
-/// Validate a spec based on its type and return warnings.
-/// Returns a vector of warning messages for type-specific validation issues.
-pub fn validate_spec_type(spec: &Spec) -> Vec<String> {
-    let mut warnings = Vec::new();
+/// Validate a spec based on its type and return diagnostics.
+/// Returns a vector of diagnostics for type-specific validation issues.
+pub fn validate_spec_type(spec: &Spec) -> Vec<LintDiagnostic> {
+    let mut diagnostics = Vec::new();
 
     match spec.frontmatter.r#type.as_str() {
         "documentation" => {
             if spec.frontmatter.tracks.is_none() {
-                warnings.push("Documentation spec missing 'tracks' field".to_string());
+                diagnostics.push(LintDiagnostic::warning(
+                    spec.id.clone(),
+                    LintRule::Type,
+                    "Documentation spec missing 'tracks' field".to_string(),
+                ));
             }
             if spec.frontmatter.target_files.is_none() {
-                warnings.push("Documentation spec missing 'target_files' field".to_string());
+                diagnostics.push(LintDiagnostic::warning(
+                    spec.id.clone(),
+                    LintRule::Type,
+                    "Documentation spec missing 'target_files' field".to_string(),
+                ));
             }
         }
         "research" => {
             if spec.frontmatter.informed_by.is_none() && spec.frontmatter.origin.is_none() {
-                warnings.push(
+                diagnostics.push(LintDiagnostic::warning(
+                    spec.id.clone(),
+                    LintRule::Type,
                     "Research spec missing both 'informed_by' and 'origin' fields".to_string(),
-                );
+                ));
             }
             if spec.frontmatter.target_files.is_none() {
-                warnings.push("Research spec missing 'target_files' field".to_string());
+                diagnostics.push(LintDiagnostic::warning(
+                    spec.id.clone(),
+                    LintRule::Type,
+                    "Research spec missing 'target_files' field".to_string(),
+                ));
             }
         }
         "driver" | "group" => {
             // Validate members field if present
             if let Some(ref members) = spec.frontmatter.members {
                 if members.is_empty() {
-                    warnings.push("Driver/group spec has empty 'members' array".to_string());
+                    diagnostics.push(LintDiagnostic::warning(
+                        spec.id.clone(),
+                        LintRule::Type,
+                        "Driver/group spec has empty 'members' array".to_string(),
+                    ));
                 }
             }
         }
         _ => {}
     }
 
-    warnings
+    diagnostics
 }
 
 // ============================================================================
@@ -485,6 +570,14 @@ pub struct LintResult {
 pub fn lint_specific_specs(specs_dir: &std::path::Path, spec_ids: &[String]) -> Result<LintResult> {
     let mut all_spec_ids: Vec<String> = Vec::new();
     let mut specs_to_check: Vec<Spec> = Vec::new();
+
+    // Load config to get lint thresholds
+    let config = Config::load().ok();
+    let default_thresholds = chant::config::LintThresholds::default();
+    let thresholds = config
+        .as_ref()
+        .map(|c| &c.lint.thresholds)
+        .unwrap_or(&default_thresholds);
 
     // Load all specs to validate dependencies
     for entry in std::fs::read_dir(specs_dir)? {
@@ -524,63 +617,74 @@ pub fn lint_specific_specs(specs_dir: &std::path::Path, spec_ids: &[String]) -> 
 
     // Validate each spec
     for spec in &specs_to_check {
-        let mut spec_issues: Vec<String> = Vec::new();
+        let mut spec_diagnostics: Vec<LintDiagnostic> = Vec::new();
 
         // Check for title
         if spec.title.is_none() {
-            spec_issues.push("Missing title".to_string());
+            spec_diagnostics.push(LintDiagnostic::error(
+                spec.id.clone(),
+                LintRule::Title,
+                "Missing title".to_string(),
+            ));
         }
 
         // Check depends_on references
         if let Some(deps) = &spec.frontmatter.depends_on {
             for dep_id in deps {
                 if !all_spec_ids.contains(dep_id) {
-                    spec_issues.push(format!("Unknown dependency '{}'", dep_id));
+                    spec_diagnostics.push(LintDiagnostic::error(
+                        spec.id.clone(),
+                        LintRule::Dependency,
+                        format!("Unknown dependency '{}'", dep_id),
+                    ));
                 }
             }
         }
 
         // Type-specific validation
-        let type_warnings = validate_spec_type(spec);
+        spec_diagnostics.extend(validate_spec_type(spec));
 
         // Complexity validation
-        let complexity_warnings = validate_spec_complexity(spec);
+        spec_diagnostics.extend(validate_spec_complexity(spec, thresholds));
 
         // Coupling validation (spec references other spec IDs)
-        let coupling_warnings = validate_spec_coupling(spec);
+        spec_diagnostics.extend(validate_spec_coupling(spec));
 
         // Model waste validation (expensive model on simple spec)
-        let model_warnings = validate_model_waste(spec);
+        spec_diagnostics.extend(validate_model_waste(spec, thresholds));
 
-        // Combine all warnings
-        let mut spec_warnings = type_warnings;
-        spec_warnings.extend(complexity_warnings);
-        spec_warnings.extend(coupling_warnings);
-        spec_warnings.extend(model_warnings);
+        // Separate errors and warnings
+        let errors: Vec<_> = spec_diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .collect();
+        let warnings: Vec<_> = spec_diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Warning)
+            .collect();
 
-        if spec_issues.is_empty() && spec_warnings.is_empty() {
+        if spec_diagnostics.is_empty() {
             println!("  {} {}", "✓".green(), spec.id);
             passed += 1;
         } else {
-            let has_errors = !spec_issues.is_empty();
-            let has_warnings = !spec_warnings.is_empty();
+            let has_errors = !errors.is_empty();
+            let has_warnings = !warnings.is_empty();
 
             if has_errors {
-                for issue in &spec_issues {
-                    println!("  {} {}: {}", "✗".red(), spec.id, issue);
+                for diagnostic in &errors {
+                    println!("  {} {}: {}", "✗".red(), spec.id, diagnostic.message);
                 }
                 failed += 1;
             }
 
             if has_warnings {
-                let has_complexity_warning = spec_warnings.iter().any(|w| {
-                    w.contains("complexity")
-                        || w.contains("criteria")
-                        || w.contains("files")
-                        || w.contains("words")
-                });
-                for warning in &spec_warnings {
-                    println!("  {} {}: {}", "⚠".yellow(), spec.id, warning);
+                let has_complexity_warning =
+                    warnings.iter().any(|d| d.rule == LintRule::Complexity);
+                for diagnostic in &warnings {
+                    println!("  {} {}: {}", "⚠".yellow(), spec.id, diagnostic.message);
+                    if let Some(ref suggestion) = diagnostic.suggestion {
+                        println!("      {} {}", "→".cyan(), suggestion);
+                    }
                 }
                 // Suggest split if there are complexity warnings
                 if has_complexity_warning {
@@ -605,11 +709,16 @@ pub fn cmd_lint() -> Result<()> {
 
     println!("Linting specs...");
 
-    let mut issues: Vec<(String, String)> = Vec::new();
+    let mut all_diagnostics: Vec<LintDiagnostic> = Vec::new();
     let mut total_specs = 0;
 
-    // Load config to get enterprise required fields
+    // Load config to get enterprise required fields and lint thresholds
     let config = Config::load().ok();
+    let default_thresholds = chant::config::LintThresholds::default();
+    let thresholds = config
+        .as_ref()
+        .map(|c| &c.lint.thresholds)
+        .unwrap_or(&default_thresholds);
 
     // First pass: collect all spec IDs and check for parse errors
     let mut all_spec_ids: Vec<String> = Vec::new();
@@ -633,9 +742,13 @@ pub fn cmd_lint() -> Result<()> {
                     specs_to_check.push(spec);
                 }
                 Err(e) => {
-                    let issue = format!("Invalid YAML frontmatter: {}", e);
-                    println!("{} {}: {}", "✗".red(), id, issue);
-                    issues.push((id, issue));
+                    let diagnostic = LintDiagnostic::error(
+                        id.clone(),
+                        LintRule::Parse,
+                        format!("Invalid YAML frontmatter: {}", e),
+                    );
+                    println!("{} {}: {}", "✗".red(), id, diagnostic.message);
+                    all_diagnostics.push(diagnostic);
                 }
             }
         }
@@ -643,18 +756,26 @@ pub fn cmd_lint() -> Result<()> {
 
     // Second pass: validate each spec
     for spec in &specs_to_check {
-        let mut spec_issues: Vec<String> = Vec::new();
+        let mut spec_diagnostics: Vec<LintDiagnostic> = Vec::new();
 
         // Check for title
         if spec.title.is_none() {
-            spec_issues.push("Missing title".to_string());
+            spec_diagnostics.push(LintDiagnostic::error(
+                spec.id.clone(),
+                LintRule::Title,
+                "Missing title".to_string(),
+            ));
         }
 
         // Check depends_on references
         if let Some(deps) = &spec.frontmatter.depends_on {
             for dep_id in deps {
                 if !all_spec_ids.contains(dep_id) {
-                    spec_issues.push(format!("Unknown dependency '{}'", dep_id));
+                    spec_diagnostics.push(LintDiagnostic::error(
+                        spec.id.clone(),
+                        LintRule::Dependency,
+                        format!("Unknown dependency '{}'", dep_id),
+                    ));
                 }
             }
         }
@@ -663,7 +784,11 @@ pub fn cmd_lint() -> Result<()> {
         if let Some(members) = &spec.frontmatter.members {
             for member_id in members {
                 if !all_spec_ids.contains(member_id) {
-                    spec_issues.push(format!("Unknown member spec '{}'", member_id));
+                    spec_diagnostics.push(LintDiagnostic::error(
+                        spec.id.clone(),
+                        LintRule::Dependency,
+                        format!("Unknown member spec '{}'", member_id),
+                    ));
                 }
             }
         }
@@ -673,68 +798,79 @@ pub fn cmd_lint() -> Result<()> {
             if !cfg.enterprise.required.is_empty() {
                 for required_field in &cfg.enterprise.required {
                     if !spec.has_frontmatter_field(required_field) {
-                        spec_issues.push(format!("Missing required field '{}'", required_field));
+                        spec_diagnostics.push(LintDiagnostic::error(
+                            spec.id.clone(),
+                            LintRule::Required,
+                            format!("Missing required field '{}'", required_field),
+                        ));
                     }
                 }
             }
         }
 
         // Type-specific validation
-        let type_warnings = validate_spec_type(spec);
+        spec_diagnostics.extend(validate_spec_type(spec));
 
         // Complexity validation
-        let complexity_warnings = validate_spec_complexity(spec);
+        spec_diagnostics.extend(validate_spec_complexity(spec, thresholds));
 
         // Coupling validation (spec references other spec IDs)
-        let coupling_warnings = validate_spec_coupling(spec);
+        spec_diagnostics.extend(validate_spec_coupling(spec));
 
         // Model waste validation (expensive model on simple spec)
-        let model_warnings = validate_model_waste(spec);
+        spec_diagnostics.extend(validate_model_waste(spec, thresholds));
 
         // Approval schema validation
-        let approval_warnings = validate_approval_schema(spec);
+        spec_diagnostics.extend(validate_approval_schema(spec));
 
         // Output schema validation for completed specs
-        let output_warnings = validate_output_schema(spec);
+        spec_diagnostics.extend(validate_output_schema(spec));
 
-        // Combine all warnings
-        let mut spec_warnings = type_warnings;
-        spec_warnings.extend(complexity_warnings);
-        spec_warnings.extend(coupling_warnings);
-        spec_warnings.extend(model_warnings);
-        spec_warnings.extend(approval_warnings);
-        spec_warnings.extend(output_warnings);
+        // Separate errors and warnings
+        let errors: Vec<_> = spec_diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .collect();
+        let warnings: Vec<_> = spec_diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Warning)
+            .collect();
 
-        if spec_issues.is_empty() && spec_warnings.is_empty() {
+        if spec_diagnostics.is_empty() {
             println!("{} {}", "✓".green(), spec.id);
         } else {
-            for issue in spec_issues {
-                println!("{} {}: {}", "✗".red(), spec.id, issue);
-                issues.push((spec.id.clone(), issue));
+            for diagnostic in &errors {
+                println!("{} {}: {}", "✗".red(), spec.id, diagnostic.message);
             }
-            // Check if there are complexity warnings before iterating
-            let has_complexity_warning = spec_warnings.iter().any(|w| {
-                w.contains("complexity")
-                    || w.contains("criteria")
-                    || w.contains("files")
-                    || w.contains("words")
-            });
-            for warning in spec_warnings {
-                println!("{} {}: {}", "⚠".yellow(), spec.id, warning);
+            // Check if there are complexity warnings
+            let has_complexity_warning = warnings.iter().any(|d| d.rule == LintRule::Complexity);
+            for diagnostic in &warnings {
+                println!("{} {}: {}", "⚠".yellow(), spec.id, diagnostic.message);
+                if let Some(ref suggestion) = diagnostic.suggestion {
+                    println!("    {} {}", "→".cyan(), suggestion);
+                }
             }
             // Suggest split if there are complexity warnings
             if has_complexity_warning {
                 println!("    {} Consider: chant split {}", "→".cyan(), spec.id);
             }
         }
+
+        all_diagnostics.extend(spec_diagnostics);
     }
 
+    // Count errors
+    let error_count = all_diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .count();
+
     // Print summary with enterprise policy if configured
-    if !issues.is_empty() {
+    if error_count > 0 {
         println!(
             "\nFound {} {} in {} specs.",
-            issues.len(),
-            if issues.len() == 1 { "issue" } else { "issues" },
+            error_count,
+            if error_count == 1 { "error" } else { "errors" },
             total_specs
         );
 

@@ -922,7 +922,7 @@ status: in_progress
         specs_dir
             .join("2026-01-24-test-xyz.md")
             .parent()
-            .and_then(|p| Some(std::fs::create_dir_all(p).ok()));
+            .map(|p| std::fs::create_dir_all(p).ok());
         std::fs::write(specs_dir.join("2026-01-24-test-xyz.md"), spec_content).unwrap();
 
         // Create a minimal config from string
@@ -983,7 +983,9 @@ git:
         };
 
         let warnings = validate_spec_type(&spec);
-        assert!(warnings.iter().any(|w| w.contains("empty 'members' array")));
+        assert!(warnings
+            .iter()
+            .any(|w| w.message.contains("empty 'members' array")));
     }
 
     #[test]
