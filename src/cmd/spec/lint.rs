@@ -1370,4 +1370,148 @@ No coupling issues here.
             "Member specs should be allowed to reference non-sibling specs"
         );
     }
+
+    #[test]
+    fn test_validate_spec_type_documentation_missing_tracks() {
+        // Create a documentation spec without tracks field
+        let spec = Spec {
+            id: "2026-01-30-010-abc".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "documentation".to_string(),
+                target_files: Some(vec!["README.md".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Documentation Spec".to_string()),
+            body: "Document the API.".to_string(),
+        };
+
+        let diagnostics = validate_spec_type(&spec);
+
+        assert_eq!(
+            diagnostics.len(),
+            1,
+            "Should have one diagnostic for missing tracks"
+        );
+        assert_eq!(diagnostics[0].rule, LintRule::Type);
+        assert_eq!(diagnostics[0].severity, Severity::Warning);
+        assert!(
+            diagnostics[0].message.contains("missing 'tracks'"),
+            "Message should mention missing tracks field"
+        );
+    }
+
+    #[test]
+    fn test_validate_spec_type_documentation_missing_target_files() {
+        // Create a documentation spec without target_files field
+        let spec = Spec {
+            id: "2026-01-30-011-def".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "documentation".to_string(),
+                tracks: Some(vec!["2026-01-30-001-abc".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Documentation Spec".to_string()),
+            body: "Document the API.".to_string(),
+        };
+
+        let diagnostics = validate_spec_type(&spec);
+
+        assert_eq!(
+            diagnostics.len(),
+            1,
+            "Should have one diagnostic for missing target_files"
+        );
+        assert_eq!(diagnostics[0].rule, LintRule::Type);
+        assert_eq!(diagnostics[0].severity, Severity::Warning);
+        assert!(
+            diagnostics[0].message.contains("missing 'target_files'"),
+            "Message should mention missing target_files field"
+        );
+    }
+
+    #[test]
+    fn test_validate_spec_type_research_missing_fields() {
+        // Create a research spec without informed_by or origin
+        let spec = Spec {
+            id: "2026-01-30-012-ghi".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "research".to_string(),
+                target_files: Some(vec!["analysis.md".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Research Spec".to_string()),
+            body: "Research the topic.".to_string(),
+        };
+
+        let diagnostics = validate_spec_type(&spec);
+
+        assert_eq!(
+            diagnostics.len(),
+            1,
+            "Should have one diagnostic for missing informed_by and origin"
+        );
+        assert_eq!(diagnostics[0].rule, LintRule::Type);
+        assert_eq!(diagnostics[0].severity, Severity::Warning);
+        assert!(
+            diagnostics[0]
+                .message
+                .contains("missing both 'informed_by' and 'origin'"),
+            "Message should mention missing informed_by and origin fields"
+        );
+    }
+
+    #[test]
+    fn test_validate_spec_type_driver_empty_members() {
+        // Create a driver spec with empty members array
+        let spec = Spec {
+            id: "2026-01-30-013-jkl".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "driver".to_string(),
+                members: Some(vec![]),
+                ..Default::default()
+            },
+            title: Some("Driver Spec".to_string()),
+            body: "Driver with no members.".to_string(),
+        };
+
+        let diagnostics = validate_spec_type(&spec);
+
+        assert_eq!(
+            diagnostics.len(),
+            1,
+            "Should have one diagnostic for empty members"
+        );
+        assert_eq!(diagnostics[0].rule, LintRule::Type);
+        assert_eq!(diagnostics[0].severity, Severity::Warning);
+        assert!(
+            diagnostics[0].message.contains("empty 'members' array"),
+            "Message should mention empty members array"
+        );
+    }
+
+    #[test]
+    fn test_validate_spec_type_driver_with_members_ok() {
+        // Create a driver spec with non-empty members array
+        let spec = Spec {
+            id: "2026-01-30-014-mno".to_string(),
+            frontmatter: SpecFrontmatter {
+                r#type: "driver".to_string(),
+                members: Some(vec![
+                    "2026-01-30-014-mno.1".to_string(),
+                    "2026-01-30-014-mno.2".to_string(),
+                ]),
+                ..Default::default()
+            },
+            title: Some("Driver Spec".to_string()),
+            body: "Driver with members.".to_string(),
+        };
+
+        let diagnostics = validate_spec_type(&spec);
+
+        assert_eq!(
+            diagnostics.len(),
+            0,
+            "Should have no diagnostics when driver has members"
+        );
+    }
 }
