@@ -14,26 +14,28 @@ Chant is a specification-driven development tool where:
 - Changes flow through the spec system, not ad-hoc edits
 - All work is auditable and reproducible
 
-### 2. Use `just` Commands
+### 2. Use Standard Development Commands
 
-Use the `just` wrapper for all development commands:
+Follow the project's standard development workflow:
 
 ```bash
-just build     # Build the project
-just test      # Run tests
-just lint      # Run linter (clippy)
-just fmt       # Format code
-just check     # Full check: format, lint, test
-just all       # Full check and build
+# Run tests appropriate to your project
+npm test       # For JavaScript/TypeScript projects
+pytest         # For Python projects
+go test ./...  # For Go projects
+
+# Format code according to project standards
+npm run format # Or project-specific formatter
+black .        # For Python
+go fmt ./...   # For Go
+
+# Run linter/static analysis
+npm run lint   # Or project-specific linter
+pylint .       # For Python
+golangci-lint  # For Go
 ```
 
-**Never run:**
-```bash
-cargo build
-cargo test
-cargo run
-./target/debug/chant
-```
+Adapt these commands to your project's specific tooling and conventions.
 
 ### 3. Work Within Specs
 
@@ -45,32 +47,16 @@ cargo run
 ### 4. Test-Driven Approach
 
 - Write tests that validate acceptance criteria
-- Run `just test` frequently during development
+- Run your project's test suite frequently during development
 - Ensure all tests pass before considering a spec complete
 
-## Workspace Configuration
+## Code Quality
 
-### Recommended Settings
-
-Add to `.cursor/settings.json` or project settings:
-
-```json
-{
-  "editor.formatOnSave": true,
-  "editor.defaultFormatter": "rust-lang.rust-analyzer",
-  "[rust]": {
-    "editor.formatOnSave": true
-  },
-  "rust-analyzer.checkOnSave.command": "clippy"
-}
-```
-
-### Code Quality
-
-Cursor should enforce:
-- Rust formatting with `rustfmt`
-- Linting with `clippy`
-- Type checking with `rust-analyzer`
+Cursor should enforce project-specific quality standards:
+- Consistent code formatting (follow project's formatter configuration)
+- Static analysis and linting (use project's configured linters)
+- Type checking (if applicable to the language)
+- Best practices for the specific language and framework being used
 
 ## Implementation Constraints
 
@@ -79,13 +65,12 @@ Cursor should enforce:
 - Read code before modifying
 - Follow existing patterns and conventions
 - Write focused, minimal changes
-- Use the `just` commands exclusively
+- Use the project's standard build and test commands
 - Run tests and linter before committing
 
 ### DON'T
 
 - Edit files ad-hoc outside of specs
-- Run cargo commands directly
 - Make unrelated code improvements
 - Skip tests or linting
 - Commit without running checks
@@ -94,7 +79,7 @@ Cursor should enforce:
 
 ### Before Starting
 
-1. Review the spec: `just chant show <spec-id>`
+1. Review the spec: `chant show <spec-id>`
 2. Check acceptance criteria
 3. Identify target files
 
@@ -102,22 +87,22 @@ Cursor should enforce:
 
 1. Use Cursor's AI assistance to understand code
 2. Write tests alongside implementation
-3. Use `just test` to validate changes
-4. Use `just lint` to check code quality
-5. Use `just fmt` to format code
+3. Run your test suite to validate changes
+4. Use your linter to check code quality
+5. Format code according to project standards
 
 ### After Completion
 
 1. Mark acceptance criteria checkboxes: `- [x]`
-2. Run `just all` for final validation
+2. Run your full test suite and quality checks for final validation
 3. Create commit: `git commit -m "chant(SPEC-ID): description"`
 
 ## Parallel Development with Merge Workflow
 
 When working with multiple parallel specs:
 
-1. Execute specs in parallel: `just chant work --parallel`
-2. Merge with conflict auto-resolution: `just chant merge --all --rebase --auto`
+1. Execute specs in parallel: `chant work --parallel`
+2. Merge with conflict auto-resolution: `chant merge --all --rebase --auto`
 
 The `--rebase` and `--auto` flags:
 - Rebase each branch sequentially onto main
@@ -128,18 +113,17 @@ The `--rebase` and `--auto` flags:
 
 | Action | Command |
 |--------|---------|
-| Show spec | `just chant show <spec-id>` |
-| List specs | `just chant list` |
-| Search specs | `just chant search` |
-| Execute spec | `just chant work <spec-id>` |
-| Execute in parallel | `just chant work --parallel` |
-| Merge specs | `just chant merge --all --rebase --auto` |
-| Run tests | `just test` |
-| Check code | `just lint` |
-| Format code | `just fmt` |
-| Full check | `just check` |
-| Show status | `just chant status` |
-| Export specs | `just chant export` |
+| Show spec | `chant show <spec-id>` |
+| List specs | `chant list` |
+| Search specs | `chant search` |
+| Execute spec | `chant work <spec-id>` |
+| Execute in parallel | `chant work --parallel` |
+| Merge specs | `chant merge --all --rebase --auto` |
+| Run tests | Use project-specific test command |
+| Check code | Use project-specific linter |
+| Format code | Use project-specific formatter |
+| Show status | `chant status` |
+| Export specs | `chant export` |
 
 ## MCP Integration
 
