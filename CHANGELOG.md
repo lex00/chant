@@ -5,6 +5,66 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-01-31
+
+### Added
+
+- **Prompt extends/inheritance system**: Prompts can now extend other prompts
+  - `extends:` field in prompt frontmatter specifies parent prompt
+  - `{{> parent}}` marker in child prompt body for content injection
+  - Parent content replaces the marker, allowing wrapper patterns
+  - Enables DRY prompt organization with shared base prompts
+
+- **Prompt extensions system**: Modular prompt extensions that can be combined
+  - `prompt_extensions` array in config defaults section
+  - Extensions loaded from `.chant/prompts/extensions/` directory
+  - Extensions appended after main prompt content
+  - First extension: `output-concise` for reducing agent output verbosity
+
+- **Output-concise prompt extension**: Reduce agent output verbosity
+  - Guides agents to produce minimal, essential output only
+  - Avoid narration, status updates, and thinking-out-loud patterns
+  - Focus on actions over descriptions
+  - Installed via `prompt_extensions: [output-concise]` in config
+
+- **`ensure_on_main_branch` safeguard**: Prevent main repo branch flipping
+  - Automatically snaps main repository back to main branch
+  - Called at command boundaries (start/end of work command)
+  - Prevents parallel worktree operations from leaving main repo on feature branch
+  - Logs warning when correction is needed
+
+- **Smart spec resolution from working branches**: Read in-progress specs from their branches
+  - `load_with_branch_resolution` reads spec content via `git show` from feature branch
+  - No checkout required - reads directly from branch ref
+  - Ensures spec status reflects actual branch state, not stale main copy
+  - Particularly useful after interrupted parallel execution
+
+- **Auto-rebase before merge in parallel**: Automatic conflict resolution
+  - Detects when feature branch is behind main before merge
+  - Attempts automatic rebase onto main
+  - Falls back gracefully if rebase fails (merge proceeds without rebase)
+  - Reduces manual conflict resolution in parallel workflows
+
+- **Selective merge command**: Fine-grained control over branch merging
+  - `chant merge --list` shows all spec branches with status (ahead/behind/diverged)
+  - `chant merge --ready` merges only branches that are ahead and not diverged
+  - `chant merge -i` interactive mode for selecting which branches to merge
+  - Better visibility into branch state before merging
+
+- **Automatic worktree cleanup on interrupt**: Clean state after Ctrl+C
+  - `ParallelExecutionState` tracks active worktrees during parallel execution
+  - SIGINT handler cleans up incomplete worktrees on interrupt
+  - Panic hook also triggers cleanup for unexpected failures
+  - Prevents orphaned worktrees from accumulating
+
+### Tests
+
+- **Branch resolution tests**: Comprehensive tests for smart spec resolution
+  - Tests for `branch_exists` detection
+  - Tests for `read_spec_from_branch` content retrieval
+  - Tests for `load_with_branch_resolution` full workflow
+  - Edge cases: missing branches, invalid refs, concurrent modifications
+
 ## [0.7.1] - 2026-01-30
 
 ### Added
