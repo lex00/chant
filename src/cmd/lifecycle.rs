@@ -556,10 +556,10 @@ pub struct TargetFilesVerification {
     pub files_with_changes: Vec<String>,
     /// Files listed in target_files but without changes
     pub files_without_changes: Vec<String>,
-    /// Total net additions (insertions - deletions) across all target files
-    pub net_additions: i64,
     /// Commits found for the spec
     pub commits: Vec<String>,
+    /// All files that were actually changed (file path, net additions)
+    pub actual_files_changed: Vec<(String, i64)>,
 }
 
 /// Get commits associated with a spec by searching git log
@@ -637,8 +637,8 @@ fn verify_target_files(spec: &Spec) -> Result<TargetFilesVerification> {
             return Ok(TargetFilesVerification {
                 files_with_changes: Vec::new(),
                 files_without_changes: Vec::new(),
-                net_additions: 0,
                 commits: Vec::new(),
+                actual_files_changed: Vec::new(),
             });
         }
     };
@@ -651,8 +651,8 @@ fn verify_target_files(spec: &Spec) -> Result<TargetFilesVerification> {
         return Ok(TargetFilesVerification {
             files_with_changes: Vec::new(),
             files_without_changes: target_files,
-            net_additions: 0,
             commits: Vec::new(),
+            actual_files_changed: Vec::new(),
         });
     }
 
@@ -675,48 +675,77 @@ fn verify_target_files(spec: &Spec) -> Result<TargetFilesVerification> {
     // Check each target file
     let mut files_with_changes = Vec::new();
     let mut files_without_changes = Vec::new();
-    let mut total_net_additions: i64 = 0;
 
     for target_file in &target_files {
         if modified_files.contains(target_file) {
             files_with_changes.push(target_file.clone());
-            if let Some((ins, del)) = all_file_stats.get(target_file) {
-                total_net_additions += ins - del;
-            }
         } else {
             files_without_changes.push(target_file.clone());
         }
     }
 
+    // Collect all actual files changed with their net additions
+    let mut actual_files_changed: Vec<(String, i64)> = all_file_stats
+        .iter()
+        .map(|(file, (ins, del))| (file.clone(), ins - del))
+        .collect();
+    // Sort by file path for consistent output
+    actual_files_changed.sort_by(|a, b| a.0.cmp(&b.0));
+
     Ok(TargetFilesVerification {
         files_with_changes,
         files_without_changes,
-        net_additions: total_net_additions,
         commits,
+        actual_files_changed,
     })
 }
 
-/// Format a warning message when target files have no changes
+/// Format a warning message when target files don't match actual changes
 fn format_target_files_warning(spec_id: &str, verification: &TargetFilesVerification) -> String {
     let mut msg = format!(
-        "Warning: Spec {} lists target_files but no changes found\n",
+        "Warning: Spec {} has target_files that don't match actual changes\n\n",
         spec_id
     );
-    msg.push_str("Target files:\n");
+
+    // Show which declared target_files had no changes
+    msg.push_str("Declared target_files (no changes detected):\n");
     for file in &verification.files_without_changes {
         msg.push_str(&format!("  - {}\n", file));
     }
+
+    // Show which declared target_files DID have changes (if any)
     if !verification.files_with_changes.is_empty() {
-        msg.push_str(&format!(
-            "\nFiles with changes: {} (net additions: {})\n",
-            verification.files_with_changes.len(),
-            verification.net_additions
-        ));
+        msg.push_str("\nDeclared target_files (with changes):\n");
+        for file in &verification.files_with_changes {
+            msg.push_str(&format!("  - {}\n", file));
+        }
     }
+
+    // Show all actual files changed
+    if !verification.actual_files_changed.is_empty() {
+        let total_actual_additions: i64 = verification
+            .actual_files_changed
+            .iter()
+            .map(|(_, net)| net)
+            .sum();
+        msg.push_str(&format!(
+            "\nActual files changed (net additions: {}):\n",
+            total_actual_additions
+        ));
+        for (file, net_additions) in &verification.actual_files_changed {
+            let sign = if *net_additions >= 0 { "+" } else { "" };
+            msg.push_str(&format!("  - {} ({}{} lines)\n", file, sign, net_additions));
+        }
+    }
+
     msg.push_str("\nThis may indicate:\n");
+    msg.push_str("  - target_files was not updated after implementation\n");
+    msg.push_str("  - File was renamed or moved\n");
+    msg.push_str("  - Implementation went to different files than planned\n");
     msg.push_str("  - Merge conflict resolved incorrectly\n");
     msg.push_str("  - Implementation was lost during merge\n");
-    msg.push_str("  - Spec manually marked completed without implementation\n");
+
+    msg.push_str("\nTo fix: Update target_files in the spec, or ignore if intentional.\n");
     msg
 }
 
@@ -2451,8 +2480,8 @@ mod tests {
         let verification = verify_target_files(&spec).unwrap();
         assert!(verification.files_with_changes.is_empty());
         assert!(verification.files_without_changes.is_empty());
-        assert_eq!(verification.net_additions, 0);
         assert!(verification.commits.is_empty());
+        assert!(verification.actual_files_changed.is_empty());
     }
 
     #[test]
@@ -2472,8 +2501,8 @@ mod tests {
         let verification = verify_target_files(&spec).unwrap();
         assert!(verification.files_with_changes.is_empty());
         assert!(verification.files_without_changes.is_empty());
-        assert_eq!(verification.net_additions, 0);
         assert!(verification.commits.is_empty());
+        assert!(verification.actual_files_changed.is_empty());
     }
 
     #[test]
@@ -2481,17 +2510,19 @@ mod tests {
         let verification = TargetFilesVerification {
             files_with_changes: vec![],
             files_without_changes: vec!["src/test.rs".to_string(), "src/main.rs".to_string()],
-            net_additions: 0,
             commits: vec![],
+            actual_files_changed: vec![],
         };
 
         let warning = format_target_files_warning("2026-01-27-001-abc", &verification);
 
         assert!(warning.contains("2026-01-27-001-abc"));
-        assert!(warning.contains("target_files but no changes found"));
+        assert!(warning.contains("don't match actual changes"));
+        assert!(warning.contains("Declared target_files (no changes detected)"));
         assert!(warning.contains("src/test.rs"));
         assert!(warning.contains("src/main.rs"));
-        assert!(warning.contains("Merge conflict resolved incorrectly"));
+        assert!(warning.contains("target_files was not updated after implementation"));
+        assert!(warning.contains("To fix: Update target_files in the spec"));
     }
 
     #[test]
@@ -2499,13 +2530,50 @@ mod tests {
         let verification = TargetFilesVerification {
             files_with_changes: vec!["src/lib.rs".to_string()],
             files_without_changes: vec!["src/test.rs".to_string()],
-            net_additions: 50,
             commits: vec!["abc1234".to_string(), "def5678".to_string()],
+            actual_files_changed: vec![("src/lib.rs".to_string(), 50)],
         };
 
         assert_eq!(verification.files_with_changes.len(), 1);
         assert_eq!(verification.files_without_changes.len(), 1);
-        assert_eq!(verification.net_additions, 50);
         assert_eq!(verification.commits.len(), 2);
+        assert_eq!(verification.actual_files_changed.len(), 1);
+    }
+
+    #[test]
+    fn test_format_target_files_warning_with_mismatch() {
+        // Test case where target_files exist but changes were made to different files
+        let verification = TargetFilesVerification {
+            files_with_changes: vec![],
+            files_without_changes: vec!["src/cmd/finalize.rs".to_string()],
+            commits: vec!["abc1234".to_string()],
+            actual_files_changed: vec![
+                ("src/commands/finalize.rs".to_string(), 128),
+                ("tests/finalize_test.rs".to_string(), -10),
+            ],
+        };
+
+        let warning = format_target_files_warning("2026-01-29-00a-qza", &verification);
+
+        // Check headline is clear about mismatch
+        assert!(warning.contains("don't match actual changes"));
+
+        // Check declared target_files section
+        assert!(warning.contains("Declared target_files (no changes detected)"));
+        assert!(warning.contains("src/cmd/finalize.rs"));
+
+        // Check actual files changed section
+        assert!(warning.contains("Actual files changed (net additions: 118)"));
+        assert!(warning.contains("src/commands/finalize.rs (+128 lines)"));
+        assert!(warning.contains("tests/finalize_test.rs (-10 lines)"));
+
+        // Check benign causes are first
+        assert!(warning.contains("target_files was not updated after implementation"));
+        let pos_not_updated = warning.find("target_files was not updated").unwrap();
+        let pos_merge_conflict = warning.find("Merge conflict").unwrap();
+        assert!(pos_not_updated < pos_merge_conflict);
+
+        // Check for actionable suggestion
+        assert!(warning.contains("To fix: Update target_files in the spec"));
     }
 }
