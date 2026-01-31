@@ -182,6 +182,15 @@ pub fn extract_member_number(member_id: &str) -> Option<u32> {
 /// assert!(all_prior_siblings_completed("2026-01-25-00y-abc.3", &specs));
 /// ```
 pub fn all_prior_siblings_completed(member_id: &str, all_specs: &[Spec]) -> bool {
+    // Find the current member spec
+    if let Some(member_spec) = all_specs.iter().find(|s| s.id == member_id) {
+        // If member has explicit depends_on, skip sequential check (use DAG dependencies instead)
+        if member_spec.frontmatter.depends_on.is_some() {
+            return true;
+        }
+    }
+
+    // Fall back to sequential ordering if no explicit dependencies
     if let Some(driver_id) = extract_driver_id(member_id) {
         if let Some(member_num) = extract_member_number(member_id) {
             // Check all specs with numbers less than member_num

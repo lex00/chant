@@ -363,18 +363,15 @@ fn cmd_split_impl(
         let member_path = specs_dir.join(&member_filename);
 
         // Use dependencies from member spec (from Dependencies: field or extracted from DAG)
-        let depends_on = if member.dependencies.is_empty() {
-            None
-        } else {
-            // Convert member numbers to spec IDs
-            Some(
-                member
-                    .dependencies
-                    .iter()
-                    .map(|dep_num| format!("{}.{}", driver_id, dep_num))
-                    .collect(),
-            )
-        };
+        // Always set depends_on (even if empty) to indicate explicit DAG ordering
+        // This prevents fallback to sequential member ordering in is_ready()
+        let depends_on = Some(
+            member
+                .dependencies
+                .iter()
+                .map(|dep_num| format!("{}.{}", driver_id, dep_num))
+                .collect(),
+        );
 
         let member_frontmatter = SpecFrontmatter {
             r#type: "code".to_string(),
