@@ -1200,7 +1200,7 @@ fn cmd_work_chain_specific_ids(
         );
     }
 
-    let all_specs = spec::load_all_specs(specs_dir)?;
+    let mut all_specs = spec::load_all_specs(specs_dir)?;
     let mut completed = 0;
     let mut skipped = 0;
     let mut failed_spec: Option<(String, String)> = None;
@@ -1278,6 +1278,8 @@ fn cmd_work_chain_specific_ids(
                     elapsed.as_secs_f64()
                 );
                 completed += 1;
+                // Reload all specs to get fresh dependency state for next iteration
+                all_specs = spec::load_all_specs(specs_dir)?;
             }
             Err(e) => {
                 println!("{} Failed {}: {}\n", "✗".red(), spec.id, e);
