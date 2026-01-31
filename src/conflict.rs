@@ -146,13 +146,14 @@ pub fn create_conflict_spec(
         .join("\n");
 
     let blocked_specs_yaml = if blocked_specs.is_empty() {
-        "[]".to_string()
+        "blocked_specs: []".to_string()
     } else {
-        blocked_specs
+        let items = blocked_specs
             .iter()
-            .map(|s| format!("- {}", s))
+            .map(|s| format!("  - {}", s))
             .collect::<Vec<_>>()
-            .join("\n")
+            .join("\n");
+        format!("blocked_specs:\n{}", items)
     };
 
     content.push_str(&format!(
@@ -163,7 +164,6 @@ source_branch: {}
 target_branch: {}
 conflicting_files:
 {}
-blocked_specs:
 {}
 original_spec: {}
 ---
