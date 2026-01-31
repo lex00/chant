@@ -1973,19 +1973,26 @@ fn merge_interactive(
 fn run_merge_wizard(
     all_specs: &[Spec],
     branch_prefix: &str,
+    main_branch: &str,
     delete_branch: bool,
     rebase: bool,
 ) -> Result<(Vec<String>, bool, bool)> {
     use dialoguer::{Confirm, MultiSelect};
 
-    // Get completed specs that have branches
+    // Get completed specs that have branches and haven't been merged yet
     let mergeable_specs: Vec<(String, &Spec)> = all_specs
         .iter()
         .filter(|spec| spec.frontmatter.status == SpecStatus::Completed)
         .filter_map(|spec| {
             let branch_name = format!("{}{}", branch_prefix, spec.id);
             if git::branch_exists(&branch_name).unwrap_or(false) {
-                Some((spec.id.clone(), spec))
+                // Check if branch has already been merged
+                if git::is_branch_merged(&branch_name, main_branch).unwrap_or(false) {
+                    // Skip already-merged branches
+                    None
+                } else {
+                    Some((spec.id.clone(), spec))
+                }
             } else {
                 None
             }
@@ -2059,6 +2066,7 @@ fn run_merge_wizard(
 fn find_completed_specs_with_branches(
     all_specs: &[Spec],
     branch_prefix: &str,
+    main_branch: &str,
 ) -> Result<Vec<String>> {
     let mut completed_with_branches = Vec::new();
 
@@ -2071,7 +2079,10 @@ fn find_completed_specs_with_branches(
         // Check if the branch exists
         let branch_name = format!("{}{}", branch_prefix, spec.id);
         if git::branch_exists(&branch_name).unwrap_or(false) {
-            completed_with_branches.push(spec.id.clone());
+            // Skip already-merged branches
+            if !git::is_branch_merged(&branch_name, main_branch).unwrap_or(false) {
+                completed_with_branches.push(spec.id.clone());
+            }
         }
     }
 
@@ -2519,7 +2530,7 @@ pub fn cmd_merge(
     // Handle --all-completed flag: find all completed specs with branches
     if all_completed {
         let completed_with_branches =
-            find_completed_specs_with_branches(&all_specs, branch_prefix)?;
+            find_completed_specs_with_branches(&all_specs, branch_prefix, &main_branch)?;
 
         if completed_with_branches.is_empty() {
             println!("No completed specs with branches found.");
@@ -2571,7 +2582,13 @@ pub fn cmd_merge(
 
     // Handle wizard mode when no arguments provided
     let (final_ids, final_delete_branch, final_rebase) = if !all && ids.is_empty() {
-        run_merge_wizard(&all_specs, branch_prefix, delete_branch, rebase)?
+        run_merge_wizard(
+            &all_specs,
+            branch_prefix,
+            &main_branch,
+            delete_branch,
+            rebase,
+        )?
     } else {
         (ids.to_vec(), delete_branch, rebase)
     };
@@ -2933,7 +2950,44 @@ pub fn handle_completed(spec_id: &str) -> Result<()> {
         return Ok(());
     }
 
-    // Step 3: Merge the branch
+    // Step 3: Check if branch exists and hasn't been merged already
+    let config = Config::load()?;
+    let main_branch = merge::load_main_branch(&config);
+
+    if git::branch_exists(&branch_name)? {
+        // Check if the branch has already been merged
+        if git::is_branch_merged(&branch_name, &main_branch)? {
+            println!(
+                "{} Branch {} already merged to {}, auto-deleting",
+                "→".cyan(),
+                branch_name.cyan(),
+                main_branch
+            );
+
+            // Auto-delete the merged branch
+            if let Err(e) = git::delete_branch(&branch_name, false) {
+                println!(
+                    "{} Warning: Could not delete branch {}: {}",
+                    "⚠".yellow(),
+                    branch_name,
+                    e
+                );
+            } else {
+                println!("{} Deleted merged branch {}", "✓".green(), branch_name);
+            }
+
+            return Ok(());
+        }
+    } else {
+        println!(
+            "{} Branch {} does not exist, skipping merge",
+            "→".cyan(),
+            branch_name
+        );
+        return Ok(());
+    }
+
+    // Step 4: Merge the branch
     println!("{} Merging branch {}", "→".cyan(), branch_name.cyan());
 
     let status = Command::new(std::env::current_exe()?)
