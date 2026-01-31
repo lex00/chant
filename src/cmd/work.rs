@@ -835,6 +835,9 @@ pub fn cmd_work(
         }
     }
 
+    // Ensure main repo is back on main branch
+    let _ = chant::git::ensure_on_main_branch(&config.defaults.main_branch);
+
     Ok(())
 }
 
@@ -2455,6 +2458,9 @@ pub fn cmd_work_parallel(
     if failed > 0 {
         std::process::exit(1);
     }
+
+    // Ensure main repo is back on main branch after merge phase
+    let _ = chant::git::ensure_on_main_branch(&config.defaults.main_branch);
 
     Ok(())
 }

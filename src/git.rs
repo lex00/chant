@@ -50,6 +50,31 @@ pub fn get_current_branch() -> Result<String> {
     Ok(branch)
 }
 
+/// Ensure the main repo is on the main branch.
+///
+/// Call this at command boundaries to prevent branch drift.
+/// Uses config's main_branch setting (defaults to "main").
+///
+/// Warns but does not fail if checkout fails (e.g., dirty worktree).
+pub fn ensure_on_main_branch(main_branch: &str) -> Result<()> {
+    let current = get_current_branch()?;
+
+    if current != main_branch {
+        let output = Command::new("git")
+            .args(["checkout", main_branch])
+            .output()
+            .context("Failed to checkout main branch")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            // Don't fail hard - just warn
+            eprintln!("Warning: Could not return to {}: {}", main_branch, stderr);
+        }
+    }
+
+    Ok(())
+}
+
 /// Check if a branch exists in the repository.
 pub fn branch_exists(branch_name: &str) -> Result<bool> {
     let output = Command::new("git")
@@ -897,6 +922,59 @@ mod tests {
         assert_eq!(result.merged_to, "main");
 
         // Verify we're back on main
+        let current = get_current_branch()?;
+        assert_eq!(current, "main");
+
+        std::env::set_current_dir(original_dir)?;
+        Ok(())
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_ensure_on_main_branch() -> Result<()> {
+        let temp_dir = setup_test_repo()?;
+        let repo_path = temp_dir.path();
+        let original_dir = std::env::current_dir()?;
+
+        std::env::set_current_dir(repo_path)?;
+
+        // Create a spec branch
+        Command::new("git")
+            .args(["checkout", "-b", "spec-test"])
+            .output()?;
+
+        // Verify we're on spec-test
+        let current = get_current_branch()?;
+        assert_eq!(current, "spec-test");
+
+        // Call ensure_on_main_branch - should switch back to main
+        ensure_on_main_branch("main")?;
+
+        // Verify we're back on main
+        let current = get_current_branch()?;
+        assert_eq!(current, "main");
+
+        std::env::set_current_dir(original_dir)?;
+        Ok(())
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_ensure_on_main_branch_already_on_main() -> Result<()> {
+        let temp_dir = setup_test_repo()?;
+        let repo_path = temp_dir.path();
+        let original_dir = std::env::current_dir()?;
+
+        std::env::set_current_dir(repo_path)?;
+
+        // Verify we're on main
+        let current = get_current_branch()?;
+        assert_eq!(current, "main");
+
+        // Call ensure_on_main_branch - should be a no-op
+        ensure_on_main_branch("main")?;
+
+        // Verify we're still on main
         let current = get_current_branch()?;
         assert_eq!(current, "main");
 

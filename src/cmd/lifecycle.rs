@@ -1671,6 +1671,9 @@ pub fn cmd_merge(
     let branch_prefix = &config.defaults.branch_prefix;
     let main_branch = merge::load_main_branch(&config);
 
+    // Ensure main repo starts on main branch
+    let _ = chant::git::ensure_on_main_branch(&config.defaults.main_branch);
+
     // Load all specs first (needed for wizard and validation)
     let all_specs = spec::load_all_specs(&specs_dir)?;
 
@@ -1711,7 +1714,7 @@ pub fn cmd_merge(
         let final_delete_branch = delete_branch;
         let final_rebase = rebase;
 
-        return execute_merge(
+        let result = execute_merge(
             &final_ids,
             false, // not --all mode
             dry_run,
@@ -1727,6 +1730,11 @@ pub fn cmd_merge(
             &main_branch,
             &specs_dir,
         );
+
+        // Ensure main repo ends on main branch
+        let _ = chant::git::ensure_on_main_branch(&config.defaults.main_branch);
+
+        return result;
     }
 
     // Handle wizard mode when no arguments provided
@@ -1744,7 +1752,7 @@ pub fn cmd_merge(
     }
 
     // Execute merge using shared helper
-    execute_merge(
+    let result = execute_merge(
         &final_ids,
         all,
         dry_run,
@@ -1759,7 +1767,12 @@ pub fn cmd_merge(
         branch_prefix,
         &main_branch,
         &specs_dir,
-    )
+    );
+
+    // Ensure main repo ends on main branch
+    let _ = chant::git::ensure_on_main_branch(&config.defaults.main_branch);
+
+    result
 }
 
 // ============================================================================

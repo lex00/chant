@@ -221,6 +221,8 @@ fn merge_and_cleanup_in_dir(branch: &str, work_dir: Option<&Path>) -> MergeClean
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        // Try to ensure we're on main branch before returning error
+        let _ = crate::git::ensure_on_main_branch("main");
         return MergeCleanupResult {
             success: false,
             has_conflict: false,
@@ -267,6 +269,8 @@ fn merge_and_cleanup_in_dir(branch: &str, work_dir: Option<&Path>) -> MergeClean
         } else {
             crate::merge_errors::fast_forward_conflict(spec_id, branch, "main", &stderr)
         };
+        // Try to ensure we're on main branch before returning error
+        let _ = crate::git::ensure_on_main_branch("main");
         return MergeCleanupResult {
             success: false,
             has_conflict,
