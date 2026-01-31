@@ -216,10 +216,11 @@ pub fn inject_chant_section(existing_content: Option<&str>, has_mcp: bool) -> In
                     let before = &content[..begin];
                     let after = &content[section_end..];
 
-                    // Normalize line endings for comparison (templates use \n, files may use \r\n)
+                    // Normalize line endings for comparison (handle CRLF in both template and content)
                     let existing_section = &content[begin..section_end];
                     let existing_normalized = existing_section.replace("\r\n", "\n");
-                    if existing_normalized == section {
+                    let section_normalized = section.replace("\r\n", "\n");
+                    if existing_normalized == section_normalized {
                         return InjectionResult::Unchanged;
                     }
 
