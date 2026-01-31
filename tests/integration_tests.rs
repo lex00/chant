@@ -6437,3 +6437,443 @@ fn test_worktree_status_output_format() {
     let _ = std::env::set_current_dir(&original_dir);
     let _ = cleanup_test_repo(&repo_dir);
 }
+
+// ============================================================================
+// BRANCH RESOLUTION TESTS
+// ============================================================================
+
+#[test]
+#[serial]
+fn test_load_with_branch_resolution_non_in_progress() {
+    let repo_dir = PathBuf::from("/tmp/test-chant-branch-resolution-non-in-progress");
+    let _ = cleanup_test_repo(&repo_dir);
+
+    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
+    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
+
+    // Create .chant/specs directory
+    fs::create_dir_all(repo_dir.join(".chant/specs")).expect("Failed to create specs dir");
+
+    // Create a pending spec
+    let spec_id = "2026-01-31-001-abc";
+    let spec_content = r#"---
+type: code
+status: pending
+---
+
+# Test Spec
+
+This is a pending spec.
+"#;
+    let spec_path = repo_dir.join(format!(".chant/specs/{}.md", spec_id));
+    fs::write(&spec_path, spec_content).expect("Failed to write spec");
+
+    // Commit it
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to add");
+    Command::new("git")
+        .args(["commit", "-m", "Add pending spec"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to commit");
+
+    // Create a branch with different content
+    let branch = format!("chant/{}", spec_id);
+    Command::new("git")
+        .args(["checkout", "-b", &branch])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to create branch");
+
+    let branch_spec_content = r#"---
+type: code
+status: pending
+---
+
+# Test Spec
+
+This is DIFFERENT content on the branch.
+"#;
+    fs::write(&spec_path, branch_spec_content).expect("Failed to write branch spec");
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to add");
+    Command::new("git")
+        .args(["commit", "-m", "Update spec on branch"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to commit");
+
+    // Switch back to main
+    Command::new("git")
+        .args(["checkout", "main"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to checkout main");
+
+    // Load spec with branch resolution - should NOT load from branch since status is pending
+    let loaded_spec =
+        chant::spec::Spec::load_with_branch_resolution(&spec_path).expect("Failed to load spec");
+
+    assert!(!loaded_spec.body.contains("DIFFERENT"));
+    assert!(loaded_spec.body.contains("This is a pending spec"));
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = Command::new("git")
+        .args(["branch", "-D", &branch])
+        .current_dir(&repo_dir)
+        .output();
+    let _ = cleanup_test_repo(&repo_dir);
+}
+
+#[test]
+#[serial]
+fn test_load_with_branch_resolution_in_progress_with_branch() {
+    let repo_dir = PathBuf::from("/tmp/test-chant-branch-resolution-in-progress");
+    let _ = cleanup_test_repo(&repo_dir);
+
+    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
+    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
+
+    // Create .chant/specs directory
+    fs::create_dir_all(repo_dir.join(".chant/specs")).expect("Failed to create specs dir");
+
+    // Create an in_progress spec
+    let spec_id = "2026-01-31-002-xyz";
+    let spec_content = r#"---
+type: code
+status: in_progress
+---
+
+# Test Spec
+
+This is the main version.
+"#;
+    let spec_path = repo_dir.join(format!(".chant/specs/{}.md", spec_id));
+    fs::write(&spec_path, spec_content).expect("Failed to write spec");
+
+    // Commit it
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to add");
+    Command::new("git")
+        .args(["commit", "-m", "Add in_progress spec"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to commit");
+
+    // Create a branch with updated content
+    let branch = format!("chant/{}", spec_id);
+    Command::new("git")
+        .args(["checkout", "-b", &branch])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to create branch");
+
+    let branch_spec_content = r#"---
+type: code
+status: in_progress
+---
+
+# Test Spec
+
+This is the BRANCH version with progress.
+
+## Acceptance Criteria
+
+- [x] First criterion completed
+- [ ] Second criterion pending
+"#;
+    fs::write(&spec_path, branch_spec_content).expect("Failed to write branch spec");
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to add");
+    Command::new("git")
+        .args(["commit", "-m", "Update spec on branch"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to commit");
+
+    // Switch back to main
+    Command::new("git")
+        .args(["checkout", "main"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to checkout main");
+
+    // Load spec with branch resolution - SHOULD load from branch
+    let loaded_spec =
+        chant::spec::Spec::load_with_branch_resolution(&spec_path).expect("Failed to load spec");
+
+    assert!(
+        loaded_spec.body.contains("BRANCH version with progress"),
+        "Should load content from branch"
+    );
+    assert!(
+        loaded_spec.body.contains("Acceptance Criteria"),
+        "Should include branch content"
+    );
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = Command::new("git")
+        .args(["branch", "-D", &branch])
+        .current_dir(&repo_dir)
+        .output();
+    let _ = cleanup_test_repo(&repo_dir);
+}
+
+#[test]
+#[serial]
+fn test_load_with_branch_resolution_explicit_branch_field() {
+    let repo_dir = PathBuf::from("/tmp/test-chant-branch-resolution-explicit");
+    let _ = cleanup_test_repo(&repo_dir);
+
+    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
+    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
+
+    // Create .chant/specs directory
+    fs::create_dir_all(repo_dir.join(".chant/specs")).expect("Failed to create specs dir");
+
+    // Create an in_progress spec with explicit branch field
+    let spec_id = "2026-01-31-003-def";
+    let custom_branch = "feature/custom-branch";
+    let spec_content = format!(
+        r#"---
+type: code
+status: in_progress
+branch: {}
+---
+
+# Test Spec
+
+This is the main version.
+"#,
+        custom_branch
+    );
+    let spec_path = repo_dir.join(format!(".chant/specs/{}.md", spec_id));
+    fs::write(&spec_path, &spec_content).expect("Failed to write spec");
+
+    // Commit it
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to add");
+    Command::new("git")
+        .args(["commit", "-m", "Add spec with custom branch"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to commit");
+
+    // Create the custom branch with updated content
+    Command::new("git")
+        .args(["checkout", "-b", custom_branch])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to create custom branch");
+
+    let branch_spec_content = format!(
+        r#"---
+type: code
+status: in_progress
+branch: {}
+---
+
+# Test Spec
+
+This is from the CUSTOM BRANCH.
+"#,
+        custom_branch
+    );
+    fs::write(&spec_path, branch_spec_content).expect("Failed to write branch spec");
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to add");
+    Command::new("git")
+        .args(["commit", "-m", "Update spec on custom branch"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to commit");
+
+    // Switch back to main
+    Command::new("git")
+        .args(["checkout", "main"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to checkout main");
+
+    // Load spec with branch resolution - should load from custom branch
+    let loaded_spec =
+        chant::spec::Spec::load_with_branch_resolution(&spec_path).expect("Failed to load spec");
+
+    assert!(
+        loaded_spec.body.contains("CUSTOM BRANCH"),
+        "Should load content from custom branch field"
+    );
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = Command::new("git")
+        .args(["branch", "-D", custom_branch])
+        .current_dir(&repo_dir)
+        .output();
+    let _ = cleanup_test_repo(&repo_dir);
+}
+
+#[test]
+#[serial]
+fn test_load_with_branch_resolution_no_branch_exists() {
+    let repo_dir = PathBuf::from("/tmp/test-chant-branch-resolution-no-branch");
+    let _ = cleanup_test_repo(&repo_dir);
+
+    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
+    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
+
+    // Create .chant/specs directory
+    fs::create_dir_all(repo_dir.join(".chant/specs")).expect("Failed to create specs dir");
+
+    // Create an in_progress spec
+    let spec_id = "2026-01-31-004-ghi";
+    let spec_content = r#"---
+type: code
+status: in_progress
+---
+
+# Test Spec
+
+This is the main version, no branch exists.
+"#;
+    let spec_path = repo_dir.join(format!(".chant/specs/{}.md", spec_id));
+    fs::write(&spec_path, spec_content).expect("Failed to write spec");
+
+    // Commit it
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to add");
+    Command::new("git")
+        .args(["commit", "-m", "Add in_progress spec"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to commit");
+
+    // Don't create the branch - it should fall back to main version
+    let loaded_spec =
+        chant::spec::Spec::load_with_branch_resolution(&spec_path).expect("Failed to load spec");
+
+    assert!(
+        loaded_spec.body.contains("no branch exists"),
+        "Should use main version when branch doesn't exist"
+    );
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = cleanup_test_repo(&repo_dir);
+}
+
+#[test]
+#[serial]
+fn test_load_with_branch_resolution_spec_not_on_branch() {
+    let repo_dir = PathBuf::from("/tmp/test-chant-branch-resolution-spec-not-on-branch");
+    let _ = cleanup_test_repo(&repo_dir);
+
+    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
+    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
+
+    // Create .chant/specs directory
+    fs::create_dir_all(repo_dir.join(".chant/specs")).expect("Failed to create specs dir");
+
+    // Create an in_progress spec
+    let spec_id = "2026-01-31-005-jkl";
+    let spec_content = r#"---
+type: code
+status: in_progress
+---
+
+# Test Spec
+
+This is the main version.
+"#;
+    let spec_path = repo_dir.join(format!(".chant/specs/{}.md", spec_id));
+    fs::write(&spec_path, spec_content).expect("Failed to write spec");
+
+    // Commit it
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to add");
+    Command::new("git")
+        .args(["commit", "-m", "Add in_progress spec"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to commit");
+
+    // Create a branch but delete the spec from it
+    let branch = format!("chant/{}", spec_id);
+    Command::new("git")
+        .args(["checkout", "-b", &branch])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to create branch");
+
+    fs::remove_file(&spec_path).expect("Failed to remove spec");
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to add");
+    Command::new("git")
+        .args(["commit", "-m", "Remove spec from branch"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to commit");
+
+    // Switch back to main
+    Command::new("git")
+        .args(["checkout", "main"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to checkout main");
+
+    // Load spec with branch resolution - should fall back to main when spec not on branch
+    let loaded_spec =
+        chant::spec::Spec::load_with_branch_resolution(&spec_path).expect("Failed to load spec");
+
+    assert!(
+        loaded_spec.body.contains("This is the main version"),
+        "Should fall back to main version when spec doesn't exist on branch"
+    );
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = Command::new("git")
+        .args(["branch", "-D", &branch])
+        .current_dir(&repo_dir)
+        .output();
+    let _ = cleanup_test_repo(&repo_dir);
+}
