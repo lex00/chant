@@ -2878,6 +2878,7 @@ mod tests {
             approval: chant::config::ApprovalConfig::default(),
             validation: chant::config::OutputValidationConfig::default(),
             site: chant::config::SiteConfig::default(),
+            lint: chant::config::LintConfig::default(),
         }
     }
 

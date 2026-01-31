@@ -57,6 +57,77 @@ pub struct OutputValidationConfig {
     pub strict_output_validation: bool,
 }
 
+/// Thresholds for linter complexity heuristics
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct LintThresholds {
+    /// Max acceptance criteria for complex specs (default: 10)
+    #[serde(default = "default_complexity_criteria")]
+    pub complexity_criteria: usize,
+    /// Max target files for complex specs (default: 5)
+    #[serde(default = "default_complexity_files")]
+    pub complexity_files: usize,
+    /// Max words in title for complex specs (default: 50)
+    #[serde(default = "default_complexity_words")]
+    pub complexity_words: usize,
+    /// Min acceptance criteria for simple specs (default: 1)
+    #[serde(default = "default_simple_criteria")]
+    pub simple_criteria: usize,
+    /// Min target files for simple specs (default: 1)
+    #[serde(default = "default_simple_files")]
+    pub simple_files: usize,
+    /// Min words in title for simple specs (default: 3)
+    #[serde(default = "default_simple_words")]
+    pub simple_words: usize,
+}
+
+fn default_complexity_criteria() -> usize {
+    10
+}
+
+fn default_complexity_files() -> usize {
+    5
+}
+
+fn default_complexity_words() -> usize {
+    50
+}
+
+fn default_simple_criteria() -> usize {
+    1
+}
+
+fn default_simple_files() -> usize {
+    1
+}
+
+fn default_simple_words() -> usize {
+    3
+}
+
+impl Default for LintThresholds {
+    fn default() -> Self {
+        Self {
+            complexity_criteria: default_complexity_criteria(),
+            complexity_files: default_complexity_files(),
+            complexity_words: default_complexity_words(),
+            simple_criteria: default_simple_criteria(),
+            simple_files: default_simple_files(),
+            simple_words: default_simple_words(),
+        }
+    }
+}
+
+/// Linter configuration for spec validation
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct LintConfig {
+    /// Thresholds for complexity heuristics
+    #[serde(default)]
+    pub thresholds: LintThresholds,
+    /// List of rule names to disable (skip during linting)
+    #[serde(default)]
+    pub disable: Vec<String>,
+}
+
 /// Enterprise configuration for derived frontmatter and validation
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct EnterpriseConfig {
@@ -124,6 +195,8 @@ pub struct Config {
     pub validation: OutputValidationConfig,
     #[serde(default)]
     pub site: SiteConfig,
+    #[serde(default)]
+    pub lint: LintConfig,
 }
 
 /// Configuration for static site generation
@@ -622,6 +695,7 @@ struct PartialConfig {
     pub approval: Option<ApprovalConfig>,
     pub validation: Option<OutputValidationConfig>,
     pub site: Option<SiteConfig>,
+    pub lint: Option<LintConfig>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -716,6 +790,8 @@ impl PartialConfig {
             validation: project.validation.or(self.validation).unwrap_or_default(),
             // Site config: project overrides global, or use default
             site: project.site.or(self.site).unwrap_or_default(),
+            // Lint config: project overrides global, or use default
+            lint: project.lint.or(self.lint).unwrap_or_default(),
         }
     }
 }
@@ -1678,5 +1754,197 @@ parallel:
         // Empty agents list should not override, use project agents
         assert_eq!(config.parallel.agents.len(), 1);
         assert_eq!(config.parallel.agents[0].name, "project-agent");
+    }
+
+    // =========================================================================
+    // LINT CONFIG TESTS
+    // =========================================================================
+
+    #[test]
+    fn test_parse_lint_config_with_thresholds() {
+        let content = r#"---
+project:
+  name: test-project
+lint:
+  thresholds:
+    complexity_criteria: 15
+    complexity_files: 8
+    complexity_words: 75
+    simple_criteria: 2
+    simple_files: 2
+    simple_words: 5
+  disable:
+    - rule1
+    - rule2
+---
+"#;
+        let config = Config::parse(content).unwrap();
+
+        assert_eq!(config.lint.thresholds.complexity_criteria, 15);
+        assert_eq!(config.lint.thresholds.complexity_files, 8);
+        assert_eq!(config.lint.thresholds.complexity_words, 75);
+        assert_eq!(config.lint.thresholds.simple_criteria, 2);
+        assert_eq!(config.lint.thresholds.simple_files, 2);
+        assert_eq!(config.lint.thresholds.simple_words, 5);
+        assert_eq!(config.lint.disable.len(), 2);
+        assert!(config.lint.disable.contains(&"rule1".to_string()));
+        assert!(config.lint.disable.contains(&"rule2".to_string()));
+    }
+
+    #[test]
+    fn test_lint_config_defaults() {
+        let content = r#"---
+project:
+  name: test-project
+---
+"#;
+        let config = Config::parse(content).unwrap();
+
+        // Should have default threshold values
+        assert_eq!(config.lint.thresholds.complexity_criteria, 10);
+        assert_eq!(config.lint.thresholds.complexity_files, 5);
+        assert_eq!(config.lint.thresholds.complexity_words, 50);
+        assert_eq!(config.lint.thresholds.simple_criteria, 1);
+        assert_eq!(config.lint.thresholds.simple_files, 1);
+        assert_eq!(config.lint.thresholds.simple_words, 3);
+        assert!(config.lint.disable.is_empty());
+    }
+
+    #[test]
+    fn test_lint_config_partial_thresholds() {
+        let content = r#"---
+project:
+  name: test-project
+lint:
+  thresholds:
+    complexity_criteria: 20
+---
+"#;
+        let config = Config::parse(content).unwrap();
+
+        // Only complexity_criteria should be overridden, others use defaults
+        assert_eq!(config.lint.thresholds.complexity_criteria, 20);
+        assert_eq!(config.lint.thresholds.complexity_files, 5);
+        assert_eq!(config.lint.thresholds.complexity_words, 50);
+        assert_eq!(config.lint.thresholds.simple_criteria, 1);
+        assert_eq!(config.lint.thresholds.simple_files, 1);
+        assert_eq!(config.lint.thresholds.simple_words, 3);
+    }
+
+    #[test]
+    fn test_lint_config_disable_only() {
+        let content = r#"---
+project:
+  name: test-project
+lint:
+  disable:
+    - no-empty-title
+    - complexity-check
+---
+"#;
+        let config = Config::parse(content).unwrap();
+
+        // Thresholds should use defaults
+        assert_eq!(config.lint.thresholds.complexity_criteria, 10);
+        // Disable list should be populated
+        assert_eq!(config.lint.disable.len(), 2);
+        assert!(config.lint.disable.contains(&"no-empty-title".to_string()));
+        assert!(config
+            .lint
+            .disable
+            .contains(&"complexity-check".to_string()));
+    }
+
+    #[test]
+    fn test_lint_config_empty_section() {
+        let content = r#"---
+project:
+  name: test-project
+lint: {}
+---
+"#;
+        let config = Config::parse(content).unwrap();
+
+        // Should use all defaults
+        assert_eq!(config.lint.thresholds.complexity_criteria, 10);
+        assert!(config.lint.disable.is_empty());
+    }
+
+    #[test]
+    fn test_load_merged_lint_config() {
+        let tmp = TempDir::new().unwrap();
+        let global_path = tmp.path().join("global.md");
+        let project_path = tmp.path().join("project.md");
+
+        fs::write(
+            &global_path,
+            r#"---
+lint:
+  thresholds:
+    complexity_criteria: 15
+  disable:
+    - global-rule
+---
+"#,
+        )
+        .unwrap();
+
+        fs::write(
+            &project_path,
+            r#"---
+project:
+  name: my-project
+---
+"#,
+        )
+        .unwrap();
+
+        let config = Config::load_merged_from(Some(&global_path), &project_path, None).unwrap();
+
+        // Global lint config is used when project doesn't specify
+        assert_eq!(config.lint.thresholds.complexity_criteria, 15);
+        assert!(config.lint.disable.contains(&"global-rule".to_string()));
+    }
+
+    #[test]
+    fn test_load_merged_lint_config_project_overrides() {
+        let tmp = TempDir::new().unwrap();
+        let global_path = tmp.path().join("global.md");
+        let project_path = tmp.path().join("project.md");
+
+        fs::write(
+            &global_path,
+            r#"---
+lint:
+  thresholds:
+    complexity_criteria: 15
+  disable:
+    - global-rule
+---
+"#,
+        )
+        .unwrap();
+
+        fs::write(
+            &project_path,
+            r#"---
+project:
+  name: my-project
+lint:
+  thresholds:
+    complexity_criteria: 25
+  disable:
+    - project-rule
+---
+"#,
+        )
+        .unwrap();
+
+        let config = Config::load_merged_from(Some(&global_path), &project_path, None).unwrap();
+
+        // Project lint config overrides global
+        assert_eq!(config.lint.thresholds.complexity_criteria, 25);
+        assert!(config.lint.disable.contains(&"project-rule".to_string()));
+        assert!(!config.lint.disable.contains(&"global-rule".to_string()));
     }
 }
