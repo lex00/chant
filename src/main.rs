@@ -308,6 +308,12 @@ enum Commands {
         /// Force split even if spec is not pending
         #[arg(long)]
         force: bool,
+        /// Recursively split over-complex members (experimental)
+        #[arg(long)]
+        recursive: bool,
+        /// Maximum recursion depth for recursive split (default: 2)
+        #[arg(long, default_value = "2")]
+        max_depth: usize,
     },
     /// Archive completed specs
     Archive {
@@ -846,9 +852,13 @@ fn run() -> Result<()> {
             lines,
             no_follow,
         } => cmd::lifecycle::cmd_log(&id, lines, !no_follow),
-        Commands::Split { id, model, force } => {
-            cmd::lifecycle::cmd_split(&id, model.as_deref(), force)
-        }
+        Commands::Split {
+            id,
+            model,
+            force,
+            recursive,
+            max_depth,
+        } => cmd::lifecycle::cmd_split(&id, model.as_deref(), force, recursive, max_depth),
         Commands::Archive {
             id,
             dry_run,

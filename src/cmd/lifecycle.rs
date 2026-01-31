@@ -184,10 +184,39 @@ struct MemberSpec {
     title: String,
     description: String,
     target_files: Option<Vec<String>>,
+    dependencies: Vec<usize>, // Member numbers this depends on (1-indexed)
+}
+
+/// Result of dependency analysis from split prompt
+#[derive(Debug, Clone)]
+struct DependencyAnalysis {
+    /// The dependency graph as text (for display)
+    graph_text: String,
+    /// Dependency edges: (from_member_num, to_member_num)
+    #[allow(dead_code)]
+    edges: Vec<(usize, usize)>,
 }
 
 /// Split a pending spec into member specs
-pub fn cmd_split(id: &str, override_model: Option<&str>, force: bool) -> Result<()> {
+pub fn cmd_split(
+    id: &str,
+    override_model: Option<&str>,
+    force: bool,
+    recursive: bool,
+    max_depth: usize,
+) -> Result<()> {
+    cmd_split_impl(id, override_model, force, recursive, max_depth, 0)
+}
+
+/// Internal implementation of split with depth tracking
+fn cmd_split_impl(
+    id: &str,
+    override_model: Option<&str>,
+    force: bool,
+    recursive: bool,
+    max_depth: usize,
+    current_depth: usize,
+) -> Result<()> {
     let specs_dir = crate::cmd::ensure_initialized()?;
     let prompts_dir = PathBuf::from(PROMPTS_DIR);
     let config = Config::load()?;
@@ -259,11 +288,18 @@ pub fn cmd_split(id: &str, override_model: Option<&str>, force: bool) -> Result<
         None,
     )?;
 
-    // Parse member specs from agent output
-    let members = parse_member_specs_from_output(&agent_output)?;
+    // Parse member specs and dependency analysis from agent output
+    let (dep_analysis, members) = parse_split_output(&agent_output)?;
 
     if members.is_empty() {
         anyhow::bail!("Agent did not propose any member specs. Check the agent output in the log.");
+    }
+
+    // Display dependency analysis if present
+    if let Some(ref analysis) = dep_analysis {
+        println!("\n{} Dependency Analysis:", "→".cyan());
+        println!("{}", analysis.graph_text);
+        println!();
     }
 
     println!(
@@ -273,10 +309,13 @@ pub fn cmd_split(id: &str, override_model: Option<&str>, force: bool) -> Result<
         spec.id
     );
 
-    // Validate members meet complexity thresholds
+    // Validate members meet complexity thresholds and collect quality metrics
     const HAIKU_CRITERIA_TARGET: usize = 5;
     const HAIKU_FILES_TARGET: usize = 5;
     const HAIKU_WORDS_TARGET: usize = 200;
+
+    let mut over_complex_count = 0;
+    let mut quality_issues = Vec::new();
 
     for (index, member) in members.iter().enumerate() {
         let member_number = index + 1;
@@ -287,10 +326,12 @@ pub fn cmd_split(id: &str, override_model: Option<&str>, force: bool) -> Result<
         let word_count = member.description.split_whitespace().count();
 
         // Log warnings if member exceeds targets
-        if criteria_count > HAIKU_CRITERIA_TARGET
+        let is_over_complex = criteria_count > HAIKU_CRITERIA_TARGET
             || files_count > HAIKU_FILES_TARGET
-            || word_count > HAIKU_WORDS_TARGET
-        {
+            || word_count > HAIKU_WORDS_TARGET;
+
+        if is_over_complex {
+            over_complex_count += 1;
             eprintln!(
                 "  {} Member {}: {} criteria, {} files, {} words (exceeds targets)",
                 "⚠".yellow(),
@@ -302,7 +343,18 @@ pub fn cmd_split(id: &str, override_model: Option<&str>, force: bool) -> Result<
         }
     }
 
-    // Create member spec files
+    // Warn if ALL members exceed complexity thresholds
+    if over_complex_count == members.len() && members.len() > 1 {
+        eprintln!(
+            "\n  {} WARNING: All {} members exceed complexity thresholds!",
+            "⚠".yellow(),
+            members.len()
+        );
+        eprintln!("  Consider re-splitting with --recursive flag (future feature)");
+        quality_issues.push("All members over-complex".to_string());
+    }
+
+    // Create member spec files with DAG-based dependencies
     let driver_id = spec.id.clone();
     for (index, member) in members.iter().enumerate() {
         let member_number = index + 1;
@@ -310,11 +362,18 @@ pub fn cmd_split(id: &str, override_model: Option<&str>, force: bool) -> Result<
         let member_filename = format!("{}.md", member_id);
         let member_path = specs_dir.join(&member_filename);
 
-        // Create frontmatter with dependencies
-        let depends_on = if index > 0 {
-            Some(vec![format!("{}.{}", driver_id, index)])
-        } else {
+        // Use dependencies from member spec (from Dependencies: field or extracted from DAG)
+        let depends_on = if member.dependencies.is_empty() {
             None
+        } else {
+            // Convert member numbers to spec IDs
+            Some(
+                member
+                    .dependencies
+                    .iter()
+                    .map(|dep_num| format!("{}.{}", driver_id, dep_num))
+                    .collect(),
+            )
         };
 
         let member_frontmatter = SpecFrontmatter {
@@ -363,6 +422,9 @@ pub fn cmd_split(id: &str, override_model: Option<&str>, force: bool) -> Result<
         println!("  • {}.{}", spec.id, i);
     }
 
+    // Detect infrastructure ordering issues
+    detect_infrastructure_issues(&members, &mut quality_issues);
+
     // Auto-lint member specs to validate they pass complexity checks
     println!("\n{} Running lint on member specs...", "→".cyan());
 
@@ -388,6 +450,56 @@ pub fn cmd_split(id: &str, override_model: Option<&str>, force: bool) -> Result<
     };
 
     println!("{} {}", "→".cyan(), summary);
+
+    // Display split quality report
+    if dep_analysis.is_some() || !quality_issues.is_empty() {
+        display_split_quality_report(&members, &dep_analysis, &quality_issues);
+    }
+
+    // Handle recursive split if requested and members are over-complex
+    if recursive && over_complex_count == members.len() && members.len() > 1 {
+        if current_depth >= max_depth {
+            eprintln!(
+                "\n{} Max recursion depth {} reached. Not splitting further.",
+                "⚠".yellow(),
+                max_depth
+            );
+        } else {
+            println!(
+                "\n{} All members exceed complexity thresholds. Recursively splitting...",
+                "→".cyan()
+            );
+
+            // Recursively split each over-complex member
+            for i in 1..=members.len() {
+                let member_id = format!("{}.{}", spec.id, i);
+                println!("\n{} Splitting member {}", "→".cyan(), member_id);
+
+                // Recursively split this member
+                if let Err(e) = cmd_split_impl(
+                    &member_id,
+                    override_model,
+                    true, // force split even if pending
+                    recursive,
+                    max_depth,
+                    current_depth + 1,
+                ) {
+                    eprintln!(
+                        "  {} Failed to split member {}: {}",
+                        "⚠".yellow(),
+                        member_id,
+                        e
+                    );
+                }
+            }
+
+            println!(
+                "\n{} Recursive split complete at depth {}",
+                "✓".green(),
+                current_depth + 1
+            );
+        }
+    }
 
     Ok(())
 }
@@ -444,36 +556,161 @@ fn get_model_for_split(
     "sonnet".to_string()
 }
 
+/// Parse split analysis output (new format with dependency analysis)
+fn parse_split_output(output: &str) -> Result<(Option<DependencyAnalysis>, Vec<MemberSpec>)> {
+    // Try to extract dependency analysis section
+    let dep_analysis = extract_dependency_analysis(output);
+
+    // Parse member specs
+    let members = parse_member_specs_from_output(output)?;
+
+    Ok((dep_analysis, members))
+}
+
+/// Extract dependency analysis from output
+fn extract_dependency_analysis(output: &str) -> Option<DependencyAnalysis> {
+    // Look for "# Dependency Analysis" section
+    let mut in_dep_section = false;
+    let mut dep_text = String::new();
+    let mut in_graph = false;
+    let mut graph_text = String::new();
+
+    for line in output.lines() {
+        if line.starts_with("# Dependency Analysis") {
+            in_dep_section = true;
+            continue;
+        }
+
+        if in_dep_section {
+            // Stop when we hit member specs
+            if line.starts_with("## Member ") {
+                break;
+            }
+
+            // Capture the dependency graph
+            if line.contains("## Dependency Graph") {
+                in_graph = true;
+                continue;
+            }
+
+            if in_graph {
+                if line.starts_with("```") {
+                    // Toggle code block
+                    if !graph_text.is_empty() {
+                        // End of graph
+                        break;
+                    }
+                    continue;
+                }
+                if line.starts_with("##") && !line.contains("Dependency Graph") {
+                    // New section, end of graph
+                    in_graph = false;
+                }
+                if in_graph && !line.trim().is_empty() && !line.starts_with("**") {
+                    graph_text.push_str(line);
+                    graph_text.push('\n');
+                }
+            }
+
+            dep_text.push_str(line);
+            dep_text.push('\n');
+        }
+    }
+
+    if graph_text.is_empty() {
+        return None;
+    }
+
+    // Parse edges from dependency text (simple heuristic)
+    let edges = extract_dependency_edges(&dep_text);
+
+    Some(DependencyAnalysis {
+        graph_text: graph_text.trim().to_string(),
+        edges,
+    })
+}
+
+/// Extract dependency edges from analysis text
+/// Looks for patterns like "Task N depends on Task M" or similar
+fn extract_dependency_edges(text: &str) -> Vec<(usize, usize)> {
+    let mut edges = Vec::new();
+
+    // Simple pattern matching for "Member N depends on Member M"
+    // or "Task N depends on Task M"
+    for line in text.lines() {
+        if line.contains("depends on") {
+            // Try to extract numbers
+            let words: Vec<&str> = line.split_whitespace().collect();
+            let mut from_num = None;
+            let mut to_nums = Vec::new();
+
+            for (i, word) in words.iter().enumerate() {
+                if (word.starts_with("Member") || word.starts_with("Task")) && i + 1 < words.len() {
+                    if let Ok(num) = words[i + 1].trim_end_matches([',', ':']).parse::<usize>() {
+                        if from_num.is_none() {
+                            from_num = Some(num);
+                        }
+                    }
+                }
+
+                if *word == "on" && i + 1 < words.len() {
+                    // Look ahead for numbers
+                    for next_word in words.iter().skip(i + 1) {
+                        let next = next_word.trim_end_matches([',', '.', ':', ';', ')']);
+                        if let Ok(num) = next.parse::<usize>() {
+                            to_nums.push(num);
+                        }
+                        if next_word.contains("because") || next_word.contains("and") {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if let Some(from) = from_num {
+                for to in to_nums {
+                    edges.push((to, from)); // (dependency, dependent)
+                }
+            }
+        }
+    }
+
+    edges
+}
+
 /// Parse member specs from agent output (split analysis)
 fn parse_member_specs_from_output(output: &str) -> Result<Vec<MemberSpec>> {
     let mut members = Vec::new();
-    let mut current_member: Option<(String, String, Vec<String>)> = None;
+    let mut current_member: Option<(String, String, Vec<String>, Vec<usize>)> = None;
     let mut collecting_files = false;
+    let mut collecting_dependencies = false;
     let mut in_code_block = false;
 
     for line in output.lines() {
         // Check for member headers (## Member N: ...)
         if line.starts_with("## Member ") && line.contains(':') {
             // Save previous member if any
-            if let Some((title, desc, files)) = current_member.take() {
+            if let Some((title, desc, files, deps)) = current_member.take() {
                 members.push(MemberSpec {
                     title,
                     description: desc.trim().to_string(),
                     target_files: if files.is_empty() { None } else { Some(files) },
+                    dependencies: deps,
                 });
             }
 
             // Extract title from "## Member N: Title Here"
             if let Some(title_part) = line.split(':').nth(1) {
                 let title = title_part.trim().to_string();
-                current_member = Some((title, String::new(), Vec::new()));
+                current_member = Some((title, String::new(), Vec::new(), Vec::new()));
                 collecting_files = false;
+                collecting_dependencies = false;
             }
         } else if current_member.is_some() {
             // Check for code block markers
             if line.trim() == "```" {
                 in_code_block = !in_code_block;
-                if let Some((_, ref mut desc, _)) = &mut current_member {
+                if let Some((_, ref mut desc, _, _)) = &mut current_member {
                     desc.push_str(line);
                     desc.push('\n');
                 }
@@ -483,6 +720,22 @@ fn parse_member_specs_from_output(output: &str) -> Result<Vec<MemberSpec>> {
             // Check for "Affected Files:" header
             if line.contains("**Affected Files:**") || line.contains("Affected Files:") {
                 collecting_files = true;
+                collecting_dependencies = false;
+                continue;
+            }
+
+            // Check for "Dependencies:" header
+            if line.contains("**Dependencies:**")
+                || (line.starts_with("Dependencies:") && !line.contains("##"))
+            {
+                collecting_dependencies = true;
+                collecting_files = false;
+                // Parse dependencies from same line if present
+                if let Some(deps_part) = line.split(':').nth(1) {
+                    if let Some((_, _, _, ref mut deps)) = &mut current_member {
+                        parse_dependencies_from_text(deps_part, deps);
+                    }
+                }
                 continue;
             }
 
@@ -497,7 +750,7 @@ fn parse_member_specs_from_output(output: &str) -> Result<Vec<MemberSpec>> {
                         } else {
                             file
                         };
-                        if let Some((_, _, ref mut files)) = current_member {
+                        if let Some((_, _, ref mut files, _)) = current_member {
                             files.push(cleaned_file);
                         }
                     }
@@ -510,9 +763,19 @@ fn parse_member_specs_from_output(output: &str) -> Result<Vec<MemberSpec>> {
                     // New section
                     collecting_files = false;
                 }
+            } else if collecting_dependencies {
+                // Parse any additional dependency info
+                if line.starts_with("##") || line.trim().is_empty() {
+                    collecting_dependencies = false;
+                }
             } else if !in_code_block {
-                // Preserve ### headers and all content except "Affected Files" section
-                if let Some((_, ref mut desc, _)) = &mut current_member {
+                // Skip "Provides:" and "Requires:" sections - don't include in description
+                if line.contains("### Provides") || line.contains("### Requires") {
+                    // Skip this section
+                    continue;
+                }
+                // Preserve ### headers and all content except special sections
+                if let Some((_, ref mut desc, _, _)) = &mut current_member {
                     desc.push_str(line);
                     desc.push('\n');
                 }
@@ -521,11 +784,12 @@ fn parse_member_specs_from_output(output: &str) -> Result<Vec<MemberSpec>> {
     }
 
     // Save last member
-    if let Some((title, desc, files)) = current_member {
+    if let Some((title, desc, files, deps)) = current_member {
         members.push(MemberSpec {
             title,
             description: desc.trim().to_string(),
             target_files: if files.is_empty() { None } else { Some(files) },
+            dependencies: deps,
         });
     }
 
@@ -534,6 +798,170 @@ fn parse_member_specs_from_output(output: &str) -> Result<Vec<MemberSpec>> {
     }
 
     Ok(members)
+}
+
+/// Parse dependencies from text like "Member 2, Member 3" or "None"
+fn parse_dependencies_from_text(text: &str, deps: &mut Vec<usize>) {
+    if text.trim().to_lowercase() == "none" {
+        return;
+    }
+
+    // Extract numbers from text
+    for word in text.split(&[',', ' ', ';'][..]) {
+        let trimmed = word.trim();
+        if let Ok(num) = trimmed.parse::<usize>() {
+            if !deps.contains(&num) {
+                deps.push(num);
+            }
+        } else if trimmed.starts_with("Member ") || trimmed.starts_with("Task ") {
+            // Try to extract number after "Member " or "Task "
+            let num_part = trimmed.split_whitespace().nth(1).unwrap_or("");
+            if let Ok(num) = num_part.trim_end_matches([',', '.']).parse::<usize>() {
+                if !deps.contains(&num) {
+                    deps.push(num);
+                }
+            }
+        }
+    }
+}
+
+/// Detect if a member is infrastructure based on title/description keywords
+fn is_infrastructure_member(member: &MemberSpec) -> bool {
+    let text = format!("{} {}", member.title, member.description).to_lowercase();
+
+    // Infrastructure keywords
+    let infra_keywords = [
+        "logging",
+        "logger",
+        "config",
+        "configuration",
+        "error handling",
+        "error type",
+        "utility",
+        "helper",
+        "common type",
+        "shared type",
+        "base type",
+        "interface",
+        "trait",
+        "constant",
+    ];
+
+    infra_keywords.iter().any(|keyword| text.contains(keyword))
+}
+
+/// Detect infrastructure ordering issues and add to quality issues
+fn detect_infrastructure_issues(members: &[MemberSpec], quality_issues: &mut Vec<String>) {
+    for (index, member) in members.iter().enumerate() {
+        let member_number = index + 1;
+
+        if is_infrastructure_member(member) {
+            // Check if infrastructure depends on non-infrastructure
+            for dep in &member.dependencies {
+                let dep_index = dep - 1;
+                if dep_index < members.len() {
+                    let dep_member = &members[dep_index];
+                    if !is_infrastructure_member(dep_member) {
+                        eprintln!(
+                            "  {} Member {} (infrastructure) depends on Member {} (feature) - may be incorrect",
+                            "⚠".yellow(),
+                            member_number,
+                            dep
+                        );
+                        quality_issues.push(format!(
+                            "Infrastructure Member {} depends on feature Member {}",
+                            member_number, dep
+                        ));
+                    }
+                }
+            }
+
+            // Warn if infrastructure appears late in sequence
+            if member_number > members.len() / 2 {
+                eprintln!(
+                    "  {} Member {} (infrastructure) appears late in sequence - consider reordering",
+                    "⚠".yellow(),
+                    member_number
+                );
+            }
+        }
+    }
+}
+
+/// Display split quality report
+fn display_split_quality_report(
+    members: &[MemberSpec],
+    dep_analysis: &Option<DependencyAnalysis>,
+    quality_issues: &[String],
+) {
+    println!("\n{} Split Quality Report", "→".cyan());
+    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+
+    // Show dependency structure
+    if let Some(analysis) = dep_analysis {
+        println!("\n{} Dependency Graph:", "📊".cyan());
+        println!("{}", analysis.graph_text);
+
+        // Analyze parallelism
+        let mut parallel_groups: std::collections::HashMap<String, Vec<usize>> =
+            std::collections::HashMap::new();
+        for (i, member) in members.iter().enumerate() {
+            let deps_key = if member.dependencies.is_empty() {
+                "none".to_string()
+            } else {
+                let mut deps = member.dependencies.clone();
+                deps.sort();
+                format!("{:?}", deps)
+            };
+            parallel_groups.entry(deps_key).or_default().push(i + 1);
+        }
+
+        let parallel_count = parallel_groups.values().filter(|v| v.len() > 1).count();
+        if parallel_count > 0 {
+            println!("\n{} Parallelism Detected:", "✓".green());
+            for (deps, group) in parallel_groups.iter() {
+                if group.len() > 1 {
+                    println!(
+                        "  Members {:?} can run in parallel (depend on: {})",
+                        group,
+                        if deps == "none" {
+                            "nothing".to_string()
+                        } else {
+                            deps.clone()
+                        }
+                    );
+                }
+            }
+        }
+    }
+
+    // Show complexity metrics
+    println!("\n{} Complexity Metrics:", "📏".cyan());
+    for (index, member) in members.iter().enumerate() {
+        let member_number = index + 1;
+        let criteria_count = member.description.matches("- [ ]").count()
+            + member.description.matches("- [x]").count()
+            + member.description.matches("- [X]").count();
+        let files_count = member.target_files.as_ref().map(|f| f.len()).unwrap_or(0);
+        let word_count = member.description.split_whitespace().count();
+
+        println!(
+            "  Member {}: {} criteria, {} files, {} words",
+            member_number, criteria_count, files_count, word_count
+        );
+    }
+
+    // Show quality issues
+    if !quality_issues.is_empty() {
+        println!("\n{} Quality Issues:", "⚠".yellow());
+        for issue in quality_issues {
+            println!("  • {}", issue);
+        }
+    } else {
+        println!("\n{} No quality issues detected", "✓".green());
+    }
+
+    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
 }
 
 // ============================================================================
