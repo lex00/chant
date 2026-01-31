@@ -2880,6 +2880,220 @@ pub fn cmd_resume(
 }
 
 // ============================================================================
+// LIFECYCLE OPERATIONS (for watch mode)
+// ============================================================================
+
+/// Handle a completed spec: finalize it, then merge if on a branch.
+///
+/// This orchestrates the completion workflow:
+/// 1. Run `chant finalize <spec_id>` to validate and mark complete
+/// 2. If spec is on a `chant/<spec-id>` branch, run `chant merge <spec_id>`
+/// 3. If spec is on main branch, skip merge step
+///
+/// # Arguments
+/// * `spec_id` - The spec ID to complete
+///
+/// # Returns
+/// * `Ok(())` on success
+/// * `Err(_)` if finalize or merge subprocess fails
+///
+/// # Edge Cases
+/// * Finalize fails: Return error, do not proceed to merge
+/// * Merge fails: Return error with conflict details
+/// * Spec on main branch: Skip merge step
+pub fn handle_completed(spec_id: &str) -> Result<()> {
+    use std::process::Command;
+
+    let specs_dir = crate::cmd::ensure_initialized()?;
+
+    // Step 1: Finalize the spec
+    println!("{} Finalizing spec {}", "→".cyan(), spec_id.cyan());
+
+    let status = Command::new(std::env::current_exe()?)
+        .args(["finalize", spec_id])
+        .status()
+        .context("Failed to run chant finalize")?;
+
+    if !status.success() {
+        anyhow::bail!("Finalize failed for spec {}", spec_id);
+    }
+
+    println!("{} Finalized spec {}", "✓".green(), spec_id);
+
+    // Step 2: Check if spec is on a branch
+    let branch_name = format!("chant/{}", spec_id);
+    let on_branch = is_spec_on_branch(spec_id, &branch_name)?;
+
+    if !on_branch {
+        println!(
+            "{} Spec {} is on main branch, skipping merge",
+            "→".cyan(),
+            spec_id
+        );
+        return Ok(());
+    }
+
+    // Step 3: Merge the branch
+    println!("{} Merging branch {}", "→".cyan(), branch_name.cyan());
+
+    let status = Command::new(std::env::current_exe()?)
+        .args(["merge", spec_id])
+        .status()
+        .context("Failed to run chant merge")?;
+
+    if !status.success() {
+        anyhow::bail!(
+            "Merge failed for spec {} (branch: {})",
+            spec_id,
+            branch_name
+        );
+    }
+
+    println!("{} Merged spec {}", "✓".green(), spec_id);
+
+    Ok(())
+}
+
+/// Handle a failed spec: decide whether to retry or mark permanent failure.
+///
+/// This orchestrates the failure handling workflow:
+/// 1. Load spec and retry state
+/// 2. Read error log
+/// 3. Use retry logic to decide: retry or permanent failure
+/// 4. If retry: schedule resume with exponential backoff
+/// 5. If permanent: log and mark for manual intervention
+///
+/// # Arguments
+/// * `spec_id` - The spec ID that failed
+/// * `config` - Failure configuration with retry settings
+///
+/// # Returns
+/// * `Ok(())` on success (retry scheduled or marked failed)
+/// * `Err(_)` on subprocess failure or configuration error
+///
+/// # Edge Cases
+/// * Resume fails: Treat as permanent failure
+/// * Empty error log: Permanent failure
+/// * Max retries exceeded: Permanent failure
+pub fn handle_failed(spec_id: &str, config: &chant::config::FailureConfig) -> Result<()> {
+    use chant::retry::{decide_retry, RetryDecision};
+
+    let specs_dir = crate::cmd::ensure_initialized()?;
+
+    // Load the spec
+    let mut spec = spec::resolve_spec(&specs_dir, spec_id)?;
+    let spec_path = specs_dir.join(format!("{}.md", spec_id));
+
+    // Get retry state (or create new one)
+    let mut retry_state = spec.frontmatter.retry_state.clone().unwrap_or_default();
+
+    // Read error log
+    let log_path = specs_dir
+        .parent()
+        .unwrap_or(&specs_dir)
+        .join("logs")
+        .join(format!("{}.log", spec_id));
+
+    let error_log = if log_path.exists() {
+        std::fs::read_to_string(&log_path).unwrap_or_default()
+    } else {
+        String::new()
+    };
+
+    // Decide whether to retry
+    let decision = decide_retry(&retry_state, &error_log, config);
+
+    match decision {
+        RetryDecision::Retry(delay) => {
+            // Schedule retry with exponential backoff
+            let delay_ms = delay.as_millis() as u64;
+            retry_state.record_attempt(delay_ms);
+
+            let next_retry_time = retry_state.next_retry_time;
+
+            println!(
+                "{} Scheduling retry for spec {} (attempt {}/{}, delay: {}ms)",
+                "→".cyan(),
+                spec_id,
+                retry_state.attempts,
+                config.max_retries,
+                delay_ms
+            );
+
+            // Update spec with new retry state
+            spec.frontmatter.retry_state = Some(retry_state);
+            spec.save(&spec_path)?;
+
+            // Note: The watch loop will check next_retry_time and call resume when ready
+            println!(
+                "{} Retry will be attempted at timestamp {}",
+                "→".cyan(),
+                next_retry_time
+            );
+
+            Ok(())
+        }
+        RetryDecision::PermanentFailure(reason) => {
+            // Mark as permanent failure
+            println!(
+                "{} Permanent failure for spec {}: {}",
+                "✗".red(),
+                spec_id,
+                reason
+            );
+
+            // Update spec status to failed (it should already be failed, but ensure it)
+            spec.frontmatter.status = chant::spec::SpecStatus::Failed;
+            spec.save(&spec_path)?;
+
+            println!(
+                "{} Spec {} marked for manual intervention",
+                "→".cyan(),
+                spec_id
+            );
+
+            Ok(())
+        }
+    }
+}
+
+/// Check if a spec's worktree is on the specified branch.
+///
+/// # Arguments
+/// * `spec_id` - The spec ID
+/// * `branch_name` - The branch name to check (e.g., "chant/spec-id")
+///
+/// # Returns
+/// * `Ok(true)` if worktree exists and is on the specified branch
+/// * `Ok(false)` if worktree doesn't exist or is on a different branch
+/// * `Err(_)` if git operations fail
+fn is_spec_on_branch(spec_id: &str, branch_name: &str) -> Result<bool> {
+    use std::process::Command;
+
+    // Get worktree path
+    let worktree_path = chant::worktree::worktree_path_for_spec(spec_id);
+
+    // Check if worktree exists
+    if !worktree_path.exists() {
+        return Ok(false);
+    }
+
+    // Get current branch in worktree
+    let output = Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(&worktree_path)
+        .output()
+        .context("Failed to get current branch in worktree")?;
+
+    if !output.status.success() {
+        return Ok(false);
+    }
+
+    let current_branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok(current_branch == branch_name)
+}
+
+// ============================================================================
 // REPLAY
 // ============================================================================
 

@@ -148,6 +148,9 @@ pub struct SpecFrontmatter {
     // Site generation control - set to false to exclude from site
     #[serde(skip_serializing_if = "Option::is_none")]
     pub public: Option<bool>,
+    // Retry state for failed specs (watch mode)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry_state: Option<crate::retry::RetryState>,
 }
 
 fn default_type() -> String {
@@ -188,6 +191,7 @@ impl Default for SpecFrontmatter {
             members: None,
             output_schema: None,
             public: None,
+            retry_state: None,
         }
     }
 }
