@@ -1655,4 +1655,154 @@ No coupling issues here.
             "Complex specs should be allowed to use expensive models"
         );
     }
+
+    #[test]
+    fn test_validate_approval_schema_no_approval_field() {
+        // Create a spec without approval field - should be OK
+        let spec = Spec {
+            id: "2026-01-30-030-abc".to_string(),
+            frontmatter: SpecFrontmatter {
+                approval: None,
+                ..Default::default()
+            },
+            title: Some("Test Spec".to_string()),
+            body: "No approval needed.".to_string(),
+        };
+
+        let diagnostics = validate_approval_schema(&spec);
+
+        assert_eq!(
+            diagnostics.len(),
+            0,
+            "Spec without approval field should have no diagnostics"
+        );
+    }
+
+    #[test]
+    fn test_validate_approval_schema_pending_ok() {
+        // Create a spec with pending approval - should be OK
+        let spec = Spec {
+            id: "2026-01-30-031-def".to_string(),
+            frontmatter: SpecFrontmatter {
+                approval: Some(chant::spec::Approval {
+                    required: false,
+                    status: ApprovalStatus::Pending,
+                    by: None,
+                    at: None,
+                }),
+                ..Default::default()
+            },
+            title: Some("Test Spec".to_string()),
+            body: "Pending approval.".to_string(),
+        };
+
+        let diagnostics = validate_approval_schema(&spec);
+
+        assert_eq!(
+            diagnostics.len(),
+            0,
+            "Pending approval without 'by' or 'at' should have no diagnostics"
+        );
+    }
+
+    #[test]
+    fn test_validate_approval_schema_approved_missing_by() {
+        // Create a spec with approved status but missing 'by' field
+        let spec = Spec {
+            id: "2026-01-30-032-ghi".to_string(),
+            frontmatter: SpecFrontmatter {
+                approval: Some(chant::spec::Approval {
+                    required: false,
+                    status: ApprovalStatus::Approved,
+                    by: None,
+                    at: Some("2026-01-30T12:00:00Z".to_string()),
+                }),
+                ..Default::default()
+            },
+            title: Some("Test Spec".to_string()),
+            body: "Approved but missing by.".to_string(),
+        };
+
+        let diagnostics = validate_approval_schema(&spec);
+
+        assert_eq!(
+            diagnostics.len(),
+            1,
+            "Approved status without 'by' should have one diagnostic"
+        );
+        assert_eq!(diagnostics[0].rule, LintRule::Approval);
+        assert_eq!(diagnostics[0].severity, Severity::Error);
+        assert!(
+            diagnostics[0].message.contains("'by' field is missing"),
+            "Message should mention missing 'by' field"
+        );
+    }
+
+    #[test]
+    fn test_validate_approval_schema_approved_missing_at() {
+        // Create a spec with approved status but missing 'at' field
+        let spec = Spec {
+            id: "2026-01-30-033-jkl".to_string(),
+            frontmatter: SpecFrontmatter {
+                approval: Some(chant::spec::Approval {
+                    required: false,
+                    status: ApprovalStatus::Approved,
+                    by: Some("alice".to_string()),
+                    at: None,
+                }),
+                ..Default::default()
+            },
+            title: Some("Test Spec".to_string()),
+            body: "Approved but missing at.".to_string(),
+        };
+
+        let diagnostics = validate_approval_schema(&spec);
+
+        assert_eq!(
+            diagnostics.len(),
+            1,
+            "Approved status without 'at' should have one diagnostic"
+        );
+        assert_eq!(diagnostics[0].rule, LintRule::Approval);
+        assert_eq!(diagnostics[0].severity, Severity::Error);
+        assert!(
+            diagnostics[0].message.contains("'at' timestamp is missing"),
+            "Message should mention missing 'at' timestamp"
+        );
+    }
+
+    #[test]
+    fn test_validate_approval_schema_pending_with_by_inconsistent() {
+        // Create a spec with pending status but 'by' field set - inconsistent
+        let spec = Spec {
+            id: "2026-01-30-034-mno".to_string(),
+            frontmatter: SpecFrontmatter {
+                approval: Some(chant::spec::Approval {
+                    required: false,
+                    status: ApprovalStatus::Pending,
+                    by: Some("alice".to_string()),
+                    at: None,
+                }),
+                ..Default::default()
+            },
+            title: Some("Test Spec".to_string()),
+            body: "Pending with by field.".to_string(),
+        };
+
+        let diagnostics = validate_approval_schema(&spec);
+
+        assert_eq!(
+            diagnostics.len(),
+            1,
+            "Pending status with 'by' field should have one diagnostic"
+        );
+        assert_eq!(diagnostics[0].rule, LintRule::Approval);
+        assert_eq!(diagnostics[0].severity, Severity::Error);
+        assert!(
+            diagnostics[0]
+                .message
+                .contains("has 'by' field set but status is still 'pending'"),
+            "Message should mention inconsistency"
+        );
+    }
 }
