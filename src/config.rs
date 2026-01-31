@@ -532,6 +532,9 @@ pub struct DefaultsConfig {
     /// Agent rotation strategy for single spec execution (none, random, round-robin)
     #[serde(default = "default_rotation_strategy")]
     pub rotation_strategy: String,
+    /// List of prompt extensions to append to all prompts
+    #[serde(default)]
+    pub prompt_extensions: Vec<String>,
 }
 
 fn default_rotation_strategy() -> String {
@@ -561,6 +564,7 @@ impl Default for DefaultsConfig {
             main_branch: default_main_branch(),
             provider: ProviderType::Claude,
             rotation_strategy: default_rotation_strategy(),
+            prompt_extensions: vec![],
         }
     }
 }
@@ -714,6 +718,7 @@ struct PartialDefaultsConfig {
     pub main_branch: Option<String>,
     pub provider: Option<ProviderType>,
     pub rotation_strategy: Option<String>,
+    pub prompt_extensions: Option<Vec<String>>,
 }
 
 impl PartialConfig {
@@ -774,6 +779,10 @@ impl PartialConfig {
                     .rotation_strategy
                     .or(global_defaults.rotation_strategy)
                     .unwrap_or_else(default_rotation_strategy),
+                prompt_extensions: project_defaults
+                    .prompt_extensions
+                    .or(global_defaults.prompt_extensions)
+                    .unwrap_or_default(),
             },
             providers: Default::default(),
             // Parallel config: project overrides global, or use default

@@ -218,6 +218,10 @@ Make the smallest change that satisfies the spec.
 
 ## Prompt Inheritance
 
+**Status:** ✅ Implemented (as of v0.9.0)
+
+Prompts can extend other prompts for composition and reuse.
+
 ### Extending Prompts
 
 ```yaml
@@ -233,20 +237,26 @@ extends: standard
 Write tests before implementation.
 ```
 
-### Multiple Parents
+The `{{> parent}}` marker indicates where the parent prompt content should be injected.
+
+### Prompt Extensions
+
+Extensions are reusable prompt fragments that can be globally applied via config:
 
 ```yaml
+# .chant/config.md
 ---
-name: secure-tdd
-extends: [tdd, security-review]
+defaults:
+  prompt: standard
+  prompt_extensions:
+    - output-concise
+    - rust-idioms
 ---
-
-{{> tdd}}
-
----
-
-{{> security-review}}
 ```
+
+Extensions are loaded from `.chant/prompts/extensions/` and appended to the assembled prompt in order.
+
+**Note:** Multiple parents are not supported in v1. Use single inheritance only.
 
 ---
 

@@ -6,6 +6,8 @@
 //! - ignore: false
 
 use anyhow::{Context, Result};
+use serde::Deserialize;
+use std::collections::HashSet;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -14,6 +16,17 @@ use crate::config::Config;
 use crate::paths::SPECS_DIR;
 use crate::spec::{split_frontmatter, Spec};
 use crate::validation;
+
+/// Frontmatter for prompt templates
+#[derive(Debug, Deserialize, Default)]
+pub struct PromptFrontmatter {
+    /// Name of the prompt
+    pub name: Option<String>,
+    /// Purpose/description of the prompt
+    pub purpose: Option<String>,
+    /// Parent prompt name to extend from
+    pub extends: Option<String>,
+}
 
 /// Context about the execution environment (worktree, branch, isolation).
 ///
@@ -79,11 +92,9 @@ pub fn assemble_with_context(
     config: &Config,
     worktree_ctx: &WorktreeContext,
 ) -> Result<String> {
-    let prompt_content = fs::read_to_string(prompt_path)
-        .with_context(|| format!("Failed to read prompt from {}", prompt_path.display()))?;
-
-    // Extract body (skip frontmatter)
-    let (_frontmatter, body) = split_frontmatter(&prompt_content);
+    // Resolve prompt with inheritance
+    let mut visited = HashSet::new();
+    let resolved_body = resolve_prompt_inheritance(prompt_path, &mut visited)?;
 
     // Check if this is a split prompt (don't inject commit instruction for analysis prompts)
     let is_split_prompt = prompt_path
@@ -92,9 +103,79 @@ pub fn assemble_with_context(
         .unwrap_or(false);
 
     // Substitute template variables and inject commit instruction (except for split)
-    let message = substitute(body, spec, config, !is_split_prompt, worktree_ctx);
+    let mut message = substitute(&resolved_body, spec, config, !is_split_prompt, worktree_ctx);
+
+    // Append prompt extensions from config
+    for extension_name in &config.defaults.prompt_extensions {
+        let extension_content = load_extension(extension_name)?;
+        message.push_str("\n\n");
+        message.push_str(&extension_content);
+    }
 
     Ok(message)
+}
+
+/// Resolve prompt inheritance by loading parent prompts recursively.
+/// Returns the fully resolved prompt body with {{> parent}} markers replaced.
+fn resolve_prompt_inheritance(
+    prompt_path: &Path,
+    visited: &mut HashSet<PathBuf>,
+) -> Result<String> {
+    // Check for circular dependencies
+    if visited.contains(prompt_path) {
+        anyhow::bail!(
+            "Circular prompt inheritance detected: {}",
+            prompt_path.display()
+        );
+    }
+    visited.insert(prompt_path.to_path_buf());
+
+    let prompt_content = fs::read_to_string(prompt_path)
+        .with_context(|| format!("Failed to read prompt from {}", prompt_path.display()))?;
+
+    // Parse frontmatter
+    let (frontmatter_str, body) = split_frontmatter(&prompt_content);
+
+    // Check if this prompt extends another
+    if let Some(frontmatter_str) = frontmatter_str {
+        let frontmatter: PromptFrontmatter =
+            serde_yaml::from_str(&frontmatter_str).with_context(|| {
+                format!(
+                    "Failed to parse prompt frontmatter from {}",
+                    prompt_path.display()
+                )
+            })?;
+
+        if let Some(parent_name) = frontmatter.extends {
+            // Construct parent prompt path
+            let prompt_dir = prompt_path.parent().unwrap_or(Path::new(".chant/prompts"));
+            let parent_path = prompt_dir.join(format!("{}.md", parent_name));
+
+            // Recursively resolve parent
+            let parent_body = resolve_prompt_inheritance(&parent_path, visited)?;
+
+            // Replace {{> parent}} marker with parent content
+            let resolved = body.replace("{{> parent}}", &parent_body);
+            return Ok(resolved);
+        }
+    }
+
+    // No parent, return body as-is
+    Ok(body.to_string())
+}
+
+/// Load a prompt extension from .chant/prompts/extensions/
+fn load_extension(extension_name: &str) -> Result<String> {
+    let extension_path =
+        Path::new(".chant/prompts/extensions").join(format!("{}.md", extension_name));
+
+    let content = fs::read_to_string(&extension_path)
+        .with_context(|| format!("Failed to read extension from {}", extension_path.display()))?;
+
+    // Extract body (skip frontmatter if present)
+    let (_frontmatter, body) = split_frontmatter(&content);
+
+    Ok(body.to_string())
 }
 
 fn substitute(
@@ -423,5 +504,174 @@ Body content here."#;
         let result = substitute(template, &spec, &config, false, &worktree_ctx);
 
         assert!(!result.contains("## Execution Environment"));
+    }
+
+    // =========================================================================
+    // PROMPT INHERITANCE TESTS
+    // =========================================================================
+
+    #[test]
+    fn test_resolve_prompt_no_inheritance() {
+        use tempfile::TempDir;
+
+        let tmp = TempDir::new().unwrap();
+        let prompt_path = tmp.path().join("simple.md");
+
+        fs::write(
+            &prompt_path,
+            r#"---
+name: simple
+---
+
+Simple prompt body."#,
+        )
+        .unwrap();
+
+        let mut visited = HashSet::new();
+        let result = resolve_prompt_inheritance(&prompt_path, &mut visited).unwrap();
+
+        assert_eq!(result, "Simple prompt body.");
+    }
+
+    #[test]
+    fn test_resolve_prompt_with_parent() {
+        use tempfile::TempDir;
+
+        let tmp = TempDir::new().unwrap();
+        let parent_path = tmp.path().join("parent.md");
+        let child_path = tmp.path().join("child.md");
+
+        fs::write(
+            &parent_path,
+            r#"---
+name: parent
+---
+
+Parent content here."#,
+        )
+        .unwrap();
+
+        fs::write(
+            &child_path,
+            r#"---
+name: child
+extends: parent
+---
+
+{{> parent}}
+
+Additional child content."#,
+        )
+        .unwrap();
+
+        let mut visited = HashSet::new();
+        let result = resolve_prompt_inheritance(&child_path, &mut visited).unwrap();
+
+        assert!(result.contains("Parent content here."));
+        assert!(result.contains("Additional child content."));
+        assert!(!result.contains("{{> parent}}"));
+    }
+
+    #[test]
+    fn test_circular_inheritance_detection() {
+        use tempfile::TempDir;
+
+        let tmp = TempDir::new().unwrap();
+        let prompt_a = tmp.path().join("a.md");
+        let prompt_b = tmp.path().join("b.md");
+
+        fs::write(
+            &prompt_a,
+            r#"---
+name: a
+extends: b
+---
+
+{{> parent}}"#,
+        )
+        .unwrap();
+
+        fs::write(
+            &prompt_b,
+            r#"---
+name: b
+extends: a
+---
+
+{{> parent}}"#,
+        )
+        .unwrap();
+
+        let mut visited = HashSet::new();
+        let result = resolve_prompt_inheritance(&prompt_a, &mut visited);
+
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Circular prompt inheritance"));
+    }
+
+    #[test]
+    fn test_load_extension() {
+        use tempfile::TempDir;
+
+        let tmp = TempDir::new().unwrap();
+        let extensions_dir = tmp.path().join(".chant/prompts/extensions");
+        fs::create_dir_all(&extensions_dir).unwrap();
+
+        let extension_path = extensions_dir.join("test-ext.md");
+        fs::write(
+            &extension_path,
+            r#"---
+name: test-ext
+---
+
+Extension content here."#,
+        )
+        .unwrap();
+
+        // Change to temp directory for test
+        let original_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&tmp).unwrap();
+
+        let result = load_extension("test-ext").unwrap();
+        assert_eq!(result, "Extension content here.");
+
+        // Restore original directory
+        std::env::set_current_dir(original_dir).unwrap();
+    }
+
+    #[test]
+    fn test_prompt_extensions_in_config() {
+        use tempfile::TempDir;
+
+        let tmp = TempDir::new().unwrap();
+        let extensions_dir = tmp.path().join(".chant/prompts/extensions");
+        fs::create_dir_all(&extensions_dir).unwrap();
+
+        let extension_path = extensions_dir.join("concise.md");
+        fs::write(&extension_path, "Keep output concise.").unwrap();
+
+        let prompt_path = tmp.path().join("main.md");
+        fs::write(&prompt_path, "Main prompt.").unwrap();
+
+        let mut config = make_test_config();
+        config.defaults.prompt_extensions = vec!["concise".to_string()];
+
+        let spec = make_test_spec();
+        let worktree_ctx = WorktreeContext::default();
+
+        // Change to temp directory for test
+        let original_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&tmp).unwrap();
+
+        let result = assemble_with_context(&spec, &prompt_path, &config, &worktree_ctx).unwrap();
+
+        assert!(result.contains("Main prompt."));
+        assert!(result.contains("Keep output concise."));
+
+        // Restore original directory
+        std::env::set_current_dir(original_dir).unwrap();
     }
 }
