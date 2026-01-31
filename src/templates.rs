@@ -204,7 +204,10 @@ pub fn inject_chant_section(existing_content: Option<&str>, has_mcp: bool) -> In
                     let end_marker_end = end + CHANT_SECTION_END.len();
 
                     // Include trailing newline in the section boundary if present
-                    let section_end = if content[end_marker_end..].starts_with('\n') {
+                    // Handle both Unix (\n) and Windows (\r\n) line endings
+                    let section_end = if content[end_marker_end..].starts_with("\r\n") {
+                        end_marker_end + 2
+                    } else if content[end_marker_end..].starts_with('\n') {
                         end_marker_end + 1
                     } else {
                         end_marker_end
@@ -213,9 +216,10 @@ pub fn inject_chant_section(existing_content: Option<&str>, has_mcp: bool) -> In
                     let before = &content[..begin];
                     let after = &content[section_end..];
 
-                    // Check if existing section matches new section
+                    // Normalize line endings for comparison (templates use \n, files may use \r\n)
                     let existing_section = &content[begin..section_end];
-                    if existing_section == section {
+                    let existing_normalized = existing_section.replace("\r\n", "\n");
+                    if existing_normalized == section {
                         return InjectionResult::Unchanged;
                     }
 
