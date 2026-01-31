@@ -65,6 +65,7 @@ pub mod prompt;
 pub mod prompts;
 pub mod provider;
 pub mod replay;
+pub mod retry;
 pub mod site;
 pub mod spec;
 pub mod spec_group;
