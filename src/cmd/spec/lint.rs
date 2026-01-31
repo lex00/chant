@@ -16,6 +16,138 @@ use chant::validation;
 use std::path::PathBuf;
 
 // ============================================================================
+// LINT TYPES
+// ============================================================================
+
+/// Categories of lint rules for spec validation
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LintRule {
+    /// Spec is too complex (too many criteria, files, or words)
+    Complexity,
+    /// Spec references other spec IDs in body text (coupling)
+    Coupling,
+    /// Type-specific validation issues
+    Type,
+    /// Using expensive model on simple spec
+    ModelWaste,
+    /// Approval schema inconsistencies
+    Approval,
+    /// Output schema validation issues
+    Output,
+    /// Missing or invalid dependency references
+    Dependency,
+    /// Missing required enterprise fields
+    Required,
+    /// Missing spec title
+    Title,
+    /// YAML frontmatter parse errors
+    Parse,
+}
+
+impl LintRule {
+    /// Returns the string representation of the lint rule
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            LintRule::Complexity => "complexity",
+            LintRule::Coupling => "coupling",
+            LintRule::Type => "type",
+            LintRule::ModelWaste => "model_waste",
+            LintRule::Approval => "approval",
+            LintRule::Output => "output",
+            LintRule::Dependency => "dependency",
+            LintRule::Required => "required",
+            LintRule::Title => "title",
+            LintRule::Parse => "parse",
+        }
+    }
+}
+
+/// Severity level for lint diagnostics
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Severity {
+    /// Error - spec is invalid and must be fixed
+    Error,
+    /// Warning - spec is valid but could be improved
+    Warning,
+}
+
+/// A single diagnostic message from linting
+#[derive(Debug, Clone)]
+pub struct LintDiagnostic {
+    /// The spec ID this diagnostic applies to
+    pub spec_id: String,
+    /// The lint rule that triggered this diagnostic
+    pub rule: LintRule,
+    /// The severity level
+    pub severity: Severity,
+    /// The diagnostic message
+    pub message: String,
+    /// Optional suggestion for fixing the issue
+    pub suggestion: Option<String>,
+}
+
+impl LintDiagnostic {
+    /// Create a new error diagnostic
+    pub fn error(spec_id: String, rule: LintRule, message: String) -> Self {
+        Self {
+            spec_id,
+            rule,
+            severity: Severity::Error,
+            message,
+            suggestion: None,
+        }
+    }
+
+    /// Create a new warning diagnostic
+    pub fn warning(spec_id: String, rule: LintRule, message: String) -> Self {
+        Self {
+            spec_id,
+            rule,
+            severity: Severity::Warning,
+            message,
+            suggestion: None,
+        }
+    }
+
+    /// Add a suggestion to this diagnostic
+    pub fn with_suggestion(mut self, suggestion: String) -> Self {
+        self.suggestion = Some(suggestion);
+        self
+    }
+}
+
+/// Complete report from linting operation
+#[derive(Debug)]
+pub struct LintReport {
+    /// All diagnostics found during linting
+    pub diagnostics: Vec<LintDiagnostic>,
+    /// Number of specs that passed all checks
+    pub passed: usize,
+    /// Number of specs with warnings only
+    pub warned: usize,
+    /// Number of specs with errors
+    pub failed: usize,
+    /// Total number of specs checked
+    pub total: usize,
+}
+
+impl LintReport {
+    /// Check if the report has any errors
+    pub fn has_errors(&self) -> bool {
+        self.diagnostics
+            .iter()
+            .any(|d| d.severity == Severity::Error)
+    }
+
+    /// Check if the report has any warnings
+    pub fn has_warnings(&self) -> bool {
+        self.diagnostics
+            .iter()
+            .any(|d| d.severity == Severity::Warning)
+    }
+}
+
+// ============================================================================
 // VALIDATION THRESHOLDS
 // ============================================================================
 
