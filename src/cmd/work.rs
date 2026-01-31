@@ -1659,6 +1659,99 @@ fn distribute_specs_to_agents(
     assignments
 }
 
+// ============================================================================
+// PARALLEL EXECUTION CLEANUP STATE
+// ============================================================================
+
+/// Tracks active worktrees during parallel execution for cleanup on interrupt.
+struct ParallelExecutionState {
+    /// Worktrees created this run, keyed by spec_id
+    active_worktrees: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, PathBuf>>>,
+    /// Specs that completed agent work (preserve their branches)
+    completed_specs: std::sync::Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
+}
+
+impl ParallelExecutionState {
+    fn new() -> Self {
+        Self {
+            active_worktrees: std::sync::Arc::new(std::sync::Mutex::new(
+                std::collections::HashMap::new(),
+            )),
+            completed_specs: std::sync::Arc::new(std::sync::Mutex::new(
+                std::collections::HashSet::new(),
+            )),
+        }
+    }
+
+    fn register_worktree(&self, spec_id: &str, path: PathBuf) {
+        if let Ok(mut worktrees) = self.active_worktrees.lock() {
+            worktrees.insert(spec_id.to_string(), path);
+        }
+    }
+
+    fn mark_completed(&self, spec_id: &str) {
+        if let Ok(mut completed) = self.completed_specs.lock() {
+            completed.insert(spec_id.to_string());
+        }
+    }
+
+    fn cleanup_incomplete(&self) {
+        let active = match self.active_worktrees.lock() {
+            Ok(guard) => guard,
+            Err(_) => return,
+        };
+        let completed = match self.completed_specs.lock() {
+            Ok(guard) => guard,
+            Err(_) => return,
+        };
+
+        for (spec_id, path) in active.iter() {
+            if !completed.contains(spec_id) {
+                eprintln!(
+                    "\n{} Cleaning up incomplete worktree for spec {}: {}",
+                    "→".yellow(),
+                    spec_id.cyan(),
+                    path.display()
+                );
+
+                // Remove worktree
+                if let Err(e) = worktree::remove_worktree(path) {
+                    eprintln!("{} Failed to remove worktree: {}", "⚠".yellow(), e);
+                }
+
+                // Delete branch since work didn't complete
+                let branch = format!("chant/{}", spec_id);
+                if let Err(e) = chant::git::delete_branch(&branch, false) {
+                    eprintln!("{} Failed to delete branch {}: {}", "⚠".yellow(), branch, e);
+                }
+            }
+        }
+    }
+}
+
+/// Set up SIGINT handler for parallel execution cleanup.
+fn setup_parallel_cleanup_handlers(state: std::sync::Arc<ParallelExecutionState>) {
+    // SIGINT handler
+    let state_clone = state.clone();
+    let _ = ctrlc::set_handler(move || {
+        eprintln!(
+            "\n{} Interrupt received, cleaning up incomplete worktrees...",
+            "→".yellow()
+        );
+        state_clone.cleanup_incomplete();
+        eprintln!("{} Cleanup complete, exiting", "✓".green());
+        std::process::exit(130);
+    });
+
+    // Panic hook for crashes
+    let state_clone = state.clone();
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        state_clone.cleanup_incomplete();
+        default_hook(info);
+    }));
+}
+
 pub fn cmd_work_parallel(
     specs_dir: &Path,
     prompts_dir: &Path,
@@ -1668,6 +1761,10 @@ pub fn cmd_work_parallel(
     use std::sync::mpsc;
     use std::thread;
     use std::time::Duration;
+
+    // Initialize parallel execution state for cleanup on interrupt
+    let execution_state = std::sync::Arc::new(ParallelExecutionState::new());
+    setup_parallel_cleanup_handlers(execution_state.clone());
 
     // Load specs: either specific IDs or all ready specs
     let ready_specs: Vec<Spec> = if !options.specific_ids.is_empty() {
@@ -1833,7 +1930,11 @@ pub fn cmd_work_parallel(
         // Create worktree
         let worktree_result = worktree::create_worktree(&spec.id, &branch_name);
         let (worktree_path, branch_for_cleanup) = match worktree_result {
-            Ok(path) => (Some(path), Some(branch_name.clone())),
+            Ok(path) => {
+                // Register worktree for cleanup on interrupt
+                execution_state.register_worktree(&spec.id, path.clone());
+                (Some(path), Some(branch_name.clone()))
+            }
             Err(e) => {
                 println!(
                     "{} [{}] Failed to create worktree: {}",
@@ -1899,6 +2000,7 @@ pub fn cmd_work_parallel(
         let agent_command = assignment.agent_command.clone();
         let config_clone = config.clone();
         let branch_name_clone = branch_for_cleanup.clone();
+        let execution_state_clone = execution_state.clone();
 
         let handle = thread::spawn(move || {
             let result = cmd::agent::invoke_agent_with_command(
@@ -1914,6 +2016,9 @@ pub fn cmd_work_parallel(
                 Ok(_) => {
                     // Agent work succeeded - get commits
                     let commits = get_commits_for_spec(&spec_id).ok();
+
+                    // Mark spec as completed for cleanup tracking
+                    execution_state_clone.mark_completed(&spec_id);
 
                     // In branch mode: DON'T finalize in worktree - defer to post-merge phase
                     // This prevents the race condition where feature branch shows Completed
