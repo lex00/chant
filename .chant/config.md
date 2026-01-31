@@ -7,5 +7,7 @@ defaults:
   model: sonnet
   rotation_strategy: round-robin
   provider: claude
+  prompt_extensions:
+    - output-concise
 ---
 # Chant Configuration
