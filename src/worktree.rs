@@ -182,11 +182,125 @@ pub struct MergeCleanupResult {
     pub error: Option<String>,
 }
 
+/// Checks if a branch is behind main (main has commits not in branch).
+///
+/// # Arguments
+///
+/// * `branch` - The branch name to check
+/// * `work_dir` - Optional working directory for the git command
+///
+/// # Returns
+///
+/// Ok(true) if main has commits not in branch, Ok(false) otherwise.
+fn branch_is_behind_main(branch: &str, work_dir: Option<&Path>) -> Result<bool> {
+    let mut cmd = Command::new("git");
+    cmd.args(["rev-list", "--count", &format!("{}..main", branch)]);
+    if let Some(dir) = work_dir {
+        cmd.current_dir(dir);
+    }
+    let output = cmd
+        .output()
+        .context("Failed to check if branch is behind main")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Failed to check branch status: {}", stderr);
+    }
+
+    let count_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let count: i32 = count_str
+        .parse()
+        .context(format!("Failed to parse commit count: {}", count_str))?;
+    Ok(count > 0)
+}
+
+/// Rebases a branch onto main.
+///
+/// # Arguments
+///
+/// * `branch` - The branch name to rebase
+/// * `work_dir` - Optional working directory for the git command
+///
+/// # Returns
+///
+/// Ok(()) if rebase succeeded, Err if rebase had conflicts or failed.
+fn rebase_branch_onto_main(branch: &str, work_dir: Option<&Path>) -> Result<()> {
+    // Checkout the branch
+    let mut cmd = Command::new("git");
+    cmd.args(["checkout", branch]);
+    if let Some(dir) = work_dir {
+        cmd.current_dir(dir);
+    }
+    let output = cmd
+        .output()
+        .context("Failed to checkout branch for rebase")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Failed to checkout branch: {}", stderr);
+    }
+
+    // Rebase onto main
+    let mut cmd = Command::new("git");
+    cmd.args(["rebase", "main"]);
+    if let Some(dir) = work_dir {
+        cmd.current_dir(dir);
+    }
+    let output = cmd.output().context("Failed to rebase onto main")?;
+
+    if !output.status.success() {
+        anyhow::bail!("Rebase had conflicts");
+    }
+
+    // Return to main branch
+    let mut cmd = Command::new("git");
+    cmd.args(["checkout", "main"]);
+    if let Some(dir) = work_dir {
+        cmd.current_dir(dir);
+    }
+    let output = cmd
+        .output()
+        .context("Failed to checkout main after rebase")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Failed to checkout main: {}", stderr);
+    }
+
+    Ok(())
+}
+
+/// Aborts a rebase in progress and returns to main branch.
+///
+/// # Arguments
+///
+/// * `work_dir` - Optional working directory for the git command
+///
+/// This function is best-effort and does not return errors.
+fn abort_rebase(work_dir: Option<&Path>) {
+    // Abort the rebase
+    let mut cmd = Command::new("git");
+    cmd.args(["rebase", "--abort"]);
+    if let Some(dir) = work_dir {
+        cmd.current_dir(dir);
+    }
+    let _ = cmd.output();
+
+    // Try to ensure we're on main branch
+    let mut cmd = Command::new("git");
+    cmd.args(["checkout", "main"]);
+    if let Some(dir) = work_dir {
+        cmd.current_dir(dir);
+    }
+    let _ = cmd.output();
+}
+
 /// Merges a branch to main and cleans up.
 ///
 /// # Arguments
 ///
 /// * `branch` - The branch name to merge
+/// * `no_rebase` - If true, skip automatic rebase even if branch is behind
 ///
 /// # Returns
 ///
@@ -196,12 +310,16 @@ pub struct MergeCleanupResult {
 /// - error: optional error message
 ///
 /// If there are merge conflicts, the branch is preserved for manual resolution.
-pub fn merge_and_cleanup(branch: &str) -> MergeCleanupResult {
-    merge_and_cleanup_in_dir(branch, None)
+pub fn merge_and_cleanup(branch: &str, no_rebase: bool) -> MergeCleanupResult {
+    merge_and_cleanup_in_dir(branch, None, no_rebase)
 }
 
 /// Internal function that merges a branch to main with optional working directory.
-fn merge_and_cleanup_in_dir(branch: &str, work_dir: Option<&Path>) -> MergeCleanupResult {
+fn merge_and_cleanup_in_dir(
+    branch: &str,
+    work_dir: Option<&Path>,
+    no_rebase: bool,
+) -> MergeCleanupResult {
     // Checkout main branch
     let mut cmd = Command::new("git");
     cmd.args(["checkout", "main"]);
@@ -228,6 +346,40 @@ fn merge_and_cleanup_in_dir(branch: &str, work_dir: Option<&Path>) -> MergeClean
             has_conflict: false,
             error: Some(format!("Failed to checkout main: {}", stderr)),
         };
+    }
+
+    // Check if branch needs rebase (is behind main) and attempt rebase if needed
+    if !no_rebase {
+        match branch_is_behind_main(branch, work_dir) {
+            Ok(true) => {
+                // Branch is behind main, attempt automatic rebase
+                println!(
+                    "Branch '{}' is behind main, attempting automatic rebase...",
+                    branch
+                );
+                match rebase_branch_onto_main(branch, work_dir) {
+                    Ok(()) => {
+                        println!("Rebase succeeded, proceeding with merge...");
+                    }
+                    Err(e) => {
+                        // Rebase failed (conflicts), abort and preserve branch
+                        abort_rebase(work_dir);
+                        return MergeCleanupResult {
+                            success: false,
+                            has_conflict: true,
+                            error: Some(format!("Auto-rebase failed due to conflicts: {}", e)),
+                        };
+                    }
+                }
+            }
+            Ok(false) => {
+                // Branch is not behind main, proceed normally
+            }
+            Err(e) => {
+                // Failed to check if branch is behind, log warning and proceed
+                eprintln!("Warning: Failed to check if branch is behind main: {}", e);
+            }
+        }
     }
 
     // Perform fast-forward merge
@@ -528,7 +680,7 @@ mod tests {
             );
 
             // Now call merge_and_cleanup with explicit repo directory
-            merge_and_cleanup_in_dir(branch, Some(&repo_dir))
+            merge_and_cleanup_in_dir(branch, Some(&repo_dir), false)
         };
 
         // Always restore original directory
@@ -607,7 +759,7 @@ mod tests {
             );
 
             // Merge the branch with explicit repo directory
-            merge_and_cleanup_in_dir(branch, Some(&repo_dir))
+            merge_and_cleanup_in_dir(branch, Some(&repo_dir), false)
         };
 
         // Always restore original directory

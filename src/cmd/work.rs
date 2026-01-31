@@ -268,6 +268,7 @@ pub fn cmd_work(
     chain: bool,
     chain_max: usize,
     no_merge: bool,
+    no_rebase: bool,
 ) -> Result<()> {
     let specs_dir = crate::cmd::ensure_initialized()?;
     let prompts_dir = PathBuf::from(PROMPTS_DIR);
@@ -293,6 +294,7 @@ pub fn cmd_work(
             prompt_name,
             specific_ids: ids,
             no_merge,
+            no_rebase,
         };
         return cmd_work_parallel(&specs_dir, &prompts_dir, &config, options);
     }
@@ -349,6 +351,7 @@ pub fn cmd_work(
                     prompt_name,
                     specific_ids: &[],
                     no_merge,
+                    no_rebase,
                 };
                 return cmd_work_parallel(&specs_dir, &prompts_dir, &config, options);
             }
@@ -1497,6 +1500,8 @@ pub struct ParallelOptions<'a> {
     pub specific_ids: &'a [String],
     /// Disable auto-merge after parallel execution
     pub no_merge: bool,
+    /// Disable auto-rebase before merge in parallel execution
+    pub no_rebase: bool,
 }
 
 /// Options for chain execution mode
@@ -2107,7 +2112,7 @@ pub fn cmd_work_parallel(
     for result in &direct_mode_results {
         if let Some(ref branch) = result.branch_name {
             println!("[{}] Merging to main...", result.spec_id.cyan());
-            let merge_result = worktree::merge_and_cleanup(branch);
+            let merge_result = worktree::merge_and_cleanup(branch, options.no_rebase);
 
             if merge_result.success {
                 merged_count += 1;
@@ -2200,7 +2205,7 @@ pub fn cmd_work_parallel(
 
         for (spec_id, branch) in &branch_mode_branches {
             println!("[{}] Merging to main...", spec_id.cyan());
-            let merge_result = worktree::merge_and_cleanup(branch);
+            let merge_result = worktree::merge_and_cleanup(branch, options.no_rebase);
 
             if merge_result.success {
                 // Merge succeeded - NOW finalize on main branch

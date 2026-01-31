@@ -251,6 +251,9 @@ enum Commands {
         /// Disable auto-merge after parallel execution (branches are kept for manual merge)
         #[arg(long)]
         no_merge: bool,
+        /// Disable auto-rebase when merging branches in parallel execution
+        #[arg(long)]
+        no_rebase: bool,
     },
     /// Start MCP server (Model Context Protocol)
     Mcp,
@@ -781,6 +784,7 @@ fn run() -> Result<()> {
             chain,
             chain_max,
             no_merge,
+            no_rebase,
         } => cmd::work::cmd_work(
             &ids,
             prompt.as_deref(),
@@ -797,6 +801,7 @@ fn run() -> Result<()> {
             chain,
             chain_max,
             no_merge,
+            no_rebase,
         ),
         Commands::Mcp => mcp::run_server(),
         Commands::Status { global, repo } => cmd::spec::cmd_status(global, repo.as_deref()),

@@ -2040,6 +2040,7 @@ pub fn cmd_resume(
             false, // chain
             0,     // chain_max
             false, // no_merge
+            false, // no_rebase
         )?;
     }
 
@@ -2178,6 +2179,7 @@ pub fn cmd_replay(
         false, // chain
         0,     // chain_max
         false, // no_merge
+        false, // no_rebase
     );
 
     // Handle result: cmd_work will have set the status to completed or failed
