@@ -2904,7 +2904,7 @@ pub fn cmd_resume(
 pub fn handle_completed(spec_id: &str) -> Result<()> {
     use std::process::Command;
 
-    let specs_dir = crate::cmd::ensure_initialized()?;
+    let _specs_dir = crate::cmd::ensure_initialized()?;
 
     // Step 1: Finalize the spec
     println!("{} Finalizing spec {}", "→".cyan(), spec_id.cyan());

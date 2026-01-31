@@ -1,13 +1,22 @@
-//! Watch command logging infrastructure
+//! Watch command for monitoring and managing spec lifecycle
 //!
-//! Provides structured logging with timestamps for the watch command,
-//! writing to both stdout and a persistent log file.
+//! Continuously monitors in-progress specs and automatically handles
+//! finalization, merging, and failure recovery. Watch mode is monitor-only:
+//! it does not spawn agents or create specs, only orchestrates lifecycle operations.
 
 use anyhow::{Context, Result};
 use chrono::Local;
+use colored::Colorize;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
+use chant::config::Config;
+use chant::spec::{self, is_completed, is_failed, SpecStatus};
+
+use crate::cmd;
 
 /// Logger for watch command with structured output and file persistence
 #[allow(dead_code)]
@@ -86,6 +95,139 @@ impl WatchLogger {
     pub fn is_stdout_only(&self) -> bool {
         self.stdout_only
     }
+}
+
+/// Main entry point for watch command
+pub fn run_watch(once: bool, dry_run: bool, poll_interval: Option<u64>) -> Result<()> {
+    let _specs_dir = cmd::ensure_initialized()?;
+    let config = Config::load()?;
+
+    // Use command-line override or config value
+    let poll_interval_ms = poll_interval.unwrap_or(config.watch.poll_interval_ms);
+
+    // Warn if poll interval is very short
+    if poll_interval_ms < 1000 {
+        eprintln!(
+            "{} Poll interval {}ms is very short (< 1s)",
+            "⚠".yellow(),
+            poll_interval_ms
+        );
+    }
+
+    // Initialize logger
+    let mut logger = WatchLogger::init()?;
+    logger.log_event(&format!(
+        "Watch started (poll_interval={}ms, once={}, dry_run={})",
+        poll_interval_ms, once, dry_run
+    ))?;
+
+    // Set up signal handler for graceful shutdown
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let shutdown_clone = shutdown.clone();
+
+    ctrlc::set_handler(move || {
+        shutdown_clone.store(true, Ordering::SeqCst);
+    })
+    .context("Failed to set signal handler")?;
+
+    // Main event loop
+    loop {
+        // Check for shutdown signal
+        if shutdown.load(Ordering::SeqCst) {
+            logger.log_event("Shutdown signal received, exiting gracefully")?;
+            break;
+        }
+
+        // Query in-progress specs
+        let specs = spec::load_all_specs(&PathBuf::from(".chant/specs"))?;
+        let in_progress_specs: Vec<_> = specs
+            .iter()
+            .filter(|s| matches!(s.frontmatter.status, SpecStatus::InProgress))
+            .collect();
+
+        if in_progress_specs.is_empty() {
+            logger.log_event("No in-progress specs, waiting...")?;
+        } else {
+            logger.log_event(&format!(
+                "Checking {} in-progress spec(s)",
+                in_progress_specs.len()
+            ))?;
+
+            // Check each spec for completion or failure
+            for spec in &in_progress_specs {
+                let spec_id = &spec.id;
+
+                // Check if completed
+                if is_completed(spec_id)? {
+                    logger.log_event(&format!("Spec {} is completed", spec_id.cyan()))?;
+
+                    if dry_run {
+                        logger.log_event(&format!(
+                            "  {} would finalize {}",
+                            "→".dimmed(),
+                            spec_id
+                        ))?;
+                    } else {
+                        // Handle completion (finalize + merge)
+                        match crate::cmd::lifecycle::handle_completed(spec_id) {
+                            Ok(()) => {
+                                logger.log_event(&format!(
+                                    "  {} finalized and merged",
+                                    "✓".green()
+                                ))?;
+                            }
+                            Err(e) => {
+                                logger.log_event(&format!(
+                                    "  {} failed to finalize: {}",
+                                    "✗".red(),
+                                    e
+                                ))?;
+                            }
+                        }
+                    }
+                    continue;
+                }
+
+                // Check if failed
+                if is_failed(spec_id)? {
+                    logger.log_event(&format!("Spec {} has failed", spec_id.cyan()))?;
+
+                    if dry_run {
+                        logger.log_event(&format!(
+                            "  {} would handle failure for {}",
+                            "→".dimmed(),
+                            spec_id
+                        ))?;
+                    } else {
+                        // Handle failure (retry or permanent failure)
+                        match crate::cmd::lifecycle::handle_failed(spec_id, &config.watch.failure) {
+                            Ok(()) => {
+                                logger.log_event(&format!("  {} failure handled", "✓".green()))?;
+                            }
+                            Err(e) => {
+                                logger.log_event(&format!(
+                                    "  {} failed to handle failure: {}",
+                                    "✗".red(),
+                                    e
+                                ))?;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Exit after one iteration if --once flag is set
+        if once {
+            logger.log_event("Single pass complete, exiting")?;
+            break;
+        }
+
+        // Sleep for poll interval
+        std::thread::sleep(std::time::Duration::from_millis(poll_interval_ms));
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

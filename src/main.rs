@@ -597,6 +597,18 @@ enum Commands {
         #[command(subcommand)]
         command: SiteCommands,
     },
+    /// Watch for spec completion and automatically finalize/merge
+    Watch {
+        /// Run only one iteration then exit (for testing)
+        #[arg(long)]
+        once: bool,
+        /// Dry run - show what would be done without executing
+        #[arg(long)]
+        dry_run: bool,
+        /// Poll interval in milliseconds (overrides config)
+        #[arg(long)]
+        poll_interval: Option<u64>,
+    },
 }
 
 /// Subcommands for worktree management
@@ -1008,6 +1020,11 @@ fn run() -> Result<()> {
                 cmd::site::cmd_site_serve(port, output.as_deref())
             }
         },
+        Commands::Watch {
+            once,
+            dry_run,
+            poll_interval,
+        } => cmd::watch::run_watch(once, dry_run, poll_interval),
     }
 }
 
