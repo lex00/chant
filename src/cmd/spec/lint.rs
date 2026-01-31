@@ -1514,4 +1514,145 @@ No coupling issues here.
             "Should have no diagnostics when driver has members"
         );
     }
+
+    #[test]
+    fn test_validate_model_waste_no_model_set() {
+        // Create a simple spec without model field
+        let spec = create_test_spec("2026-01-30-020-abc", 1, 1, 5);
+        let thresholds = LintThresholds::default();
+
+        let diagnostics = validate_model_waste(&spec, &thresholds);
+
+        assert_eq!(
+            diagnostics.len(),
+            0,
+            "Should have no diagnostics when model is not set"
+        );
+    }
+
+    #[test]
+    fn test_validate_model_waste_haiku_ok() {
+        // Create a simple spec with haiku model - should not trigger warning
+        let mut spec = create_test_spec("2026-01-30-021-def", 1, 1, 5);
+        spec.frontmatter.model = Some("haiku".to_string());
+        let thresholds = LintThresholds::default();
+
+        let diagnostics = validate_model_waste(&spec, &thresholds);
+
+        assert_eq!(
+            diagnostics.len(),
+            0,
+            "Haiku model should never trigger model waste warning"
+        );
+    }
+
+    #[test]
+    fn test_validate_model_waste_opus_on_simple_spec() {
+        // Create a simple spec with opus model - should trigger warning
+        // Default simple thresholds: criteria<=1, files<=1, words<=3
+        // Create spec with 0 criteria, 0 files, 0 words to ensure it's simple
+        let mut spec = create_test_spec("2026-01-30-022-ghi", 0, 0, 0);
+        spec.frontmatter.model = Some("opus".to_string());
+        let thresholds = LintThresholds::default();
+
+        let diagnostics = validate_model_waste(&spec, &thresholds);
+
+        assert_eq!(
+            diagnostics.len(),
+            1,
+            "Should have one diagnostic for opus on simple spec"
+        );
+        assert_eq!(diagnostics[0].rule, LintRule::ModelWaste);
+        assert_eq!(diagnostics[0].severity, Severity::Warning);
+        assert!(
+            diagnostics[0].message.contains("opus"),
+            "Message should mention opus model"
+        );
+        assert!(
+            diagnostics[0].message.contains("simple"),
+            "Message should mention spec is simple"
+        );
+        assert!(
+            diagnostics[0].suggestion.is_some(),
+            "Should have a suggestion"
+        );
+    }
+
+    #[test]
+    fn test_validate_model_waste_sonnet_on_simple_spec() {
+        // Create a simple spec with sonnet model - should trigger warning
+        let mut spec = create_test_spec("2026-01-30-023-jkl", 0, 0, 0);
+        spec.frontmatter.model = Some("sonnet".to_string());
+        let thresholds = LintThresholds::default();
+
+        let diagnostics = validate_model_waste(&spec, &thresholds);
+
+        assert_eq!(
+            diagnostics.len(),
+            1,
+            "Should have one diagnostic for sonnet on simple spec"
+        );
+        assert_eq!(diagnostics[0].rule, LintRule::ModelWaste);
+        assert_eq!(diagnostics[0].severity, Severity::Warning);
+        assert!(
+            diagnostics[0].message.contains("sonnet"),
+            "Message should mention sonnet model"
+        );
+        assert!(
+            diagnostics[0].message.contains("simple"),
+            "Message should mention spec is simple"
+        );
+    }
+
+    #[test]
+    fn test_validate_model_waste_research_excluded() {
+        // Create a simple research spec with opus - should not trigger warning
+        let mut spec = create_test_spec("2026-01-30-024-mno", 0, 0, 0);
+        spec.frontmatter.r#type = "research".to_string();
+        spec.frontmatter.model = Some("opus".to_string());
+        let thresholds = LintThresholds::default();
+
+        let diagnostics = validate_model_waste(&spec, &thresholds);
+
+        assert_eq!(
+            diagnostics.len(),
+            0,
+            "Research specs should be excluded from model waste check"
+        );
+    }
+
+    #[test]
+    fn test_validate_model_waste_driver_excluded() {
+        // Create a simple driver spec with sonnet - should not trigger warning
+        let mut spec = create_test_spec("2026-01-30-025-pqr", 0, 0, 0);
+        spec.frontmatter.r#type = "driver".to_string();
+        spec.frontmatter.model = Some("sonnet".to_string());
+        let thresholds = LintThresholds::default();
+
+        let diagnostics = validate_model_waste(&spec, &thresholds);
+
+        assert_eq!(
+            diagnostics.len(),
+            0,
+            "Driver specs should be excluded from model waste check"
+        );
+    }
+
+    #[test]
+    fn test_validate_model_waste_complex_spec_ok() {
+        // Create a complex spec with opus - should not trigger warning
+        // Default simple thresholds: criteria<=1, files<=1, words<=3
+        // This spec exceeds all simple thresholds so it's considered complex
+        let mut spec = create_test_spec("2026-01-30-026-stu", 5, 3, 20);
+        spec.frontmatter.model = Some("opus".to_string());
+        let thresholds = LintThresholds::default();
+
+        let diagnostics = validate_model_waste(&spec, &thresholds);
+
+        assert_eq!(
+            diagnostics.len(),
+            0,
+            "Complex specs should be allowed to use expensive models"
+        );
+    }
 }
