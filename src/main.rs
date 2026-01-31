@@ -276,7 +276,11 @@ enum Commands {
         verbose: bool,
     },
     /// Validate all specs for common issues
-    Lint,
+    Lint {
+        /// Output format (text or json)
+        #[arg(short, long, default_value = "text")]
+        format: String,
+    },
     /// Show log for a spec
     Log {
         /// Spec ID (full or partial)
@@ -806,7 +810,17 @@ fn run() -> Result<()> {
             false,
         ),
         Commands::Refresh { verbose } => cmd::refresh::cmd_refresh(verbose),
-        Commands::Lint => cmd::spec::cmd_lint(),
+        Commands::Lint { format } => {
+            let lint_format = match format.to_lowercase().as_str() {
+                "json" => cmd::spec::LintFormat::Json,
+                "text" => cmd::spec::LintFormat::Text,
+                _ => {
+                    eprintln!("Error: Invalid format '{}'. Use 'text' or 'json'.", format);
+                    std::process::exit(1);
+                }
+            };
+            cmd::spec::cmd_lint(lint_format)
+        }
         Commands::Log {
             id,
             lines,

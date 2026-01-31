@@ -6,6 +6,8 @@
 
 use anyhow::Result;
 use colored::Colorize;
+use serde::Serialize;
+use serde_json;
 use std::path::Path;
 
 use chant::config::Config;
@@ -19,8 +21,18 @@ use std::path::PathBuf;
 // LINT TYPES
 // ============================================================================
 
-/// Categories of lint rules for spec validation
+/// Output format for lint results
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LintFormat {
+    /// Human-readable text output with colors
+    Text,
+    /// Machine-readable JSON output
+    Json,
+}
+
+/// Categories of lint rules for spec validation
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum LintRule {
     /// Spec is too complex (too many criteria, files, or words)
     Complexity,
@@ -64,7 +76,8 @@ impl LintRule {
 }
 
 /// Severity level for lint diagnostics
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Severity {
     /// Error - spec is invalid and must be fixed
     Error,
@@ -73,7 +86,7 @@ pub enum Severity {
 }
 
 /// A single diagnostic message from linting
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct LintDiagnostic {
     /// The spec ID this diagnostic applies to
     #[allow(dead_code)]
@@ -119,7 +132,7 @@ impl LintDiagnostic {
 }
 
 /// Complete report from linting operation
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 #[allow(dead_code)]
 pub struct LintReport {
     /// All diagnostics found during linting
@@ -704,10 +717,12 @@ pub fn lint_specific_specs(specs_dir: &std::path::Path, spec_ids: &[String]) -> 
     })
 }
 
-pub fn cmd_lint() -> Result<()> {
+pub fn cmd_lint(format: LintFormat) -> Result<()> {
     let specs_dir = crate::cmd::ensure_initialized()?;
 
-    println!("Linting specs...");
+    if format == LintFormat::Text {
+        println!("Linting specs...");
+    }
 
     let mut all_diagnostics: Vec<LintDiagnostic> = Vec::new();
     let mut total_specs = 0;
@@ -747,7 +762,9 @@ pub fn cmd_lint() -> Result<()> {
                         LintRule::Parse,
                         format!("Invalid YAML frontmatter: {}", e),
                     );
-                    println!("{} {}: {}", "✗".red(), id, diagnostic.message);
+                    if format == LintFormat::Text {
+                        println!("{} {}: {}", "✗".red(), id, diagnostic.message);
+                    }
                     all_diagnostics.push(diagnostic);
                 }
             }
@@ -836,23 +853,26 @@ pub fn cmd_lint() -> Result<()> {
             .filter(|d| d.severity == Severity::Warning)
             .collect();
 
-        if spec_diagnostics.is_empty() {
-            println!("{} {}", "✓".green(), spec.id);
-        } else {
-            for diagnostic in &errors {
-                println!("{} {}: {}", "✗".red(), spec.id, diagnostic.message);
-            }
-            // Check if there are complexity warnings
-            let has_complexity_warning = warnings.iter().any(|d| d.rule == LintRule::Complexity);
-            for diagnostic in &warnings {
-                println!("{} {}: {}", "⚠".yellow(), spec.id, diagnostic.message);
-                if let Some(ref suggestion) = diagnostic.suggestion {
-                    println!("    {} {}", "→".cyan(), suggestion);
+        if format == LintFormat::Text {
+            if spec_diagnostics.is_empty() {
+                println!("{} {}", "✓".green(), spec.id);
+            } else {
+                for diagnostic in &errors {
+                    println!("{} {}: {}", "✗".red(), spec.id, diagnostic.message);
                 }
-            }
-            // Suggest split if there are complexity warnings
-            if has_complexity_warning {
-                println!("    {} Consider: chant split {}", "→".cyan(), spec.id);
+                // Check if there are complexity warnings
+                let has_complexity_warning =
+                    warnings.iter().any(|d| d.rule == LintRule::Complexity);
+                for diagnostic in &warnings {
+                    println!("{} {}: {}", "⚠".yellow(), spec.id, diagnostic.message);
+                    if let Some(ref suggestion) = diagnostic.suggestion {
+                        println!("    {} {}", "→".cyan(), suggestion);
+                    }
+                }
+                // Suggest split if there are complexity warnings
+                if has_complexity_warning {
+                    println!("    {} Consider: chant split {}", "→".cyan(), spec.id);
+                }
             }
         }
 
@@ -865,29 +885,68 @@ pub fn cmd_lint() -> Result<()> {
         .filter(|d| d.severity == Severity::Error)
         .count();
 
-    // Print summary with enterprise policy if configured
-    if error_count > 0 {
-        println!(
-            "\nFound {} {} in {} specs.",
-            error_count,
-            if error_count == 1 { "error" } else { "errors" },
-            total_specs
-        );
-
-        // Show enterprise policy if required fields are configured
-        if let Some(cfg) = &config {
-            if !cfg.enterprise.required.is_empty() {
+    // Output results based on format
+    match format {
+        LintFormat::Text => {
+            // Print summary with enterprise policy if configured
+            if error_count > 0 {
                 println!(
-                    "\n{} Enterprise policy requires: {}",
-                    "ℹ".cyan(),
-                    cfg.enterprise.required.join(", ")
+                    "\nFound {} {} in {} specs.",
+                    error_count,
+                    if error_count == 1 { "error" } else { "errors" },
+                    total_specs
                 );
+
+                // Show enterprise policy if required fields are configured
+                if let Some(cfg) = &config {
+                    if !cfg.enterprise.required.is_empty() {
+                        println!(
+                            "\n{} Enterprise policy requires: {}",
+                            "ℹ".cyan(),
+                            cfg.enterprise.required.join(", ")
+                        );
+                    }
+                }
+
+                std::process::exit(1);
+            } else {
+                println!("\nAll {} specs valid.", total_specs);
+                Ok(())
             }
         }
+        LintFormat::Json => {
+            // Count specs by diagnostic status
+            let mut spec_errors = std::collections::HashSet::new();
+            let mut spec_warnings = std::collections::HashSet::new();
 
-        std::process::exit(1);
-    } else {
-        println!("\nAll {} specs valid.", total_specs);
-        Ok(())
+            for diag in &all_diagnostics {
+                if diag.severity == Severity::Error {
+                    spec_errors.insert(diag.spec_id.clone());
+                } else {
+                    spec_warnings.insert(diag.spec_id.clone());
+                }
+            }
+
+            let failed = spec_errors.len();
+            let warned = spec_warnings.difference(&spec_errors).count();
+            let passed = total_specs - failed - warned;
+
+            let report = LintReport {
+                diagnostics: all_diagnostics,
+                passed,
+                warned,
+                failed,
+                total: total_specs,
+            };
+
+            let json = serde_json::to_string_pretty(&report)?;
+            println!("{}", json);
+
+            if error_count > 0 {
+                std::process::exit(1);
+            } else {
+                Ok(())
+            }
+        }
     }
 }

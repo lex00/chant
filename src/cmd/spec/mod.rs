@@ -18,7 +18,7 @@ mod show;
 pub use add::cmd_add;
 pub use approve::{cmd_approve, cmd_reject};
 pub use delete::{cmd_cancel, cmd_delete, cmd_export};
-pub use lint::{cmd_lint, lint_specific_specs};
+pub use lint::{cmd_lint, lint_specific_specs, LintFormat};
 pub use list::{cmd_list, cmd_status};
 pub use show::cmd_show;
 
