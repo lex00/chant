@@ -542,7 +542,7 @@ mod tests {
     fn test_filter_completed_spec() {
         let temp_dir = TempDir::new().unwrap();
         let specs_dir = temp_dir.path();
-        fs::create_dir_all(&specs_dir).unwrap();
+        fs::create_dir_all(specs_dir).unwrap();
 
         // Create a completed spec
         let spec = Spec {
@@ -568,7 +568,7 @@ mod tests {
     fn test_pending_spec_filtered_out() {
         let temp_dir = TempDir::new().unwrap();
         let specs_dir = temp_dir.path();
-        fs::create_dir_all(&specs_dir).unwrap();
+        fs::create_dir_all(specs_dir).unwrap();
 
         // Create a pending spec
         let spec = Spec {
@@ -600,7 +600,7 @@ mod tests {
     fn test_filter_all_completed_specs() {
         let temp_dir = TempDir::new().unwrap();
         let specs_dir = temp_dir.path();
-        fs::create_dir_all(&specs_dir).unwrap();
+        fs::create_dir_all(specs_dir).unwrap();
 
         // Create multiple completed specs
         let spec1 = Spec {
@@ -662,7 +662,7 @@ mod tests {
     fn test_filter_by_label_completed_only() {
         let temp_dir = TempDir::new().unwrap();
         let specs_dir = temp_dir.path();
-        fs::create_dir_all(&specs_dir).unwrap();
+        fs::create_dir_all(specs_dir).unwrap();
 
         // Create completed spec with label
         let spec1 = Spec {
@@ -697,7 +697,7 @@ mod tests {
 
         // Load and filter by label
         let all_specs = load_all_specs(specs_dir).unwrap();
-        let labels = vec!["test".to_string()];
+        let labels = ["test".to_string()];
 
         let matching: Vec<_> = all_specs
             .into_iter()
@@ -721,7 +721,7 @@ mod tests {
     fn test_filter_no_completed_specs() {
         let temp_dir = TempDir::new().unwrap();
         let specs_dir = temp_dir.path();
-        fs::create_dir_all(&specs_dir).unwrap();
+        fs::create_dir_all(specs_dir).unwrap();
 
         // Create only pending specs
         let spec = Spec {
@@ -750,7 +750,7 @@ mod tests {
     fn test_nonexistent_spec_not_found() {
         let temp_dir = TempDir::new().unwrap();
         let specs_dir = temp_dir.path();
-        fs::create_dir_all(&specs_dir).unwrap();
+        fs::create_dir_all(specs_dir).unwrap();
 
         // Load from empty directory
         let all_specs = load_all_specs(specs_dir).unwrap();
@@ -761,7 +761,7 @@ mod tests {
     fn test_filter_label_no_matches() {
         let temp_dir = TempDir::new().unwrap();
         let specs_dir = temp_dir.path();
-        fs::create_dir_all(&specs_dir).unwrap();
+        fs::create_dir_all(specs_dir).unwrap();
 
         // Create completed spec without the requested label
         let spec = Spec {
@@ -779,7 +779,7 @@ mod tests {
 
         // Load and filter by non-matching label
         let all_specs = load_all_specs(specs_dir).unwrap();
-        let requested_labels = vec!["foo".to_string()];
+        let requested_labels = ["foo".to_string()];
 
         let matching: Vec<_> = all_specs
             .into_iter()
@@ -898,7 +898,7 @@ Overall status: MIXED"#;
     fn test_frontmatter_update_all_pass() {
         let temp_dir = TempDir::new().unwrap();
         let specs_dir = temp_dir.path();
-        fs::create_dir_all(&specs_dir).unwrap();
+        fs::create_dir_all(specs_dir).unwrap();
 
         let spec = Spec {
             id: "2026-01-26-001-abc".to_string(),
@@ -911,7 +911,7 @@ Overall status: MIXED"#;
         spec.save(&spec_path).unwrap();
 
         // Create criteria results with all PASS
-        let criteria = vec![
+        let criteria = [
             CriterionResult {
                 criterion: "Feature X".to_string(),
                 status: "PASS".to_string(),
@@ -953,7 +953,7 @@ Overall status: MIXED"#;
 
     #[test]
     fn test_frontmatter_update_with_failures() {
-        let criteria = vec![
+        let criteria = [
             CriterionResult {
                 criterion: "Feature X".to_string(),
                 status: "PASS".to_string(),
@@ -1002,7 +1002,7 @@ Overall status: MIXED"#;
 
     #[test]
     fn test_frontmatter_update_mixed_status() {
-        let criteria = vec![
+        let criteria = [
             CriterionResult {
                 criterion: "Feature X".to_string(),
                 status: "PASS".to_string(),

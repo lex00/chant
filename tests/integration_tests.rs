@@ -195,7 +195,7 @@ fn test_multiple_worktrees_parallel() {
             .args(["worktree", "add", "-b", &branch, wt_path.to_str().unwrap()])
             .current_dir(&repo_dir)
             .output()
-            .expect(&format!("Failed to create worktree {}", i));
+            .unwrap_or_else(|_| panic!("Failed to create worktree {}", i));
 
         if !output.status.success() {
             eprintln!("Git error: {}", String::from_utf8_lossy(&output.stderr));
@@ -802,7 +802,7 @@ impl Config {
             ])
             .current_dir(&repo_dir)
             .output()
-            .expect(&format!("Failed to create worktree for {}", branch_name));
+            .unwrap_or_else(|_| panic!("Failed to create worktree for {}", branch_name));
 
         if !output.status.success() {
             eprintln!("Git error: {}", String::from_utf8_lossy(&output.stderr));
@@ -2359,13 +2359,11 @@ Test spec for export with derived fields.
             );
 
             // Verify the derived_fields contains the label array
-            if let Some(derived) = spec_obj.get("derived_fields") {
-                if let serde_json::Value::Array(fields) = derived {
-                    assert!(
-                        fields.iter().any(|f| f.as_str() == Some("labels")),
-                        "derived_fields should contain 'labels'"
-                    );
-                }
+            if let Some(serde_json::Value::Array(fields)) = spec_obj.get("derived_fields") {
+                assert!(
+                    fields.iter().any(|f| f.as_str() == Some("labels")),
+                    "derived_fields should contain 'labels'"
+                );
             }
         }
     } else {
@@ -2815,8 +2813,7 @@ fn test_blocked_spec_shows_detailed_error() {
 
     // Create blocking spec with a title
     let spec_a = "2026-01-27-blocked-detail-a";
-    let spec_a_content = format!(
-        r#"---
+    let spec_a_content = r#"---
 type: code
 status: pending
 ---
@@ -2828,9 +2825,8 @@ This spec blocks spec B.
 ## Acceptance Criteria
 
 - [ ] Do something
-"#
-    );
-    fs::write(specs_dir.join(format!("{}.md", spec_a)), &spec_a_content)
+"#;
+    fs::write(specs_dir.join(format!("{}.md", spec_a)), spec_a_content)
         .expect("Failed to write spec A");
 
     // Create dependent spec
@@ -3864,8 +3860,7 @@ project:
 
     // Create a spec file manually with status: in_progress to simulate a completed work
     let spec_id = "test-status-update-001";
-    let spec_content = format!(
-        r#"---
+    let spec_content = r#"---
 type: code
 status: in_progress
 ---
@@ -3878,8 +3873,7 @@ This spec tests that finalization updates the status field.
 
 - [x] Test criterion 1
 - [x] Test criterion 2
-"#
-    );
+"#;
 
     let spec_path = specs_dir.join(format!("{}.md", spec_id));
     std::fs::write(&spec_path, spec_content).expect("Failed to write spec file");

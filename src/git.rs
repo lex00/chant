@@ -484,8 +484,7 @@ mod tests {
         // This should work in any git repo - gets the current branch
         let result = get_current_branch();
         // In a properly initialized git repo, this should succeed
-        if result.is_ok() {
-            let branch = result.unwrap();
+        if let Ok(branch) = result {
             // Should have a branch name (not empty)
             assert!(!branch.is_empty());
         }

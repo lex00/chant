@@ -243,7 +243,7 @@ mod tests {
     fn test_detect_conflicting_files_parses_status() {
         // This test would require mocking git commands or running in a repo with conflicts
         // For now, we test the parsing logic indirectly
-        let conflicting_files = vec!["src/config.rs".to_string(), "docs/guide.md".to_string()];
+        let conflicting_files = ["src/config.rs".to_string(), "docs/guide.md".to_string()];
         assert_eq!(conflicting_files.len(), 2);
     }
 
