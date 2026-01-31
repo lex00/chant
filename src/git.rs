@@ -90,6 +90,31 @@ pub fn branch_exists(branch_name: &str) -> Result<bool> {
     Ok(!stdout.trim().is_empty())
 }
 
+/// Check if a branch has been merged into a target branch.
+///
+/// # Arguments
+/// * `branch_name` - The branch to check
+/// * `target_branch` - The target branch to check against (e.g., "main")
+///
+/// # Returns
+/// * `Ok(true)` if the branch has been merged into the target
+/// * `Ok(false)` if the branch exists but hasn't been merged
+/// * `Err(_)` if git operations fail
+pub fn is_branch_merged(branch_name: &str, target_branch: &str) -> Result<bool> {
+    // Use git branch --merged to check if the branch is in the list of merged branches
+    let output = Command::new("git")
+        .args(["branch", "--merged", target_branch, "--list", branch_name])
+        .output()
+        .context("Failed to check if branch is merged")?;
+
+    if !output.status.success() {
+        anyhow::bail!("Failed to check if branch is merged");
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(!stdout.trim().is_empty())
+}
+
 /// Checkout a specific branch or commit.
 /// If branch is "HEAD", it's a detached HEAD checkout.
 fn checkout_branch(branch: &str, dry_run: bool) -> Result<()> {
