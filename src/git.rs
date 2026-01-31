@@ -498,6 +498,83 @@ pub fn format_merge_summary(result: &MergeResult) -> String {
     output
 }
 
+/// Check if branch can be fast-forward merged into target branch.
+/// Returns true if the merge can be done as a fast-forward (no divergence).
+pub fn can_fast_forward_merge(branch: &str, target: &str) -> Result<bool> {
+    // Get merge base between branch and target
+    let output = Command::new("git")
+        .args(["merge-base", target, branch])
+        .output()
+        .context("Failed to find merge base")?;
+
+    if !output.status.success() {
+        return Ok(false);
+    }
+
+    let merge_base = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+    // Get the commit hash of target
+    let output = Command::new("git")
+        .args(["rev-parse", target])
+        .output()
+        .context("Failed to get target commit")?;
+
+    if !output.status.success() {
+        return Ok(false);
+    }
+
+    let target_commit = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+    // If merge base equals target, then branch is ahead and can ff-merge
+    Ok(merge_base == target_commit)
+}
+
+/// Check if branch is behind target branch.
+/// Returns true if target has commits that branch doesn't have.
+pub fn is_branch_behind(branch: &str, target: &str) -> Result<bool> {
+    // Get merge base
+    let output = Command::new("git")
+        .args(["merge-base", branch, target])
+        .output()
+        .context("Failed to find merge base")?;
+
+    if !output.status.success() {
+        return Ok(false);
+    }
+
+    let merge_base = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+    // Get branch commit
+    let output = Command::new("git")
+        .args(["rev-parse", branch])
+        .output()
+        .context("Failed to get branch commit")?;
+
+    if !output.status.success() {
+        return Ok(false);
+    }
+
+    let branch_commit = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+    // If merge base equals branch commit, then branch is behind target
+    Ok(merge_base == branch_commit)
+}
+
+/// Count number of commits in branch.
+pub fn count_commits(branch: &str) -> Result<usize> {
+    let output = Command::new("git")
+        .args(["rev-list", "--count", branch])
+        .output()
+        .context("Failed to count commits")?;
+
+    if !output.status.success() {
+        return Ok(0);
+    }
+
+    let count_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok(count_str.parse().unwrap_or(0))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

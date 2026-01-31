@@ -11,9 +11,164 @@ use crate::spec::{Spec, SpecStatus};
 use crate::spec_group::{extract_member_number, is_member_of};
 use anyhow::Result;
 
+/// Status of a branch for selective merge operations
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BranchStatus {
+    /// All criteria checked, can fast-forward merge
+    Ready,
+    /// Behind main, needs rebase but no conflicts expected
+    NeedsRebase,
+    /// Rebase would likely have conflicts
+    HasConflicts,
+    /// Spec criteria not all checked
+    Incomplete,
+    /// Branch exists but no commits
+    NoCommits,
+    /// Branch doesn't exist
+    NoBranch,
+}
+
+/// Information about a branch for selective merge display
+#[derive(Debug, Clone)]
+pub struct BranchInfo {
+    pub spec_id: String,
+    pub spec_title: Option<String>,
+    pub status: BranchStatus,
+    pub commit_count: usize,
+    pub criteria_checked: usize,
+    pub criteria_total: usize,
+}
+
 /// Load main_branch from config with fallback to "main"
 pub fn load_main_branch(config: &Config) -> String {
     config.defaults.main_branch.clone()
+}
+
+/// Count checked and total acceptance criteria in a spec
+pub fn count_criteria(spec: &Spec) -> (usize, usize) {
+    let body = &spec.body;
+    let mut in_criteria_section = false;
+    let mut in_code_fence = false;
+    let mut checked = 0;
+    let mut total = 0;
+
+    for line in body.lines() {
+        let trimmed = line.trim();
+
+        // Track code fences
+        if trimmed.starts_with("```") {
+            in_code_fence = !in_code_fence;
+            continue;
+        }
+
+        // Skip lines in code fences
+        if in_code_fence {
+            continue;
+        }
+
+        // Check for acceptance criteria section
+        if trimmed.starts_with("## Acceptance Criteria") {
+            in_criteria_section = true;
+            continue;
+        }
+
+        // Exit criteria section on next heading
+        if in_criteria_section && trimmed.starts_with("## ") {
+            break;
+        }
+
+        // Count criteria checkboxes
+        if in_criteria_section {
+            if trimmed.starts_with("- [x]") || trimmed.starts_with("- [X]") {
+                checked += 1;
+                total += 1;
+            } else if trimmed.starts_with("- [ ]") {
+                total += 1;
+            }
+        }
+    }
+
+    (checked, total)
+}
+
+/// Detect the status of a branch for selective merge
+pub fn detect_branch_status(
+    spec: &Spec,
+    branch_name: &str,
+    main_branch: &str,
+) -> Result<BranchStatus> {
+    use crate::git;
+
+    // Check if branch exists
+    let exists = git::branch_exists(branch_name)?;
+    if !exists {
+        return Ok(BranchStatus::NoBranch);
+    }
+
+    // Count commits
+    let commit_count = git::count_commits(branch_name).unwrap_or(0);
+    if commit_count == 0 {
+        return Ok(BranchStatus::NoCommits);
+    }
+
+    // Check criteria
+    let (checked, total) = count_criteria(spec);
+    if total > 0 && checked < total {
+        return Ok(BranchStatus::Incomplete);
+    }
+
+    // Check if can fast-forward merge
+    let can_ff = git::can_fast_forward_merge(branch_name, main_branch)?;
+    if can_ff {
+        return Ok(BranchStatus::Ready);
+    }
+
+    // Check if behind main
+    let is_behind = git::is_branch_behind(branch_name, main_branch)?;
+    if is_behind {
+        // Could check for conflicts here, but for now assume needs rebase
+        return Ok(BranchStatus::NeedsRebase);
+    }
+
+    // Branch has diverged - likely has conflicts
+    Ok(BranchStatus::HasConflicts)
+}
+
+/// Get branch information for all completed specs
+pub fn get_branch_info_for_specs(
+    specs: &[Spec],
+    branch_prefix: &str,
+    main_branch: &str,
+) -> Result<Vec<BranchInfo>> {
+    let mut infos = Vec::new();
+
+    for spec in specs {
+        if spec.frontmatter.status != SpecStatus::Completed {
+            continue;
+        }
+
+        let branch_name = format!("{}{}", branch_prefix, spec.id);
+        let status = detect_branch_status(spec, &branch_name, main_branch)?;
+
+        // Only include specs with branches
+        if status == BranchStatus::NoBranch {
+            continue;
+        }
+
+        let (checked, total) = count_criteria(spec);
+        let commit_count = crate::git::count_commits(&branch_name).unwrap_or(0);
+
+        infos.push(BranchInfo {
+            spec_id: spec.id.clone(),
+            spec_title: spec.title.clone(),
+            status,
+            commit_count,
+            criteria_checked: checked,
+            criteria_total: total,
+        });
+    }
+
+    Ok(infos)
 }
 
 /// Get the list of specs to merge based on arguments

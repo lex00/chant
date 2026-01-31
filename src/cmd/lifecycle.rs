@@ -1179,6 +1179,236 @@ fn get_conflict_diff(files: &[String]) -> Result<String> {
 // MERGE WIZARD
 // ============================================================================
 
+/// Show branch status for all completed specs
+fn show_branch_status(all_specs: &[Spec], branch_prefix: &str, main_branch: &str) -> Result<()> {
+    use merge::{BranchInfo, BranchStatus};
+
+    let branch_infos = merge::get_branch_info_for_specs(all_specs, branch_prefix, main_branch)?;
+
+    if branch_infos.is_empty() {
+        println!("No completed specs with branches found.");
+        return Ok(());
+    }
+
+    // Separate into ready and not ready
+    let ready: Vec<&BranchInfo> = branch_infos
+        .iter()
+        .filter(|info| info.status == BranchStatus::Ready)
+        .collect();
+
+    let not_ready: Vec<&BranchInfo> = branch_infos
+        .iter()
+        .filter(|info| info.status != BranchStatus::Ready)
+        .collect();
+
+    // Display ready branches
+    if !ready.is_empty() {
+        println!("{}", "Ready to merge:".green().bold());
+        for info in ready {
+            let title = info.spec_title.as_deref().unwrap_or("(no title)");
+            let commits_str = if info.commit_count == 1 {
+                "1 commit".to_string()
+            } else {
+                format!("{} commits", info.commit_count)
+            };
+            println!(
+                "  {} {}  ({}, all criteria met)",
+                "chant/".dimmed(),
+                info.spec_id.cyan(),
+                commits_str.dimmed()
+            );
+            println!("    {}", title.dimmed());
+        }
+        println!();
+    }
+
+    // Display not ready branches
+    if !not_ready.is_empty() {
+        println!("{}", "Not ready:".yellow().bold());
+        for info in not_ready {
+            let title = info.spec_title.as_deref().unwrap_or("(no title)");
+            let reason = match &info.status {
+                BranchStatus::NeedsRebase => "behind main, needs rebase".to_string(),
+                BranchStatus::HasConflicts => "has conflicts with main".to_string(),
+                BranchStatus::Incomplete => format!(
+                    "{}/{} criteria checked",
+                    info.criteria_checked, info.criteria_total
+                ),
+                BranchStatus::NoCommits => "no commits".to_string(),
+                _ => "unknown".to_string(),
+            };
+            println!(
+                "  {} {}  ({})",
+                "chant/".dimmed(),
+                info.spec_id.yellow(),
+                reason.dimmed()
+            );
+            println!("    {}", title.dimmed());
+        }
+    }
+
+    Ok(())
+}
+
+/// Merge all ready branches (can fast-forward, all criteria met)
+#[allow(clippy::too_many_arguments)]
+fn merge_ready_branches(
+    all_specs: &[Spec],
+    branch_prefix: &str,
+    main_branch: &str,
+    dry_run: bool,
+    delete_branch: bool,
+    continue_on_error: bool,
+    yes: bool,
+    auto_resolve: bool,
+    finalize: bool,
+    config: &Config,
+    specs_dir: &Path,
+) -> Result<()> {
+    use merge::{BranchInfo, BranchStatus};
+
+    let branch_infos = merge::get_branch_info_for_specs(all_specs, branch_prefix, main_branch)?;
+
+    let ready: Vec<&BranchInfo> = branch_infos
+        .iter()
+        .filter(|info| info.status == BranchStatus::Ready)
+        .collect();
+
+    if ready.is_empty() {
+        println!("No ready branches found.");
+        return Ok(());
+    }
+
+    println!("{} Found {} ready branch(es):", "→".cyan(), ready.len());
+    for info in &ready {
+        let title = info.spec_title.as_deref().unwrap_or("(no title)");
+        println!("  {} {} {}", "·".cyan(), info.spec_id, title.dimmed());
+    }
+    println!();
+
+    let spec_ids: Vec<String> = ready.iter().map(|info| info.spec_id.clone()).collect();
+
+    execute_merge(
+        &spec_ids,
+        false, // not --all mode
+        dry_run,
+        delete_branch,
+        continue_on_error,
+        yes,
+        false, // no rebase needed for ready branches
+        auto_resolve,
+        finalize,
+        all_specs,
+        config,
+        branch_prefix,
+        main_branch,
+        specs_dir,
+    )
+}
+
+/// Interactive mode to select which branches to merge
+#[allow(clippy::too_many_arguments)]
+fn merge_interactive(
+    all_specs: &[Spec],
+    branch_prefix: &str,
+    main_branch: &str,
+    dry_run: bool,
+    delete_branch: bool,
+    continue_on_error: bool,
+    yes: bool,
+    rebase: bool,
+    auto_resolve: bool,
+    finalize: bool,
+    config: &Config,
+    specs_dir: &Path,
+) -> Result<()> {
+    use dialoguer::MultiSelect;
+    use merge::BranchStatus;
+
+    let branch_infos = merge::get_branch_info_for_specs(all_specs, branch_prefix, main_branch)?;
+
+    if branch_infos.is_empty() {
+        println!("No completed specs with branches found.");
+        return Ok(());
+    }
+
+    // Build display items with status indicators
+    let display_items: Vec<String> = branch_infos
+        .iter()
+        .map(|info| {
+            let title = info.spec_title.as_deref().unwrap_or("(no title)");
+            let status_str = match &info.status {
+                BranchStatus::Ready => "(ready)".green().to_string(),
+                BranchStatus::NeedsRebase => "(needs rebase)".yellow().to_string(),
+                BranchStatus::HasConflicts => "(has conflicts)".red().to_string(),
+                BranchStatus::Incomplete => format!(
+                    "(incomplete: {}/{})",
+                    info.criteria_checked, info.criteria_total
+                )
+                .yellow()
+                .to_string(),
+                BranchStatus::NoCommits => "(no commits)".dimmed().to_string(),
+                _ => "".to_string(),
+            };
+            format!("{} - {} {}", info.spec_id, title, status_str)
+        })
+        .collect();
+
+    // Pre-select ready branches
+    let defaults: Vec<bool> = branch_infos
+        .iter()
+        .map(|info| info.status == BranchStatus::Ready)
+        .collect();
+
+    // Show multi-select prompt
+    let selection = MultiSelect::new()
+        .with_prompt("Select branches to merge")
+        .items(&display_items)
+        .defaults(&defaults)
+        .interact()?;
+
+    if selection.is_empty() {
+        println!("No branches selected");
+        return Ok(());
+    }
+
+    let spec_ids: Vec<String> = selection
+        .iter()
+        .map(|&idx| branch_infos[idx].spec_id.clone())
+        .collect();
+
+    println!(
+        "\n{} Merge {} selected branch(es)? (y/n)",
+        "?".cyan(),
+        spec_ids.len()
+    );
+
+    if !yes {
+        use dialoguer::Confirm;
+        if !Confirm::new().interact()? {
+            println!("Cancelled");
+            return Ok(());
+        }
+    }
+
+    execute_merge(
+        &spec_ids,
+        false,
+        dry_run,
+        delete_branch,
+        continue_on_error,
+        yes,
+        rebase,
+        auto_resolve,
+        finalize,
+        all_specs,
+        config,
+        branch_prefix,
+        main_branch,
+        specs_dir,
+    )
+}
+
 /// Run the interactive wizard for selecting specs to merge
 /// Returns (selected_spec_ids, delete_branch, rebase)
 fn run_merge_wizard(
@@ -1656,6 +1886,9 @@ pub fn cmd_merge(
     ids: &[String],
     all: bool,
     all_completed: bool,
+    list: bool,
+    ready: bool,
+    interactive: bool,
     dry_run: bool,
     delete_branch: bool,
     continue_on_error: bool,
@@ -1677,10 +1910,50 @@ pub fn cmd_merge(
     // Load all specs first (needed for wizard and validation)
     let all_specs = spec::load_all_specs(&specs_dir)?;
 
+    // Handle --list flag: show branch status
+    if list {
+        return show_branch_status(&all_specs, branch_prefix, &main_branch);
+    }
+
     // Validate --all-completed is not used with explicit spec IDs
     if all_completed && !ids.is_empty() {
         anyhow::bail!(
             "Cannot use --all-completed with explicit spec IDs. Use either --all-completed or provide spec IDs."
+        );
+    }
+
+    // Handle --ready flag: merge all ready branches
+    if ready {
+        return merge_ready_branches(
+            &all_specs,
+            branch_prefix,
+            &main_branch,
+            dry_run,
+            delete_branch,
+            continue_on_error,
+            yes,
+            auto_resolve,
+            finalize,
+            &config,
+            &specs_dir,
+        );
+    }
+
+    // Handle -i/--interactive flag: interactive selection
+    if interactive {
+        return merge_interactive(
+            &all_specs,
+            branch_prefix,
+            &main_branch,
+            dry_run,
+            delete_branch,
+            continue_on_error,
+            yes,
+            rebase,
+            auto_resolve,
+            finalize,
+            &config,
+            &specs_dir,
         );
     }
 

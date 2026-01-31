@@ -340,6 +340,15 @@ enum Commands {
         /// Merge all completed specs that have branches (convenience flag for post-parallel execution)
         #[arg(long)]
         all_completed: bool,
+        /// List branch status without merging
+        #[arg(long)]
+        list: bool,
+        /// Merge all ready branches (can fast-forward, all criteria met)
+        #[arg(long)]
+        ready: bool,
+        /// Interactive mode to select which branches to merge
+        #[arg(short, long)]
+        interactive: bool,
         /// Preview merges without executing
         #[arg(long)]
         dry_run: bool,
@@ -854,6 +863,9 @@ fn run() -> Result<()> {
             ids,
             all,
             all_completed,
+            list,
+            ready,
+            interactive,
             dry_run,
             delete_branch,
             continue_on_error,
@@ -865,6 +877,9 @@ fn run() -> Result<()> {
             &ids,
             all,
             all_completed,
+            list,
+            ready,
+            interactive,
             dry_run,
             delete_branch,
             continue_on_error,
