@@ -950,3 +950,211 @@ pub fn cmd_lint(format: LintFormat) -> Result<()> {
         }
     }
 }
+
+// ============================================================================
+// TESTS
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chant::config::LintThresholds;
+    use chant::spec::{Spec, SpecFrontmatter};
+
+    /// Create a test spec with the specified number of criteria, files, and approximate body words.
+    /// Note: The body will contain slightly more words than `body_words` due to the Acceptance Criteria
+    /// section, but this helper ensures consistent test data.
+    fn create_test_spec(
+        id: &str,
+        criteria_count: usize,
+        file_count: usize,
+        body_words: usize,
+    ) -> Spec {
+        let mut body = String::new();
+
+        // Add body content with approximately the specified word count
+        // We add simple filler text to control the word count
+        if body_words > 0 {
+            for _ in 0..body_words {
+                body.push_str("word ");
+            }
+            body.push('\n');
+        }
+
+        // Add Acceptance Criteria section with specified number of checkboxes
+        if criteria_count > 0 {
+            body.push_str("\n## Acceptance Criteria\n\n");
+            for i in 0..criteria_count {
+                body.push_str(&format!("- [ ] Criterion {}\n", i + 1));
+            }
+        }
+
+        let mut frontmatter = SpecFrontmatter::default();
+        if file_count > 0 {
+            frontmatter.target_files =
+                Some((0..file_count).map(|i| format!("file{}.rs", i)).collect());
+        }
+
+        Spec {
+            id: id.to_string(),
+            frontmatter,
+            title: Some("Test Spec".to_string()),
+            body,
+        }
+    }
+
+    #[test]
+    fn test_validate_spec_complexity_below_thresholds() {
+        // Default thresholds: criteria=10, files=5, words=50
+        // Create spec well below all thresholds
+        let spec = create_test_spec("2026-01-30-001-abc", 5, 3, 20);
+        let thresholds = LintThresholds::default();
+
+        let diagnostics = validate_spec_complexity(&spec, &thresholds);
+
+        assert_eq!(
+            diagnostics.len(),
+            0,
+            "Should have no diagnostics when below all thresholds"
+        );
+    }
+
+    #[test]
+    fn test_validate_spec_complexity_exceeds_criteria() {
+        // Default threshold: 10 criteria, 50 words
+        // Create spec with 11 criteria (just above threshold), but within files limit
+        // Note: Each criterion adds ~5 words, so 11 criteria ≈ 58 words total
+        // This will trigger both criteria and words warnings, which is expected
+        let spec = create_test_spec("2026-01-30-002-def", 11, 3, 0);
+        let thresholds = LintThresholds::default();
+
+        let diagnostics = validate_spec_complexity(&spec, &thresholds);
+
+        // Find the criteria diagnostic
+        let criteria_diag = diagnostics
+            .iter()
+            .find(|d| d.message.contains("acceptance criteria"))
+            .expect("Should have criteria diagnostic");
+
+        assert_eq!(criteria_diag.rule, LintRule::Complexity);
+        assert_eq!(criteria_diag.severity, Severity::Warning);
+        assert!(
+            criteria_diag.message.contains("11 acceptance criteria"),
+            "Message should mention the criteria count"
+        );
+        assert!(
+            criteria_diag.message.contains(">10"),
+            "Message should mention the threshold"
+        );
+        assert!(
+            criteria_diag.suggestion.is_some(),
+            "Should have a suggestion"
+        );
+    }
+
+    #[test]
+    fn test_validate_spec_complexity_exceeds_files() {
+        // Default threshold: 5 files
+        // Create spec with 8 files, but within criteria and words limits
+        let spec = create_test_spec("2026-01-30-003-ghi", 5, 8, 20);
+        let thresholds = LintThresholds::default();
+
+        let diagnostics = validate_spec_complexity(&spec, &thresholds);
+
+        assert_eq!(diagnostics.len(), 1, "Should have exactly one diagnostic");
+        assert_eq!(diagnostics[0].rule, LintRule::Complexity);
+        assert_eq!(diagnostics[0].severity, Severity::Warning);
+        assert!(
+            diagnostics[0].message.contains("8 files"),
+            "Message should mention the file count"
+        );
+        assert!(
+            diagnostics[0].message.contains(">5"),
+            "Message should mention the threshold"
+        );
+        assert!(
+            diagnostics[0].suggestion.is_some(),
+            "Should have a suggestion"
+        );
+    }
+
+    #[test]
+    fn test_validate_spec_complexity_exceeds_words() {
+        // Default threshold: 50 words
+        // Create spec with 100 words, but within criteria and files limits
+        let spec = create_test_spec("2026-01-30-004-jkl", 5, 3, 100);
+        let thresholds = LintThresholds::default();
+
+        let diagnostics = validate_spec_complexity(&spec, &thresholds);
+
+        assert_eq!(diagnostics.len(), 1, "Should have exactly one diagnostic");
+        assert_eq!(diagnostics[0].rule, LintRule::Complexity);
+        assert_eq!(diagnostics[0].severity, Severity::Warning);
+        assert!(
+            diagnostics[0].message.contains(" words"),
+            "Message should mention words"
+        );
+        assert!(
+            diagnostics[0].message.contains(">50"),
+            "Message should mention the threshold"
+        );
+        assert!(
+            diagnostics[0].suggestion.is_some(),
+            "Should have a suggestion"
+        );
+    }
+
+    #[test]
+    fn test_validate_spec_complexity_custom_thresholds() {
+        // Custom thresholds: criteria=7, files=3, words=35
+        // Create spec with: criteria=8, files=4, words=40
+        let spec = create_test_spec("2026-01-30-005-mno", 8, 4, 40);
+        let custom_thresholds = LintThresholds {
+            complexity_criteria: 7,
+            complexity_files: 3,
+            complexity_words: 35,
+            simple_criteria: 1,
+            simple_files: 1,
+            simple_words: 3,
+        };
+
+        let diagnostics = validate_spec_complexity(&spec, &custom_thresholds);
+
+        // Should trigger all three warnings with custom thresholds
+        assert_eq!(
+            diagnostics.len(),
+            3,
+            "Should have three diagnostics with custom thresholds"
+        );
+
+        // Check that we have warnings for criteria, files, and words
+        let has_criteria_warning = diagnostics
+            .iter()
+            .any(|d| d.message.contains("8 acceptance criteria"));
+        let has_files_warning = diagnostics.iter().any(|d| d.message.contains("4 files"));
+        let has_words_warning = diagnostics.iter().any(|d| d.message.contains(" words"));
+
+        assert!(has_criteria_warning, "Should have criteria warning");
+        assert!(has_files_warning, "Should have files warning");
+        assert!(has_words_warning, "Should have words warning");
+    }
+
+    #[test]
+    fn test_validate_spec_complexity_multiple_thresholds_exceeded() {
+        // Default thresholds: criteria=10, files=5, words=50
+        // Create spec that exceeds all: criteria=15, files=8, words=100
+        let spec = create_test_spec("2026-01-30-006-pqr", 15, 8, 100);
+        let thresholds = LintThresholds::default();
+
+        let diagnostics = validate_spec_complexity(&spec, &thresholds);
+
+        // Should trigger all three warnings
+        assert_eq!(
+            diagnostics.len(),
+            3,
+            "Should have three diagnostics when all thresholds exceeded"
+        );
+        assert!(diagnostics.iter().all(|d| d.rule == LintRule::Complexity));
+        assert!(diagnostics.iter().all(|d| d.severity == Severity::Warning));
+    }
+}
