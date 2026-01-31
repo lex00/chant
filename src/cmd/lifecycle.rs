@@ -679,9 +679,12 @@ fn extract_dependency_edges(text: &str) -> Vec<(usize, usize)> {
 }
 
 /// Parse member specs from agent output (split analysis)
+/// Tuple representing a member being parsed: (title, description, files, dependencies, has_requires)
+type MemberInProgress = (String, String, Vec<String>, Vec<usize>, bool);
+
 fn parse_member_specs_from_output(output: &str) -> Result<Vec<MemberSpec>> {
     let mut members = Vec::new();
-    let mut current_member: Option<(String, String, Vec<String>, Vec<usize>)> = None;
+    let mut current_member: Option<MemberInProgress> = None;
     let mut collecting_files = false;
     let mut collecting_dependencies = false;
     let mut collecting_requires = false;
@@ -691,7 +694,7 @@ fn parse_member_specs_from_output(output: &str) -> Result<Vec<MemberSpec>> {
         // Check for member headers (## Member N: ...)
         if line.starts_with("## Member ") && line.contains(':') {
             // Save previous member if any
-            if let Some((title, desc, files, deps)) = current_member.take() {
+            if let Some((title, desc, files, deps, _has_requires)) = current_member.take() {
                 members.push(MemberSpec {
                     title,
                     description: desc.trim().to_string(),
@@ -703,7 +706,7 @@ fn parse_member_specs_from_output(output: &str) -> Result<Vec<MemberSpec>> {
             // Extract title from "## Member N: Title Here"
             if let Some(title_part) = line.split(':').nth(1) {
                 let title = title_part.trim().to_string();
-                current_member = Some((title, String::new(), Vec::new(), Vec::new()));
+                current_member = Some((title, String::new(), Vec::new(), Vec::new(), false));
                 collecting_files = false;
                 collecting_dependencies = false;
                 collecting_requires = false;
@@ -712,7 +715,7 @@ fn parse_member_specs_from_output(output: &str) -> Result<Vec<MemberSpec>> {
             // Check for code block markers
             if line.trim() == "```" {
                 in_code_block = !in_code_block;
-                if let Some((_, ref mut desc, _, _)) = &mut current_member {
+                if let Some((_, ref mut desc, _, _, _)) = &mut current_member {
                     desc.push_str(line);
                     desc.push('\n');
                 }
@@ -734,10 +737,15 @@ fn parse_member_specs_from_output(output: &str) -> Result<Vec<MemberSpec>> {
                 collecting_dependencies = true;
                 collecting_files = false;
                 collecting_requires = false;
-                // Parse dependencies from same line if present
+                // Parse dependencies from same line if present, but ONLY if we haven't
+                // already collected dependencies from a Requires section
                 if let Some(deps_part) = line.split(':').nth(1) {
-                    if let Some((_, _, _, ref mut deps)) = &mut current_member {
-                        parse_dependencies_from_text(deps_part, deps);
+                    if let Some((_, _, _, ref mut deps, has_requires)) = &mut current_member {
+                        if !*has_requires {
+                            parse_dependencies_from_text(deps_part, deps);
+                        } else {
+                            eprintln!("Warning: Ignoring Dependencies line because Requires section was already parsed");
+                        }
                     }
                 }
                 continue;
@@ -748,6 +756,10 @@ fn parse_member_specs_from_output(output: &str) -> Result<Vec<MemberSpec>> {
                 collecting_requires = true;
                 collecting_files = false;
                 collecting_dependencies = false;
+                // Mark that we're using Requires section for dependencies
+                if let Some((_, _, _, _, ref mut has_requires)) = &mut current_member {
+                    *has_requires = true;
+                }
                 continue;
             }
 
@@ -762,7 +774,7 @@ fn parse_member_specs_from_output(output: &str) -> Result<Vec<MemberSpec>> {
                         } else {
                             file
                         };
-                        if let Some((_, _, ref mut files, _)) = current_member {
+                        if let Some((_, _, ref mut files, _, _)) = current_member {
                             files.push(cleaned_file);
                         }
                     }
@@ -788,7 +800,7 @@ fn parse_member_specs_from_output(output: &str) -> Result<Vec<MemberSpec>> {
                     // Don't continue - let the line be processed normally
                 } else if !line.trim().is_empty() {
                     // Parse lines like "- Uses X from Member N" or "- Requires Member N"
-                    if let Some((_, _, _, ref mut deps)) = &mut current_member {
+                    if let Some((_, _, _, ref mut deps, _)) = &mut current_member {
                         parse_dependencies_from_text(line, deps);
                     }
                     continue;
@@ -800,7 +812,7 @@ fn parse_member_specs_from_output(output: &str) -> Result<Vec<MemberSpec>> {
                     continue;
                 }
                 // Preserve ### headers and all content except special sections
-                if let Some((_, ref mut desc, _, _)) = &mut current_member {
+                if let Some((_, ref mut desc, _, _, _)) = &mut current_member {
                     desc.push_str(line);
                     desc.push('\n');
                 }
@@ -809,7 +821,7 @@ fn parse_member_specs_from_output(output: &str) -> Result<Vec<MemberSpec>> {
     }
 
     // Save last member
-    if let Some((title, desc, files, deps)) = current_member {
+    if let Some((title, desc, files, deps, _has_requires)) = current_member {
         members.push(MemberSpec {
             title,
             description: desc.trim().to_string(),
@@ -822,7 +834,100 @@ fn parse_member_specs_from_output(output: &str) -> Result<Vec<MemberSpec>> {
         anyhow::bail!("No member specs found in agent output");
     }
 
+    // Remove self-references and validate no cycles
+    validate_and_clean_dependencies(&mut members)?;
+
     Ok(members)
+}
+
+/// Validate dependencies and remove self-references and cycles
+fn validate_and_clean_dependencies(members: &mut [MemberSpec]) -> Result<()> {
+    // Remove self-references
+    for (index, member) in members.iter_mut().enumerate() {
+        let member_number = index + 1;
+        let original_len = member.dependencies.len();
+        member.dependencies.retain(|&dep| dep != member_number);
+        if member.dependencies.len() < original_len {
+            eprintln!(
+                "Warning: Removed self-reference in Member {}: {}",
+                member_number, member.title
+            );
+        }
+    }
+
+    // Detect cycles using depth-first search
+    fn has_cycle_from(
+        node: usize,
+        members: &[MemberSpec],
+        visited: &mut Vec<bool>,
+        rec_stack: &mut Vec<bool>,
+    ) -> Option<Vec<usize>> {
+        if rec_stack[node] {
+            return Some(vec![node]);
+        }
+        if visited[node] {
+            return None;
+        }
+
+        visited[node] = true;
+        rec_stack[node] = true;
+
+        if let Some(member) = members.get(node) {
+            for &dep in &member.dependencies {
+                if dep > 0 && dep <= members.len() {
+                    let dep_idx = dep - 1;
+                    if let Some(mut cycle) = has_cycle_from(dep_idx, members, visited, rec_stack) {
+                        cycle.push(node);
+                        return Some(cycle);
+                    }
+                }
+            }
+        }
+
+        rec_stack[node] = false;
+        None
+    }
+
+    let n = members.len();
+    let mut visited = vec![false; n];
+    let mut rec_stack = vec![false; n];
+
+    for i in 0..n {
+        if !visited[i] {
+            if let Some(cycle) = has_cycle_from(i, members, &mut visited, &mut rec_stack) {
+                let cycle_members: Vec<usize> = cycle.iter().rev().map(|&i| i + 1).collect();
+                eprintln!(
+                    "Warning: Detected dependency cycle: {} -> {}",
+                    cycle_members
+                        .iter()
+                        .map(|n| n.to_string())
+                        .collect::<Vec<_>>()
+                        .join(" -> "),
+                    cycle_members[0]
+                );
+
+                // Remove the edge that creates the cycle (last dependency in cycle)
+                if cycle.len() >= 2 {
+                    let from_idx = cycle[1];
+                    let to_member = cycle[0] + 1;
+                    if let Some(member) = members.get_mut(from_idx) {
+                        member.dependencies.retain(|&dep| dep != to_member);
+                        eprintln!(
+                            "  Removed dependency: Member {} -> Member {}",
+                            from_idx + 1,
+                            to_member
+                        );
+                    }
+                }
+
+                // Reset for next iteration
+                visited = vec![false; n];
+                rec_stack = vec![false; n];
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// Parse dependencies from text like "Member 2, Member 3" or "None"
@@ -3386,5 +3491,161 @@ Feature implementation.
 
         // Member 2 should depend on Member 1 (from **Dependencies:** section)
         assert_eq!(members[1].dependencies, vec![1]);
+    }
+
+    #[test]
+    fn test_requires_preferred_over_dependencies() {
+        // Test that Requires section takes precedence over Dependencies line
+        let output = r#"
+## Member 1: Base
+
+Base implementation.
+
+**Affected Files:**
+- src/base.rs
+
+## Member 2: Feature
+
+Feature implementation.
+
+### Requires
+- Uses `WatchConfig` from Member 1
+
+**Dependencies:** Member 5
+
+**Affected Files:**
+- src/feature.rs
+"#;
+
+        let result = parse_member_specs_from_output(output);
+        assert!(result.is_ok());
+
+        let members = result.unwrap();
+        assert_eq!(members.len(), 2);
+
+        // Member 2 should depend ONLY on Member 1 (from Requires), not Member 5 (from Dependencies)
+        assert_eq!(members[1].dependencies, vec![1]);
+    }
+
+    #[test]
+    fn test_cycle_detection_and_removal() {
+        // Test that cycles are detected and broken
+        let output = r#"
+## Member 1: Base
+
+Base implementation.
+
+**Affected Files:**
+- src/base.rs
+
+## Member 2: Feature A
+
+Feature A.
+
+### Requires
+- Uses Member 3
+
+**Affected Files:**
+- src/feature_a.rs
+
+## Member 3: Feature B
+
+Feature B.
+
+### Requires
+- Uses Member 2
+
+**Affected Files:**
+- src/feature_b.rs
+"#;
+
+        let result = parse_member_specs_from_output(output);
+        assert!(result.is_ok());
+
+        let members = result.unwrap();
+        assert_eq!(members.len(), 3);
+
+        // After cycle removal, at least one of the circular edges should be removed
+        // Member 2 depends on Member 3, Member 3 depends on Member 2 (cycle)
+        let member2_deps = &members[1].dependencies;
+        let member3_deps = &members[2].dependencies;
+
+        // At least one of these should be empty to break the cycle
+        assert!(
+            member2_deps.is_empty()
+                || member3_deps.is_empty()
+                || !member2_deps.contains(&3)
+                || !member3_deps.contains(&2),
+            "Cycle should be broken"
+        );
+    }
+
+    #[test]
+    fn test_self_reference_removal() {
+        // Test that self-references are removed
+        let output = r#"
+## Member 1: Feature
+
+Feature implementation.
+
+### Requires
+- Uses Member 1
+
+**Affected Files:**
+- src/feature.rs
+"#;
+
+        let result = parse_member_specs_from_output(output);
+        assert!(result.is_ok());
+
+        let members = result.unwrap();
+        assert_eq!(members.len(), 1);
+
+        // Self-reference should be removed
+        assert_eq!(members[0].dependencies.len(), 0);
+    }
+
+    #[test]
+    fn test_both_requires_and_dependencies_prefer_requires() {
+        // Test with both sections present - should use only Requires
+        let output = r#"
+## Member 1: Base
+
+Base config.
+
+**Affected Files:**
+- src/config.rs
+
+## Member 2: Logger
+
+Logger module.
+
+**Affected Files:**
+- src/logger.rs
+
+## Member 3: Feature
+
+Feature implementation.
+
+### Requires
+- Uses `Config` from Member 1
+- Uses `Logger` from Member 2
+
+**Dependencies:** None
+
+**Affected Files:**
+- src/feature.rs
+"#;
+
+        let result = parse_member_specs_from_output(output);
+        assert!(result.is_ok());
+
+        let members = result.unwrap();
+        assert_eq!(members.len(), 3);
+
+        // Member 3 should depend on Members 1 and 2 (from Requires), not "None" (from Dependencies)
+        let mut deps = members[2].dependencies.clone();
+        deps.sort();
+        assert_eq!(deps, vec![1, 2]);
     }
 }
