@@ -408,8 +408,12 @@ fn cmd_split_impl(
         println!("  {} {}", "✓".green(), member_id);
     }
 
-    // Update driver spec to type: group
+    // Update driver spec to type: group with depends_on all members
     spec.frontmatter.r#type = "group".to_string();
+    let member_ids: Vec<String> = (1..=members.len())
+        .map(|i| format!("{}.{}", driver_id, i))
+        .collect();
+    spec.frontmatter.depends_on = Some(member_ids.clone());
     spec.save(&spec_path)?;
 
     println!(

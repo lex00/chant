@@ -177,6 +177,11 @@ pub fn finalize_spec(
         }
     }
 
+    // Auto-complete parent group if this is a member and all siblings are complete
+    if let Some(parent_id) = get_parent_group_id(&spec.id) {
+        auto_complete_parent_group(&parent_id, specs_dir)?;
+    }
+
     Ok(())
 }
 
@@ -423,6 +428,79 @@ pub fn find_dependent_specs(completed_spec_id: &str, specs_dir: &Path) -> Result
     }
 
     Ok(unblocked)
+}
+
+/// Extract parent group ID from a member spec ID.
+/// Member IDs have format "2026-01-30-00h-f77.1" where parent is "2026-01-30-00h-f77".
+/// Returns None if this is not a member spec (no dot in ID).
+fn get_parent_group_id(spec_id: &str) -> Option<String> {
+    // Member IDs contain a dot: "parent-id.N"
+    if let Some(dot_pos) = spec_id.rfind('.') {
+        // Check that what's after the dot is a number (member index)
+        let suffix = &spec_id[dot_pos + 1..];
+        if suffix.parse::<u32>().is_ok() {
+            return Some(spec_id[..dot_pos].to_string());
+        }
+    }
+    None
+}
+
+/// Auto-complete a parent group spec if all its members are now completed.
+/// This is called after finalizing a member spec.
+fn auto_complete_parent_group(parent_id: &str, specs_dir: &Path) -> Result<()> {
+    // Load the parent spec
+    let parent_path = specs_dir.join(format!("{}.md", parent_id));
+    if !parent_path.exists() {
+        // Parent doesn't exist, nothing to do
+        return Ok(());
+    }
+
+    let mut parent = Spec::load(&parent_path)?;
+
+    // Only process group specs
+    if parent.frontmatter.r#type != "group" {
+        return Ok(());
+    }
+
+    // Already completed, nothing to do
+    if parent.frontmatter.status == SpecStatus::Completed {
+        return Ok(());
+    }
+
+    // Check if all members are completed
+    let all_specs = load_all_specs(specs_dir)?;
+    let incomplete_members = spec::get_incomplete_members(parent_id, &all_specs);
+
+    if !incomplete_members.is_empty() {
+        // Still has incomplete members, don't auto-complete
+        return Ok(());
+    }
+
+    // All members complete! Auto-complete the parent group
+    println!(
+        "\n{} All members of group {} are complete. Auto-completing parent...",
+        "→".cyan(),
+        parent_id
+    );
+
+    // Set parent as completed (groups don't have commits of their own)
+    parent.frontmatter.status = SpecStatus::Completed;
+    parent.frontmatter.completed_at = Some(
+        chrono::Local::now()
+            .format("%Y-%m-%dT%H:%M:%SZ")
+            .to_string(),
+    );
+
+    parent.save(&parent_path)?;
+
+    println!("{} Group {} auto-completed", "✓".green(), parent_id);
+
+    // Recursively check if this group is itself a member of a parent group
+    if let Some(grandparent_id) = get_parent_group_id(parent_id) {
+        auto_complete_parent_group(&grandparent_id, specs_dir)?;
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

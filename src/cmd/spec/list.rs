@@ -398,6 +398,8 @@ pub fn cmd_list(
     if ready_only {
         let all_specs = specs.clone();
         specs.retain(|s| s.is_ready(&all_specs));
+        // Filter out group specs - they are containers, not actionable work
+        specs.retain(|s| s.frontmatter.r#type != "group");
     }
 
     // Filter by type if specified
