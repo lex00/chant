@@ -9,5 +9,20 @@ defaults:
   provider: claude
   prompt_extensions:
     - output-concise
+parallel:
+  stagger_delay_ms: 3000
+  agents:
+  - name: claude2
+    command: claude2
+    max_concurrent: 3
+    weight: 1
+  - name: claude3
+    command: claude3
+    max_concurrent: 3
+    weight: 1
+  cleanup:
+    enabled: true
+    prompt: parallel-cleanup
+    auto_run: false
 ---
 # Chant Configuration
