@@ -148,7 +148,10 @@ fn count_bullets_and_paragraphs(body: &str) -> (usize, usize) {
         }
 
         // Check if it's a bullet
-        if let Some(content) = trimmed.strip_prefix("- ").or_else(|| trimmed.strip_prefix("* ")) {
+        if let Some(content) = trimmed
+            .strip_prefix("- ")
+            .or_else(|| trimmed.strip_prefix("* "))
+        {
             // Only count non-empty bullets
             if !content.trim().is_empty() {
                 bullet_count += 1;
@@ -209,7 +212,10 @@ fn count_bullets_with_imperative_verbs(body: &str) -> usize {
         }
 
         // Extract content after bullet marker
-        let content = if let Some(c) = trimmed.strip_prefix("- ").or_else(|| trimmed.strip_prefix("* ")) {
+        let content = if let Some(c) = trimmed
+            .strip_prefix("- ")
+            .or_else(|| trimmed.strip_prefix("* "))
+        {
             c
         } else {
             continue;
