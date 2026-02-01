@@ -86,6 +86,7 @@ pub fn commit_transcript(spec_id: &str, spec_path: &Path) -> Result<()> {
 /// - Body: Original completion date and replay reason
 ///
 /// The spec file should already be staged before calling this.
+#[allow(dead_code)]
 pub fn commit_replay(spec_path: &Path, replay_context: &ReplayContext) -> Result<()> {
     use std::process::Command;
 

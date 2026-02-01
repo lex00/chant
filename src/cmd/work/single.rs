@@ -113,6 +113,7 @@ fn format_grade<T: std::fmt::Display>(grade: &T) -> colored::ColoredString {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn cmd_work(
     ids: &[String],
     prompt_name: Option<&str>,
