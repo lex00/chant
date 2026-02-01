@@ -282,14 +282,6 @@ fn handle_tools_list() -> Result<Value> {
                 }
             },
             {
-                "name": "chant_ready",
-                "description": "List all specs that are ready to be worked (no unmet dependencies)",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {}
-                }
-            },
-            {
                 "name": "chant_status",
                 "description": "Get project status summary with spec counts by status",
                 "inputSchema": {
@@ -471,7 +463,6 @@ fn handle_tools_call(params: Option<&Value>) -> Result<Value> {
         // Query tools (read-only)
         "chant_spec_list" => tool_chant_spec_list(arguments),
         "chant_spec_get" => tool_chant_spec_get(arguments),
-        "chant_ready" => tool_chant_ready(arguments),
         "chant_status" => tool_chant_status(arguments),
         "chant_log" => tool_chant_log(arguments),
         "chant_search" => tool_chant_search(arguments),
@@ -719,58 +710,6 @@ fn tool_chant_spec_update(arguments: Option<&Value>) -> Result<Value> {
 // ============================================================================
 // New Query Tools (read-only)
 // ============================================================================
-
-fn tool_chant_ready(_arguments: Option<&Value>) -> Result<Value> {
-    let specs_dir = match mcp_ensure_initialized() {
-        Ok(dir) => dir,
-        Err(err_response) => return Ok(err_response),
-    };
-
-    let mut specs = load_all_specs(&specs_dir)?;
-
-    // Filter to ready specs (pending with no unmet dependencies)
-    specs.retain(|s| {
-        if s.frontmatter.status != SpecStatus::Pending {
-            return false;
-        }
-        // Check if all dependencies are completed
-        if let Some(deps) = &s.frontmatter.depends_on {
-            let all_specs = load_all_specs(&specs_dir).unwrap_or_default();
-            for dep_id in deps {
-                let dep_completed = all_specs
-                    .iter()
-                    .any(|ds| ds.id == *dep_id && ds.frontmatter.status == SpecStatus::Completed);
-                if !dep_completed {
-                    return false;
-                }
-            }
-        }
-        true
-    });
-
-    specs.sort_by(|a, b| spec_group::compare_spec_ids(&a.id, &b.id));
-
-    let specs_json: Vec<Value> = specs
-        .iter()
-        .map(|s| {
-            json!({
-                "id": s.id,
-                "title": s.title,
-                "type": s.frontmatter.r#type,
-                "labels": s.frontmatter.labels
-            })
-        })
-        .collect();
-
-    Ok(json!({
-        "content": [
-            {
-                "type": "text",
-                "text": serde_json::to_string_pretty(&specs_json)?
-            }
-        ]
-    }))
-}
 
 fn tool_chant_status(arguments: Option<&Value>) -> Result<Value> {
     let specs_dir = match mcp_ensure_initialized() {
@@ -1468,22 +1407,21 @@ mod tests {
     fn test_handle_tools_list() {
         let result = handle_tools_list().unwrap();
         let tools = result["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 13);
-        // Query tools (7)
+        assert_eq!(tools.len(), 12);
+        // Query tools (6)
         assert_eq!(tools[0]["name"], "chant_spec_list");
         assert_eq!(tools[1]["name"], "chant_spec_get");
-        assert_eq!(tools[2]["name"], "chant_ready");
-        assert_eq!(tools[3]["name"], "chant_status");
-        assert_eq!(tools[4]["name"], "chant_log");
-        assert_eq!(tools[5]["name"], "chant_search");
-        assert_eq!(tools[6]["name"], "chant_diagnose");
+        assert_eq!(tools[2]["name"], "chant_status");
+        assert_eq!(tools[3]["name"], "chant_log");
+        assert_eq!(tools[4]["name"], "chant_search");
+        assert_eq!(tools[5]["name"], "chant_diagnose");
         // Mutating tools (6)
-        assert_eq!(tools[7]["name"], "chant_spec_update");
-        assert_eq!(tools[8]["name"], "chant_add");
-        assert_eq!(tools[9]["name"], "chant_finalize");
-        assert_eq!(tools[10]["name"], "chant_resume");
-        assert_eq!(tools[11]["name"], "chant_cancel");
-        assert_eq!(tools[12]["name"], "chant_archive");
+        assert_eq!(tools[6]["name"], "chant_spec_update");
+        assert_eq!(tools[7]["name"], "chant_add");
+        assert_eq!(tools[8]["name"], "chant_finalize");
+        assert_eq!(tools[9]["name"], "chant_resume");
+        assert_eq!(tools[10]["name"], "chant_cancel");
+        assert_eq!(tools[11]["name"], "chant_archive");
     }
 
     #[test]

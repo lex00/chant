@@ -2705,15 +2705,15 @@ fn test_force_flag_bypasses_dependency_check() {
     create_spec_with_dependencies(&specs_dir, spec_a, &[]).expect("Failed to create spec A");
     create_spec_with_dependencies(&specs_dir, spec_b, &[spec_a]).expect("Failed to create spec B");
 
-    // Verify B is blocked using chant ready
+    // Verify B is blocked using chant list --ready
     let output = Command::new(&chant_binary)
-        .args(["ready"])
+        .args(["list", "--ready"])
         .current_dir(&repo_dir)
         .output()
-        .expect("Failed to run chant ready");
+        .expect("Failed to run chant list --ready");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(output.status.success(), "chant ready should succeed");
+    assert!(output.status.success(), "chant list --ready should succeed");
     assert!(
         !stdout.contains(spec_b),
         "Spec B should not be in ready list due to dependency block. Output: {}",
@@ -3054,15 +3054,15 @@ fn test_dependency_chain_updates_after_completion() {
     );
     fs::write(&spec_b_path, updated_content).expect("Failed to write spec B");
 
-    // Use chant ready to verify C is now ready
+    // Use chant list --ready to verify C is now ready
     let ready_output = Command::new(&chant_binary)
-        .args(["ready"])
+        .args(["list", "--ready"])
         .current_dir(&repo_dir)
         .output()
-        .expect("Failed to run chant ready");
+        .expect("Failed to run chant list --ready");
 
     let stdout = String::from_utf8_lossy(&ready_output.stdout);
-    assert!(ready_output.status.success(), "chant ready should succeed");
+    assert!(ready_output.status.success(), "chant list --ready should succeed");
     assert!(
         stdout.contains(spec_c),
         "Spec C should be ready after B is completed. Output: {}",
