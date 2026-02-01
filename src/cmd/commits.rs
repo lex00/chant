@@ -555,11 +555,9 @@ pub fn get_commits_for_spec_allow_no_commits(spec_id: &str) -> Result<Vec<String
 /// Search for commits on a specific branch matching the spec pattern.
 /// Returns Ok(commits) if found, Err if not found or git command failed.
 fn find_commits_on_branch(branch: &str, spec_id: &str) -> Result<Vec<String>> {
-    use std::process::Command;
-
     let pattern = format!("chant({}):", spec_id);
 
-    let output = Command::new("git")
+    let output = std::process::Command::new("git")
         .args(["log", branch, "--oneline", "--grep", &pattern, "--reverse"])
         .output()
         .context("Failed to execute git log command")?;
@@ -587,8 +585,6 @@ fn get_commits_for_spec_internal(
     spec_branch: Option<&str>,
     allow_no_commits: bool,
 ) -> Result<Vec<String>> {
-    use std::process::Command;
-
     // Look for all commits with the chant(spec_id): pattern
     // Include colon and optional space to match the actual commit message format
     let pattern = format!("chant({}):", spec_id);
@@ -619,7 +615,7 @@ fn get_commits_for_spec_internal(
         }
     }
 
-    let output = Command::new("git")
+    let output = std::process::Command::new("git")
         .args(["log", "--oneline", "--grep", &pattern, "--reverse"])
         .output()
         .context("Failed to execute git log command")?;
@@ -663,7 +659,7 @@ fn get_commits_for_spec_internal(
                 pattern
             );
 
-            let head_output = Command::new("git")
+            let head_output = std::process::Command::new("git")
                 .args(["rev-parse", "--short=7", "HEAD"])
                 .output()
                 .context("Failed to execute git rev-parse command")?;
@@ -745,10 +741,8 @@ pub struct AgentDetectionResult {
 /// Check if a single commit has agent co-authorship.
 /// Returns the detection result with details about what was found.
 pub fn detect_agent_in_commit(commit_hash: &str) -> Result<AgentDetectionResult> {
-    use std::process::Command;
-
     // Get the full commit message including trailers
-    let output = Command::new("git")
+    let output = std::process::Command::new("git")
         .args(["log", "-1", "--format=%B", commit_hash])
         .output()
         .context("Failed to execute git log command")?;
