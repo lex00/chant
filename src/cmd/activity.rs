@@ -6,7 +6,8 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
 use std::collections::HashMap;
-use std::process::Command;
+
+use chant::git;
 
 /// Activity types detected from git history
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -103,97 +104,29 @@ fn parse_duration(duration: &str) -> Result<i64> {
 /// Get git log for spec-related commits
 fn get_spec_commits() -> Result<Vec<(String, String, i64, String)>> {
     // Get commits affecting .chant/specs/
-    let output = Command::new("git")
-        .args([
-            "log",
-            "--all",
-            "--format=%H|%an|%at|%s",
-            "--",
-            ".chant/specs/",
-        ])
-        .output()
-        .context("Failed to execute git log")?;
+    let commit_infos = git::get_commits_for_path(".chant/specs/")?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("git log failed: {}", stderr);
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut commits = Vec::new();
-
-    for line in stdout.lines() {
-        if line.is_empty() {
-            continue;
-        }
-
-        let parts: Vec<&str> = line.splitn(4, '|').collect();
-        if parts.len() != 4 {
-            continue;
-        }
-
-        let hash = parts[0].to_string();
-        let author = parts[1].to_string();
-        let timestamp: i64 = parts[2].parse().unwrap_or(0);
-        let subject = parts[3].to_string();
-
-        commits.push((hash, author, timestamp, subject));
-    }
+    let commits = commit_infos
+        .into_iter()
+        .map(|c| (c.hash, c.author, c.timestamp, c.message))
+        .collect();
 
     Ok(commits)
 }
 
 /// Get files changed in a commit
 fn get_commit_files(commit: &str) -> Result<Vec<String>> {
-    let output = Command::new("git")
-        .args(["diff-tree", "--no-commit-id", "--name-status", "-r", commit])
-        .output()
-        .context("Failed to get commit files")?;
-
-    if !output.status.success() {
-        return Ok(Vec::new());
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut files = Vec::new();
-
-    for line in stdout.lines() {
-        let parts: Vec<&str> = line.split('\t').collect();
-        if parts.len() >= 2 {
-            // parts[0] is status (A, M, D), parts[1] is filename
-            files.push(format!("{}:{}", parts[0], parts[1]));
-        }
-    }
-
-    Ok(files)
+    git::get_commit_files_with_status(commit)
 }
 
 /// Get file content at a specific commit
 fn get_file_at_commit(commit: &str, file: &str) -> Result<String> {
-    let output = Command::new("git")
-        .args(["show", &format!("{}:{}", commit, file)])
-        .output()
-        .context("Failed to get file at commit")?;
-
-    if !output.status.success() {
-        return Ok(String::new());
-    }
-
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    git::get_file_at_commit(commit, file)
 }
 
 /// Get file content at parent commit
 fn get_file_at_parent(commit: &str, file: &str) -> Result<String> {
-    let output = Command::new("git")
-        .args(["show", &format!("{}^:{}", commit, file)])
-        .output()
-        .context("Failed to get file at parent")?;
-
-    if !output.status.success() {
-        return Ok(String::new());
-    }
-
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    git::get_file_at_parent(commit, file)
 }
 
 /// Extract spec ID from a filename like ".chant/specs/2026-01-28-001-abc.md"
