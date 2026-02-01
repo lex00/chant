@@ -286,6 +286,9 @@ enum Commands {
         /// Output format (text or json)
         #[arg(short, long, default_value = "text")]
         format: String,
+        /// Show all dimension details including isolation and AC quality
+        #[arg(short, long)]
+        verbose: bool,
     },
     /// Show log for a spec
     Log {
@@ -848,7 +851,7 @@ fn run() -> Result<()> {
             false, // main_only
         ),
         Commands::Refresh { verbose } => cmd::refresh::cmd_refresh(verbose),
-        Commands::Lint { format } => {
+        Commands::Lint { format, verbose } => {
             let lint_format = match format.to_lowercase().as_str() {
                 "json" => cmd::spec::LintFormat::Json,
                 "text" => cmd::spec::LintFormat::Text,
@@ -857,7 +860,7 @@ fn run() -> Result<()> {
                     std::process::exit(1);
                 }
             };
-            cmd::spec::cmd_lint(lint_format)
+            cmd::spec::cmd_lint(lint_format, verbose)
         }
         Commands::Log {
             id,

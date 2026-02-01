@@ -12,6 +12,12 @@ use std::path::Path;
 
 use chant::config::Config;
 use chant::paths::LOGS_DIR;
+use chant::score::ac_quality::calculate_ac_quality;
+use chant::score::confidence::calculate_confidence;
+use chant::score::isolation::calculate_isolation;
+use chant::score::splittability::calculate_splittability;
+use chant::score::traffic_light::{determine_status, generate_suggestions};
+use chant::scoring::{calculate_complexity, SpecScore};
 use chant::spec::{self, ApprovalStatus, Spec, SpecStatus};
 use chant::validation;
 
@@ -171,6 +177,99 @@ impl LintReport {
 
 /// Regex pattern for spec IDs: YYYY-MM-DD-XXX-abc with optional .N suffix
 const SPEC_ID_PATTERN: &str = r"\b\d{4}-\d{2}-\d{2}-[0-9a-z]{3}-[0-9a-z]{3}(?:\.\d+)?\b";
+
+// ============================================================================
+// SCORING HELPERS
+// ============================================================================
+
+/// Extract acceptance criteria text from spec body
+fn extract_acceptance_criteria(spec: &Spec) -> Vec<String> {
+    let acceptance_criteria_marker = "## Acceptance Criteria";
+    let mut criteria = Vec::new();
+    let mut in_code_fence = false;
+    let mut in_ac_section = false;
+
+    for line in spec.body.lines() {
+        let trimmed = line.trim_start();
+
+        if trimmed.starts_with("```") {
+            in_code_fence = !in_code_fence;
+            continue;
+        }
+
+        if !in_code_fence && trimmed.starts_with(acceptance_criteria_marker) {
+            in_ac_section = true;
+            continue;
+        }
+
+        // Stop if we hit another ## heading
+        if in_ac_section && !in_code_fence && trimmed.starts_with("## ") {
+            break;
+        }
+
+        // Extract checkbox items
+        if in_ac_section && !in_code_fence
+            && (trimmed.starts_with("- [ ]") || trimmed.starts_with("- [x]")) {
+                // Extract text after checkbox
+                let text = trimmed.trim_start_matches("- [ ]")
+                    .trim_start_matches("- [x]")
+                    .trim()
+                    .to_string();
+                if !text.is_empty() {
+                    criteria.push(text);
+                }
+            }
+    }
+
+    criteria
+}
+
+/// Calculate complete quality score for a spec
+fn calculate_spec_score(spec: &Spec, all_specs: &[Spec]) -> SpecScore {
+    let complexity = calculate_complexity(spec);
+
+    // Load config for confidence calculation (creates minimal default if load fails)
+    let loaded_config = Config::load().ok();
+    let minimal_config = if loaded_config.is_none() {
+        // Create a minimal config on the fly if load fails
+        let toml_str = r#"
+[project]
+name = "default"
+prefix = ""
+"#;
+        Config::parse(toml_str).ok()
+    } else {
+        None
+    };
+    let conf = loaded_config.as_ref().or(minimal_config.as_ref());
+
+    let confidence = if let Some(c) = conf {
+        calculate_confidence(spec, c)
+    } else {
+        // Fallback if config creation fails - use basic confidence calculation
+        chant::scoring::ConfidenceGrade::B
+    };
+    let splittability = calculate_splittability(spec);
+    let isolation = calculate_isolation(spec, all_specs);
+
+    // Extract acceptance criteria for AC quality scoring
+    let criteria = extract_acceptance_criteria(spec);
+    let ac_quality = calculate_ac_quality(&criteria);
+
+    let mut score = SpecScore {
+        complexity,
+        confidence,
+        splittability,
+        isolation,
+        ac_quality,
+        traffic_light: chant::scoring::TrafficLight::Ready, // temporary, will be overwritten
+    };
+
+    // Determine final traffic light status
+    score.traffic_light = determine_status(&score);
+
+    score
+}
 
 // ============================================================================
 // VALIDATION HELPERS
@@ -717,7 +816,7 @@ pub fn lint_specific_specs(specs_dir: &std::path::Path, spec_ids: &[String]) -> 
     })
 }
 
-pub fn cmd_lint(format: LintFormat) -> Result<()> {
+pub fn cmd_lint(format: LintFormat, verbose: bool) -> Result<()> {
     let specs_dir = crate::cmd::ensure_initialized()?;
 
     if format == LintFormat::Text {
@@ -854,17 +953,46 @@ pub fn cmd_lint(format: LintFormat) -> Result<()> {
             .collect();
 
         if format == LintFormat::Text {
+            // Calculate quality score for this spec
+            let score = calculate_spec_score(spec, &specs_to_check);
+
+            // Build score display string
+            let mut score_display = format!(
+                "{} | Complexity: {} | Confidence: {} | Splittable: {}",
+                score.traffic_light, score.complexity, score.confidence, score.splittability
+            );
+
+            // Add isolation grade if present (specs with members)
+            if verbose {
+                if let Some(isolation) = score.isolation {
+                    score_display.push_str(&format!(" | Isolation: {}", isolation));
+                }
+                score_display.push_str(&format!(" | AC Quality: {}", score.ac_quality));
+            }
+
             if spec_diagnostics.is_empty() {
-                println!("{} {}", "✓".green(), spec.id);
+                println!("{} {}: {}", "✓".green(), spec.id, score_display);
             } else {
                 for diagnostic in &errors {
-                    println!("{} {}: {}", "✗".red(), spec.id, diagnostic.message);
+                    println!(
+                        "{} {}: {} | {}",
+                        "✗".red(),
+                        spec.id,
+                        score_display,
+                        diagnostic.message
+                    );
                 }
                 // Check if there are complexity warnings
                 let has_complexity_warning =
                     warnings.iter().any(|d| d.rule == LintRule::Complexity);
                 for diagnostic in &warnings {
-                    println!("{} {}: {}", "⚠".yellow(), spec.id, diagnostic.message);
+                    println!(
+                        "{} {}: {} | {}",
+                        "⚠".yellow(),
+                        spec.id,
+                        score_display,
+                        diagnostic.message
+                    );
                     if let Some(ref suggestion) = diagnostic.suggestion {
                         println!("    {} {}", "→".cyan(), suggestion);
                     }
@@ -872,6 +1000,24 @@ pub fn cmd_lint(format: LintFormat) -> Result<()> {
                 // Suggest split if there are complexity warnings
                 if has_complexity_warning {
                     println!("    {} Consider: chant split {}", "→".cyan(), spec.id);
+                }
+            }
+
+            // Show quality suggestions for Review/Refine status
+            use chant::scoring::TrafficLight;
+            if matches!(
+                score.traffic_light,
+                TrafficLight::Review | TrafficLight::Refine
+            ) {
+                let suggestions = generate_suggestions(&score);
+                const MAX_SUGGESTIONS: usize = 3;
+                for (i, suggestion) in suggestions.iter().take(MAX_SUGGESTIONS).enumerate() {
+                    println!("    {} {}", "→".cyan(), suggestion);
+                    if i == MAX_SUGGESTIONS - 1 && suggestions.len() > MAX_SUGGESTIONS {
+                        let remaining = suggestions.len() - MAX_SUGGESTIONS;
+                        println!("    {} ... and {} more", "→".cyan(), remaining);
+                        break;
+                    }
                 }
             }
         }
