@@ -2327,4 +2327,194 @@ watch:
             OnPermanentFailure::Stop
         );
     }
+
+    // =========================================================================
+    // ERROR HANDLING TESTS FOR MALFORMED CONFIGS
+    // =========================================================================
+
+    #[test]
+    fn test_parse_config_missing_frontmatter() {
+        let content = r#"# Config
+
+Just a markdown file with no frontmatter
+"#;
+        let result = Config::parse(content);
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("Failed to extract frontmatter"));
+    }
+
+    #[test]
+    fn test_parse_config_invalid_yaml() {
+        let content = r#"---
+project:
+  name: test
+  invalid: [unclosed bracket
+---
+"#;
+        let result = Config::parse(content);
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("Failed to parse config frontmatter"));
+    }
+
+    #[test]
+    fn test_parse_config_missing_project_section() {
+        let content = r#"---
+defaults:
+  prompt: custom
+---
+"#;
+        let result = Config::parse(content);
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("Failed to parse config frontmatter"));
+    }
+
+    #[test]
+    fn test_load_from_nonexistent_file() {
+        let result = Config::load_from(Path::new("/nonexistent/path/config.md"));
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("Failed to read config from"));
+    }
+
+    #[test]
+    fn test_partial_config_load_from_nonexistent_file() {
+        let result = PartialConfig::load_from(Path::new("/nonexistent/path/config.md"));
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("Failed to read config from"));
+    }
+
+    #[test]
+    fn test_agents_config_load_from_nonexistent_file() {
+        let result = AgentsConfig::load_from(Path::new("/nonexistent/path/agents.md"));
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("Failed to read agents config from"));
+    }
+
+    #[test]
+    fn test_agents_config_missing_frontmatter() {
+        let content = r#"# Agents Config
+
+No frontmatter here
+"#;
+        let result = AgentsConfig::parse(content);
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("Failed to extract frontmatter"));
+    }
+
+    #[test]
+    fn test_agents_config_invalid_yaml() {
+        let content = r#"---
+parallel:
+  agents: [
+    name: broken
+---
+"#;
+        let result = AgentsConfig::parse(content);
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("Failed to parse agents config frontmatter"));
+    }
+
+    #[test]
+    fn test_partial_config_missing_frontmatter() {
+        let content = "Just markdown, no frontmatter";
+        let result = PartialConfig::parse(content);
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("Failed to extract frontmatter"));
+    }
+
+    #[test]
+    fn test_partial_config_invalid_yaml() {
+        let content = r#"---
+project: {
+  name: "unclosed
+---
+"#;
+        let result = PartialConfig::parse(content);
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("Failed to parse config frontmatter"));
+    }
+
+    #[test]
+    fn test_load_merged_project_config_missing() {
+        let tmp = TempDir::new().unwrap();
+        let project_path = tmp.path().join("nonexistent.md");
+
+        let result = Config::load_merged_from(None, &project_path, None);
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("Failed to read config from"));
+    }
+
+    #[test]
+    fn test_load_merged_malformed_global_config() {
+        let tmp = TempDir::new().unwrap();
+        let global_path = tmp.path().join("global.md");
+        let project_path = tmp.path().join("project.md");
+
+        // Write invalid global config
+        fs::write(
+            &global_path,
+            r#"---
+invalid: yaml: syntax:
+---
+"#,
+        )
+        .unwrap();
+
+        fs::write(
+            &project_path,
+            r#"---
+project:
+  name: my-project
+---
+"#,
+        )
+        .unwrap();
+
+        let result = Config::load_merged_from(Some(&global_path), &project_path, None);
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("Failed to parse config frontmatter"));
+    }
+
+    #[test]
+    fn test_load_merged_malformed_agents_config() {
+        let tmp = TempDir::new().unwrap();
+        let project_path = tmp.path().join("project.md");
+        let agents_path = tmp.path().join("agents.md");
+
+        fs::write(
+            &project_path,
+            r#"---
+project:
+  name: my-project
+---
+"#,
+        )
+        .unwrap();
+
+        // Write invalid agents config
+        fs::write(
+            &agents_path,
+            r#"---
+parallel: not a valid structure
+---
+"#,
+        )
+        .unwrap();
+
+        let result = Config::load_merged_from(None, &project_path, Some(&agents_path));
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("Failed to parse agents config frontmatter"));
+    }
 }
