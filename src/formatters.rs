@@ -265,8 +265,10 @@ mod tests {
         assert!(result.contains("Chant Status"));
         assert!(result.contains("Ready (0)"));
         assert!(result.contains("no specs ready"));
-        // Should not contain Attention or In Progress sections
-        assert!(!result.contains("Attention"));
-        assert!(!result.contains("In Progress"));
+        // Should not contain Attention section header
+        assert!(!result.contains("Attention\n─────────"));
+        // Should contain In Progress in counts but not as a section header with underline
+        assert!(result.contains("In Progress:"));
+        assert!(!result.contains("In Progress\n───────────"));
     }
 }
