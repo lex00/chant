@@ -15,6 +15,7 @@ use chant::diagnose;
 use chant::id;
 use chant::paths::{ARCHIVE_DIR, LOGS_DIR, SPECS_DIR};
 use chant::spec::{load_all_specs, resolve_spec, SpecStatus};
+use chant::spec_group;
 
 /// JSON-RPC 2.0 Request
 #[derive(Debug, Deserialize)]
@@ -518,7 +519,7 @@ fn tool_chant_spec_list(arguments: Option<&Value>) -> Result<Value> {
     };
 
     let mut specs = load_all_specs(&specs_dir)?;
-    specs.sort_by(|a, b| a.id.cmp(&b.id));
+    specs.sort_by(|a, b| spec_group::compare_spec_ids(&a.id, &b.id));
 
     // Filter by status if provided
     if let Some(args) = arguments {
@@ -738,7 +739,7 @@ fn tool_chant_ready(_arguments: Option<&Value>) -> Result<Value> {
         true
     });
 
-    specs.sort_by(|a, b| a.id.cmp(&b.id));
+    specs.sort_by(|a, b| spec_group::compare_spec_ids(&a.id, &b.id));
 
     let specs_json: Vec<Value> = specs
         .iter()
@@ -926,7 +927,7 @@ fn tool_chant_search(arguments: Option<&Value>) -> Result<Value> {
         }
     }
 
-    specs.sort_by(|a, b| a.id.cmp(&b.id));
+    specs.sort_by(|a, b| spec_group::compare_spec_ids(&a.id, &b.id));
 
     let specs_json: Vec<Value> = specs
         .iter()

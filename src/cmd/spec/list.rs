@@ -12,6 +12,7 @@ use std::process::Command;
 use chant::config::Config;
 use chant::id;
 use chant::spec::{self, ApprovalStatus, Spec, SpecStatus};
+use chant::spec_group;
 
 use crate::render;
 
@@ -381,7 +382,7 @@ pub fn cmd_list(
         spec::load_all_specs_with_options(specs_dir.as_ref().unwrap(), use_branch_resolution)?
     };
 
-    specs.sort_by(|a, b| a.id.cmp(&b.id));
+    specs.sort_by(|a, b| spec_group::compare_spec_ids(&a.id, &b.id));
 
     // Batch load git metadata for all specs (single git call instead of 2 per spec)
     // Only load creator info when filtering by creator (requires full history scan)
