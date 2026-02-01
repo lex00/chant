@@ -168,7 +168,11 @@ pub fn create_worktree(spec_id: &str, branch: &str) -> Result<PathBuf> {
 /// - The copy operation fails
 /// - The commit fails
 pub fn copy_spec_to_worktree(spec_id: &str, worktree_path: &Path) -> Result<()> {
-    let main_spec_path = PathBuf::from(".chant/specs").join(format!("{}.md", spec_id));
+    // Use absolute path from git root to avoid issues when current directory changes
+    let git_root = std::env::current_dir().context("Failed to get current directory")?;
+    let main_spec_path = git_root
+        .join(".chant/specs")
+        .join(format!("{}.md", spec_id));
     let worktree_spec_path = worktree_path
         .join(".chant/specs")
         .join(format!("{}.md", spec_id));
