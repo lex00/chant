@@ -355,8 +355,6 @@ fn cleanup_worktrees_only(orphans: &[&WorktreeInfo], dry_run: bool, yes: bool) -
         print!("Removing {}... ", worktree.name);
         std::io::stdout().flush()?;
 
-        let mut success = false;
-
         // Try to remove the git worktree entry first
         let _ = Command::new("git")
             .args(["worktree", "remove", &worktree.path.to_string_lossy()])
@@ -364,26 +362,15 @@ fn cleanup_worktrees_only(orphans: &[&WorktreeInfo], dry_run: bool, yes: bool) -
 
         // Force remove the directory if it exists
         if worktree.path.exists() {
-            match fs::remove_dir_all(&worktree.path) {
-                Ok(_) => {
-                    success = true;
-                }
-                Err(e) => {
-                    println!("{}", "failed".red());
-                    eprintln!("Error removing {}: {}", worktree.name, e);
-                    continue;
-                }
+            if let Err(e) = fs::remove_dir_all(&worktree.path) {
+                println!("{}", "failed".red());
+                eprintln!("Error removing {}: {}", worktree.name, e);
+                continue;
             }
-        } else {
-            // Directory doesn't exist, but we still count it as cleaned
-            // since git worktree prune will remove the stale reference
-            success = true;
         }
-
-        if success {
-            println!("{}", "done".green());
-            removed += 1;
-        }
+        // Directory removed or doesn't exist - git worktree prune will clean up stale reference
+        println!("{}", "done".green());
+        removed += 1;
     }
 
     // Run git worktree prune
@@ -467,8 +454,6 @@ pub fn cmd_cleanup(dry_run: bool, yes: bool, worktrees_only: bool) -> Result<()>
         print!("Removing {}... ", worktree.name);
         std::io::stdout().flush()?;
 
-        let mut success = false;
-
         // Try to remove the git worktree entry first
         let _ = Command::new("git")
             .args(["worktree", "remove", &worktree.path.to_string_lossy()])
@@ -476,26 +461,15 @@ pub fn cmd_cleanup(dry_run: bool, yes: bool, worktrees_only: bool) -> Result<()>
 
         // Force remove the directory if it exists
         if worktree.path.exists() {
-            match fs::remove_dir_all(&worktree.path) {
-                Ok(_) => {
-                    success = true;
-                }
-                Err(e) => {
-                    println!("{}", "failed".red());
-                    eprintln!("Error removing {}: {}", worktree.name, e);
-                    continue;
-                }
+            if let Err(e) = fs::remove_dir_all(&worktree.path) {
+                println!("{}", "failed".red());
+                eprintln!("Error removing {}: {}", worktree.name, e);
+                continue;
             }
-        } else {
-            // Directory doesn't exist, but we still count it as cleaned
-            // since git worktree prune will remove the stale reference
-            success = true;
         }
-
-        if success {
-            println!("{}", "done".green());
-            removed += 1;
-        }
+        // Directory removed or doesn't exist - git worktree prune will clean up stale reference
+        println!("{}", "done".green());
+        removed += 1;
     }
 
     // Run git worktree prune
