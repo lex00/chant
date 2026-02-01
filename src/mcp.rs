@@ -294,7 +294,16 @@ fn handle_tools_list() -> Result<Value> {
                 "description": "Get project status summary with spec counts by status",
                 "inputSchema": {
                     "type": "object",
-                    "properties": {}
+                    "properties": {
+                        "brief": {
+                            "type": "boolean",
+                            "description": "Return brief single-line output (e.g., '3 pending | 2 in_progress | 15 completed')"
+                        },
+                        "include_activity": {
+                            "type": "boolean",
+                            "description": "Include activity info for in_progress specs (last modified time, log activity)"
+                        }
+                    }
                 }
             },
             {
@@ -763,13 +772,23 @@ fn tool_chant_ready(_arguments: Option<&Value>) -> Result<Value> {
     }))
 }
 
-fn tool_chant_status(_arguments: Option<&Value>) -> Result<Value> {
+fn tool_chant_status(arguments: Option<&Value>) -> Result<Value> {
     let specs_dir = match mcp_ensure_initialized() {
         Ok(dir) => dir,
         Err(err_response) => return Ok(err_response),
     };
 
     let specs = load_all_specs(&specs_dir)?;
+
+    // Parse options
+    let brief = arguments
+        .and_then(|a| a.get("brief"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let include_activity = arguments
+        .and_then(|a| a.get("include_activity"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
     // Count by status
     let mut pending = 0;
@@ -793,7 +812,47 @@ fn tool_chant_status(_arguments: Option<&Value>) -> Result<Value> {
         }
     }
 
-    let status_json = json!({
+    // Brief output mode
+    if brief {
+        let mut parts = vec![];
+        if pending > 0 {
+            parts.push(format!("{} pending", pending));
+        }
+        if in_progress > 0 {
+            parts.push(format!("{} in_progress", in_progress));
+        }
+        if completed > 0 {
+            parts.push(format!("{} completed", completed));
+        }
+        if failed > 0 {
+            parts.push(format!("{} failed", failed));
+        }
+        if blocked > 0 {
+            parts.push(format!("{} blocked", blocked));
+        }
+        if cancelled > 0 {
+            parts.push(format!("{} cancelled", cancelled));
+        }
+        if needs_attention > 0 {
+            parts.push(format!("{} needs_attention", needs_attention));
+        }
+        let brief_text = if parts.is_empty() {
+            "No specs".to_string()
+        } else {
+            parts.join(" | ")
+        };
+        return Ok(json!({
+            "content": [
+                {
+                    "type": "text",
+                    "text": brief_text
+                }
+            ]
+        }));
+    }
+
+    // Build status response
+    let mut status_json = json!({
         "total": specs.len(),
         "pending": pending,
         "in_progress": in_progress,
@@ -803,6 +862,54 @@ fn tool_chant_status(_arguments: Option<&Value>) -> Result<Value> {
         "cancelled": cancelled,
         "needs_attention": needs_attention
     });
+
+    // Include activity info for in_progress specs
+    if include_activity {
+        let logs_dir = PathBuf::from(LOGS_DIR);
+        let mut activity: Vec<Value> = vec![];
+
+        for spec in &specs {
+            if spec.frontmatter.status != SpecStatus::InProgress {
+                continue;
+            }
+
+            let spec_path = specs_dir.join(format!("{}.md", spec.id));
+            let log_path = logs_dir.join(format!("{}.log", spec.id));
+
+            // Get spec file modification time
+            let spec_mtime = std::fs::metadata(&spec_path)
+                .and_then(|m| m.modified())
+                .ok()
+                .map(|t| {
+                    chrono::DateTime::<chrono::Local>::from(t)
+                        .format("%Y-%m-%d %H:%M:%S")
+                        .to_string()
+                });
+
+            // Get log file modification time (indicates last agent activity)
+            let log_mtime = std::fs::metadata(&log_path)
+                .and_then(|m| m.modified())
+                .ok()
+                .map(|t| {
+                    chrono::DateTime::<chrono::Local>::from(t)
+                        .format("%Y-%m-%d %H:%M:%S")
+                        .to_string()
+                });
+
+            // Check if log file exists
+            let has_log = log_path.exists();
+
+            activity.push(json!({
+                "id": spec.id,
+                "title": spec.title,
+                "spec_modified": spec_mtime,
+                "log_modified": log_mtime,
+                "has_log": has_log
+            }));
+        }
+
+        status_json["in_progress_activity"] = json!(activity);
+    }
 
     Ok(json!({
         "content": [
@@ -1394,5 +1501,29 @@ mod tests {
         assert!(resp.result.is_none());
         assert!(resp.error.is_some());
         assert_eq!(resp.error.as_ref().unwrap().code, -32600);
+    }
+
+    #[test]
+    fn test_chant_status_schema_has_brief_and_activity() {
+        let result = handle_tools_list().unwrap();
+        let tools = result["tools"].as_array().unwrap();
+        let status_tool = tools.iter().find(|t| t["name"] == "chant_status").unwrap();
+
+        let props = &status_tool["inputSchema"]["properties"];
+        assert!(props.get("brief").is_some(), "chant_status should have 'brief' property");
+        assert!(
+            props.get("include_activity").is_some(),
+            "chant_status should have 'include_activity' property"
+        );
+
+        // Check descriptions
+        assert!(props["brief"]["description"]
+            .as_str()
+            .unwrap()
+            .contains("single-line"));
+        assert!(props["include_activity"]["description"]
+            .as_str()
+            .unwrap()
+            .contains("activity"));
     }
 }

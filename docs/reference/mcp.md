@@ -100,7 +100,7 @@ The MCP server exposes 13 tools organized into query (read-only) and mutating ca
 | `chant_spec_list` | List all specs | `status` (optional) |
 | `chant_spec_get` | Get spec details including body content | `id` (required, partial match supported) |
 | `chant_ready` | List specs ready to be worked (no unmet dependencies) | (none) |
-| `chant_status` | Get project status summary with spec counts | (none) |
+| `chant_status` | Get project status summary with spec counts | `brief`, `include_activity` (optional) |
 | `chant_log` | Read execution log for a spec | `id` (required), `lines` (optional, default: 100) |
 | `chant_search` | Search specs by title and body content | `query` (required), `status` (optional) |
 | `chant_diagnose` | Diagnose issues with a spec | `id` (required) |
@@ -185,6 +185,105 @@ Get details of a specific chant spec.
       {
         "type": "text",
         "text": "{\n  \"id\": \"2026-01-22-001-x7m\",\n  \"title\": \"Add user authentication\",\n  \"status\": \"in_progress\",\n  \"type\": \"feature\",\n  \"body\": \"## Description\\n\\nImplement user auth...\"\n}"
+      }
+    ]
+  },
+  "id": 1
+}
+```
+
+### chant_status
+
+Get project status summary with spec counts.
+
+**Parameters:**
+- `brief` (optional, boolean): Return brief single-line output instead of full JSON
+- `include_activity` (optional, boolean): Include activity timestamps for in_progress specs
+
+**Example Request (default):**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "chant_status",
+    "arguments": {}
+  },
+  "id": 1
+}
+```
+
+**Example Response (default):**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\n  \"total\": 20,\n  \"pending\": 3,\n  \"in_progress\": 2,\n  \"completed\": 15,\n  \"failed\": 0,\n  \"blocked\": 0,\n  \"cancelled\": 0,\n  \"needs_attention\": 0\n}"
+      }
+    ]
+  },
+  "id": 1
+}
+```
+
+**Example Request (brief mode):**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "chant_status",
+    "arguments": {
+      "brief": true
+    }
+  },
+  "id": 1
+}
+```
+
+**Example Response (brief mode):**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "3 pending | 2 in_progress | 15 completed"
+      }
+    ]
+  },
+  "id": 1
+}
+```
+
+**Example Request (with activity):**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "chant_status",
+    "arguments": {
+      "include_activity": true
+    }
+  },
+  "id": 1
+}
+```
+
+**Example Response (with activity):**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\n  \"total\": 20,\n  \"pending\": 3,\n  \"in_progress\": 2,\n  ...\n  \"in_progress_activity\": [\n    {\n      \"id\": \"2026-01-22-001-x7m\",\n      \"title\": \"Add user auth\",\n      \"spec_modified\": \"2026-01-22 14:30:00\",\n      \"log_modified\": \"2026-01-22 14:35:00\",\n      \"has_log\": true\n    }\n  ]\n}"
       }
     ]
   },
@@ -303,7 +402,16 @@ Full JSON schemas as returned by `tools/list`. Only showing key tools; run `echo
       "description": "Get project status summary with spec counts by status",
       "inputSchema": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "brief": {
+            "type": "boolean",
+            "description": "Return brief single-line output (e.g., '3 pending | 2 in_progress | 15 completed')"
+          },
+          "include_activity": {
+            "type": "boolean",
+            "description": "Include activity info for in_progress specs (last modified time, log activity)"
+          }
+        }
       }
     },
     {
