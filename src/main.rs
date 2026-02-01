@@ -341,7 +341,7 @@ enum Commands {
         #[arg(long)]
         force: bool,
         /// Create a commit after archiving (only in git repos)
-        #[arg(long, default_value = "true", action = clap::ArgAction::Set)]
+        #[arg(long, default_value = "true", action = clap::ArgAction::SetTrue)]
         commit: bool,
         /// Skip creating a commit after archiving
         #[arg(long, conflicts_with = "commit")]
