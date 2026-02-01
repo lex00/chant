@@ -109,9 +109,9 @@ pub struct LintDiagnostic {
 
 impl LintDiagnostic {
     /// Create a new error diagnostic
-    pub fn error(spec_id: String, rule: LintRule, message: String) -> Self {
+    pub fn error(spec_id: &str, rule: LintRule, message: String) -> Self {
         Self {
-            spec_id,
+            spec_id: spec_id.to_string(),
             rule,
             severity: Severity::Error,
             message,
@@ -120,9 +120,9 @@ impl LintDiagnostic {
     }
 
     /// Create a new warning diagnostic
-    pub fn warning(spec_id: String, rule: LintRule, message: String) -> Self {
+    pub fn warning(spec_id: &str, rule: LintRule, message: String) -> Self {
         Self {
-            spec_id,
+            spec_id: spec_id.to_string(),
             rule,
             severity: Severity::Warning,
             message,
@@ -291,7 +291,7 @@ pub fn validate_spec_complexity(
     if criteria_count > thresholds.complexity_criteria {
         diagnostics.push(
             LintDiagnostic::warning(
-                spec.id.clone(),
+                &spec.id,
                 LintRule::Complexity,
                 format!(
                     "Spec has {} acceptance criteria (>{}) - consider splitting for haiku",
@@ -307,7 +307,7 @@ pub fn validate_spec_complexity(
         if files.len() > thresholds.complexity_files {
             diagnostics.push(
                 LintDiagnostic::warning(
-                    spec.id.clone(),
+                    &spec.id,
                     LintRule::Complexity,
                     format!(
                         "Spec touches {} files (>{}) - consider splitting",
@@ -325,7 +325,7 @@ pub fn validate_spec_complexity(
     if word_count > thresholds.complexity_words {
         diagnostics.push(
             LintDiagnostic::warning(
-                spec.id.clone(),
+                &spec.id,
                 LintRule::Complexity,
                 format!(
                     "Spec description is {} words (>{}) - may be too complex for haiku",
@@ -400,7 +400,7 @@ pub fn validate_spec_coupling(spec: &Spec) -> Vec<LintDiagnostic> {
             let ids_str = sibling_refs.join(", ");
             diagnostics.push(
                 LintDiagnostic::warning(
-                    spec.id.clone(),
+                    &spec.id,
                     LintRule::Coupling,
                     format!(
                         "Spec references sibling spec(s): {} - member specs should be independent",
@@ -419,7 +419,7 @@ pub fn validate_spec_coupling(spec: &Spec) -> Vec<LintDiagnostic> {
             let ids_str = referenced_ids.join(", ");
             diagnostics.push(
                 LintDiagnostic::warning(
-                    spec.id.clone(),
+                    &spec.id,
                     LintRule::Coupling,
                     format!(
                         "Spec references other spec ID(s) in body: {} - use depends_on for dependencies",
@@ -465,7 +465,7 @@ pub fn validate_approval_schema(spec: &Spec) -> Vec<LintDiagnostic> {
         {
             if approval.by.is_none() {
                 diagnostics.push(LintDiagnostic::error(
-                    spec.id.clone(),
+                    &spec.id,
                     LintRule::Approval,
                     format!(
                         "Approval status is {:?} but 'by' field is missing",
@@ -475,7 +475,7 @@ pub fn validate_approval_schema(spec: &Spec) -> Vec<LintDiagnostic> {
             }
             if approval.at.is_none() {
                 diagnostics.push(LintDiagnostic::error(
-                    spec.id.clone(),
+                    &spec.id,
                     LintRule::Approval,
                     format!(
                         "Approval status is {:?} but 'at' timestamp is missing",
@@ -488,7 +488,7 @@ pub fn validate_approval_schema(spec: &Spec) -> Vec<LintDiagnostic> {
         // If 'by' is set but status is still pending, that's inconsistent
         if approval.status == ApprovalStatus::Pending && approval.by.is_some() {
             diagnostics.push(LintDiagnostic::error(
-                spec.id.clone(),
+                &spec.id,
                 LintRule::Approval,
                 "Approval has 'by' field set but status is still 'pending'".to_string(),
             ));
@@ -519,7 +519,7 @@ pub fn validate_output_schema(spec: &Spec) -> Vec<LintDiagnostic> {
     // Check if schema file exists
     if !schema_path.exists() {
         diagnostics.push(LintDiagnostic::error(
-            spec.id.clone(),
+            &spec.id,
             LintRule::Output,
             format!("Output schema file not found: {}", schema_path_str),
         ));
@@ -532,7 +532,7 @@ pub fn validate_output_schema(spec: &Spec) -> Vec<LintDiagnostic> {
         Ok(Some(result)) => {
             if !result.is_valid {
                 diagnostics.push(LintDiagnostic::error(
-                    spec.id.clone(),
+                    &spec.id,
                     LintRule::Output,
                     format!("Output validation failed: {}", result.errors.join("; ")),
                 ));
@@ -544,7 +544,7 @@ pub fn validate_output_schema(spec: &Spec) -> Vec<LintDiagnostic> {
         }
         Err(e) => {
             diagnostics.push(LintDiagnostic::error(
-                spec.id.clone(),
+                &spec.id,
                 LintRule::Output,
                 format!("Failed to validate output: {}", e),
             ));
@@ -596,7 +596,7 @@ pub fn validate_model_waste(
     if is_simple {
         diagnostics.push(
             LintDiagnostic::warning(
-                spec.id.clone(),
+                &spec.id,
                 LintRule::ModelWaste,
                 format!(
                     "Spec uses '{}' but appears simple ({} criteria, {} files, {} words) - consider haiku",
@@ -622,14 +622,14 @@ pub fn validate_spec_type(spec: &Spec) -> Vec<LintDiagnostic> {
         "documentation" => {
             if spec.frontmatter.tracks.is_none() {
                 diagnostics.push(LintDiagnostic::warning(
-                    spec.id.clone(),
+                    &spec.id,
                     LintRule::Type,
                     "Documentation spec missing 'tracks' field".to_string(),
                 ));
             }
             if spec.frontmatter.target_files.is_none() {
                 diagnostics.push(LintDiagnostic::warning(
-                    spec.id.clone(),
+                    &spec.id,
                     LintRule::Type,
                     "Documentation spec missing 'target_files' field".to_string(),
                 ));
@@ -638,14 +638,14 @@ pub fn validate_spec_type(spec: &Spec) -> Vec<LintDiagnostic> {
         "research" => {
             if spec.frontmatter.informed_by.is_none() && spec.frontmatter.origin.is_none() {
                 diagnostics.push(LintDiagnostic::warning(
-                    spec.id.clone(),
+                    &spec.id,
                     LintRule::Type,
                     "Research spec missing both 'informed_by' and 'origin' fields".to_string(),
                 ));
             }
             if spec.frontmatter.target_files.is_none() {
                 diagnostics.push(LintDiagnostic::warning(
-                    spec.id.clone(),
+                    &spec.id,
                     LintRule::Type,
                     "Research spec missing 'target_files' field".to_string(),
                 ));
@@ -656,7 +656,7 @@ pub fn validate_spec_type(spec: &Spec) -> Vec<LintDiagnostic> {
             if let Some(ref members) = spec.frontmatter.members {
                 if members.is_empty() {
                     diagnostics.push(LintDiagnostic::warning(
-                        spec.id.clone(),
+                        &spec.id,
                         LintRule::Type,
                         "Driver/group spec has empty 'members' array".to_string(),
                     ));
@@ -683,7 +683,7 @@ pub struct LintResult {
 /// Lint specific specs (by ID) and return a summary.
 /// Useful for linting a subset of specs, like member specs after split.
 pub fn lint_specific_specs(specs_dir: &std::path::Path, spec_ids: &[String]) -> Result<LintResult> {
-    let mut all_spec_ids: Vec<String> = Vec::new();
+    let mut all_specs: Vec<Spec> = Vec::new();
     let mut specs_to_check: Vec<Spec> = Vec::new();
 
     // Load config to get lint thresholds
@@ -701,10 +701,14 @@ pub fn lint_specific_specs(specs_dir: &std::path::Path, spec_ids: &[String]) -> 
 
         if path.extension().map(|e| e == "md").unwrap_or(false) {
             if let Ok(spec) = Spec::load(&path) {
-                all_spec_ids.push(spec.id.clone());
+                all_specs.push(spec);
             }
         }
     }
+
+    // Build set of all spec IDs for dependency validation
+    let all_spec_ids: std::collections::HashSet<&str> =
+        all_specs.iter().map(|s| s.id.as_str()).collect();
 
     // Load only the specs we want to check
     for spec_id in spec_ids {
@@ -737,7 +741,7 @@ pub fn lint_specific_specs(specs_dir: &std::path::Path, spec_ids: &[String]) -> 
         // Check for title
         if spec.title.is_none() {
             spec_diagnostics.push(LintDiagnostic::error(
-                spec.id.clone(),
+                &spec.id,
                 LintRule::Title,
                 "Missing title".to_string(),
             ));
@@ -746,9 +750,9 @@ pub fn lint_specific_specs(specs_dir: &std::path::Path, spec_ids: &[String]) -> 
         // Check depends_on references
         if let Some(deps) = &spec.frontmatter.depends_on {
             for dep_id in deps {
-                if !all_spec_ids.contains(dep_id) {
+                if !all_spec_ids.contains(dep_id.as_str()) {
                     spec_diagnostics.push(LintDiagnostic::error(
-                        spec.id.clone(),
+                        &spec.id,
                         LintRule::Dependency,
                         format!("Unknown dependency '{}'", dep_id),
                     ));
@@ -837,8 +841,7 @@ pub fn cmd_lint(format: LintFormat, verbose: bool) -> Result<()> {
         .map(|c| &c.lint.thresholds)
         .unwrap_or(&default_thresholds);
 
-    // First pass: collect all spec IDs and check for parse errors
-    let mut all_spec_ids: Vec<String> = Vec::new();
+    // First pass: collect all specs and check for parse errors
     let mut specs_to_check: Vec<Spec> = Vec::new();
 
     for entry in std::fs::read_dir(&specs_dir)? {
@@ -855,12 +858,11 @@ pub fn cmd_lint(format: LintFormat, verbose: bool) -> Result<()> {
 
             match Spec::load(&path) {
                 Ok(spec) => {
-                    all_spec_ids.push(spec.id.clone());
                     specs_to_check.push(spec);
                 }
                 Err(e) => {
                     let diagnostic = LintDiagnostic::error(
-                        id.clone(),
+                        &id,
                         LintRule::Parse,
                         format!("Invalid YAML frontmatter: {}", e),
                     );
@@ -873,6 +875,10 @@ pub fn cmd_lint(format: LintFormat, verbose: bool) -> Result<()> {
         }
     }
 
+    // Build set of all spec IDs for dependency validation
+    let all_spec_ids: std::collections::HashSet<&str> =
+        specs_to_check.iter().map(|s| s.id.as_str()).collect();
+
     // Second pass: validate each spec
     for spec in &specs_to_check {
         let mut spec_diagnostics: Vec<LintDiagnostic> = Vec::new();
@@ -880,7 +886,7 @@ pub fn cmd_lint(format: LintFormat, verbose: bool) -> Result<()> {
         // Check for title
         if spec.title.is_none() {
             spec_diagnostics.push(LintDiagnostic::error(
-                spec.id.clone(),
+                &spec.id,
                 LintRule::Title,
                 "Missing title".to_string(),
             ));
@@ -889,9 +895,9 @@ pub fn cmd_lint(format: LintFormat, verbose: bool) -> Result<()> {
         // Check depends_on references
         if let Some(deps) = &spec.frontmatter.depends_on {
             for dep_id in deps {
-                if !all_spec_ids.contains(dep_id) {
+                if !all_spec_ids.contains(dep_id.as_str()) {
                     spec_diagnostics.push(LintDiagnostic::error(
-                        spec.id.clone(),
+                        &spec.id,
                         LintRule::Dependency,
                         format!("Unknown dependency '{}'", dep_id),
                     ));
@@ -902,9 +908,9 @@ pub fn cmd_lint(format: LintFormat, verbose: bool) -> Result<()> {
         // Check members references
         if let Some(members) = &spec.frontmatter.members {
             for member_id in members {
-                if !all_spec_ids.contains(member_id) {
+                if !all_spec_ids.contains(member_id.as_str()) {
                     spec_diagnostics.push(LintDiagnostic::error(
-                        spec.id.clone(),
+                        &spec.id,
                         LintRule::Dependency,
                         format!("Unknown member spec '{}'", member_id),
                     ));
@@ -918,7 +924,7 @@ pub fn cmd_lint(format: LintFormat, verbose: bool) -> Result<()> {
                 for required_field in &cfg.enterprise.required {
                     if !spec.has_frontmatter_field(required_field) {
                         spec_diagnostics.push(LintDiagnostic::error(
-                            spec.id.clone(),
+                            &spec.id,
                             LintRule::Required,
                             format!("Missing required field '{}'", required_field),
                         ));
@@ -1070,9 +1076,9 @@ pub fn cmd_lint(format: LintFormat, verbose: bool) -> Result<()> {
 
             for diag in &all_diagnostics {
                 if diag.severity == Severity::Error {
-                    spec_errors.insert(diag.spec_id.clone());
+                    spec_errors.insert(&diag.spec_id);
                 } else {
-                    spec_warnings.insert(diag.spec_id.clone());
+                    spec_warnings.insert(&diag.spec_id);
                 }
             }
 
