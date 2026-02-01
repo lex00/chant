@@ -50,7 +50,8 @@ pub fn cmd_resume(
             std::slice::from_ref(&spec_id),
             prompt,
             branch,
-            false, // force
+            false, // skip_deps
+            false, // skip_criteria
             false, // parallel
             &[],   // label
             false, // finalize

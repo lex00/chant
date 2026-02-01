@@ -123,7 +123,8 @@ fn execute_single_spec_in_chain(
     config: &Config,
     prompt_name: Option<&str>,
     cli_branch: Option<&str>,
-    force: bool,
+    skip_deps: bool,
+    skip_criteria: bool,
     allow_no_commits: bool,
     skip_approval: bool,
 ) -> Result<()> {
@@ -163,7 +164,7 @@ fn execute_single_spec_in_chain(
     }
 
     // Check if already completed
-    if spec.frontmatter.status == SpecStatus::Completed && !force {
+    if spec.frontmatter.status == SpecStatus::Completed && !(skip_deps || skip_criteria) {
         println!(
             "{} Spec {} already completed, skipping.",
             "→".cyan(),
@@ -174,7 +175,7 @@ fn execute_single_spec_in_chain(
 
     // Check if dependencies are satisfied
     let all_specs = spec::load_all_specs(specs_dir)?;
-    if !spec.is_ready(&all_specs) && !force {
+    if !spec.is_ready(&all_specs) && !skip_deps {
         let blockers = spec.get_blocking_dependencies(&all_specs, specs_dir);
         if !blockers.is_empty() {
             let blocking_ids: Vec<String> = blockers.iter().map(|b| b.spec_id.clone()).collect();
@@ -282,7 +283,7 @@ fn execute_single_spec_in_chain(
 
             // Check acceptance criteria
             let unchecked_count = spec.count_unchecked_checkboxes();
-            if unchecked_count > 0 && !force {
+            if unchecked_count > 0 && !skip_criteria {
                 spec.frontmatter.status = SpecStatus::Failed;
                 spec.save(&spec_path)?;
                 anyhow::bail!("Spec has {} unchecked acceptance criteria", unchecked_count);
@@ -418,7 +419,7 @@ fn cmd_work_chain_specific_ids(
             .unwrap_or_else(|| spec.clone());
 
         // Check if spec is ready
-        if !current_spec.is_ready(&all_specs) && !options.force {
+        if !current_spec.is_ready(&all_specs) && !options.skip_deps {
             println!(
                 "{} Skipping {}: not ready (dependencies not satisfied)",
                 "⚠".yellow(),
@@ -429,7 +430,9 @@ fn cmd_work_chain_specific_ids(
         }
 
         // Check if spec is already completed
-        if current_spec.frontmatter.status == SpecStatus::Completed && !options.force {
+        if current_spec.frontmatter.status == SpecStatus::Completed
+            && !(options.skip_deps || options.skip_criteria)
+        {
             println!(
                 "{} Skipping {}: already completed",
                 "⚠".yellow(),
@@ -463,7 +466,8 @@ fn cmd_work_chain_specific_ids(
             config,
             options.prompt_name,
             options.cli_branch,
-            options.force,
+            options.skip_deps,
+            options.skip_criteria,
             options.allow_no_commits,
             options.skip_approval,
         ) {
@@ -600,7 +604,8 @@ fn cmd_work_chain_all_ready(
             config,
             options.prompt_name,
             options.cli_branch,
-            options.force,
+            options.skip_deps,
+            options.skip_criteria,
             options.allow_no_commits,
             options.skip_approval,
         ) {
@@ -663,8 +668,10 @@ pub struct ChainOptions<'a> {
     pub prompt_name: Option<&'a str>,
     /// CLI branch prefix override
     pub cli_branch: Option<&'a str>,
-    /// Force execution (skip validation checks)
-    pub force: bool,
+    /// Skip dependency checks
+    pub skip_deps: bool,
+    /// Skip acceptance criteria validation
+    pub skip_criteria: bool,
     /// Allow spec completion without matching commits
     pub allow_no_commits: bool,
     /// Skip approval check

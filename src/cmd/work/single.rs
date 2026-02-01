@@ -83,7 +83,7 @@ fn print_blocking_dependencies_error(spec_id: &str, blockers: &[BlockingDependen
     );
     eprintln!(
         "  2. Use '{}' to override dependency checks",
-        format!("chant work {} --force", spec_id).cyan()
+        format!("chant work {} --skip-deps", spec_id).cyan()
     );
     eprintln!(
         "  3. Check dependency details with '{}'",
@@ -118,7 +118,8 @@ pub fn cmd_work(
     ids: &[String],
     prompt_name: Option<&str>,
     cli_branch: Option<String>,
-    force: bool,
+    skip_deps: bool,
+    skip_criteria: bool,
     parallel: bool,
     labels: &[String],
     finalize: bool,
@@ -168,7 +169,8 @@ pub fn cmd_work(
             labels,
             prompt_name,
             cli_branch: cli_branch.as_deref(),
-            force,
+            skip_deps,
+            skip_criteria,
             allow_no_commits,
             skip_approval,
             specific_ids: ids,
@@ -289,8 +291,8 @@ pub fn cmd_work(
             );
         }
 
-        // Ask for confirmation (unless --force is used)
-        if !confirm_re_finalize(&spec.id, force)? {
+        // Ask for confirmation (unless --skip-criteria is used)
+        if !confirm_re_finalize(&spec.id, skip_criteria)? {
             println!("Re-finalization cancelled.");
             return Ok(());
         }
@@ -371,14 +373,18 @@ pub fn cmd_work(
     }
 
     // Check if already completed
-    if spec.frontmatter.status == SpecStatus::Completed && !force {
+    if spec.frontmatter.status == SpecStatus::Completed && !(skip_deps || skip_criteria) {
         println!("{} Spec already completed.", "⚠".yellow());
-        println!("Use {} to replay.", "--force".cyan());
+        println!(
+            "Use {} or {} to bypass.",
+            "--skip-deps".cyan(),
+            "--skip-criteria".cyan()
+        );
         return Ok(());
     }
 
     // Check if in progress
-    if spec.frontmatter.status == SpecStatus::InProgress && !force {
+    if spec.frontmatter.status == SpecStatus::InProgress && !(skip_deps || skip_criteria) {
         println!("{} Spec already in progress.", "⚠".yellow());
         return Ok(());
     }
@@ -390,10 +396,10 @@ pub fn cmd_work(
         let blockers = spec.get_blocking_dependencies(&all_specs, &specs_dir);
 
         if !blockers.is_empty() {
-            if force {
-                // Print warning when forcing past dependency checks
+            if skip_deps {
+                // Print warning when skipping dependency checks
                 eprintln!(
-                    "{} Warning: Forcing work on spec (skipping dependency checks)",
+                    "{} Warning: Skipping dependency checks for spec",
                     "⚠".yellow()
                 );
                 let blocking_ids: Vec<String> = blockers
@@ -447,8 +453,8 @@ pub fn cmd_work(
     }
     let prompt_name = resolved_prompt_name.as_str();
 
-    // Calculate quality score before starting work (unless --force is used)
-    if !force {
+    // Calculate quality score before starting work (unless --skip-criteria is used)
+    if !skip_criteria {
         use chant::score::traffic_light;
         use chant::scoring::TrafficLight;
 
@@ -512,12 +518,12 @@ pub fn cmd_work(
                         return Ok(());
                     }
                 } else {
-                    // Non-interactive mode: abort (user should use --force to bypass)
+                    // Non-interactive mode: abort (user should use --skip-criteria to bypass)
                     eprintln!(
                         "\n{} Cannot proceed in non-interactive mode with quality issues.",
                         "Error:".red().bold()
                     );
-                    eprintln!("Use {} to bypass quality checks.", "--force".cyan());
+                    eprintln!("Use {} to bypass quality checks.", "--skip-criteria".cyan());
                     anyhow::bail!("Spec quality check failed");
                 }
             }
@@ -687,7 +693,7 @@ pub fn cmd_work(
 
                 // Show which criteria are unchecked
                 println!("Please check off all acceptance criteria before completing.");
-                println!("Use {} to skip this validation.", "--force".cyan());
+                println!("Use {} to skip this validation.", "--skip-criteria".cyan());
 
                 // Mark as failed since we can't complete with unchecked items
                 spec.frontmatter.status = SpecStatus::Failed;

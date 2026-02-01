@@ -53,7 +53,7 @@ enum Commands {
         silent: bool,
         /// Overwrite existing .chant/ directory
         #[arg(long)]
-        force: bool,
+        force_overwrite: bool,
         /// Only create config.md, no prompt templates
         #[arg(long)]
         minimal: bool,
@@ -215,9 +215,12 @@ enum Commands {
         /// Create a feature branch before executing (optionally with a custom prefix)
         #[arg(long, num_args = 0..=1, require_equals = true, value_name = "PREFIX")]
         branch: Option<String>,
-        /// Override dependency checks and skip validation of unchecked acceptance criteria
+        /// Override dependency checks (work on a blocked spec)
         #[arg(long)]
-        force: bool,
+        skip_deps: bool,
+        /// Skip validation of unchecked acceptance criteria
+        #[arg(long)]
+        skip_criteria: bool,
         /// Execute all ready specs in parallel (when no spec ID provided)
         #[arg(long)]
         parallel: bool,
@@ -317,9 +320,9 @@ enum Commands {
         /// Model to use for split analysis (overrides config)
         #[arg(long)]
         model: Option<String>,
-        /// Force split even if spec is not pending
+        /// Force split even if spec status is not pending
         #[arg(long)]
-        force: bool,
+        force_status: bool,
         /// Recursively split over-complex members (experimental)
         #[arg(long)]
         recursive: bool,
@@ -337,9 +340,9 @@ enum Commands {
         /// Archive specs older than N days
         #[arg(long)]
         older_than: Option<u64>,
-        /// Force archive of non-completed specs
+        /// Allow archiving of non-completed specs
         #[arg(long)]
-        force: bool,
+        allow_non_completed: bool,
         /// Create a commit after archiving (only in git repos)
         #[arg(long, default_value = "true", action = clap::ArgAction::Set)]
         commit: bool,
@@ -428,7 +431,7 @@ enum Commands {
         branch: Option<String>,
         /// Skip validation of unchecked acceptance criteria
         #[arg(long)]
-        force: bool,
+        skip_validation: bool,
         /// Preview the replay without executing (show what would happen)
         #[arg(long)]
         dry_run: bool,
@@ -440,9 +443,9 @@ enum Commands {
     Cancel {
         /// Spec ID (full or partial)
         id: String,
-        /// Force cancel even if not pending
+        /// Skip safety checks (status and dependency validation)
         #[arg(long)]
-        force: bool,
+        skip_checks: bool,
         /// Dry run - show what would be cancelled
         #[arg(long)]
         dry_run: bool,
@@ -454,9 +457,9 @@ enum Commands {
     Delete {
         /// Spec ID (full or partial)
         id: String,
-        /// Force delete even if not pending
+        /// Skip safety checks (status and dependency validation)
         #[arg(long)]
-        force: bool,
+        skip_checks: bool,
         /// Delete driver and all members
         #[arg(long)]
         cascade: bool,
@@ -652,7 +655,7 @@ enum SiteCommands {
     Init {
         /// Overwrite existing theme files
         #[arg(long)]
-        force: bool,
+        force_overwrite: bool,
     },
     /// Build the static site
     Build {
@@ -697,7 +700,7 @@ fn run() -> Result<()> {
             subcommand,
             name,
             silent,
-            force,
+            force_overwrite,
             minimal,
             agent,
             provider,
@@ -706,7 +709,7 @@ fn run() -> Result<()> {
             subcommand.as_deref(),
             name,
             silent,
-            force,
+            force_overwrite,
             minimal,
             agent,
             provider,
@@ -814,7 +817,8 @@ fn run() -> Result<()> {
             ids,
             prompt,
             branch,
-            force,
+            skip_deps,
+            skip_criteria,
             parallel,
             label,
             finalize,
@@ -831,7 +835,8 @@ fn run() -> Result<()> {
             &ids,
             prompt.as_deref(),
             branch,
-            force,
+            skip_deps,
+            skip_criteria,
             parallel,
             &label,
             finalize,
@@ -888,15 +893,15 @@ fn run() -> Result<()> {
         Commands::Split {
             id,
             model,
-            force,
+            force_status,
             recursive,
             max_depth,
-        } => cmd::lifecycle::cmd_split(&id, model.as_deref(), force, recursive, max_depth),
+        } => cmd::lifecycle::cmd_split(&id, model.as_deref(), force_status, recursive, max_depth),
         Commands::Archive {
             id,
             dry_run,
             older_than,
-            force,
+            allow_non_completed,
             commit,
             no_commit,
             no_stage,
@@ -906,7 +911,7 @@ fn run() -> Result<()> {
                 id.as_deref(),
                 dry_run,
                 older_than,
-                force,
+                allow_non_completed,
                 should_commit,
                 no_stage,
             )
@@ -952,24 +957,31 @@ fn run() -> Result<()> {
             id,
             prompt,
             branch,
-            force,
+            skip_validation,
             dry_run,
             yes,
-        } => cmd::lifecycle::cmd_replay(&id, prompt.as_deref(), branch, force, dry_run, yes),
+        } => cmd::lifecycle::cmd_replay(
+            &id,
+            prompt.as_deref(),
+            branch,
+            skip_validation,
+            dry_run,
+            yes,
+        ),
         Commands::Cancel {
             id,
-            force,
+            skip_checks,
             dry_run,
             yes,
-        } => cmd::spec::cmd_cancel(&id, force, dry_run, yes),
+        } => cmd::spec::cmd_cancel(&id, skip_checks, dry_run, yes),
         Commands::Delete {
             id,
-            force,
+            skip_checks,
             cascade,
             delete_branch,
             dry_run,
             yes,
-        } => cmd::spec::cmd_delete(&id, force, cascade, delete_branch, dry_run, yes),
+        } => cmd::spec::cmd_delete(&id, skip_checks, cascade, delete_branch, dry_run, yes),
         Commands::Config { validate } => {
             if validate {
                 cmd::config::cmd_config_validate()
@@ -1044,7 +1056,7 @@ fn run() -> Result<()> {
         Commands::MergeDriverSetup => cmd_merge_driver_setup(),
         Commands::Completion { shell } => cmd_completion(shell),
         Commands::Site { command } => match command {
-            SiteCommands::Init { force } => cmd::site::cmd_site_init(force),
+            SiteCommands::Init { force_overwrite } => cmd::site::cmd_site_init(force_overwrite),
             SiteCommands::Build { output } => cmd::site::cmd_site_build(output.as_deref()),
             SiteCommands::Serve { port, output } => {
                 cmd::site::cmd_site_serve(port, output.as_deref())
@@ -1153,7 +1165,7 @@ fn write_agent_config_file(
     provider: &templates::AgentProvider,
     template: &templates::AgentTemplate,
     target_path: &Path,
-    force: bool,
+    force_overwrite: bool,
     has_mcp: bool,
 ) -> Result<AgentFileResult> {
     // For Claude provider, use section injection to preserve user content
@@ -1186,7 +1198,7 @@ fn write_agent_config_file(
     }
 
     // For non-Claude providers, use full template replacement
-    if target_path.exists() && !force {
+    if target_path.exists() && !force_overwrite {
         if atty::is(atty::Stream::Stdin) {
             let should_overwrite = dialoguer::Confirm::new()
                 .with_prompt(format!(
@@ -1204,7 +1216,7 @@ fn write_agent_config_file(
                 "{} {} already exists. Use {} to overwrite.",
                 "•".yellow(),
                 target_path.display(),
-                "--force".cyan()
+                "--force-overwrite".cyan()
             );
             return Ok(AgentFileResult::Skipped);
         }
@@ -1218,7 +1230,7 @@ fn write_agent_config_file(
     }
     std::fs::write(target_path, template.content)?;
 
-    if target_path.exists() && force {
+    if target_path.exists() && force_overwrite {
         Ok(AgentFileResult::Updated)
     } else {
         Ok(AgentFileResult::Created)
@@ -1226,7 +1238,7 @@ fn write_agent_config_file(
 }
 
 /// Handle updating only agent configuration files (used for re-running init with --agent)
-fn handle_agent_update(chant_dir: &Path, agents: &[String], force: bool) -> Result<()> {
+fn handle_agent_update(chant_dir: &Path, agents: &[String], force_overwrite: bool) -> Result<()> {
     let parsed_agents = templates::parse_agent_providers(agents)?;
 
     if parsed_agents.is_empty() {
@@ -1257,7 +1269,8 @@ fn handle_agent_update(chant_dir: &Path, agents: &[String], force: bool) -> Resu
         };
 
         // Write the agent config file using the helper
-        let result = write_agent_config_file(provider, &template, &target_path, force, has_mcp)?;
+        let result =
+            write_agent_config_file(provider, &template, &target_path, force_overwrite, has_mcp)?;
 
         match result {
             AgentFileResult::Created => {
@@ -1345,7 +1358,7 @@ fn handle_agent_update(chant_dir: &Path, agents: &[String], force: bool) -> Resu
 
             // Also create project-local .mcp.json as reference
             let mcp_path = PathBuf::from(".mcp.json");
-            if !mcp_path.exists() || force {
+            if !mcp_path.exists() || force_overwrite {
                 let mcp_config = r#"{
   "mcpServers": {
     "chant": {
@@ -1566,7 +1579,7 @@ fn cmd_init(
     subcommand: Option<&str>,
     name: Option<String>,
     silent: bool,
-    force: bool,
+    force_overwrite: bool,
     minimal: bool,
     agents: Vec<String>,
     provider: Option<String>,
@@ -1608,7 +1621,7 @@ fn cmd_init(
     }
 
     // Handle surgical updates for existing projects (--provider or --model flags only)
-    if already_initialized && !force {
+    if already_initialized && !force_overwrite {
         // Check if this is a surgical update (only --provider or --model specified)
         let is_surgical_provider =
             provider.is_some() && name.is_none() && agents.is_empty() && model.is_none();
@@ -1637,7 +1650,7 @@ fn cmd_init(
 
         if is_agent_only {
             // Only update agent files, don't touch config
-            return handle_agent_update(&chant_dir, &agents, force);
+            return handle_agent_update(&chant_dir, &agents, force_overwrite);
         }
 
         // No specific flags - show configuration menu in TTY mode
@@ -1701,7 +1714,7 @@ fn cmd_init(
                         _ => vec![],
                     };
 
-                    return handle_agent_update(&chant_dir, &selected_agents, force);
+                    return handle_agent_update(&chant_dir, &selected_agents, force_overwrite);
                 }
                 1 => {
                     // Change default model provider
@@ -1777,7 +1790,7 @@ fn cmd_init(
     // Detect if we're in wizard mode (no flags provided for fresh init)
     let is_wizard_mode = name.is_none()
         && !silent
-        && !force
+        && !force_overwrite
         && !minimal
         && agents.is_empty()
         && provider.is_none()
@@ -1929,8 +1942,8 @@ fn cmd_init(
         }
     }
 
-    if chant_dir.exists() && force {
-        // force flag: do full reinitialization (preserve specs/config)
+    if chant_dir.exists() && force_overwrite {
+        // force_overwrite flag: do full reinitialization (preserve specs/config)
         let specs_backup = chant_dir.join("specs");
         let config_backup = chant_dir.join("config.md");
         let prompts_backup = chant_dir.join("prompts");
@@ -2005,13 +2018,13 @@ fn cmd_init(
     // Detect project name
     let project_name = final_name;
 
-    // Create directory structure (only if not already created during force/restore)
+    // Create directory structure (only if not already created during force_overwrite/restore)
     std::fs::create_dir_all(chant_dir.join("specs"))?;
     std::fs::create_dir_all(chant_dir.join("prompts"))?;
     std::fs::create_dir_all(chant_dir.join(".locks"))?;
     std::fs::create_dir_all(chant_dir.join(".store"))?;
 
-    // Create config.md only if it doesn't exist (preserve during --force)
+    // Create config.md only if it doesn't exist (preserve during --force-overwrite)
     let config_path = chant_dir.join("config.md");
     if !config_path.exists() {
         // Build defaults section with optional provider and model
@@ -2129,8 +2142,13 @@ Project initialized on {}.
             };
 
             // Write the agent config file using the helper
-            let result =
-                write_agent_config_file(provider, &template, &target_path, force, will_have_mcp)?;
+            let result = write_agent_config_file(
+                provider,
+                &template,
+                &target_path,
+                force_overwrite,
+                will_have_mcp,
+            )?;
 
             match result {
                 AgentFileResult::Created => {
@@ -2186,7 +2204,7 @@ Project initialized on {}.
 
                 // Also create project-local .mcp.json as reference
                 let mcp_path = PathBuf::from(".mcp.json");
-                if !mcp_path.exists() || force {
+                if !mcp_path.exists() || force_overwrite {
                     let mcp_config = r#"{
   "mcpServers": {
     "chant": {
@@ -2270,7 +2288,7 @@ Project initialized on {}.
         println!(
             "  {} Use {} to convert to shared mode",
             "•".cyan(),
-            "--force".cyan()
+            "--force-overwrite".cyan()
         );
     }
     if final_minimal {
