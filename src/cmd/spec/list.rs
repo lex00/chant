@@ -632,15 +632,26 @@ pub fn cmd_list(
 // STATUS COMMAND
 // ============================================================================
 
-pub fn cmd_status(global: bool, repo_filter: Option<&str>, watch: bool) -> Result<()> {
+pub fn cmd_status(
+    global: bool,
+    repo_filter: Option<&str>,
+    watch: bool,
+    brief: bool,
+    json: bool,
+) -> Result<()> {
+    // Validate mutually exclusive flags
+    if brief && json {
+        anyhow::bail!("Error: --brief and --json are mutually exclusive. Use one or the other.\n\nUsage: chant status [--brief | --json] [--watch]");
+    }
+
     if watch {
-        cmd_status_watch(global, repo_filter)
+        cmd_status_watch(global, repo_filter, brief, json)
     } else {
-        cmd_status_once(global, repo_filter)
+        cmd_status_once(global, repo_filter, brief, json)
     }
 }
 
-fn cmd_status_once(global: bool, repo_filter: Option<&str>) -> Result<()> {
+fn cmd_status_once(global: bool, repo_filter: Option<&str>, brief: bool, json: bool) -> Result<()> {
     if global || repo_filter.is_some() {
         // Multi-repo status output
         let specs = load_specs_from_repos(repo_filter)?;
@@ -714,26 +725,39 @@ fn cmd_status_once(global: bool, repo_filter: Option<&str>) -> Result<()> {
         );
         println!("  {:<18} {}", "Overall Total:", total);
     } else {
-        // Single repo status output - use new formatter
+        // Single repo status output - use formatter based on flags
         let specs_dir = crate::cmd::ensure_initialized()?;
         let status_data = chant::status::aggregate_status(&specs_dir)?;
 
-        let output = chant::formatters::format_regular_status(&status_data);
-        println!("{}", output);
+        if json {
+            let output = chant::status::format_status_as_json(&status_data)?;
+            println!("{}", output);
+        } else if brief {
+            let output = status_data.format_brief();
+            println!("{}", output);
+        } else {
+            let output = chant::formatters::format_regular_status(&status_data);
+            println!("{}", output);
 
-        // Show silent mode indicator if enabled
-        if is_silent_mode() {
-            println!(
-                "\n{} Silent mode enabled - specs are local-only",
-                "ℹ".cyan()
-            );
+            // Show silent mode indicator if enabled
+            if is_silent_mode() {
+                println!(
+                    "\n{} Silent mode enabled - specs are local-only",
+                    "ℹ".cyan()
+                );
+            }
         }
     }
 
     Ok(())
 }
 
-fn cmd_status_watch(global: bool, repo_filter: Option<&str>) -> Result<()> {
+fn cmd_status_watch(
+    global: bool,
+    repo_filter: Option<&str>,
+    brief: bool,
+    json: bool,
+) -> Result<()> {
     use std::time::Duration;
 
     loop {
@@ -745,7 +769,7 @@ fn cmd_status_watch(global: bool, repo_filter: Option<&str>) -> Result<()> {
         }
 
         // Display status once
-        if let Err(e) = cmd_status_once(global, repo_filter) {
+        if let Err(e) = cmd_status_once(global, repo_filter, brief, json) {
             eprintln!("Error refreshing status: {}", e);
             // Continue watching even if there's an error
         }

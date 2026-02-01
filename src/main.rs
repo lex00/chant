@@ -268,6 +268,12 @@ enum Commands {
         /// Watch mode - refresh every 5 seconds
         #[arg(long)]
         watch: bool,
+        /// Brief single-line output
+        #[arg(long)]
+        brief: bool,
+        /// JSON output
+        #[arg(long)]
+        json: bool,
     },
     /// Show ready specs (shortcut for `list --ready`)
     Ready {
@@ -844,7 +850,9 @@ fn run() -> Result<()> {
             global,
             repo,
             watch,
-        } => cmd::spec::cmd_status(global, repo.as_deref(), watch),
+            brief,
+            json,
+        } => cmd::spec::cmd_status(global, repo.as_deref(), watch, brief, json),
         Commands::Ready { global, repo } => cmd::spec::cmd_list(
             true,
             &[],
