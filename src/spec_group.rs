@@ -164,6 +164,78 @@ pub fn extract_member_number(member_id: &str) -> Option<u32> {
     None
 }
 
+/// Compare two spec IDs with numeric sorting for member specs.
+///
+/// This function provides a natural sort order where member spec numbers are compared
+/// numerically rather than lexicographically. This ensures that specs like
+/// `2026-01-25-00y-abc.10` sort after `2026-01-25-00y-abc.2` rather than before.
+///
+/// # Sorting behavior
+///
+/// - For non-member specs, uses standard lexicographic comparison
+/// - For member specs (with `.N` suffix), compares the base ID lexicographically first,
+///   then compares member numbers numerically
+/// - Mixed member/non-member specs: non-members sort before members with the same base
+///
+/// # Examples
+///
+/// ```ignore
+/// use std::cmp::Ordering;
+/// assert_eq!(compare_spec_ids("2026-01-25-00y-abc.2", "2026-01-25-00y-abc.10"), Ordering::Less);
+/// assert_eq!(compare_spec_ids("2026-01-25-00y-abc.10", "2026-01-25-00y-abc.2"), Ordering::Greater);
+/// assert_eq!(compare_spec_ids("2026-01-25-00y-abc", "2026-01-25-00y-def"), Ordering::Less);
+/// assert_eq!(compare_spec_ids("2026-01-25-00y-abc", "2026-01-25-00y-abc.1"), Ordering::Less);
+/// ```
+pub fn compare_spec_ids(a: &str, b: &str) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+
+    // Try to extract driver IDs and member numbers
+    let a_driver = extract_driver_id(a);
+    let b_driver = extract_driver_id(b);
+
+    match (a_driver, b_driver) {
+        (Some(a_base), Some(b_base)) => {
+            // Both are member specs
+            // First compare the base IDs
+            match a_base.cmp(&b_base) {
+                Ordering::Equal => {
+                    // Same base ID, compare member numbers numerically
+                    let a_num = extract_member_number(a).unwrap_or(u32::MAX);
+                    let b_num = extract_member_number(b).unwrap_or(u32::MAX);
+                    a_num.cmp(&b_num)
+                }
+                other => other,
+            }
+        }
+        (Some(a_base), None) => {
+            // a is a member, b is not
+            // Compare a's base with b
+            match a_base.as_str().cmp(b) {
+                Ordering::Equal => {
+                    // b is the driver of a, so b comes first
+                    Ordering::Greater
+                }
+                other => other,
+            }
+        }
+        (None, Some(b_base)) => {
+            // a is not a member, b is
+            // Compare a with b's base
+            match a.cmp(b_base.as_str()) {
+                Ordering::Equal => {
+                    // a is the driver of b, so a comes first
+                    Ordering::Less
+                }
+                other => other,
+            }
+        }
+        (None, None) => {
+            // Neither are member specs, use lexicographic comparison
+            a.cmp(b)
+        }
+    }
+}
+
 /// Check if all prior siblings of a member spec are completed.
 ///
 /// For a member spec like `DRIVER_ID.3`, checks that `DRIVER_ID.1` and `DRIVER_ID.2`
@@ -818,6 +890,101 @@ status: completed
         assert_eq!(
             updated_driver.frontmatter.model,
             Some("auto-completed".to_string())
+        );
+    }
+
+    #[test]
+    fn test_compare_spec_ids_member_numeric_sort() {
+        use std::cmp::Ordering;
+
+        // Test numeric sorting for member specs
+        assert_eq!(
+            compare_spec_ids("2026-01-25-00y-abc.2", "2026-01-25-00y-abc.10"),
+            Ordering::Less
+        );
+        assert_eq!(
+            compare_spec_ids("2026-01-25-00y-abc.10", "2026-01-25-00y-abc.2"),
+            Ordering::Greater
+        );
+        assert_eq!(
+            compare_spec_ids("2026-01-25-00y-abc.1", "2026-01-25-00y-abc.1"),
+            Ordering::Equal
+        );
+
+        // Test with larger numbers
+        assert_eq!(
+            compare_spec_ids("2026-01-25-00y-abc.99", "2026-01-25-00y-abc.100"),
+            Ordering::Less
+        );
+    }
+
+    #[test]
+    fn test_compare_spec_ids_different_drivers() {
+        use std::cmp::Ordering;
+
+        // Different driver IDs should use lexicographic comparison
+        assert_eq!(
+            compare_spec_ids("2026-01-25-00y-abc.1", "2026-01-25-00y-def.1"),
+            Ordering::Less
+        );
+        assert_eq!(
+            compare_spec_ids("2026-01-25-00y-def.1", "2026-01-25-00y-abc.1"),
+            Ordering::Greater
+        );
+    }
+
+    #[test]
+    fn test_compare_spec_ids_non_member_specs() {
+        use std::cmp::Ordering;
+
+        // Non-member specs should use lexicographic comparison
+        assert_eq!(
+            compare_spec_ids("2026-01-25-00y-abc", "2026-01-25-00y-def"),
+            Ordering::Less
+        );
+        assert_eq!(
+            compare_spec_ids("2026-01-25-00y-def", "2026-01-25-00y-abc"),
+            Ordering::Greater
+        );
+    }
+
+    #[test]
+    fn test_compare_spec_ids_driver_vs_member() {
+        use std::cmp::Ordering;
+
+        // Driver should come before its members
+        assert_eq!(
+            compare_spec_ids("2026-01-25-00y-abc", "2026-01-25-00y-abc.1"),
+            Ordering::Less
+        );
+        assert_eq!(
+            compare_spec_ids("2026-01-25-00y-abc.1", "2026-01-25-00y-abc"),
+            Ordering::Greater
+        );
+    }
+
+    #[test]
+    fn test_compare_spec_ids_sorting_list() {
+        // Test sorting a list of specs with mixed member numbers
+        let mut ids = vec![
+            "2026-01-25-00y-abc.10",
+            "2026-01-25-00y-abc.2",
+            "2026-01-25-00y-abc.1",
+            "2026-01-25-00y-abc",
+            "2026-01-25-00y-abc.3",
+        ];
+
+        ids.sort_by(|a, b| compare_spec_ids(a, b));
+
+        assert_eq!(
+            ids,
+            vec![
+                "2026-01-25-00y-abc",
+                "2026-01-25-00y-abc.1",
+                "2026-01-25-00y-abc.2",
+                "2026-01-25-00y-abc.3",
+                "2026-01-25-00y-abc.10",
+            ]
         );
     }
 

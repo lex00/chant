@@ -14,6 +14,7 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use chant::spec::{self, Spec};
+use chant::spec_group;
 
 /// Print usage hint for export command in non-TTY contexts
 fn print_export_usage_hint() {
@@ -83,7 +84,7 @@ pub fn cmd_export(
 
     // Load all specs
     let mut specs = spec::load_all_specs(&specs_dir)?;
-    specs.sort_by(|a, b| a.id.cmp(&b.id));
+    specs.sort_by(|a, b| spec_group::compare_spec_ids(&a.id, &b.id));
 
     // Apply filters
     apply_filters(
