@@ -5,6 +5,71 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-02-01
+
+### Added
+
+- **Enhanced `chant status` command**: Comprehensive project status with multiple output modes
+  - Activity tracking: Shows specs worked today and recent completions
+  - Attention items: Highlights failed specs, blocked work, and items needing review
+  - Ready queue: Lists next actionable specs
+  - `--brief` flag: Single-line summary for IDE status bars and scripts
+  - `--json` flag: Machine-readable output for tooling integration
+  - `--watch` flag: Live updating status display
+
+- **Consolidated git operations**: New `git.rs` module with reusable git helpers
+  - `get_commits_in_range()` - Get commits between two refs
+  - `get_commit_changed_files()` - Get files changed in a commit
+  - `get_recent_commits()` - Get N most recent commits
+  - `get_commits_for_path()` - Get commits touching a specific path
+  - `get_file_at_commit()` - Read file content at a specific commit
+  - Eliminates duplicate `Command::new("git")` calls across codebase
+
+### Changed
+
+- **Modular lifecycle command**: Split 4200-line `lifecycle.rs` into focused modules
+  - `src/cmd/lifecycle/mod.rs` - Common types and re-exports
+  - `src/cmd/lifecycle/split.rs` - Spec splitting logic
+  - `src/cmd/lifecycle/merge.rs` - Branch merging
+  - `src/cmd/lifecycle/archive.rs` - Spec archival
+  - `src/cmd/lifecycle/drift.rs` - Drift detection
+  - `src/cmd/lifecycle/resume.rs` - Failed spec resumption
+
+- **Modular work command**: Split 4100-line `work.rs` into execution modes
+  - `src/cmd/work/mod.rs` - Common types and re-exports
+  - `src/cmd/work/single.rs` - Single spec execution
+  - `src/cmd/work/chain.rs` - Chained execution
+  - `src/cmd/work/parallel.rs` - Parallel execution with worktrees
+  - `src/cmd/work/wizard.rs` - Interactive wizard mode
+
+- **Reduced memory allocations**: Refactored lint.rs to use references
+  - Clone count reduced from 28 to 0 in validation functions
+  - Uses `&str` instead of `String` where ownership not needed
+  - `HashSet<&str>` for spec ID lookups
+
+### Fixed
+
+- **Worktree spec status**: Specs now correctly show `in_progress` in worktrees
+  - Previously showed stale `pending` status from committed state
+  - Now copies updated spec file to worktree after creation
+  - `chant list --status in_progress` works correctly during parallel execution
+
+- **Driver spec completion**: Organizational specs without acceptance criteria complete immediately
+  - Group/driver specs used as containers now auto-complete when all members done
+  - No longer hang waiting for non-existent criteria to be checked
+
+- **Split command output**: Improved quality of generated member specs
+  - "### Provides" section headers preserved correctly
+  - Independent members numbered before dependent ones
+  - Original task mapping maintained after reordering
+
+### Tests
+
+- **Config error handling**: Added 14 tests for malformed configuration scenarios
+  - Missing frontmatter, invalid YAML syntax
+  - Missing required sections, nonexistent files
+  - Malformed merge configurations
+
 ## [0.10.1] - 2026-01-31
 
 ### Added
