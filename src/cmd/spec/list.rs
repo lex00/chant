@@ -632,17 +632,9 @@ pub fn cmd_list(
 // ============================================================================
 
 pub fn cmd_status(global: bool, repo_filter: Option<&str>) -> Result<()> {
-    let specs = if global || repo_filter.is_some() {
-        // Load specs from multiple repos
-        load_specs_from_repos(repo_filter)?
-    } else {
-        // Load specs from local repo
-        let specs_dir = crate::cmd::ensure_initialized()?;
-        spec::load_all_specs(&specs_dir)?
-    };
-
     if global || repo_filter.is_some() {
         // Multi-repo status output
+        let specs = load_specs_from_repos(repo_filter)?;
         let mut per_repo_stats: HashMap<String, (usize, usize, usize, usize)> = HashMap::new();
 
         for spec in &specs {
@@ -713,36 +705,12 @@ pub fn cmd_status(global: bool, repo_filter: Option<&str>) -> Result<()> {
         );
         println!("  {:<18} {}", "Overall Total:", total);
     } else {
-        // Single repo status output
-        // Count by status
-        let mut pending = 0;
-        let mut in_progress = 0;
-        let mut completed = 0;
-        let mut failed = 0;
+        // Single repo status output - use new formatter
+        let specs_dir = crate::cmd::ensure_initialized()?;
+        let status_data = chant::status::aggregate_status(&specs_dir)?;
 
-        for spec in &specs {
-            match spec.frontmatter.status {
-                SpecStatus::Pending | SpecStatus::Ready | SpecStatus::Blocked => pending += 1,
-                SpecStatus::InProgress => in_progress += 1,
-                SpecStatus::Completed => completed += 1,
-                SpecStatus::Failed => failed += 1,
-                SpecStatus::NeedsAttention => failed += 1,
-                SpecStatus::Cancelled => {
-                    // Cancelled specs are not counted in the summary
-                }
-            }
-        }
-
-        let total = specs.len();
-
-        println!("{}", "Chant Status".bold());
-        println!("============");
-        println!("  {:<12} {}", "Pending:", pending);
-        println!("  {:<12} {}", "In Progress:", in_progress);
-        println!("  {:<12} {}", "Completed:", completed);
-        println!("  {:<12} {}", "Failed:", failed);
-        println!("  ─────────────");
-        println!("  {:<12} {}", "Total:", total);
+        let output = chant::formatters::format_regular_status(&status_data);
+        println!("{}", output);
 
         // Show silent mode indicator if enabled
         if is_silent_mode() {

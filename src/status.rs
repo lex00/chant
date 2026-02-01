@@ -5,6 +5,7 @@
 
 use anyhow::Result;
 use chrono::{DateTime, Duration, Local};
+use serde_json::json;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -103,12 +104,9 @@ fn parse_timestamp(timestamp: &str) -> Option<DateTime<Local>> {
 
 /// Get the last modification time of a file
 fn get_file_modified_time(path: &Path) -> Option<DateTime<Local>> {
-    fs::metadata(path).ok().and_then(|metadata| {
-        metadata
-            .modified()
-            .ok()
-            .map(DateTime::<Local>::from)
-    })
+    fs::metadata(path)
+        .ok()
+        .and_then(|metadata| metadata.modified().ok().map(DateTime::<Local>::from))
 }
 
 /// Aggregate status data from all specs in the specs directory
@@ -249,6 +247,86 @@ pub fn aggregate_status(specs_dir: &Path) -> Result<StatusData> {
     Ok(data)
 }
 
+/// Format StatusData as pretty-printed JSON
+pub fn format_status_as_json(data: &StatusData) -> Result<String> {
+    // Build JSON structure matching the spec requirements
+    let json_value = json!({
+        "counts": data.counts,
+        "today": {
+            "completed": data.today.completed,
+            "started": data.today.started,
+            "created": data.today.created,
+        },
+        "attention": data.attention.iter().map(|item| {
+            json!({
+                "id": item.id,
+                "title": item.title,
+                "status": match item.status {
+                    SpecStatus::Failed => "failed",
+                    SpecStatus::NeedsAttention => "needs_attention",
+                    SpecStatus::Blocked => "blocked",
+                    _ => "unknown",
+                },
+                "ago": item.ago,
+            })
+        }).collect::<Vec<_>>(),
+        "in_progress": data.in_progress.iter().map(|item| {
+            json!({
+                "id": item.id,
+                "title": item.title,
+                "elapsed_minutes": item.elapsed_minutes,
+            })
+        }).collect::<Vec<_>>(),
+        "ready": data.ready.iter().map(|item| {
+            json!({
+                "id": item.id,
+                "title": item.title,
+            })
+        }).collect::<Vec<_>>(),
+        "ready_count": data.ready_count,
+    });
+
+    // Pretty-print with 2-space indentation
+    let json_string = serde_json::to_string_pretty(&json_value)?;
+    Ok(json_string)
+}
+
+impl StatusData {
+    /// Format status data as a brief single-line summary
+    ///
+    /// Output format: "chant: X done, Y running, Z ready, W failed"
+    /// Omits sections with 0 count.
+    /// Special case: if all counts are 0, returns "chant: no specs"
+    pub fn format_brief(&self) -> String {
+        let completed = *self.counts.get("completed").unwrap_or(&0);
+        let in_progress = *self.counts.get("in_progress").unwrap_or(&0);
+        let ready = *self.counts.get("ready").unwrap_or(&0);
+        let failed = *self.counts.get("failed").unwrap_or(&0);
+
+        // Special case: no specs at all
+        if completed == 0 && in_progress == 0 && ready == 0 && failed == 0 {
+            return "chant: no specs".to_string();
+        }
+
+        let mut parts = Vec::new();
+
+        if completed > 0 {
+            parts.push(format!("{} done", completed));
+        }
+        if in_progress > 0 {
+            parts.push(format!("{} running", in_progress));
+        }
+        if ready > 0 {
+            parts.push(format!("{} ready", ready));
+        }
+        if failed > 0 {
+            parts.push(format!("{} failed", failed));
+        }
+
+        format!("chant: {}", parts.join(", "))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -292,5 +370,165 @@ mod tests {
         assert!(result.in_progress.is_empty());
         assert!(result.ready.is_empty());
         assert_eq!(result.ready_count, 0);
+    }
+
+    #[test]
+    fn test_format_brief_no_specs() {
+        let data = StatusData::default();
+        assert_eq!(data.format_brief(), "chant: no specs");
+    }
+
+    #[test]
+    fn test_format_brief_all_statuses() {
+        let mut data = StatusData::default();
+        data.counts.insert("completed".to_string(), 45);
+        data.counts.insert("in_progress".to_string(), 3);
+        data.counts.insert("ready".to_string(), 8);
+        data.counts.insert("failed".to_string(), 1);
+
+        assert_eq!(
+            data.format_brief(),
+            "chant: 45 done, 3 running, 8 ready, 1 failed"
+        );
+    }
+
+    #[test]
+    fn test_format_brief_only_completed() {
+        let mut data = StatusData::default();
+        data.counts.insert("completed".to_string(), 10);
+
+        assert_eq!(data.format_brief(), "chant: 10 done");
+    }
+
+    #[test]
+    fn test_format_brief_omit_zero_counts() {
+        let mut data = StatusData::default();
+        data.counts.insert("completed".to_string(), 5);
+        data.counts.insert("in_progress".to_string(), 0);
+        data.counts.insert("ready".to_string(), 2);
+        data.counts.insert("failed".to_string(), 0);
+
+        assert_eq!(data.format_brief(), "chant: 5 done, 2 ready");
+    }
+
+    #[test]
+    fn test_format_brief_single_line() {
+        let mut data = StatusData::default();
+        data.counts.insert("completed".to_string(), 100);
+        data.counts.insert("in_progress".to_string(), 50);
+
+        let result = data.format_brief();
+        assert!(!result.contains('\n'));
+    }
+
+    #[test]
+    fn test_format_status_as_json_all_fields() {
+        let mut data = StatusData::default();
+        data.counts.insert("pending".to_string(), 5);
+        data.counts.insert("in_progress".to_string(), 2);
+        data.counts.insert("completed".to_string(), 10);
+        data.counts.insert("failed".to_string(), 1);
+        data.counts.insert("blocked".to_string(), 0);
+        data.counts.insert("ready".to_string(), 3);
+
+        data.today.completed = 2;
+        data.today.started = 1;
+        data.today.created = 3;
+
+        data.attention.push(AttentionItem {
+            id: "2026-01-30-abc".to_string(),
+            title: Some("Fix bug".to_string()),
+            status: SpecStatus::Failed,
+            ago: "2h ago".to_string(),
+        });
+
+        data.in_progress.push(InProgressItem {
+            id: "2026-01-30-def".to_string(),
+            title: Some("Add feature".to_string()),
+            elapsed_minutes: 45,
+        });
+
+        data.ready.push(ReadyItem {
+            id: "2026-01-30-ghi".to_string(),
+            title: Some("Ready task".to_string()),
+        });
+        data.ready_count = 3;
+
+        let json_str = format_status_as_json(&data).unwrap();
+
+        // Verify it's valid JSON
+        let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        // Verify top-level keys
+        assert!(parsed.get("counts").is_some());
+        assert!(parsed.get("today").is_some());
+        assert!(parsed.get("attention").is_some());
+        assert!(parsed.get("in_progress").is_some());
+        assert!(parsed.get("ready").is_some());
+        assert!(parsed.get("ready_count").is_some());
+
+        // Verify counts structure
+        assert_eq!(parsed["counts"]["pending"], 5);
+        assert_eq!(parsed["counts"]["in_progress"], 2);
+        assert_eq!(parsed["counts"]["completed"], 10);
+
+        // Verify today structure
+        assert_eq!(parsed["today"]["completed"], 2);
+        assert_eq!(parsed["today"]["started"], 1);
+        assert_eq!(parsed["today"]["created"], 3);
+
+        // Verify attention array
+        assert!(parsed["attention"].is_array());
+        assert_eq!(parsed["attention"][0]["id"], "2026-01-30-abc");
+        assert_eq!(parsed["attention"][0]["status"], "failed");
+        assert_eq!(parsed["attention"][0]["ago"], "2h ago");
+
+        // Verify in_progress array
+        assert!(parsed["in_progress"].is_array());
+        assert_eq!(parsed["in_progress"][0]["id"], "2026-01-30-def");
+        assert_eq!(parsed["in_progress"][0]["elapsed_minutes"], 45);
+
+        // Verify ready array
+        assert!(parsed["ready"].is_array());
+        assert_eq!(parsed["ready"][0]["id"], "2026-01-30-ghi");
+
+        // Verify ready_count
+        assert_eq!(parsed["ready_count"], 3);
+    }
+
+    #[test]
+    fn test_format_status_as_json_empty_lists() {
+        let mut data = StatusData::default();
+        data.counts.insert("pending".to_string(), 0);
+        data.counts.insert("in_progress".to_string(), 0);
+
+        let json_str = format_status_as_json(&data).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        // Empty lists should be empty arrays, not null
+        assert!(parsed["attention"].is_array());
+        assert_eq!(parsed["attention"].as_array().unwrap().len(), 0);
+        assert!(parsed["in_progress"].is_array());
+        assert_eq!(parsed["in_progress"].as_array().unwrap().len(), 0);
+        assert!(parsed["ready"].is_array());
+        assert_eq!(parsed["ready"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn test_format_status_as_json_special_characters() {
+        let mut data = StatusData::default();
+        data.ready.push(ReadyItem {
+            id: "2026-01-30-xyz".to_string(),
+            title: Some("Title with \"quotes\" and \\ backslash".to_string()),
+        });
+
+        let json_str = format_status_as_json(&data).unwrap();
+
+        // Verify it's valid JSON (should properly escape special chars)
+        let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(
+            parsed["ready"][0]["title"],
+            "Title with \"quotes\" and \\ backslash"
+        );
     }
 }
