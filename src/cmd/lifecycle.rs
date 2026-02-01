@@ -1273,6 +1273,64 @@ fn is_git_repo() -> bool {
         .unwrap_or(false)
 }
 
+/// Check if there are uncommitted changes other than the archived spec files.
+///
+/// This function checks git status to see if there are any staged or unstaged changes
+/// that aren't related to the archived specs. This is used to prevent auto-committing
+/// when the working directory has unrelated changes.
+///
+/// # Arguments
+/// * `archived_spec_ids` - List of spec IDs that were just archived
+///
+/// # Returns
+/// * `Ok(true)` if there are other uncommitted changes
+/// * `Ok(false)` if only archived spec files have changes (or no changes)
+/// * `Err(_)` if git status command fails
+fn has_other_uncommitted_changes(archived_spec_ids: &[String]) -> Result<bool> {
+    let output = std::process::Command::new("git")
+        .args(["status", "--porcelain"])
+        .output()
+        .context("Failed to run git status")?;
+
+    if !output.status.success() {
+        anyhow::bail!("git status failed");
+    }
+
+    let status_output = String::from_utf8_lossy(&output.stdout);
+
+    // Parse status output to check for changes
+    for line in status_output.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+
+        // Extract file path from status line (format: "XY filename")
+        if line.len() < 3 {
+            continue;
+        }
+        let file_path = &line[3..];
+
+        // Check if this file is one of the archived spec files
+        let is_archived_spec = archived_spec_ids.iter().any(|spec_id| {
+            // Check for source location (.chant/specs/{spec_id}.md)
+            let src_pattern = format!(".chant/specs/{}.md", spec_id);
+            // Check for destination location (.chant/archive/YYYY-MM-DD/{spec_id}.md)
+            let date_part = &spec_id[..10]; // First 10 chars: YYYY-MM-DD
+            let dst_pattern = format!(".chant/archive/{}/{}.md", date_part, spec_id);
+
+            file_path == src_pattern || file_path == dst_pattern
+        });
+
+        // If we find a change that's not an archived spec file, return true
+        if !is_archived_spec {
+            return Ok(true);
+        }
+    }
+
+    // All changes are related to archived spec files
+    Ok(false)
+}
+
 /// Result of verifying target files have changes
 #[derive(Debug)]
 pub struct TargetFilesVerification {
@@ -1681,6 +1739,7 @@ pub fn cmd_archive(
 
     // Move specs to archive
     let count = to_archive.len();
+    let mut archived_spec_ids = Vec::new();
     for spec in to_archive {
         let src = specs_dir.join(format!("{}.md", spec.id));
 
@@ -1696,6 +1755,7 @@ pub fn cmd_archive(
         let dst = date_dir.join(format!("{}.md", spec.id));
 
         move_spec_file(&src, &dst, no_stage)?;
+        archived_spec_ids.push(spec.id.clone());
         if spec::extract_driver_id(&spec.id).is_some() {
             println!("  {} {} (archived)", "→".cyan(), spec.id);
         } else {
@@ -1719,15 +1779,32 @@ pub fn cmd_archive(
 
     // Create commit if requested (and in a git repo)
     if commit && is_git_repo() {
-        let status = std::process::Command::new("git")
-            .args(["commit", "-m", "Archive completed specs"])
-            .status()
-            .context("Failed to create commit")?;
+        // Check if there are other uncommitted changes besides the archived spec files
+        if has_other_uncommitted_changes(&archived_spec_ids)? {
+            eprintln!(
+                "{} Working directory has other uncommitted changes. Skipping auto-commit.",
+                "⚠".yellow()
+            );
+            eprintln!("  Please commit or stash other changes, then run 'git commit' manually.");
+        } else {
+            // Create commit message with all archived spec IDs
+            let commit_msg = if archived_spec_ids.len() == 1 {
+                format!("chant: Archive {}", archived_spec_ids[0])
+            } else {
+                let spec_list = archived_spec_ids.join(", ");
+                format!("chant: Archive {}", spec_list)
+            };
 
-        if !status.success() {
-            anyhow::bail!("git commit failed");
+            let status = std::process::Command::new("git")
+                .args(["commit", "-m", &commit_msg])
+                .status()
+                .context("Failed to create commit")?;
+
+            if !status.success() {
+                anyhow::bail!("git commit failed");
+            }
+            println!("{} Created commit: {}", "✓".green(), commit_msg);
         }
-        println!("{} Created commit: Archive completed specs", "✓".green());
     }
 
     Ok(())
