@@ -119,6 +119,18 @@ fn print_blocking_dependencies_error(spec_id: &str, blockers: &[BlockingDependen
     eprintln!();
 }
 
+/// Format a grade enum for display with color coding
+fn format_grade<T: std::fmt::Display>(grade: &T) -> colored::ColoredString {
+    let grade_str = format!("{}", grade);
+    match grade_str.as_str() {
+        "A" => grade_str.green(),
+        "B" => grade_str.green(),
+        "C" => grade_str.yellow(),
+        "D" => grade_str.red(),
+        _ => grade_str.white(),
+    }
+}
+
 /// Load all ready specs from the specs directory
 fn load_ready_specs(specs_dir: &Path) -> Result<Vec<Spec>> {
     let all_specs = spec::load_all_specs(specs_dir)?;
@@ -584,6 +596,128 @@ pub fn cmd_work(
         anyhow::bail!("Prompt not found: {}", resolved_prompt_name);
     }
     let prompt_name = resolved_prompt_name.as_str();
+
+    // Calculate quality score before starting work (unless --force is used)
+    if !force {
+        use chant::score::traffic_light;
+        use chant::scoring::{self, TrafficLight};
+
+        let quality_score = scoring::calculate_spec_score(&spec, &all_specs, &config);
+
+        match quality_score.traffic_light {
+            TrafficLight::Refine => {
+                // Red status: Show warning and require user confirmation
+                eprintln!(
+                    "\n{} Spec {} has quality issues that may cause problems\n",
+                    "Warning:".red().bold(),
+                    spec.id.cyan()
+                );
+
+                // Show dimension grades
+                eprintln!("Quality Assessment:");
+                eprintln!(
+                    "  Complexity:    {}",
+                    format_grade(&quality_score.complexity)
+                );
+                eprintln!(
+                    "  Confidence:    {}",
+                    format_grade(&quality_score.confidence)
+                );
+                eprintln!(
+                    "  Splittability: {}",
+                    format_grade(&quality_score.splittability)
+                );
+                eprintln!(
+                    "  AC Quality:    {}",
+                    format_grade(&quality_score.ac_quality)
+                );
+                if let Some(iso) = quality_score.isolation {
+                    eprintln!("  Isolation:     {}", format_grade(&iso));
+                }
+
+                // Show suggestions
+                let suggestions = traffic_light::generate_suggestions(&quality_score);
+                if !suggestions.is_empty() {
+                    eprintln!("\nSuggestions:");
+                    for suggestion in &suggestions {
+                        eprintln!("  • {}", suggestion);
+                    }
+                }
+
+                eprintln!();
+
+                // Prompt user for confirmation (unless non-interactive)
+                if atty::is(atty::Stream::Stdin) {
+                    use std::io::{self, Write};
+
+                    print!("Continue anyway? [y/N] ");
+                    io::stdout().flush()?;
+
+                    let mut input = String::new();
+                    io::stdin().read_line(&mut input)?;
+                    let input = input.trim().to_lowercase();
+
+                    if input != "y" && input != "yes" {
+                        println!("Work cancelled.");
+                        return Ok(());
+                    }
+                } else {
+                    // Non-interactive mode: abort (user should use --force to bypass)
+                    eprintln!(
+                        "\n{} Cannot proceed in non-interactive mode with quality issues.",
+                        "Error:".red().bold()
+                    );
+                    eprintln!("Use {} to bypass quality checks.", "--force".cyan());
+                    anyhow::bail!("Spec quality check failed");
+                }
+            }
+            TrafficLight::Review => {
+                // Yellow status: Show info message but proceed automatically
+                println!(
+                    "{} Spec quality: {} - Some dimensions need attention",
+                    "ℹ".yellow(),
+                    "Review".yellow()
+                );
+
+                // Show which dimensions are at C level
+                let mut review_dims = Vec::new();
+                if matches!(quality_score.complexity, scoring::ComplexityGrade::C) {
+                    review_dims.push(format!(
+                        "Complexity: {}",
+                        format_grade(&quality_score.complexity)
+                    ));
+                }
+                if matches!(quality_score.confidence, scoring::ConfidenceGrade::C) {
+                    review_dims.push(format!(
+                        "Confidence: {}",
+                        format_grade(&quality_score.confidence)
+                    ));
+                }
+                if matches!(quality_score.ac_quality, scoring::ACQualityGrade::C) {
+                    review_dims.push(format!(
+                        "AC Quality: {}",
+                        format_grade(&quality_score.ac_quality)
+                    ));
+                }
+                if matches!(quality_score.splittability, scoring::SplittabilityGrade::C) {
+                    review_dims.push(format!(
+                        "Splittability: {}",
+                        format_grade(&quality_score.splittability)
+                    ));
+                }
+
+                if !review_dims.is_empty() {
+                    for dim in review_dims {
+                        println!("  • {}", dim);
+                    }
+                }
+                println!();
+            }
+            TrafficLight::Ready => {
+                // Green status: Proceed silently (no message)
+            }
+        }
+    }
 
     // Update status to in_progress
     spec.frontmatter.status = SpecStatus::InProgress;

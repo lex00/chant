@@ -221,6 +221,85 @@ pub fn calculate_complexity(spec: &crate::spec::Spec) -> ComplexityGrade {
     ComplexityGrade::A
 }
 
+/// Extract acceptance criteria from a spec's body
+fn extract_acceptance_criteria(spec: &crate::spec::Spec) -> Vec<String> {
+    let acceptance_criteria_marker = "## Acceptance Criteria";
+    let mut criteria = Vec::new();
+    let mut in_code_fence = false;
+    let mut in_ac_section = false;
+
+    for line in spec.body.lines() {
+        let trimmed = line.trim_start();
+
+        if trimmed.starts_with("```") {
+            in_code_fence = !in_code_fence;
+            continue;
+        }
+
+        if !in_code_fence && trimmed.starts_with(acceptance_criteria_marker) {
+            in_ac_section = true;
+            continue;
+        }
+
+        // Stop if we hit another ## heading
+        if in_ac_section && !in_code_fence && trimmed.starts_with("## ") {
+            break;
+        }
+
+        // Extract checkbox items
+        if in_ac_section
+            && !in_code_fence
+            && (trimmed.starts_with("- [ ]") || trimmed.starts_with("- [x]"))
+        {
+            // Extract text after checkbox
+            let text = trimmed
+                .trim_start_matches("- [ ]")
+                .trim_start_matches("- [x]")
+                .trim()
+                .to_string();
+            criteria.push(text);
+        }
+    }
+
+    criteria
+}
+
+/// Calculate the overall SpecScore for a given spec
+///
+/// This function computes all scoring dimensions and determines the traffic light status.
+pub fn calculate_spec_score(
+    spec: &crate::spec::Spec,
+    all_specs: &[crate::spec::Spec],
+    config: &crate::config::Config,
+) -> SpecScore {
+    use crate::score::{ac_quality, confidence, isolation, splittability, traffic_light};
+
+    // Calculate each dimension
+    let complexity = calculate_complexity(spec);
+    let confidence_grade = confidence::calculate_confidence(spec, config);
+    let splittability_grade = splittability::calculate_splittability(spec);
+    let isolation_grade = isolation::calculate_isolation(spec, all_specs);
+
+    // Calculate AC quality from the spec's acceptance criteria
+    let criteria = extract_acceptance_criteria(spec);
+    let ac_quality_grade = ac_quality::calculate_ac_quality(&criteria);
+
+    // Create the score struct
+    let mut score = SpecScore {
+        complexity,
+        confidence: confidence_grade,
+        splittability: splittability_grade,
+        isolation: isolation_grade,
+        ac_quality: ac_quality_grade,
+        traffic_light: TrafficLight::Ready, // Temporary, will be recalculated
+    };
+
+    // Determine the traffic light status
+    score.traffic_light = traffic_light::determine_status(&score);
+
+    score
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
