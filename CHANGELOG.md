@@ -57,6 +57,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Panic hook also triggers cleanup for unexpected failures
   - Prevents orphaned worktrees from accumulating
 
+- **Improved split command**: Better dependency graphs and member quality
+  - Dependency DAG instead of linear chains (parallelizable when logical)
+  - Context inheritance from parent to members (constraints, design principles)
+  - Infrastructure ordering (logging/config specs prioritized early)
+  - Requires section parsing for explicit member dependencies
+  - Cycle detection in dependency validation
+
+- **Group spec lifecycle improvements**: Better container spec handling
+  - Parent group blocked until all members complete via `depends_on`
+  - Groups filtered from `chant_ready` (containers, not actionable work)
+  - Auto-complete parent when all members finalized
+  - Cleaner orchestration of split workflows
+
+- **Archive auto-commit**: Keep git status clean after archive
+  - `chant archive` now auto-commits by default
+  - Commit message format: `chant: Archive {spec-id}`
+  - Skips commit if working directory has other uncommitted changes (warns user)
+  - `--no-commit` flag to disable auto-commit behavior
+
+- **Condensed archive warnings**: Reduce noise from repeated warnings
+  - Groups identical warning types when count > 3
+  - Shows condensed format: `⚠ {warning-type}: {count} specs`
+  - Individual warnings still shown when count ≤ 3
+  - Target_files mismatch warnings now concise and less alarming
+
+- **Member spec sorting**: Correct ordering for large groups
+  - Numeric sort for member numbers (y44.2 before y44.10)
+  - Fixes display issues when groups have >10 members
+
+### Fixed
+
+- **Branch resolution after merge**: Auto-delete merged branches
+  - Prevents stale branch reads after successful merge
+  - Checks merge status before attempting branch resolution
+  - Eliminates "branch not found" errors in workflows
+
+- **Conflict spec YAML**: Fixed blocked_specs field format
+  - Conflict spec templates now generate valid YAML
+  - Proper array formatting for blocked_specs field
+
 ### Tests
 
 - **Branch resolution tests**: Comprehensive tests for smart spec resolution
@@ -64,6 +104,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Tests for `read_spec_from_branch` content retrieval
   - Tests for `load_with_branch_resolution` full workflow
   - Edge cases: missing branches, invalid refs, concurrent modifications
+  - Fixed flaky integration tests for branch resolution scenarios
 
 ## [0.7.1] - 2026-01-30
 
