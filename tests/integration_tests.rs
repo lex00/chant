@@ -5594,11 +5594,13 @@ Done.
 #[test]
 #[serial]
 fn test_status_blocked_filter_with_dependencies() {
+    use tempfile::TempDir;
+
     let chant_binary = get_chant_binary();
     let original_dir = std::env::current_dir().expect("Failed to get current dir");
-    let repo_dir = PathBuf::from("/tmp/test-blocked-filter-deps");
+    let temp_dir = TempDir::new().expect("Failed to create temp dir");
+    let repo_dir = temp_dir.path().to_path_buf();
 
-    let _ = cleanup_test_repo(&repo_dir);
     setup_test_repo(&repo_dir).expect("Failed to setup test repo");
 
     std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
@@ -5615,9 +5617,9 @@ fn test_status_blocked_filter_with_dependencies() {
     let specs_dir = repo_dir.join(".chant/specs");
     fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
 
-    let spec_a = "2026-01-29-blocked-a";
-    let spec_b = "2026-01-29-blocked-b";
-    let spec_c = "2026-01-29-blocked-c";
+    let spec_a = "2026-01-29-001-aaa";
+    let spec_b = "2026-01-29-002-bbb";
+    let spec_c = "2026-01-29-003-ccc";
 
     create_spec_with_dependencies(&specs_dir, spec_a, &[]).expect("Failed to create spec A");
     create_spec_with_dependencies(&specs_dir, spec_b, &[spec_a]).expect("Failed to create spec B");
@@ -5631,9 +5633,11 @@ fn test_status_blocked_filter_with_dependencies() {
         .expect("Failed to run chant list --status blocked");
 
     let stdout = String::from_utf8_lossy(&blocked_output.stdout);
+    let stderr = String::from_utf8_lossy(&blocked_output.stderr);
     assert!(
         blocked_output.status.success(),
-        "chant list --status blocked should succeed"
+        "chant list --status blocked should succeed. stderr: {}",
+        stderr
     );
 
     // B and C should be blocked (they have incomplete dependencies)
@@ -5679,7 +5683,6 @@ fn test_status_blocked_filter_with_dependencies() {
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
 }
 
 /// Test --status blocked with no blocked specs returns empty
