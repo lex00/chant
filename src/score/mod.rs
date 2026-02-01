@@ -4,4 +4,5 @@ pub mod ac_quality;
 pub mod confidence;
 pub mod isolation;
 pub mod splittability;
+pub mod traffic_light;
 pub mod vague;
