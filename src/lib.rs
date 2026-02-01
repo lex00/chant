@@ -72,6 +72,7 @@ pub mod site;
 pub mod spec;
 pub mod spec_group;
 pub mod spec_template;
+pub mod status;
 pub mod tools;
 pub mod validation;
 pub mod worktree;
