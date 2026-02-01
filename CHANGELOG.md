@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.1] - 2026-02-01
+
+### Fixed
+
+- **Base36 sequence sorting**: Spec IDs now sort correctly after 36+ specs per day
+  - Previously `010` (seq 37) sorted before `00a` (seq 11) due to lexicographic comparison
+  - Now parses base36 sequence numerically for correct ordering
+  - Added `release` prompt for automating the release workflow
+
 ## [0.13.0] - 2026-02-01
 
 ### Added
