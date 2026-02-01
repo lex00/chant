@@ -1884,9 +1884,9 @@ status: in_progress
 
     eprintln!("✓ Verified commit exists in git log");
 
-    // Run `chant work MEMBER-ID --finalize --force` to trigger finalization
+    // Run `chant work MEMBER-ID --finalize --skip-criteria` to trigger finalization
     let finalize_output = Command::new(&chant_binary)
-        .args(["work", &member_id, "--finalize", "--force"])
+        .args(["work", &member_id, "--finalize", "--skip-deps"])
         .current_dir(&repo_dir)
         .output()
         .expect("Failed to run chant work --finalize");
@@ -2660,7 +2660,7 @@ fn test_parallel_dependency_resolution() {
     let _ = cleanup_test_repo(&repo_dir);
 }
 
-/// Test --force flag bypasses dependency checks
+/// Test --skip-deps flag bypasses dependency checks
 #[test]
 #[serial]
 fn test_force_flag_bypasses_dependency_check() {
@@ -2725,7 +2725,7 @@ fn test_force_flag_bypasses_dependency_check() {
         stdout
     );
 
-    // Test that working on blocked spec without --force fails
+    // Test that working on blocked spec without --skip-deps fails
     let work_without_force = Command::new(&chant_binary)
         .args(["work", spec_b])
         .current_dir(&repo_dir)
@@ -2736,7 +2736,7 @@ fn test_force_flag_bypasses_dependency_check() {
     let work_stderr = String::from_utf8_lossy(&work_without_force.stderr);
     assert!(
         !work_without_force.status.success(),
-        "chant work on blocked spec without --force should fail"
+        "chant work on blocked spec without --skip-deps should fail"
     );
     // New detailed error message format goes to stderr
     assert!(
@@ -2745,26 +2745,26 @@ fn test_force_flag_bypasses_dependency_check() {
             || work_stderr.contains("Next steps:")
             || work_stdout.contains("unsatisfied dependencies")
             || work_stdout.contains("Blocked by")
-            || work_stdout.contains("--force"),
+            || work_stdout.contains("--skip-deps"),
         "Error message should mention dependency blocking. Stdout: {}, Stderr: {}",
         work_stdout,
         work_stderr
     );
 
-    // Test that working on blocked spec with --force shows warning
+    // Test that working on blocked spec with --skip-deps shows warning
     // Note: This will fail later because there's no agent configured, but the warning
     // should appear in stderr before the agent invocation
     let work_with_force = Command::new(&chant_binary)
-        .args(["work", spec_b, "--force"])
+        .args(["work", spec_b, "--skip-deps"])
         .current_dir(&repo_dir)
         .output()
-        .expect("Failed to run chant work --force");
+        .expect("Failed to run chant work --skip-deps");
 
     let force_stderr = String::from_utf8_lossy(&work_with_force.stderr);
     assert!(
         force_stderr.contains("Warning: Forcing work on spec")
             || force_stderr.contains("Skipping dependencies"),
-        "Warning message should appear when using --force on blocked spec. Stderr: {}",
+        "Warning message should appear when using --skip-deps on blocked spec. Stderr: {}",
         force_stderr
     );
 
@@ -2874,8 +2874,8 @@ This spec blocks spec B.
         work_stderr
     );
     assert!(
-        work_stderr.contains("--force"),
-        "Error should mention --force flag. Stderr: {}",
+        work_stderr.contains("--skip-deps"),
+        "Error should mention --skip-deps flag. Stderr: {}",
         work_stderr
     );
 
@@ -2884,7 +2884,7 @@ This spec blocks spec B.
     let _ = cleanup_test_repo(&repo_dir);
 }
 
-/// Test --force flag warning shows which dependencies are being skipped
+/// Test --skip-deps flag warning shows which dependencies are being skipped
 #[test]
 #[serial]
 fn test_force_flag_shows_skipped_dependencies() {
@@ -2932,12 +2932,12 @@ fn test_force_flag_shows_skipped_dependencies() {
     create_spec_with_dependencies(&specs_dir, spec_c, &[spec_a, spec_b])
         .expect("Failed to create spec C");
 
-    // Test that working on spec C with --force shows both A and B as skipped dependencies
+    // Test that working on spec C with --skip-deps shows both A and B as skipped dependencies
     let work_with_force = Command::new(&chant_binary)
-        .args(["work", spec_c, "--force"])
+        .args(["work", spec_c, "--skip-deps"])
         .current_dir(&repo_dir)
         .output()
-        .expect("Failed to run chant work --force");
+        .expect("Failed to run chant work --skip-deps");
 
     let force_stderr = String::from_utf8_lossy(&work_with_force.stderr);
 
