@@ -7,7 +7,32 @@ Multiple agents working simultaneously can conflict:
 - Uncommitted changes from one agent visible to another
 - Merge conflicts at commit time
 
-## Approaches
+## Current Implementation
+
+Chant uses **worktree + branch** isolation for parallel execution. Each spec gets:
+- A dedicated worktree at `/tmp/chant-{spec-id}`
+- A dedicated branch named `chant/{spec-id}`
+
+```bash
+# What chant does internally for parallel execution
+git worktree add -b chant/2026-01-22-001-x7m /tmp/chant-2026-01-22-001-x7m
+```
+
+```
+/tmp/
+├── chant-2026-01-22-001-x7m/   ← Agent 1's isolated worktree
+├── chant-2026-01-22-002-q2n/   ← Agent 2's isolated worktree
+└── chant-2026-01-22-003-abc/   ← Agent 3's isolated worktree
+```
+
+On completion:
+1. Agent commits to branch in worktree
+2. CLI merges branch to main
+3. Worktree removed
+
+## Alternative Approaches (Design Reference)
+
+These approaches are documented for context but are **not implemented**.
 
 ### 1. No Isolation (Locking Only)
 
@@ -23,36 +48,9 @@ Both modify different files → no conflict
 
 **When it works**: Well-decomposed specs with clear file boundaries.
 
-### 2. Git Worktrees
+### 2. Branch Per Spec (No Worktree)
 
-Each agent gets its own worktree:
-
-```bash
-git worktree add .chant/.worktrees/2026-01-22-001-x7m
-```
-
-```
-repo/
-├── .git/
-├── src/                          ← Main worktree
-└── .chant/
-    └── .worktrees/
-        └── 2026-01-22-001-x7m/   ← Agent's isolated copy
-            └── src/
-```
-
-**Pros**:
-- Full isolation
-- Shared .git (efficient)
-- Each agent has clean state
-
-**Cons**:
-- Disk space (full checkout per agent)
-- Merge required after completion
-
-### 3. Branch Per Spec
-
-Agent works on dedicated branch:
+Agent works on dedicated branch in the same working directory:
 
 ```bash
 git checkout -b chant/2026-01-22-001-x7m
@@ -64,19 +62,22 @@ git commit
 **Pros**:
 - Standard git workflow
 - Easy to review changes
-- Natural PR integration
 
 **Cons**:
 - Still working in same directory
-- Uncommitted changes visible
-- Need worktree for true isolation
+- Uncommitted changes visible to other agents
+- No true isolation for parallel work
 
-### 4. Shallow Clone (Recommended)
+### 3. Shallow Clone
 
-Fresh clone per spec. Simpler than worktrees, more reliable.
+> **Status: Not Implemented**
+>
+> This approach was considered but not implemented. Worktree + branch provides
+> better performance (no network fetch) while maintaining isolation.
+
+Fresh clone per spec:
 
 ```bash
-# Create shallow clone
 git clone --depth=1 --branch=main <repo> .chant/.clones/2026-01-22-001-x7m
 cd .chant/.clones/2026-01-22-001-x7m
 git checkout -b chant/2026-01-22-001-x7m
@@ -86,82 +87,21 @@ git push origin chant/2026-01-22-001-x7m
 
 **Pros**:
 - Clean slate every time
-- No worktree complexity
 - Works with submodules
-- Robust - fewer edge cases
-- Easy cleanup (just delete directory)
 
 **Cons**:
 - Network fetch for each spec
-- More disk space than worktrees (separate .git)
-- Slower clone than worktree creation
-
-**Why shallow?**
-- `--depth=1` fetches only latest commit
-- Fast clone, minimal disk
-- Agent doesn't need history
-
-```rust
-fn create_clone(spec_id: &str) -> Result<PathBuf> {
-    let clone_path = format!(".chant/.clones/{}", spec_id);
-    let remote = get_remote_url()?;
-
-    Command::new("git")
-        .args(["clone", "--depth=1", "--branch", "main", &remote, &clone_path])
-        .status()?;
-
-    Command::new("git")
-        .args(["-C", &clone_path, "checkout", "-b", &format!("chant/{}", spec_id)])
-        .status()?;
-
-    Ok(clone_path.into())
-}
-```
-
-### 5. Worktree + Branch (Alternative)
-
-Combine worktrees with branches. More complex but shares .git:
-
-```bash
-# Create branch and worktree together
-git worktree add -b chant/2026-01-22-001-x7m .chant/.worktrees/2026-01-22-001-x7m
-```
-
-Agent works in isolated worktree on dedicated branch.
-
-**Known issues with worktrees:**
-- Submodules require special handling
-- Some tools don't detect worktrees properly
-- Can get into inconsistent states
-- Same branch can't be checked out twice
-
-**When worktrees make sense:**
-- Local-only work (no push)
-- Very fast iteration
-- Large repo where clone is slow
-
-On completion:
-1. Agent commits to branch
-2. CLI merges branch to main
-3. Worktree removed
+- More disk space (separate .git per clone)
+- Slower than worktree creation
 
 ### Comparison
 
-| Approach | Network | Disk | Complexity | Robustness |
-|----------|---------|------|------------|------------|
-| No isolation | None | None | Low | Conflicts |
-| Branch only | None | None | Low | Dirty state |
-| Shallow clone | Per spec | Medium | Low | High |
-| Worktree | None | Low | Medium | Medium |
-
-**Recommendation**: Start with shallow clones. Switch to worktrees only if clone speed is a bottleneck.
-
-> **Research needed**: Worktree approach needs deeper investigation. Previous implementation (Chant v1) encountered issues that led to switching to shallow clones. Need to study:
-> - Submodule handling in worktrees
-> - Tool compatibility (IDEs, linters, etc.)
-> - Edge cases with branch management
-> - Sparse checkout + worktree combination
-> - Cleanup reliability
+| Approach | Network | Disk | Complexity | Implemented |
+|----------|---------|------|------------|-------------|
+| No isolation | None | None | Low | N/A |
+| Branch only | None | None | Low | Single-spec only |
+| Shallow clone | Per spec | Medium | Low | No |
+| **Worktree + branch** | None | Low | Medium | **Yes** |
 
 ## Inspecting Active Worktrees
 
@@ -182,7 +122,7 @@ See [CLI Reference: Worktree](../reference/cli.md#worktree) for full command doc
 
 ```rust
 fn cleanup_worktree(spec_id: &str) -> Result<()> {
-    let worktree_path = format!(".chant/.worktrees/{}", spec_id);
+    let worktree_path = format!("/tmp/chant-{}", spec_id);
     let branch_name = format!("chant/{}", spec_id);
 
     // Remove worktree
@@ -208,10 +148,10 @@ chant work --parallel --max 3
 Creates up to 3 worktrees:
 
 ```
-.chant/.worktrees/
-├── 2026-01-22-001-x7m/
-├── 2026-01-22-002-q2n/
-└── 2026-01-22-003-abc/
+/tmp/
+├── chant-2026-01-22-001-x7m/
+├── chant-2026-01-22-002-q2n/
+└── chant-2026-01-22-003-abc/
 ```
 
 Each agent works independently. Merges happen sequentially after completion.
@@ -260,83 +200,32 @@ Warning: Specs have overlapping target files:
 Continue anyway? [y/N]
 ```
 
-## Configuration
-
-```yaml
-# config.md frontmatter
-defaults:
-  isolation: clone       # none | branch | clone | worktree
-  branch: true           # Create branches
-  clone:
-    depth: 1             # Shallow clone (default)
-    # depth: 0           # Full clone (if history needed)
-```
-
 ## Sparse Checkout (Scale)
 
-For monorepos, full checkout per worktree is expensive. Use sparse checkout:
+> **Status: Not Implemented**
+>
+> Sparse checkout for monorepos is planned but not yet implemented.
+
+For monorepos, full checkout per worktree is expensive. Future support:
 
 ```yaml
-# config.md
+# config.md (planned)
 scale:
   worktree:
     sparse: true
     pattern: "packages/{{project}}/"
 ```
 
-Chant automatically configures sparse checkout:
-
-```rust
-fn create_sparse_worktree(spec: &Spec) -> Result<PathBuf> {
-    let worktree_path = format!(".chant/.worktrees/{}", spec.id);
-    let project = extract_project(&spec.id);
-
-    // Create worktree with sparse checkout
-    Command::new("git")
-        .args(["worktree", "add", "--sparse", &worktree_path])
-        .status()?;
-
-    // Configure sparse checkout for project
-    let sparse_path = format!("packages/{}/", project);
-    Command::new("git")
-        .args(["-C", &worktree_path, "sparse-checkout", "set", &sparse_path])
-        .status()?;
-
-    Ok(worktree_path.into())
-}
-```
-
-Result: Worktree only contains relevant project files.
-
 ## Worktree Pool (Scale)
 
-Creating/destroying worktrees is slow. Pool and reuse:
+> **Status: Not Implemented**
+>
+> Worktree pooling is planned but not yet implemented.
+
+Creating/destroying worktrees per spec adds overhead. Future support for pooling:
 
 ```yaml
 scale:
   worktree:
     pool_size: 10    # Pre-created worktrees
 ```
-
-```
-.chant/.worktrees/
-  pool-01/   # Available
-  pool-02/   # In use (auth-2026-01-22-001-x7m)
-  pool-03/   # In use (payments-2026-01-22-002-q2n)
-  ...
-```
-
-Worker claims worktree from pool, reconfigures sparse checkout, executes, returns to pool.
-
-## Worktree Location
-
-Worktrees are gitignored local state:
-
-```gitignore
-# .chant/.gitignore
-.locks/
-.store/
-.worktrees/
-```
-
-Not committed. Each clone/pod manages its own.

@@ -67,6 +67,8 @@ See [ids.md](ids.md) for format details.
 
 ## Frontmatter Schema
 
+See [Schema & Validation](../reference/schema.md) for validation rules and linting.
+
 ```yaml
 ---
 # No id field - filename is the ID
@@ -128,12 +130,7 @@ blocked
 cancelled
 ```
 
-- **pending**: Ready to execute
-- **in_progress**: Agent currently executing
-- **completed**: Work done, committed
-- **failed**: Execution failed, needs attention
-- **blocked**: Spec has unmet dependencies
-- **cancelled**: Work was cancelled before completion
+See [Lifecycle](lifecycle.md) for detailed status documentation, transitions, and approval workflow.
 
 ## Drift Detection
 

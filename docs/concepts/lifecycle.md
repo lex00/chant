@@ -251,9 +251,8 @@ lifecycle:
 ┌─────────────────────────────────────────────────────────────┐
 │                     Execution                                │
 │                                                              │
-│  Clone created: .chant/.clones/001/                         │
-│  Lock created:  .chant/.locks/001.pid                       │
-│  Index updated: .chant/.store/tantivy/                      │
+│  Worktree created: /tmp/chant-{spec-id}/ (parallel only)    │
+│  Lock created:  .chant/.locks/{spec-id}.pid                 │
 └──────────────────────────┬──────────────────────────────────┘
                            │
                            │ completion
@@ -262,20 +261,19 @@ lifecycle:
 │                     Cleanup                                  │
 │                                                              │
 │  Lock released (immediate)                                   │
-│  Clone retained (7d default)                                 │
+│  Worktree removed (immediate, after merge)                   │
 │  Spec updated (status: completed)                            │
-│  Branch pushed (if branch: true)                              │
+│  Branch merged and deleted                                   │
 └──────────────────────────┬──────────────────────────────────┘
                            │
-                           │ after retention period
+                           │ long-term
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                     Long-term                                │
 │                                                              │
 │  Spec: stays in git history forever                          │
-│  Clone: deleted after retention                              │
 │  Logs: rotated, old logs deleted                             │
-│  Branch: deleted after merge (optional)                      │
+│  Branch: deleted after merge                                 │
 └─────────────────────────────────────────────────────────────┘
 ```
 

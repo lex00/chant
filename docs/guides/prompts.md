@@ -2,6 +2,10 @@
 
 This comprehensive guide covers prompt authoring, examples, and advanced techniques.
 
+> **Implementation Note:** Currently only simple `{{variable}}` substitution is supported.
+> Advanced Handlebars features (`{{#if}}`, `{{#each}}`, `extends`, partials) shown in
+> examples below are **planned but not implemented**. See [Templates](../reference/templates.md).
+
 ## Why Prompts Matter
 
 Prompts are the core of Chant. Everything else is infrastructure.

@@ -97,10 +97,8 @@ Alice's machine                    Bob's machine
 2. **Status in Frontmatter** (synced via git)
    ```yaml
    status: in_progress
-   started_by: alice
-   started_at: 2026-01-22T10:00:00Z
    ```
-   When Alice starts, she commits this. Bob sees it on pull.
+   When Alice starts, status changes to `in_progress`. Bob sees it on pull.
 
 3. **Git as Coordination**
    - Alice: `chant work 001` → status changes → `git push`
@@ -374,8 +372,12 @@ fn daemon_startup() {
 
 ## Priority
 
+> **Status: Not Implemented**
+>
+> Priority-based queue ordering is planned but not yet implemented.
+
 ```yaml
-# Spec frontmatter
+# Spec frontmatter (planned)
 ---
 status: pending
 priority: high    # low (0), normal (50), high (100), critical (200)
@@ -390,6 +392,10 @@ priority: 150
 Higher number = processed first.
 
 ## Multi-Daemon (Distributed)
+
+> **Status: Not Implemented**
+>
+> Multi-daemon distributed queue is planned for enterprise deployments.
 
 With PostgreSQL or Redis, multiple daemons can run:
 

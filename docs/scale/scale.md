@@ -75,6 +75,11 @@ Pipelines work when:
 
 ### 1. Pools / Resource Management
 
+> **Status: Not Implemented**
+>
+> Pool-based resource management is planned but not yet implemented.
+> See [Roadmap](../roadmap/roadmap.md) for timeline.
+
 Pools limit concurrent execution by resource type:
 
 ```yaml
@@ -189,6 +194,10 @@ This is a **built-in feature**. No external tooling needed.
 
 ### 2. Daemon Mode
 
+> **Status: Not Implemented**
+>
+> Daemon mode is planned for v0.5.0. See [Roadmap](../roadmap/planned/daemon.md).
+
 At scale, can't parse thousands of spec files per command. Need persistent indexes.
 
 ```bash
@@ -226,6 +235,10 @@ fn get_ready_specs() -> Vec<Spec> {
 
 ### 3. Metrics Endpoint
 
+> **Status: Not Implemented**
+>
+> Prometheus metrics require daemon mode. Planned for v0.5.0.
+
 Expose Prometheus metrics for Grafana:
 
 ```bash
@@ -253,6 +266,10 @@ chant_spec_duration_seconds_bucket{le="300"} 120
 
 ### 4. Lock API
 
+> **Status: Not Implemented**
+>
+> CLI lock commands require daemon mode. PID-based file locking works without daemon.
+
 Daemon exposes lock operations:
 
 ```bash
@@ -269,6 +286,10 @@ echo '{"cmd":"lock","spec":"auth-001"}' | nc -U /tmp/chant.sock
 
 ### 5. Queue Primitives
 
+> **Status: Not Implemented**
+>
+> Queue CLI commands require daemon mode. Planned for v0.5.0.
+
 Daemon can maintain a work queue:
 
 ```bash
@@ -280,6 +301,11 @@ chant queue stats                   # Queue depth, wait times
 **Built-in feature.** Orchestrators poll this, assign to agents.
 
 ## Deployment Patterns
+
+> **Status: Not Implemented**
+>
+> These deployment patterns require daemon mode. They are documented as design
+> reference for future implementation. See [Roadmap](../roadmap/planned/daemon.md).
 
 ### Pattern 1: K8s Deployment
 
