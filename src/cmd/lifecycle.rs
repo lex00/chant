@@ -1507,6 +1507,66 @@ fn format_target_files_warning(spec_id: &str, verification: &TargetFilesVerifica
     )
 }
 
+/// Print condensed warnings when there are many repeated warning types
+fn print_condensed_warnings(specs_with_missing_changes: &[(spec::Spec, TargetFilesVerification)]) {
+    use std::collections::HashMap;
+
+    // Group specs by warning type signature
+    // Warning type is determined by whether there are predicted files and actual files
+    let mut warning_groups: HashMap<String, Vec<&str>> = HashMap::new();
+
+    for (spec, verification) in specs_with_missing_changes {
+        // Create a warning type key based on the pattern
+        let has_predicted = !verification.files_without_changes.is_empty()
+            || !verification.files_with_changes.is_empty();
+        let has_actual = !verification.actual_files_changed.is_empty();
+
+        let warning_type = match (has_predicted, has_actual) {
+            (true, true) => "target_files_mismatch",
+            (true, false) => "target_files_no_changes",
+            (false, true) => "no_target_files_with_changes",
+            (false, false) => "no_prediction_no_changes",
+        };
+
+        warning_groups
+            .entry(warning_type.to_string())
+            .or_default()
+            .push(spec.id.as_str());
+    }
+
+    // Print condensed or individual warnings based on count
+    for (warning_type, spec_ids) in &warning_groups {
+        if spec_ids.len() > 3 {
+            // Condense when count > 3
+            let message = match warning_type.as_str() {
+                "target_files_mismatch" => {
+                    "Prediction mismatch (target_files) - implementation is fine"
+                }
+                "target_files_no_changes" => "target_files specified but no changes found",
+                "no_target_files_with_changes" => "Changes made but no target_files specified",
+                "no_prediction_no_changes" => "No prediction and no changes",
+                _ => "Unknown warning type",
+            };
+            println!("{} {}: {} specs", "⚠".yellow(), message, spec_ids.len());
+        } else {
+            // Show individual warnings when count ≤ 3
+            for spec_id in spec_ids {
+                if let Some((spec, verification)) = specs_with_missing_changes
+                    .iter()
+                    .find(|(s, _)| s.id == *spec_id)
+                {
+                    println!("{}", format_target_files_warning(&spec.id, verification));
+                    if !verification.commits.is_empty() {
+                        println!("Commits found: {}\n", verification.commits.join(", "));
+                    } else {
+                        println!("No commits found with pattern 'chant({}):'.\n", spec.id);
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Move a file using git mv, falling back to fs::rename if not in a git repo or if no_stage is true
 fn move_spec_file(src: &PathBuf, dst: &PathBuf, no_stage: bool) -> Result<()> {
     let use_git = !no_stage && is_git_repo();
@@ -1675,14 +1735,8 @@ pub fn cmd_archive(
                 specs_with_missing_changes.len()
             );
 
-            for (spec, verification) in &specs_with_missing_changes {
-                println!("{}", format_target_files_warning(&spec.id, verification));
-                if !verification.commits.is_empty() {
-                    println!("Commits found: {}\n", verification.commits.join(", "));
-                } else {
-                    println!("No commits found with pattern 'chant({}):'.\n", spec.id);
-                }
-            }
+            // Condense repeated warnings (count > 3)
+            print_condensed_warnings(&specs_with_missing_changes);
 
             // Prompt for confirmation
             let confirmed = prompt::confirm("Archive anyway?")?;
