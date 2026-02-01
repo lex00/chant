@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.4] - 2026-02-01
+
+### Added
+
+- **Enhanced `chant_status` MCP tool**: New parameters for flexible output
+  - `brief`: Returns single-line output (e.g., "3 pending | 2 in_progress | 15 completed")
+  - `include_activity`: Returns activity timestamps for in_progress specs (spec modified time, log modified time)
+
 ## [0.13.3] - 2026-02-01
 
 ### Fixed

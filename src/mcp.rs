@@ -1510,7 +1510,10 @@ mod tests {
         let status_tool = tools.iter().find(|t| t["name"] == "chant_status").unwrap();
 
         let props = &status_tool["inputSchema"]["properties"];
-        assert!(props.get("brief").is_some(), "chant_status should have 'brief' property");
+        assert!(
+            props.get("brief").is_some(),
+            "chant_status should have 'brief' property"
+        );
         assert!(
             props.get("include_activity").is_some(),
             "chant_status should have 'include_activity' property"
