@@ -1136,6 +1136,7 @@ fn display_split_quality_report(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
     fn test_parse_member_specs_requires_section() {
         let output = r#"
 ## Member 1: Base Configuration
