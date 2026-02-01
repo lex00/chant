@@ -680,6 +680,74 @@ pub fn get_commit_changed_files(hash: &str) -> Result<Vec<String>> {
     Ok(files)
 }
 
+/// Get files changed in a commit with their status (A/M/D).
+///
+/// Returns a list of strings in the format "STATUS:filename" (e.g., "A:file.txt", "M:file.txt").
+///
+/// # Errors
+/// Returns error if commit hash is invalid or git command fails.
+pub fn get_commit_files_with_status(hash: &str) -> Result<Vec<String>> {
+    let output = Command::new("git")
+        .args(["diff-tree", "--no-commit-id", "--name-status", "-r", hash])
+        .output()
+        .context("Failed to execute git diff-tree")?;
+
+    if !output.status.success() {
+        return Ok(Vec::new());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut files = Vec::new();
+
+    for line in stdout.lines() {
+        let parts: Vec<&str> = line.split('\t').collect();
+        if parts.len() >= 2 {
+            // parts[0] is status (A, M, D), parts[1] is filename
+            files.push(format!("{}:{}", parts[0], parts[1]));
+        }
+    }
+
+    Ok(files)
+}
+
+/// Get file content at a specific commit.
+///
+/// Returns the file content as a string, or an empty string if the file doesn't exist at that commit.
+///
+/// # Errors
+/// Returns error if git command fails.
+pub fn get_file_at_commit(commit: &str, file: &str) -> Result<String> {
+    let output = Command::new("git")
+        .args(["show", &format!("{}:{}", commit, file)])
+        .output()
+        .context("Failed to get file at commit")?;
+
+    if !output.status.success() {
+        return Ok(String::new());
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+/// Get file content at parent commit.
+///
+/// Returns the file content as a string, or an empty string if the file doesn't exist at parent commit.
+///
+/// # Errors
+/// Returns error if git command fails.
+pub fn get_file_at_parent(commit: &str, file: &str) -> Result<String> {
+    let output = Command::new("git")
+        .args(["show", &format!("{}^:{}", commit, file)])
+        .output()
+        .context("Failed to get file at parent")?;
+
+    if !output.status.success() {
+        return Ok(String::new());
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
 /// Get the N most recent commits.
 ///
 /// # Errors
@@ -695,6 +763,48 @@ pub fn get_recent_commits(count: usize) -> Result<Vec<CommitInfo>> {
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         anyhow::bail!("Failed to get recent commits: {}", stderr);
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut commits = Vec::new();
+
+    for line in stdout.lines() {
+        if line.is_empty() {
+            continue;
+        }
+
+        let parts: Vec<&str> = line.splitn(4, '|').collect();
+        if parts.len() != 4 {
+            continue;
+        }
+
+        commits.push(CommitInfo {
+            hash: parts[0].to_string(),
+            author: parts[1].to_string(),
+            timestamp: parts[2].parse().unwrap_or(0),
+            message: parts[3].to_string(),
+        });
+    }
+
+    Ok(commits)
+}
+
+/// Get commits that modified a specific path.
+///
+/// # Arguments
+/// * `path` - File or directory path to filter by
+///
+/// # Errors
+/// Returns error if git command fails.
+pub fn get_commits_for_path(path: &str) -> Result<Vec<CommitInfo>> {
+    let output = Command::new("git")
+        .args(["log", "--all", "--format=%H|%an|%at|%s", "--", path])
+        .output()
+        .context("Failed to execute git log")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("git log failed: {}", stderr);
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
