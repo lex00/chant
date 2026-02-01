@@ -5,6 +5,7 @@
 
 use anyhow::Result;
 use colored::Colorize;
+use std::collections::HashSet;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
@@ -108,8 +109,80 @@ fn dir_age_secs(path: &PathBuf) -> u64 {
     }
 }
 
-/// Check if a path is a valid git worktree
-fn is_valid_worktree(path: &std::path::Path) -> bool {
+/// Information about a prunable worktree from git
+#[derive(Debug, Clone)]
+struct PrunableWorktree {
+    path: PathBuf,
+    /// Some prunable worktrees may not exist on disk
+    exists: bool,
+}
+
+/// Get prunable worktrees from git worktree list
+fn get_prunable_worktrees() -> Result<Vec<PrunableWorktree>> {
+    let output = Command::new("git")
+        .args(["worktree", "list", "--porcelain"])
+        .output()?;
+
+    if !output.status.success() {
+        // If git command fails, return empty vec
+        return Ok(Vec::new());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut prunable_worktrees = Vec::new();
+    let mut current_path: Option<PathBuf> = None;
+    let mut is_prunable = false;
+
+    for line in stdout.lines() {
+        if line.starts_with("worktree ") {
+            // Save previous if it was prunable
+            if is_prunable {
+                if let Some(path) = current_path.take() {
+                    // Only include chant worktrees
+                    if path
+                        .file_name()
+                        .map(|n| n.to_string_lossy().starts_with("chant-"))
+                        .unwrap_or(false)
+                    {
+                        let exists = path.exists();
+                        prunable_worktrees.push(PrunableWorktree { path, exists });
+                    }
+                }
+            }
+            // Start new entry
+            let path = line.strip_prefix("worktree ").unwrap_or("");
+            current_path = Some(PathBuf::from(path));
+            is_prunable = false;
+        } else if line.starts_with("prunable") {
+            is_prunable = true;
+        }
+    }
+
+    // Don't forget the last entry
+    if is_prunable {
+        if let Some(path) = current_path {
+            // Only include chant worktrees
+            if path
+                .file_name()
+                .map(|n| n.to_string_lossy().starts_with("chant-"))
+                .unwrap_or(false)
+            {
+                let exists = path.exists();
+                prunable_worktrees.push(PrunableWorktree { path, exists });
+            }
+        }
+    }
+
+    Ok(prunable_worktrees)
+}
+
+/// Check if a path is a valid git worktree (not prunable and exists)
+fn is_valid_worktree(path: &std::path::Path, prunable_worktrees: &[PrunableWorktree]) -> bool {
+    // If git marks it as prunable, it's not valid
+    if prunable_worktrees.iter().any(|pw| pw.path == path) {
+        return false;
+    }
+
     // A valid worktree should have a .git file or directory
     let git_path = path.join(".git");
     git_path.exists()
@@ -117,43 +190,82 @@ fn is_valid_worktree(path: &std::path::Path) -> bool {
 
 /// Scan /tmp for orphan chant worktrees
 pub fn find_orphan_worktrees() -> Result<Vec<WorktreeInfo>> {
-    let tmp_path = PathBuf::from("/tmp");
-    if !tmp_path.exists() {
-        return Ok(Vec::new());
-    }
+    // Get prunable worktrees from git
+    let prunable_worktrees = get_prunable_worktrees()?;
 
     let mut worktrees = Vec::new();
+    let mut seen_paths = HashSet::new();
 
-    for entry in fs::read_dir(&tmp_path)? {
-        let entry = entry?;
-        let file_name = entry.file_name();
-        let name_str = file_name.to_string_lossy();
+    // First, add all prunable worktrees from git (even if they don't exist on disk)
+    for prunable in &prunable_worktrees {
+        let name = prunable
+            .path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| prunable.path.display().to_string());
 
-        // Only consider directories starting with "chant-"
-        if !name_str.starts_with("chant-") {
-            continue;
-        }
+        let size = if prunable.exists {
+            dir_size(&prunable.path)
+        } else {
+            0
+        };
 
-        let path = entry.path();
-
-        // Skip if not a directory
-        if !path.is_dir() {
-            continue;
-        }
-
-        let is_valid = is_valid_worktree(&path);
-
-        // We want to show both valid and orphan worktrees, but filter to orphans if requested
-        let size = dir_size(&path);
-        let age_secs = dir_age_secs(&path);
+        let age_secs = if prunable.exists {
+            dir_age_secs(&prunable.path)
+        } else {
+            0
+        };
 
         worktrees.push(WorktreeInfo {
-            name: name_str.to_string(),
-            path,
+            name,
+            path: prunable.path.clone(),
             size,
             age_secs,
-            is_valid,
+            is_valid: false, // Prunable worktrees are not valid
         });
+
+        seen_paths.insert(prunable.path.clone());
+    }
+
+    // Then scan /tmp for any other chant directories
+    let tmp_path = PathBuf::from("/tmp");
+    if tmp_path.exists() {
+        for entry in fs::read_dir(&tmp_path)? {
+            let entry = entry?;
+            let file_name = entry.file_name();
+            let name_str = file_name.to_string_lossy();
+
+            // Only consider directories starting with "chant-"
+            if !name_str.starts_with("chant-") {
+                continue;
+            }
+
+            let path = entry.path();
+
+            // Skip if we already added this from prunable list
+            if seen_paths.contains(&path) {
+                continue;
+            }
+
+            // Skip if not a directory
+            if !path.is_dir() {
+                continue;
+            }
+
+            let is_valid = is_valid_worktree(&path, &prunable_worktrees);
+
+            // We want to show both valid and orphan worktrees, but filter to orphans if requested
+            let size = dir_size(&path);
+            let age_secs = dir_age_secs(&path);
+
+            worktrees.push(WorktreeInfo {
+                name: name_str.to_string(),
+                path,
+                size,
+                age_secs,
+                is_valid,
+            });
+        }
     }
 
     // Sort by age (oldest first)
@@ -243,16 +355,32 @@ fn cleanup_worktrees_only(orphans: &[&WorktreeInfo], dry_run: bool, yes: bool) -
         print!("Removing {}... ", worktree.name);
         std::io::stdout().flush()?;
 
+        let mut success = false;
+
         // Try to remove the git worktree entry first
         let _ = Command::new("git")
             .args(["worktree", "remove", &worktree.path.to_string_lossy()])
             .output();
 
-        // Force remove the directory
-        if let Err(e) = fs::remove_dir_all(&worktree.path) {
-            println!("{}", "failed".red());
-            eprintln!("Error removing {}: {}", worktree.name, e);
+        // Force remove the directory if it exists
+        if worktree.path.exists() {
+            match fs::remove_dir_all(&worktree.path) {
+                Ok(_) => {
+                    success = true;
+                }
+                Err(e) => {
+                    println!("{}", "failed".red());
+                    eprintln!("Error removing {}: {}", worktree.name, e);
+                    continue;
+                }
+            }
         } else {
+            // Directory doesn't exist, but we still count it as cleaned
+            // since git worktree prune will remove the stale reference
+            success = true;
+        }
+
+        if success {
             println!("{}", "done".green());
             removed += 1;
         }
@@ -339,16 +467,32 @@ pub fn cmd_cleanup(dry_run: bool, yes: bool, worktrees_only: bool) -> Result<()>
         print!("Removing {}... ", worktree.name);
         std::io::stdout().flush()?;
 
+        let mut success = false;
+
         // Try to remove the git worktree entry first
         let _ = Command::new("git")
             .args(["worktree", "remove", &worktree.path.to_string_lossy()])
             .output();
 
-        // Force remove the directory
-        if let Err(e) = fs::remove_dir_all(&worktree.path) {
-            println!("{}", "failed".red());
-            eprintln!("Error removing {}: {}", worktree.name, e);
+        // Force remove the directory if it exists
+        if worktree.path.exists() {
+            match fs::remove_dir_all(&worktree.path) {
+                Ok(_) => {
+                    success = true;
+                }
+                Err(e) => {
+                    println!("{}", "failed".red());
+                    eprintln!("Error removing {}: {}", worktree.name, e);
+                    continue;
+                }
+            }
         } else {
+            // Directory doesn't exist, but we still count it as cleaned
+            // since git worktree prune will remove the stale reference
+            success = true;
+        }
+
+        if success {
             println!("{}", "done".green());
             removed += 1;
         }
@@ -421,5 +565,62 @@ mod tests {
         let orphans = filter_orphans(&worktrees);
         assert_eq!(orphans.len(), 1);
         assert_eq!(orphans[0].name, "chant-orphan");
+    }
+
+    #[test]
+    fn test_get_prunable_worktrees_parsing() {
+        // Simulate git worktree list output with prunable worktree
+        let output = r#"worktree /Users/test/project
+HEAD abc123def456
+branch refs/heads/main
+
+worktree /tmp/chant-2026-01-27-001-abc
+HEAD def456abc789
+branch refs/heads/chant/2026-01-27-001-abc
+prunable gitdir file points to non-existent location
+"#;
+
+        let mut prunable_worktrees = Vec::new();
+        let mut current_path: Option<PathBuf> = None;
+        let mut is_prunable = false;
+
+        for line in output.lines() {
+            if line.starts_with("worktree ") {
+                if is_prunable {
+                    if let Some(path) = current_path.take() {
+                        if path
+                            .file_name()
+                            .map(|n| n.to_string_lossy().starts_with("chant-"))
+                            .unwrap_or(false)
+                        {
+                            prunable_worktrees.push(path);
+                        }
+                    }
+                }
+                let path = line.strip_prefix("worktree ").unwrap_or("");
+                current_path = Some(PathBuf::from(path));
+                is_prunable = false;
+            } else if line.starts_with("prunable") {
+                is_prunable = true;
+            }
+        }
+
+        if is_prunable {
+            if let Some(path) = current_path {
+                if path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().starts_with("chant-"))
+                    .unwrap_or(false)
+                {
+                    prunable_worktrees.push(path);
+                }
+            }
+        }
+
+        assert_eq!(prunable_worktrees.len(), 1);
+        assert_eq!(
+            prunable_worktrees[0],
+            PathBuf::from("/tmp/chant-2026-01-27-001-abc")
+        );
     }
 }
