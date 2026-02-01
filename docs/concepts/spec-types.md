@@ -22,7 +22,6 @@ Chant supports six spec types, each with different behaviors for execution, veri
 | `informed_by:` | research | **Yes** | Materials to synthesize |
 | `origin:` | research | **Yes** | Input data for analysis |
 | `target_files:` | all | No | Output files to create/modify |
-| `schedule:` | research | No | Recurring execution (e.g., `daily`, `weekly`) |
 
 ## Code Specs
 
@@ -288,33 +287,6 @@ target_files:
 # Analyze experiment using established methodology
 ```
 
-### Recurring Research
-
-Use `schedule:` for automated recurring analysis:
-
-```yaml
----
-type: research
-prompt: research-analysis
-schedule: weekly                  # daily | weekly | monthly | cron expression
-origin:
-  - logs/production-*.json
-target_files:
-  - reports/weekly-errors.md
----
-# Weekly error analysis
-
-## Methodology
-- Aggregate errors by type
-- Identify new error patterns
-- Compare to previous week
-
-## Acceptance Criteria
-- [ ] All error types categorized
-- [ ] Trends identified
-- [ ] Actionable recommendations
-```
-
 **Execution**: Agent reads `informed_by:` and `origin:` files, performs analysis/synthesis, writes findings.
 **Verification**: Input files haven't changed since completion.
 **Drift**: When `origin:` OR `informed_by:` files change after completion.
@@ -329,23 +301,12 @@ target_files:
 
 ## Prompt Selection by Type
 
-Prompts are auto-selected based on type:
-
-```yaml
-# config.yaml
-prompts:
-  by_type:
-    code: standard
-    documentation: documentation
-    research: research-synthesis
-```
-
-Override per-spec:
+Override the default prompt per-spec:
 
 ```yaml
 ---
 type: research
-prompt: research-analysis         # Use analysis prompt, not synthesis
+prompt: research-analysis
 ---
 ```
 
@@ -356,7 +317,6 @@ prompt: research-analysis         # Use analysis prompt, not synthesis
 | **Purpose** | Implement features | Manual work | Coordinate specs | Document code | Analyze/synthesize |
 | **Work input** | Criteria | Criteria | Members | `tracks:` | `informed_by:` / `origin:` |
 | **Drift trigger** | Criteria fail | Criteria fail | Members incomplete | `tracks:` changes | Input files change |
-| **Schedule** | No | No | No | No | Yes |
 | **Default prompt** | `standard` | `standard` | — | `documentation` | `research-*` |
 
 ---
@@ -364,24 +324,9 @@ prompt: research-analysis         # Use analysis prompt, not synthesis
 ## Implementation Status
 
 The `documentation` and `research` spec types are implemented with:
-- Frontmatter fields: `tracks:`, `informed_by:`, `origin:`, `schedule:`
+- Frontmatter fields: `tracks:`, `informed_by:`, `origin:`
 - Lint validation warnings for missing fields
-- Auto-selection of prompts based on spec type
 - Prompts: `documentation`, `research-analysis`, `research-synthesis`
-
-The following design questions remain TBD for future versions.
-
-### TBD: Schedule Execution Model
-
-How does `schedule:` trigger recurring execution?
-
-| Option | Description | Trade-offs |
-|--------|-------------|------------|
-| A: Daemon | Daemon polls schedules, triggers work | Requires daemon running |
-| B: External cron | User configures cron to call `chant work --scheduled` | User manages cron |
-| C: Built-in scheduler | `chant schedule` manages system cron/launchd | Platform-specific |
-
-**Decision:** TBD
 
 ### TBD: Drift Detection Storage
 

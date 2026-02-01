@@ -94,7 +94,6 @@ context:                       # Docs injected as background for agent
 tracks:                        # documentation: source code to monitor
 informed_by:                   # research: materials to synthesize
 origin:                        # research: input data (triggers drift)
-schedule: weekly               # research: recurring execution
 
 # Git (populated on completion)
 branch: chant/2026-01-22-002-q2n
@@ -104,7 +103,6 @@ model: claude-opus-4-5            # AI model that executed the spec
 
 # Execution
 prompt: standard               # Optional, defaults to config
-decisions: document            # autonomous | document | pause | fail
 
 # Verification
 last_verified: 2026-01-22T15:00:00Z  # Timestamp of last verification

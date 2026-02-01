@@ -57,7 +57,7 @@ For planned features and future releases, see [Roadmap](roadmap/roadmap.md).
 |---------|-------------|-----------------|---------|
 | Observability | [observability.md](scale/observability.md) | Local & Team tiers | Scale tier (metrics, daemon-based) |
 | Queue Architecture | [queue.md](scale/queue.md) | Daemon-free (Tiers 1-2) | Advanced backends (Tantivy, PostgreSQL, Redis) |
-| Templates | [templates.md](reference/templates.md) | Basic substitution | Full Handlebars (conditionals, helpers, partials, inheritance) |
+| Templates | [templates.md](reference/templates.md) | Basic `{{variable}}` substitution | — |
 | Ecosystem | [ecosystem.md](guides/ecosystem.md) | Provider adapters | Prompt registry, package management |
 | Git Hooks | [git.md](reference/git.md) | Basic validation | Advanced pre/post-commit workflows |
 
