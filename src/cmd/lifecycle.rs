@@ -21,6 +21,10 @@ use chant::merge_errors;
 use chant::paths::{ARCHIVE_DIR, PROMPTS_DIR};
 use chant::prompt;
 use chant::replay::ReplayContext;
+use chant::score::isolation::calculate_isolation;
+use chant::score::splittability::calculate_splittability;
+use chant::score::traffic_light::{determine_status, generate_suggestions};
+use chant::scoring::{SpecScore, SplittabilityGrade};
 use chant::spec::{self, Spec, SpecFrontmatter, SpecStatus};
 
 use crate::cmd;
@@ -257,6 +261,52 @@ fn cmd_split_impl(
         anyhow::bail!("Spec is already split");
     }
 
+    // Calculate splittability grade before splitting
+    let splittability_grade = calculate_splittability(&spec);
+
+    // Warn if Grade C or D and allow user to proceed with confirmation
+    if matches!(
+        splittability_grade,
+        SplittabilityGrade::C | SplittabilityGrade::D
+    ) {
+        let warning_level = if matches!(splittability_grade, SplittabilityGrade::D) {
+            "🔴 STRONG WARNING"
+        } else {
+            "🟡 WARNING"
+        };
+
+        eprintln!(
+            "\n{}: Splittability Grade {}",
+            warning_level, splittability_grade
+        );
+
+        let suggestion = match splittability_grade {
+            SplittabilityGrade::D => "This spec has tight coupling or circular dependencies. Splitting may not be effective.",
+            SplittabilityGrade::C => "This spec may not split well. Consider if splitting is appropriate.",
+            _ => unreachable!(),
+        };
+
+        eprintln!("  {}", suggestion);
+
+        // Prompt user to confirm they want to proceed
+        if atty::is(atty::Stream::Stdin) {
+            let should_proceed = dialoguer::Confirm::new()
+                .with_prompt("Do you want to proceed with splitting anyway?")
+                .default(false)
+                .interact()?;
+
+            if !should_proceed {
+                println!("\nSplit cancelled.");
+                return Ok(());
+            }
+        } else {
+            // Non-interactive mode: bail on Grade D, proceed on Grade C
+            if matches!(splittability_grade, SplittabilityGrade::D) {
+                anyhow::bail!("Cannot split: Splittability Grade D (tightly coupled). Use --force to override.");
+            }
+        }
+    }
+
     // Show complexity analysis
     show_complexity_analysis(&spec);
 
@@ -451,6 +501,67 @@ fn cmd_split_impl(
     };
 
     println!("{} {}", "→".cyan(), summary);
+
+    // Calculate isolation score for the resulting group
+    // Reload all specs to include the newly created member specs
+    let all_specs = spec::load_all_specs(&specs_dir)?;
+    let driver_spec = all_specs
+        .iter()
+        .find(|s| s.id == spec.id)
+        .context("Driver spec not found after split")?;
+
+    if let Some(isolation_grade) = calculate_isolation(driver_spec, &all_specs) {
+        // Calculate isolation percentage for display
+        let member_specs: Vec<&Spec> = all_specs
+            .iter()
+            .filter(|s| {
+                s.id.starts_with(&format!("{}.", spec.id)) && s.id.matches('.').count() == 1
+            })
+            .collect();
+
+        let isolation_percentage = calculate_isolation_percentage(&member_specs);
+        let shared_file_count = count_shared_files(&member_specs);
+        let total_files = count_total_unique_files(&member_specs);
+
+        // Determine traffic light and suggestions
+        let mock_score = SpecScore {
+            isolation: Some(isolation_grade),
+            ..Default::default()
+        };
+        let traffic_light = determine_status(&mock_score);
+        let suggestions = generate_suggestions(&mock_score);
+
+        // Display isolation scoring
+        println!("\n{} Split quality: {}", "→".cyan(), traffic_light);
+
+        let isolation_detail = if shared_file_count > 0 {
+            format!(
+                "Member isolation: {:.0}% ({} of {} members share {} file{})",
+                isolation_percentage,
+                member_specs.len()
+                    - (isolation_percentage / 100.0 * member_specs.len() as f64).round() as usize,
+                member_specs.len(),
+                shared_file_count,
+                if shared_file_count == 1 { "" } else { "s" }
+            )
+        } else if total_files > 0 {
+            format!(
+                "Member isolation: {:.0}% (No shared files)",
+                isolation_percentage
+            )
+        } else {
+            format!(
+                "Member isolation: {:.0}% (No files specified)",
+                isolation_percentage
+            )
+        };
+
+        println!("  {}", isolation_detail);
+
+        if !suggestions.is_empty() {
+            println!("\nSuggestion: {}", suggestions.join("; "));
+        }
+    }
 
     // Display split quality report
     if dep_analysis.is_some() || !quality_issues.is_empty() {
@@ -979,6 +1090,60 @@ fn is_infrastructure_member(member: &MemberSpec) -> bool {
     ];
 
     infra_keywords.iter().any(|keyword| text.contains(keyword))
+}
+
+/// Calculate isolation percentage for a group of member specs.
+///
+/// Returns the percentage of members that are isolated (no cross-references to other members).
+fn calculate_isolation_percentage(members: &[&Spec]) -> f64 {
+    if members.is_empty() {
+        return 100.0;
+    }
+
+    // Use regex to detect "Member N" patterns
+    let member_pattern = regex::Regex::new(r"(?i)\bmember\s+\d+\b").unwrap();
+
+    let isolated_count = members
+        .iter()
+        .filter(|member| !member_pattern.is_match(&member.body))
+        .count();
+
+    (isolated_count as f64 / members.len() as f64) * 100.0
+}
+
+/// Count the number of files that appear in multiple members' target_files.
+fn count_shared_files(members: &[&Spec]) -> usize {
+    use std::collections::HashMap;
+
+    let mut file_counts: HashMap<String, usize> = HashMap::new();
+
+    for member in members {
+        if let Some(target_files) = &member.frontmatter.target_files {
+            let unique_files: std::collections::HashSet<_> = target_files.iter().collect();
+            for file in unique_files {
+                *file_counts.entry(file.clone()).or_insert(0) += 1;
+            }
+        }
+    }
+
+    file_counts.values().filter(|&&count| count > 1).count()
+}
+
+/// Count total unique files across all members.
+fn count_total_unique_files(members: &[&Spec]) -> usize {
+    use std::collections::HashSet;
+
+    let mut all_files = HashSet::new();
+
+    for member in members {
+        if let Some(target_files) = &member.frontmatter.target_files {
+            for file in target_files {
+                all_files.insert(file.clone());
+            }
+        }
+    }
+
+    all_files.len()
 }
 
 /// Detect infrastructure ordering issues and add to quality issues
