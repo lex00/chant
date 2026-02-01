@@ -332,8 +332,11 @@ enum Commands {
         #[arg(long)]
         force: bool,
         /// Create a commit after archiving (only in git repos)
-        #[arg(long)]
+        #[arg(long, default_value = "true", action = clap::ArgAction::Set)]
         commit: bool,
+        /// Skip creating a commit after archiving
+        #[arg(long, conflicts_with = "commit")]
+        no_commit: bool,
         /// Use fs::rename instead of git mv (for special cases)
         #[arg(long)]
         no_stage: bool,
@@ -880,9 +883,18 @@ fn run() -> Result<()> {
             older_than,
             force,
             commit,
+            no_commit,
             no_stage,
         } => {
-            cmd::lifecycle::cmd_archive(id.as_deref(), dry_run, older_than, force, commit, no_stage)
+            let should_commit = commit && !no_commit;
+            cmd::lifecycle::cmd_archive(
+                id.as_deref(),
+                dry_run,
+                older_than,
+                force,
+                should_commit,
+                no_stage,
+            )
         }
         Commands::Merge {
             ids,
