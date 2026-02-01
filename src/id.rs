@@ -76,7 +76,7 @@ pub fn format_base36(n: u32, width: usize) -> String {
 }
 
 /// Parse a base36 string to a number.
-fn parse_base36(s: &str) -> Option<u32> {
+pub fn parse_base36(s: &str) -> Option<u32> {
     let mut result = 0u32;
 
     for c in s.chars() {

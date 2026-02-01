@@ -164,17 +164,18 @@ pub fn extract_member_number(member_id: &str) -> Option<u32> {
     None
 }
 
-/// Compare two spec IDs with numeric sorting for member specs.
+/// Compare two spec IDs with numeric sorting for member specs and base36 sequences.
 ///
-/// This function provides a natural sort order where member spec numbers are compared
-/// numerically rather than lexicographically. This ensures that specs like
-/// `2026-01-25-00y-abc.10` sort after `2026-01-25-00y-abc.2` rather than before.
+/// This function provides a natural sort order where member spec numbers and base36
+/// sequence portions are compared numerically rather than lexicographically. This ensures:
+/// - Specs like `2026-01-25-00y-abc.10` sort after `2026-01-25-00y-abc.2`
+/// - Specs like `2026-01-25-010-xxx` sort after `2026-01-25-00z-yyy`
 ///
 /// # Sorting behavior
 ///
-/// - For non-member specs, uses standard lexicographic comparison
-/// - For member specs (with `.N` suffix), compares the base ID lexicographically first,
-///   then compares member numbers numerically
+/// - For non-member specs, parses date/sequence/suffix and compares sequence numerically
+/// - For member specs (with `.N` suffix), compares the base ID using date/sequence/suffix
+///   parsing first, then compares member numbers numerically
 /// - Mixed member/non-member specs: non-members sort before members with the same base
 ///
 /// # Examples
@@ -185,6 +186,7 @@ pub fn extract_member_number(member_id: &str) -> Option<u32> {
 /// assert_eq!(compare_spec_ids("2026-01-25-00y-abc.10", "2026-01-25-00y-abc.2"), Ordering::Greater);
 /// assert_eq!(compare_spec_ids("2026-01-25-00y-abc", "2026-01-25-00y-def"), Ordering::Less);
 /// assert_eq!(compare_spec_ids("2026-01-25-00y-abc", "2026-01-25-00y-abc.1"), Ordering::Less);
+/// assert_eq!(compare_spec_ids("2026-01-25-010-xxx", "2026-01-25-00z-yyy"), Ordering::Greater);
 /// ```
 pub fn compare_spec_ids(a: &str, b: &str) -> std::cmp::Ordering {
     use std::cmp::Ordering;
@@ -196,8 +198,8 @@ pub fn compare_spec_ids(a: &str, b: &str) -> std::cmp::Ordering {
     match (a_driver, b_driver) {
         (Some(a_base), Some(b_base)) => {
             // Both are member specs
-            // First compare the base IDs
-            match a_base.cmp(&b_base) {
+            // First compare the base IDs with sequence parsing
+            match compare_base_ids(&a_base, &b_base) {
                 Ordering::Equal => {
                     // Same base ID, compare member numbers numerically
                     let a_num = extract_member_number(a).unwrap_or(u32::MAX);
@@ -209,8 +211,8 @@ pub fn compare_spec_ids(a: &str, b: &str) -> std::cmp::Ordering {
         }
         (Some(a_base), None) => {
             // a is a member, b is not
-            // Compare a's base with b
-            match a_base.as_str().cmp(b) {
+            // Compare a's base with b using sequence parsing
+            match compare_base_ids(&a_base, b) {
                 Ordering::Equal => {
                     // b is the driver of a, so b comes first
                     Ordering::Greater
@@ -220,8 +222,8 @@ pub fn compare_spec_ids(a: &str, b: &str) -> std::cmp::Ordering {
         }
         (None, Some(b_base)) => {
             // a is not a member, b is
-            // Compare a with b's base
-            match a.cmp(b_base.as_str()) {
+            // Compare a with b's base using sequence parsing
+            match compare_base_ids(a, &b_base) {
                 Ordering::Equal => {
                     // a is the driver of b, so a comes first
                     Ordering::Less
@@ -230,10 +232,67 @@ pub fn compare_spec_ids(a: &str, b: &str) -> std::cmp::Ordering {
             }
         }
         (None, None) => {
-            // Neither are member specs, use lexicographic comparison
-            a.cmp(b)
+            // Neither are member specs, use sequence parsing
+            compare_base_ids(a, b)
         }
     }
+}
+
+/// Compare two base spec IDs by parsing date, sequence, and suffix.
+///
+/// Spec IDs have format: YYYY-MM-DD-SSS-XXX where:
+/// - YYYY-MM-DD is the date (compared lexicographically)
+/// - SSS is a base36 sequence (compared numerically)
+/// - XXX is a random base36 suffix (compared lexicographically as tiebreaker)
+fn compare_base_ids(a: &str, b: &str) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+
+    // Parse both IDs into (date, sequence, suffix)
+    let a_parts = parse_spec_id_parts(a);
+    let b_parts = parse_spec_id_parts(b);
+
+    match (a_parts, b_parts) {
+        (Some((a_date, a_seq, a_suffix)), Some((b_date, b_seq, b_suffix))) => {
+            // Compare date lexicographically
+            match a_date.cmp(b_date) {
+                Ordering::Equal => {
+                    // Same date, compare sequence numerically
+                    match a_seq.cmp(&b_seq) {
+                        Ordering::Equal => {
+                            // Same sequence, compare suffix lexicographically
+                            a_suffix.cmp(b_suffix)
+                        }
+                        other => other,
+                    }
+                }
+                other => other,
+            }
+        }
+        // If parsing fails, fall back to lexicographic comparison
+        _ => a.cmp(b),
+    }
+}
+
+/// Parse a spec ID into (date, sequence_number, suffix).
+/// Returns None if the ID doesn't match the expected format.
+fn parse_spec_id_parts(id: &str) -> Option<(&str, u32, &str)> {
+    let parts: Vec<&str> = id.split('-').collect();
+
+    // Expected format: YYYY-MM-DD-SSS-XXX (5 parts minimum)
+    if parts.len() < 5 {
+        return None;
+    }
+
+    // Date is parts[0..3] joined: YYYY-MM-DD
+    let date = &id[..10]; // "YYYY-MM-DD" is always 10 chars
+
+    // Sequence is parts[3], parse from base36
+    let seq = crate::id::parse_base36(parts[3])?;
+
+    // Suffix is parts[4]
+    let suffix = parts[4];
+
+    Some((date, seq, suffix))
 }
 
 /// Check if all prior siblings of a member spec are completed.
@@ -984,6 +1043,43 @@ status: completed
                 "2026-01-25-00y-abc.2",
                 "2026-01-25-00y-abc.3",
                 "2026-01-25-00y-abc.10",
+            ]
+        );
+    }
+
+    #[test]
+    fn test_compare_spec_ids_base36_sequence_rollover() {
+        use std::cmp::Ordering;
+
+        // Test that base36 sequence 010 (decimal 36) sorts after 00z (decimal 35)
+        assert_eq!(
+            compare_spec_ids("2026-01-25-010-xxx", "2026-01-25-00z-yyy"),
+            Ordering::Greater
+        );
+        assert_eq!(
+            compare_spec_ids("2026-01-25-00z-yyy", "2026-01-25-010-xxx"),
+            Ordering::Less
+        );
+
+        // Test sorting a list with base36 rollover
+        let mut ids = vec![
+            "2026-01-25-010-aaa",
+            "2026-01-25-00a-bbb",
+            "2026-01-25-00z-ccc",
+            "2026-01-25-001-ddd",
+            "2026-01-25-011-eee",
+        ];
+
+        ids.sort_by(|a, b| compare_spec_ids(a, b));
+
+        assert_eq!(
+            ids,
+            vec![
+                "2026-01-25-001-ddd", // 1
+                "2026-01-25-00a-bbb", // 10
+                "2026-01-25-00z-ccc", // 35
+                "2026-01-25-010-aaa", // 36
+                "2026-01-25-011-eee", // 37
             ]
         );
     }
