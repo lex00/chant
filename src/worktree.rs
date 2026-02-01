@@ -147,6 +147,47 @@ pub fn create_worktree(spec_id: &str, branch: &str) -> Result<PathBuf> {
     Ok(worktree_path)
 }
 
+/// Copies the spec file from the main working directory to a worktree.
+///
+/// This ensures the worktree has the current spec state (e.g., in_progress status)
+/// even when the change hasn't been committed to main yet.
+///
+/// # Arguments
+///
+/// * `spec_id` - The specification ID
+/// * `worktree_path` - The path to the worktree
+///
+/// # Returns
+///
+/// Ok(()) if the spec file was successfully copied and committed.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The spec file doesn't exist in the main working directory
+/// - The copy operation fails
+/// - The commit fails
+pub fn copy_spec_to_worktree(spec_id: &str, worktree_path: &Path) -> Result<()> {
+    let main_spec_path = PathBuf::from(".chant/specs").join(format!("{}.md", spec_id));
+    let worktree_spec_path = worktree_path
+        .join(".chant/specs")
+        .join(format!("{}.md", spec_id));
+
+    // Copy the spec file from main to worktree
+    std::fs::copy(&main_spec_path, &worktree_spec_path).context(format!(
+        "Failed to copy spec file to worktree: {:?}",
+        worktree_spec_path
+    ))?;
+
+    // Commit the updated spec in the worktree
+    commit_in_worktree(
+        worktree_path,
+        &format!("chant({}): update spec status to in_progress", spec_id),
+    )?;
+
+    Ok(())
+}
+
 /// Removes a git worktree and cleans up its directory.
 ///
 /// This function is idempotent - it does not error if the worktree is already gone.

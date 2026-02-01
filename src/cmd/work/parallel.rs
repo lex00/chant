@@ -511,6 +511,37 @@ pub fn cmd_work_parallel(
             Ok(path) => {
                 // Register worktree for cleanup on interrupt
                 execution_state.register_worktree(&spec.id, path.clone());
+
+                // Copy the updated spec file to the worktree
+                if let Err(e) = worktree::copy_spec_to_worktree(&spec.id, &path) {
+                    println!(
+                        "{} [{}] Failed to copy spec to worktree: {}",
+                        "✗".red(),
+                        spec.id,
+                        e
+                    );
+                    // Clean up worktree since we failed
+                    let _ = worktree::remove_worktree(&path);
+                    // Update spec to failed
+                    let spec_path = specs_dir.join(format!("{}.md", spec.id));
+                    if let Ok(mut failed_spec) = spec::resolve_spec(specs_dir, &spec.id) {
+                        failed_spec.frontmatter.status = SpecStatus::Failed;
+                        let _ = failed_spec.save(&spec_path);
+                    }
+                    // Send failed result without spawning thread
+                    let _ = tx.send(ParallelResult {
+                        spec_id: spec.id.clone(),
+                        success: false,
+                        commits: None,
+                        error: Some(e.to_string()),
+                        worktree_path: None,
+                        branch_name: None,
+                        is_direct_mode,
+                        agent_completed: false,
+                    });
+                    continue;
+                }
+
                 (Some(path), Some(branch_name.clone()))
             }
             Err(e) => {
