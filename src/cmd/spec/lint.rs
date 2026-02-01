@@ -208,17 +208,20 @@ fn extract_acceptance_criteria(spec: &Spec) -> Vec<String> {
         }
 
         // Extract checkbox items
-        if in_ac_section && !in_code_fence
-            && (trimmed.starts_with("- [ ]") || trimmed.starts_with("- [x]")) {
-                // Extract text after checkbox
-                let text = trimmed.trim_start_matches("- [ ]")
-                    .trim_start_matches("- [x]")
-                    .trim()
-                    .to_string();
-                if !text.is_empty() {
-                    criteria.push(text);
-                }
+        if in_ac_section
+            && !in_code_fence
+            && (trimmed.starts_with("- [ ]") || trimmed.starts_with("- [x]"))
+        {
+            // Extract text after checkbox
+            let text = trimmed
+                .trim_start_matches("- [ ]")
+                .trim_start_matches("- [x]")
+                .trim()
+                .to_string();
+            if !text.is_empty() {
+                criteria.push(text);
             }
+        }
     }
 
     criteria
