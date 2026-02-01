@@ -275,15 +275,6 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
-    /// Show ready specs (shortcut for `list --ready`)
-    Ready {
-        /// Show ready specs across all configured repos
-        #[arg(long)]
-        global: bool,
-        /// Filter to specific repository (implies --global)
-        #[arg(long)]
-        repo: Option<String>,
-    },
     /// Refresh dependency status for all specs
     Refresh {
         /// Show detailed list of ready and blocked specs
@@ -853,21 +844,6 @@ fn run() -> Result<()> {
             brief,
             json,
         } => cmd::spec::cmd_status(global, repo.as_deref(), watch, brief, json),
-        Commands::Ready { global, repo } => cmd::spec::cmd_list(
-            true,
-            &[],
-            None,
-            None,
-            global,
-            repo.as_deref(),
-            None,
-            None,
-            None,
-            None,
-            None,
-            false,
-            false, // main_only
-        ),
         Commands::Refresh { verbose } => cmd::refresh::cmd_refresh(verbose),
         Commands::Lint { format, verbose } => {
             let lint_format = match format.to_lowercase().as_str() {
