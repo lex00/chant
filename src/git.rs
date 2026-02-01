@@ -600,6 +600,127 @@ pub fn count_commits(branch: &str) -> Result<usize> {
     Ok(count_str.parse().unwrap_or(0))
 }
 
+/// Information about a single git commit.
+#[derive(Debug, Clone)]
+pub struct CommitInfo {
+    pub hash: String,
+    pub message: String,
+    pub author: String,
+    pub timestamp: i64,
+}
+
+/// Get commits in a range between two refs.
+///
+/// Returns commits between `from_ref` and `to_ref` (inclusive of `to_ref`, exclusive of `from_ref`).
+/// Uses `git log from_ref..to_ref` format.
+///
+/// # Errors
+/// Returns error if refs are invalid or git command fails.
+pub fn get_commits_in_range(from_ref: &str, to_ref: &str) -> Result<Vec<CommitInfo>> {
+    let range = format!("{}..{}", from_ref, to_ref);
+
+    let output = Command::new("git")
+        .args(["log", &range, "--format=%H|%an|%at|%s", "--reverse"])
+        .output()
+        .context("Failed to execute git log")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Invalid git refs {}: {}", range, stderr);
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut commits = Vec::new();
+
+    for line in stdout.lines() {
+        if line.is_empty() {
+            continue;
+        }
+
+        let parts: Vec<&str> = line.splitn(4, '|').collect();
+        if parts.len() != 4 {
+            continue;
+        }
+
+        commits.push(CommitInfo {
+            hash: parts[0].to_string(),
+            author: parts[1].to_string(),
+            timestamp: parts[2].parse().unwrap_or(0),
+            message: parts[3].to_string(),
+        });
+    }
+
+    Ok(commits)
+}
+
+/// Get files changed in a specific commit.
+///
+/// Returns a list of file paths that were modified in the commit.
+///
+/// # Errors
+/// Returns error if commit hash is invalid or git command fails.
+pub fn get_commit_changed_files(hash: &str) -> Result<Vec<String>> {
+    let output = Command::new("git")
+        .args(["diff-tree", "--no-commit-id", "--name-only", "-r", hash])
+        .output()
+        .context("Failed to execute git diff-tree")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Invalid commit hash {}: {}", hash, stderr);
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let files: Vec<String> = stdout
+        .lines()
+        .filter(|line| !line.is_empty())
+        .map(|line| line.to_string())
+        .collect();
+
+    Ok(files)
+}
+
+/// Get the N most recent commits.
+///
+/// # Errors
+/// Returns error if git command fails.
+pub fn get_recent_commits(count: usize) -> Result<Vec<CommitInfo>> {
+    let count_str = count.to_string();
+
+    let output = Command::new("git")
+        .args(["log", "-n", &count_str, "--format=%H|%an|%at|%s"])
+        .output()
+        .context("Failed to execute git log")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Failed to get recent commits: {}", stderr);
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut commits = Vec::new();
+
+    for line in stdout.lines() {
+        if line.is_empty() {
+            continue;
+        }
+
+        let parts: Vec<&str> = line.splitn(4, '|').collect();
+        if parts.len() != 4 {
+            continue;
+        }
+
+        commits.push(CommitInfo {
+            hash: parts[0].to_string(),
+            author: parts[1].to_string(),
+            timestamp: parts[2].parse().unwrap_or(0),
+            message: parts[3].to_string(),
+        });
+    }
+
+    Ok(commits)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1079,6 +1200,174 @@ mod tests {
         // Verify we're still on main
         let current = get_current_branch()?;
         assert_eq!(current, "main");
+
+        std::env::set_current_dir(original_dir)?;
+        Ok(())
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_get_commits_in_range() -> Result<()> {
+        let temp_dir = setup_test_repo()?;
+        let repo_path = temp_dir.path();
+        let original_dir = std::env::current_dir()?;
+
+        std::env::set_current_dir(repo_path)?;
+
+        // Create additional commits
+        for i in 1..=5 {
+            let file_path = repo_path.join(format!("test{}.txt", i));
+            fs::write(&file_path, format!("content {}", i))?;
+            Command::new("git").args(["add", "."]).output()?;
+            Command::new("git")
+                .args(["commit", "-m", &format!("Commit {}", i)])
+                .output()?;
+        }
+
+        // Get commits in range
+        let commits = get_commits_in_range("HEAD~5", "HEAD")?;
+
+        assert_eq!(commits.len(), 5);
+        assert_eq!(commits[0].message, "Commit 1");
+        assert_eq!(commits[4].message, "Commit 5");
+
+        std::env::set_current_dir(original_dir)?;
+        Ok(())
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_get_commits_in_range_invalid_refs() -> Result<()> {
+        let temp_dir = setup_test_repo()?;
+        let repo_path = temp_dir.path();
+        let original_dir = std::env::current_dir()?;
+
+        std::env::set_current_dir(repo_path)?;
+
+        let result = get_commits_in_range("invalid", "HEAD");
+        assert!(result.is_err());
+
+        std::env::set_current_dir(original_dir)?;
+        Ok(())
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_get_commits_in_range_empty() -> Result<()> {
+        let temp_dir = setup_test_repo()?;
+        let repo_path = temp_dir.path();
+        let original_dir = std::env::current_dir()?;
+
+        std::env::set_current_dir(repo_path)?;
+
+        // Same ref should return empty
+        let commits = get_commits_in_range("HEAD", "HEAD")?;
+        assert_eq!(commits.len(), 0);
+
+        std::env::set_current_dir(original_dir)?;
+        Ok(())
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_get_commit_changed_files() -> Result<()> {
+        let temp_dir = setup_test_repo()?;
+        let repo_path = temp_dir.path();
+        let original_dir = std::env::current_dir()?;
+
+        std::env::set_current_dir(repo_path)?;
+
+        // Create a commit with multiple files
+        let file1 = repo_path.join("file1.txt");
+        let file2 = repo_path.join("file2.txt");
+        fs::write(&file1, "content1")?;
+        fs::write(&file2, "content2")?;
+        Command::new("git").args(["add", "."]).output()?;
+        Command::new("git")
+            .args(["commit", "-m", "Add files"])
+            .output()?;
+
+        let hash_output = Command::new("git").args(["rev-parse", "HEAD"]).output()?;
+        let hash = String::from_utf8_lossy(&hash_output.stdout)
+            .trim()
+            .to_string();
+
+        let files = get_commit_changed_files(&hash)?;
+        assert_eq!(files.len(), 2);
+        assert!(files.contains(&"file1.txt".to_string()));
+        assert!(files.contains(&"file2.txt".to_string()));
+
+        std::env::set_current_dir(original_dir)?;
+        Ok(())
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_get_commit_changed_files_invalid_hash() -> Result<()> {
+        let temp_dir = setup_test_repo()?;
+        let repo_path = temp_dir.path();
+        let original_dir = std::env::current_dir()?;
+
+        std::env::set_current_dir(repo_path)?;
+
+        let result = get_commit_changed_files("invalid_hash");
+        assert!(result.is_err());
+
+        std::env::set_current_dir(original_dir)?;
+        Ok(())
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_get_commit_changed_files_empty() -> Result<()> {
+        let temp_dir = setup_test_repo()?;
+        let repo_path = temp_dir.path();
+        let original_dir = std::env::current_dir()?;
+
+        std::env::set_current_dir(repo_path)?;
+
+        // Create an empty commit
+        Command::new("git")
+            .args(["commit", "--allow-empty", "-m", "Empty commit"])
+            .output()?;
+
+        let hash_output = Command::new("git").args(["rev-parse", "HEAD"]).output()?;
+        let hash = String::from_utf8_lossy(&hash_output.stdout)
+            .trim()
+            .to_string();
+
+        let files = get_commit_changed_files(&hash)?;
+        assert_eq!(files.len(), 0);
+
+        std::env::set_current_dir(original_dir)?;
+        Ok(())
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_get_recent_commits() -> Result<()> {
+        let temp_dir = setup_test_repo()?;
+        let repo_path = temp_dir.path();
+        let original_dir = std::env::current_dir()?;
+
+        std::env::set_current_dir(repo_path)?;
+
+        // Create additional commits
+        for i in 1..=5 {
+            let file_path = repo_path.join(format!("test{}.txt", i));
+            fs::write(&file_path, format!("content {}", i))?;
+            Command::new("git").args(["add", "."]).output()?;
+            Command::new("git")
+                .args(["commit", "-m", &format!("Recent {}", i)])
+                .output()?;
+        }
+
+        // Get 3 recent commits
+        let commits = get_recent_commits(3)?;
+        assert_eq!(commits.len(), 3);
+        assert_eq!(commits[0].message, "Recent 5");
+        assert_eq!(commits[1].message, "Recent 4");
+        assert_eq!(commits[2].message, "Recent 3");
 
         std::env::set_current_dir(original_dir)?;
         Ok(())
