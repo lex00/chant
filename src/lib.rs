@@ -66,6 +66,7 @@ pub mod prompts;
 pub mod provider;
 pub mod replay;
 pub mod retry;
+pub mod score;
 pub mod scoring;
 pub mod site;
 pub mod spec;
