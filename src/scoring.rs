@@ -177,6 +177,50 @@ impl fmt::Display for TrafficLight {
     }
 }
 
+/// Calculate complexity grade based on criteria count, target files, and word count
+///
+/// Grading rules:
+/// - Grade A: 1-3 criteria, 1-2 files, <200 words
+/// - Grade B: 4-5 criteria, 3 files, 200-400 words
+/// - Grade C: 6-7 criteria, 4 files, 400-600 words
+/// - Grade D: 8+ criteria OR 5+ files OR 600+ words
+///
+/// If any single metric triggers D, overall grade is D.
+pub fn calculate_complexity(spec: &crate::spec::Spec) -> ComplexityGrade {
+    // Count acceptance criteria
+    let criteria_count = spec.count_total_checkboxes();
+
+    // Count target files (default to 0 if None)
+    let file_count = spec
+        .frontmatter
+        .target_files
+        .as_ref()
+        .map(|files| files.len())
+        .unwrap_or(0);
+
+    // Count words in body (split by whitespace, filter empty)
+    let word_count = spec.body.split_whitespace().count();
+
+    // Determine grade based on all three metrics
+    // If any single metric triggers D, overall is D
+    if criteria_count >= 8 || file_count >= 5 || word_count >= 600 {
+        return ComplexityGrade::D;
+    }
+
+    // Check for Grade C thresholds
+    if criteria_count >= 6 || file_count >= 4 || word_count >= 400 {
+        return ComplexityGrade::C;
+    }
+
+    // Check for Grade B thresholds
+    if criteria_count >= 4 || file_count >= 3 || word_count >= 200 {
+        return ComplexityGrade::B;
+    }
+
+    // Otherwise Grade A
+    ComplexityGrade::A
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -280,5 +324,188 @@ mod tests {
         assert_eq!(score.isolation, None);
         assert_eq!(score.ac_quality, ACQualityGrade::A);
         assert_eq!(score.traffic_light, TrafficLight::Ready);
+    }
+
+    #[test]
+    fn test_calculate_complexity_grade_a() {
+        use crate::spec::{Spec, SpecFrontmatter};
+
+        // 2 criteria, 1 file, 150 words → Grade A
+        let spec = Spec {
+            id: "test".to_string(),
+            frontmatter: SpecFrontmatter {
+                target_files: Some(vec!["file1.rs".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Test".to_string()),
+            body: format!(
+                "## Acceptance Criteria\n- [ ] First\n- [ ] Second\n\n{}",
+                "word ".repeat(150)
+            ),
+        };
+
+        assert_eq!(calculate_complexity(&spec), ComplexityGrade::A);
+    }
+
+    #[test]
+    fn test_calculate_complexity_grade_b() {
+        use crate::spec::{Spec, SpecFrontmatter};
+
+        // 5 criteria, 3 files, 300 words → Grade B
+        let spec = Spec {
+            id: "test".to_string(),
+            frontmatter: SpecFrontmatter {
+                target_files: Some(vec![
+                    "file1.rs".to_string(),
+                    "file2.rs".to_string(),
+                    "file3.rs".to_string(),
+                ]),
+                ..Default::default()
+            },
+            title: Some("Test".to_string()),
+            body: format!(
+                "## Acceptance Criteria\n- [ ] First\n- [ ] Second\n- [ ] Third\n- [ ] Fourth\n- [ ] Fifth\n\n{}",
+                "word ".repeat(300)
+            ),
+        };
+
+        assert_eq!(calculate_complexity(&spec), ComplexityGrade::B);
+    }
+
+    #[test]
+    fn test_calculate_complexity_grade_c() {
+        use crate::spec::{Spec, SpecFrontmatter};
+
+        // 6 criteria, 4 files, 500 words → Grade C
+        let spec = Spec {
+            id: "test".to_string(),
+            frontmatter: SpecFrontmatter {
+                target_files: Some(vec![
+                    "file1.rs".to_string(),
+                    "file2.rs".to_string(),
+                    "file3.rs".to_string(),
+                    "file4.rs".to_string(),
+                ]),
+                ..Default::default()
+            },
+            title: Some("Test".to_string()),
+            body: format!(
+                "## Acceptance Criteria\n- [ ] First\n- [ ] Second\n- [ ] Third\n- [ ] Fourth\n- [ ] Fifth\n- [ ] Sixth\n\n{}",
+                "word ".repeat(500)
+            ),
+        };
+
+        assert_eq!(calculate_complexity(&spec), ComplexityGrade::C);
+    }
+
+    #[test]
+    fn test_calculate_complexity_grade_d_criteria() {
+        use crate::spec::{Spec, SpecFrontmatter};
+
+        // 10 criteria, 2 files, 100 words → Grade D (criteria exceeds threshold)
+        let spec = Spec {
+            id: "test".to_string(),
+            frontmatter: SpecFrontmatter {
+                target_files: Some(vec!["file1.rs".to_string(), "file2.rs".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Test".to_string()),
+            body: format!(
+                "## Acceptance Criteria\n{}\n\n{}",
+                (1..=10)
+                    .map(|i| format!("- [ ] Item {}", i))
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+                "word ".repeat(100)
+            ),
+        };
+
+        assert_eq!(calculate_complexity(&spec), ComplexityGrade::D);
+    }
+
+    #[test]
+    fn test_calculate_complexity_grade_d_files() {
+        use crate::spec::{Spec, SpecFrontmatter};
+
+        // 2 criteria, 5 files, 100 words → Grade D (files exceeds threshold)
+        let spec = Spec {
+            id: "test".to_string(),
+            frontmatter: SpecFrontmatter {
+                target_files: Some(vec![
+                    "file1.rs".to_string(),
+                    "file2.rs".to_string(),
+                    "file3.rs".to_string(),
+                    "file4.rs".to_string(),
+                    "file5.rs".to_string(),
+                ]),
+                ..Default::default()
+            },
+            title: Some("Test".to_string()),
+            body: format!(
+                "## Acceptance Criteria\n- [ ] First\n- [ ] Second\n\n{}",
+                "word ".repeat(100)
+            ),
+        };
+
+        assert_eq!(calculate_complexity(&spec), ComplexityGrade::D);
+    }
+
+    #[test]
+    fn test_calculate_complexity_grade_d_words() {
+        use crate::spec::{Spec, SpecFrontmatter};
+
+        // 2 criteria, 1 file, 700 words → Grade D (words exceeds threshold)
+        let spec = Spec {
+            id: "test".to_string(),
+            frontmatter: SpecFrontmatter {
+                target_files: Some(vec!["file1.rs".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Test".to_string()),
+            body: format!(
+                "## Acceptance Criteria\n- [ ] First\n- [ ] Second\n\n{}",
+                "word ".repeat(700)
+            ),
+        };
+
+        assert_eq!(calculate_complexity(&spec), ComplexityGrade::D);
+    }
+
+    #[test]
+    fn test_calculate_complexity_no_target_files() {
+        use crate::spec::{Spec, SpecFrontmatter};
+
+        // Specs with no target_files should default to 0 files
+        let spec = Spec {
+            id: "test".to_string(),
+            frontmatter: SpecFrontmatter {
+                target_files: None,
+                ..Default::default()
+            },
+            title: Some("Test".to_string()),
+            body:
+                "## Acceptance Criteria\n- [ ] First\n- [ ] Second\n\nSome content here with words."
+                    .to_string(),
+        };
+
+        assert_eq!(calculate_complexity(&spec), ComplexityGrade::A);
+    }
+
+    #[test]
+    fn test_calculate_complexity_empty_body() {
+        use crate::spec::{Spec, SpecFrontmatter};
+
+        // Empty body should have word count of 0
+        let spec = Spec {
+            id: "test".to_string(),
+            frontmatter: SpecFrontmatter {
+                target_files: Some(vec!["file1.rs".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Test".to_string()),
+            body: String::new(),
+        };
+
+        assert_eq!(calculate_complexity(&spec), ComplexityGrade::A);
     }
 }
