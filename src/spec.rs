@@ -453,6 +453,46 @@ impl Spec {
         }
     }
 
+    /// Check if this spec has acceptance criteria.
+    /// Returns true if the spec body contains an "## Acceptance Criteria" section
+    /// with at least one checkbox item.
+    pub fn has_acceptance_criteria(&self) -> bool {
+        let acceptance_criteria_marker = "## Acceptance Criteria";
+        let mut in_ac_section = false;
+        let mut in_code_fence = false;
+
+        for line in self.body.lines() {
+            let trimmed = line.trim_start();
+
+            // Track code fences
+            if trimmed.starts_with("```") {
+                in_code_fence = !in_code_fence;
+            }
+
+            // Look for AC section heading outside code fences
+            if !in_code_fence && trimmed.starts_with(acceptance_criteria_marker) {
+                in_ac_section = true;
+                continue;
+            }
+
+            // Stop at next heading
+            if in_ac_section && trimmed.starts_with("## ") {
+                break;
+            }
+
+            // Check for checkbox items in AC section
+            if in_ac_section
+                && (trimmed.starts_with("- [ ] ")
+                    || trimmed.starts_with("- [x] ")
+                    || trimmed.starts_with("- [X] "))
+            {
+                return true;
+            }
+        }
+
+        false
+    }
+
     /// Check if this spec has unmet dependencies or approval requirements that would block it.
     /// Returns true if:
     /// - The spec has dependencies pointing to incomplete specs, OR
@@ -499,12 +539,13 @@ impl Spec {
         }
 
         // Check group members are completed (if this is a driver)
+        // Skip this check if the driver has no acceptance criteria (organizational spec)
         let members: Vec<_> = all_specs
             .iter()
             .filter(|s| is_member_of(&s.id, &self.id))
             .collect();
 
-        if !members.is_empty() {
+        if !members.is_empty() && self.has_acceptance_criteria() {
             for member in members {
                 if member.frontmatter.status != SpecStatus::Completed {
                     return false;
@@ -1099,6 +1140,84 @@ status: pending
     }
 
     #[test]
+    fn test_has_acceptance_criteria_with_criteria() {
+        let spec = Spec::parse(
+            "001",
+            r#"---
+status: pending
+---
+# Test
+
+## Acceptance Criteria
+
+- [ ] First criterion
+- [x] Second criterion
+"#,
+        )
+        .unwrap();
+
+        assert!(spec.has_acceptance_criteria());
+    }
+
+    #[test]
+    fn test_has_acceptance_criteria_without_criteria() {
+        let spec = Spec::parse(
+            "001",
+            r#"---
+status: pending
+---
+# Test
+
+This spec has no acceptance criteria section.
+"#,
+        )
+        .unwrap();
+
+        assert!(!spec.has_acceptance_criteria());
+    }
+
+    #[test]
+    fn test_has_acceptance_criteria_empty_section() {
+        let spec = Spec::parse(
+            "001",
+            r#"---
+status: pending
+---
+# Test
+
+## Acceptance Criteria
+
+This section exists but has no checkbox items.
+"#,
+        )
+        .unwrap();
+
+        assert!(!spec.has_acceptance_criteria());
+    }
+
+    #[test]
+    fn test_has_acceptance_criteria_in_code_block() {
+        let spec = Spec::parse(
+            "001",
+            r#"---
+status: pending
+---
+# Test
+
+```markdown
+## Acceptance Criteria
+
+- [ ] This is in a code block
+```
+"#,
+        )
+        .unwrap();
+
+        // Should not count criteria in code blocks
+        assert!(!spec.has_acceptance_criteria());
+    }
+
+    #[test]
     fn test_count_unchecked_checkboxes_skip_code_blocks() {
         let spec = Spec::parse(
             "001",
@@ -1284,6 +1403,86 @@ status: pending
         // Verify driver status is still in_progress (not changed)
         let updated_driver = Spec::load(&driver_path).unwrap();
         assert_eq!(updated_driver.frontmatter.status, SpecStatus::InProgress);
+    }
+
+    #[test]
+    fn test_driver_without_criteria_ready_with_pending_members() {
+        // Driver spec without acceptance criteria (organizational spec)
+        let driver = Spec::parse(
+            "2026-01-24-005-xyz",
+            r#"---
+status: pending
+---
+# Organizational driver spec
+
+This is an organizational driver with no acceptance criteria.
+"#,
+        )
+        .unwrap();
+
+        // Member spec that is pending
+        let member = Spec::parse(
+            "2026-01-24-005-xyz.1",
+            r#"---
+status: pending
+---
+# Member 1
+
+## Acceptance Criteria
+
+- [ ] Do something
+"#,
+        )
+        .unwrap();
+
+        let all_specs = vec![driver.clone(), member];
+
+        // Driver without criteria should be ready even with pending members
+        assert!(
+            driver.is_ready(&all_specs),
+            "Driver without criteria should be ready even with pending members"
+        );
+    }
+
+    #[test]
+    fn test_driver_with_criteria_not_ready_with_pending_members() {
+        // Driver spec WITH acceptance criteria
+        let driver = Spec::parse(
+            "2026-01-24-006-abc",
+            r#"---
+status: pending
+---
+# Driver with criteria
+
+## Acceptance Criteria
+
+- [ ] Overall goal
+"#,
+        )
+        .unwrap();
+
+        // Member spec that is pending
+        let member = Spec::parse(
+            "2026-01-24-006-abc.1",
+            r#"---
+status: pending
+---
+# Member 1
+
+## Acceptance Criteria
+
+- [ ] Do something
+"#,
+        )
+        .unwrap();
+
+        let all_specs = vec![driver.clone(), member];
+
+        // Driver with criteria should NOT be ready with pending members
+        assert!(
+            !driver.is_ready(&all_specs),
+            "Driver with criteria should not be ready with pending members"
+        );
     }
 
     #[test]
