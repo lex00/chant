@@ -6,6 +6,7 @@
 use anyhow::Result;
 use colored::Colorize;
 use std::collections::HashMap;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -631,7 +632,15 @@ pub fn cmd_list(
 // STATUS COMMAND
 // ============================================================================
 
-pub fn cmd_status(global: bool, repo_filter: Option<&str>) -> Result<()> {
+pub fn cmd_status(global: bool, repo_filter: Option<&str>, watch: bool) -> Result<()> {
+    if watch {
+        cmd_status_watch(global, repo_filter)
+    } else {
+        cmd_status_once(global, repo_filter)
+    }
+}
+
+fn cmd_status_once(global: bool, repo_filter: Option<&str>) -> Result<()> {
     if global || repo_filter.is_some() {
         // Multi-repo status output
         let specs = load_specs_from_repos(repo_filter)?;
@@ -722,4 +731,36 @@ pub fn cmd_status(global: bool, repo_filter: Option<&str>) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn cmd_status_watch(global: bool, repo_filter: Option<&str>) -> Result<()> {
+    use std::time::Duration;
+
+    loop {
+        // Clear the screen using ANSI escape codes
+        // Try ANSI codes first, fall back to separator line if that fails
+        if clear_screen().is_err() {
+            // Fallback: print separator line
+            println!("\n{}\n", "=".repeat(80));
+        }
+
+        // Display status once
+        if let Err(e) = cmd_status_once(global, repo_filter) {
+            eprintln!("Error refreshing status: {}", e);
+            // Continue watching even if there's an error
+        }
+
+        // Flush stdout to ensure output is visible immediately
+        io::stdout().flush()?;
+
+        // Sleep for 5 seconds
+        std::thread::sleep(Duration::from_secs(5));
+    }
+}
+
+/// Clear the screen using ANSI escape codes
+fn clear_screen() -> io::Result<()> {
+    // ANSI escape code to clear screen and move cursor to top-left
+    print!("\x1B[2J\x1B[1;1H");
+    io::stdout().flush()
 }

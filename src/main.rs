@@ -265,6 +265,9 @@ enum Commands {
         /// Filter to specific repository (implies --global)
         #[arg(long)]
         repo: Option<String>,
+        /// Watch mode - refresh every 5 seconds
+        #[arg(long)]
+        watch: bool,
     },
     /// Show ready specs (shortcut for `list --ready`)
     Ready {
@@ -837,7 +840,11 @@ fn run() -> Result<()> {
             no_rebase,
         ),
         Commands::Mcp => mcp::run_server(),
-        Commands::Status { global, repo } => cmd::spec::cmd_status(global, repo.as_deref()),
+        Commands::Status {
+            global,
+            repo,
+            watch,
+        } => cmd::spec::cmd_status(global, repo.as_deref(), watch),
         Commands::Ready { global, repo } => cmd::spec::cmd_list(
             true,
             &[],
