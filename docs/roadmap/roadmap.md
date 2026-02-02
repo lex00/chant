@@ -20,7 +20,6 @@
 
 - **Hooks** — Pre/post-execution hooks for custom workflows. See [Hooks](planned/hooks.md).
 - **Triggers** — Event-based spec activation (file changes, schedules, webhooks). See [Triggers](planned/triggers.md).
-- **Approvals** — Human-in-the-loop workflow for spec execution. See [Approvals](planned/approvals.md).
 
 ### Observability
 

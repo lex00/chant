@@ -11,7 +11,6 @@ This section documents features that are planned but not yet implemented. For cu
 
 - [Hooks](hooks.md) - Pre/post-execution hooks
 - [Triggers](triggers.md) - Event-based spec execution
-- [Approvals](approvals.md) - Human-in-the-loop workflow
 
 ## Observability Features
 
