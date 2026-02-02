@@ -107,6 +107,24 @@ chant list --label auth --label api          # Multiple labels (OR logic)
 chant list --ready --label feature           # Combine filters
 ```
 
+#### Available Flags
+
+| Flag | Description |
+|------|-------------|
+| `--ready` | Show only ready specs (equivalent to `--status ready`) |
+| `--status STATUS` | Filter by status (pending, ready, in_progress, completed, failed, blocked, cancelled) |
+| `--type TYPE` | Filter by spec type (code, task, driver, documentation, research, group) |
+| `--label LABEL` | Filter by label (can be specified multiple times for OR logic) |
+| `--approval STATUS` | Filter by approval status (pending, approved, rejected) |
+| `--created-by NAME` | Filter by spec creator name (case-insensitive) |
+| `--mentions NAME` | Filter specs mentioning a person in approval discussion |
+| `--activity-since DURATION` | Filter by recent activity (e.g., "2h", "1d", "1w") |
+| `--count` | Show only count of matching specs instead of listing them |
+| `--global` | List specs from all configured repos in global config |
+| `--repo PATH` | Filter to specific repository path (implies `--global`) |
+| `--project NAME` | Filter to specific project within repository |
+| `--main-only` | Skip branch resolution for in_progress specs (debug option) |
+
 #### Type Filtering
 
 Filter specs by type:
@@ -177,6 +195,38 @@ Show only the count of matching specs instead of listing them:
 chant list --count                           # Total spec count
 chant list --approval pending --count        # Count of specs awaiting approval
 chant list --status ready --count            # Count of ready specs
+```
+
+#### Cross-Repository Filtering
+
+List specs across multiple repositories configured in your global config:
+
+```bash
+chant list --global                          # All specs from all configured repos
+chant list --global --status ready           # Ready specs across all repos
+chant list --repo /path/to/repo              # Specs from specific repository
+chant list --project my-api                  # Specs from specific project
+chant list --global --project frontend       # Project filter across all repos
+```
+
+When using `--global`, the output includes the repository path for each spec.
+
+#### Flag Combinations
+
+Combine flags for powerful filtering:
+
+```bash
+# Multi-dimensional filtering
+chant list --type code --status ready --label feature
+chant list --approval approved --created-by alice --activity-since 1w
+chant list --global --status in_progress --project backend
+
+# Counting filtered results
+chant list --type documentation --status completed --count
+chant list --global --approval pending --count
+
+# Cross-repo queries with filters
+chant list --global --status ready --type code --label urgent
 ```
 
 ### Cancel Spec
