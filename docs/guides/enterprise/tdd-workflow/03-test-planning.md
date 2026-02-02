@@ -98,7 +98,7 @@ status: ready
 labels:
   - payments
   - tdd
-context:
+informed_by:
   - .chant/context/tdd-standards/coverage-requirements.md
 target_files:
   - .chant/context/payments-coverage-analysis.md
