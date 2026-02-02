@@ -62,6 +62,61 @@ Specs serve as handoff documents. One maintainer can triage, another can researc
 | [Fork Fix](05-fork-fix.md) | `code` | Working fix + staging PR | Fix in fork, create fork-internal PR |
 | [Upstream PR](06-upstream-pr.md) | `task` | Real PR | Human gate → create upstream PR |
 
+## Quick Path for Simple Fixes
+
+For trivial bugs (typos, obvious one-line fixes, clear documentation errors), you can skip the research phases:
+
+```bash
+# For simple fixes, go directly to implementation
+chant add "Fix typo in README" --type code
+chant work <spec-id>
+```
+
+**When to use Quick Path:**
+- Typos in documentation or code comments
+- Obvious one-line bug fixes with no side effects
+- Clear, isolated changes with minimal scope
+
+**When NOT to use Quick Path:**
+- Anything involving logic changes
+- Bugs with unclear root causes
+- Changes affecting multiple components
+
+## Early Exit: "Not a Bug" or "Won't Fix"
+
+After comprehension research, you may determine the issue should be closed without a fix:
+
+**Not a Bug:**
+```markdown
+## Comprehension Outcome
+
+**Result:** Working as designed
+
+The reported behavior is intentional per the design doc (docs/design/storage.md).
+User expected last-write-wins semantics, but the system implements first-write-wins
+by design to prevent data races.
+
+**Recommendation:** Close issue with explanation, improve documentation.
+```
+
+**Won't Fix:**
+```markdown
+## Comprehension Outcome
+
+**Result:** Won't fix
+
+The requested feature would require breaking changes to the public API and
+conflicts with the project's stability guarantees. The workaround (using
+manual locking) is sufficient for this use case.
+
+**Recommendation:** Close issue, suggest workaround.
+```
+
+**When to exit early:**
+- After comprehension: issue is not actionable
+- After reproduction: cannot reproduce, likely user error
+- After root cause: fix would be harmful (security, breaking changes)
+
 ## Quick Start
 
 Here's a minimal example of the full workflow:

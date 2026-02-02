@@ -26,14 +26,15 @@ A reproduction spec produces either a failing test or reproduction instructions.
 ## Reproduction Workflow
 
 ```
-Triage Result     Reproduction Spec      Failing Test       Research Input
-      │                  │                    │                   │
-      ▼                  ▼                    ▼                   ▼
-┌───────────┐      ┌───────────┐        ┌──────────┐       ┌───────────┐
-│ needs-    │      │ Run       │        │ Minimal  │       │ informed  │
-│ repro-    │─────▶│ reproduce │───────▶│ test     │──────▶│ by: repro │
-│ duction   │      │ prompt    │        │ fails    │       │ spec      │
-└───────────┘      └───────────┘        └──────────┘       └───────────┘
+Comprehension     Reproduction Spec      Failing Test       Research Input
+   Output               │                    │                   │
+      │                 ▼                    ▼                   ▼
+      ▼           ┌───────────┐        ┌──────────┐       ┌───────────┐
+┌───────────┐     │ Run       │        │ Minimal  │       │ informed  │
+│ needs-    │     │ reproduce │        │ test     │       │ by: repro │
+│ repro-    │────▶│ prompt    │───────▶│ fails    │──────▶│ spec      │
+│ duction   │     └───────────┘        └──────────┘       └───────────┘
+└───────────┘
 ```
 
 ## Creating a Reproduction Spec
@@ -53,7 +54,7 @@ labels:
   - reproduction
   - issue-1234
 informed_by:
-  - .chant/specs/2026-01-29-001-abc.md  # Triage spec
+  - .chant/specs/2026-01-29-001-abc.md  # Comprehension spec
   - https://github.com/yourproject/issues/1234
 target_files:
   - tests/regression/issue_1234_test.rs

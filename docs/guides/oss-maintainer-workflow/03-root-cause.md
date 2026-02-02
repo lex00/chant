@@ -425,5 +425,4 @@ chant add "Fix concurrent write bugs across storage layer" --type driver
 ## See Also
 
 - [Reproduction Case](02-reproduction.md) — Previous step: confirm the bug exists
-- [Implementation](04-implementation.md) — Next step: fix based on research
-- [Advanced Patterns](08-advanced.md) — Handling complex multi-phase research
+- [Codebase Sprawl Research](04-sprawl.md) — Next step: expand investigation scope

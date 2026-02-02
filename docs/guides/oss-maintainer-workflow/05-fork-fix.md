@@ -121,8 +121,11 @@ After implementing the fix, create a fork-internal PR:
 git push origin fix/issue-1234
 
 # Create PR against YOUR fork's main branch (not upstream)
+# Note: The agent cannot create PRs without GitHub authentication setup.
+# Human maintainers should create the staging PR manually:
 gh pr create \
-  --base yourusername:main \
+  --repo yourusername/project \
+  --base main \
   --head yourusername:fix/issue-1234 \
   --title "Fix #1234: Data loss on concurrent writes" \
   --body "Research-backed fix. See .chant/research/ for analysis."
