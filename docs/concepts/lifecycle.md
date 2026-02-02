@@ -84,17 +84,7 @@ Cancelled (any status)  ← chant cancel
 
 ### Approval Gate
 
-When a spec is created with `--needs-approval`, it must be approved before work can begin:
-
-```bash
-chant add "Risky refactor" --needs-approval
-chant approve 001 --by alice           # Approve → can now work
-chant reject 001 --by bob --reason "..." # Reject → cannot work
-```
-
-Rejected specs can be re-approved after addressing feedback. Use `--skip-approval` to bypass the gate in emergencies.
-
-See [Approval Workflow](../guides/approval-workflow.md) for the full guide.
+When a spec is created with `--needs-approval`, it must be approved before work can begin. See the [Approval Workflow Guide](../guides/approval-workflow.md) for details.
 
 ## Spec Statuses
 
