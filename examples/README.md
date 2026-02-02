@@ -29,6 +29,15 @@ Demonstrates Test-Driven Development with Chant. Shows how to:
 - Coordinate parallel test implementation with driver and member specs
 - Increase test coverage systematically (38% → 85%)
 
+### [Research Workflow](./research-workflow/)
+
+Demonstrates using Chant for research with two main patterns. Shows how to:
+- Use `informed_by:` to reference source materials for synthesis or analysis
+- Structure research questions as checkboxes for tracking progress
+- Synthesize multiple papers into findings (academic path)
+- Analyze codebase for technical debt (developer path)
+- Leverage drift detection when source materials change
+
 ## What These Examples Show
 
 Each example includes:
