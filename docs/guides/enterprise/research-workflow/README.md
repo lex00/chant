@@ -127,3 +127,7 @@ Familiarity with:
 - [Spec types](../../../concepts/spec-types.md)
 - [Research workflows](../../research.md)
 - [Dependencies](../../../concepts/deps.md)
+
+## See Also
+
+- [Research workflow examples](../../../../examples/research-workflow/) — Concrete examples demonstrating these patterns
