@@ -1,6 +1,6 @@
 ---
 type: implementation
-status: pending
+status: in_progress
 prompt: standard
 approval:
   required: true
@@ -20,13 +20,13 @@ We've experienced several incidents where automated scrapers and bots overwhelme
 
 ## Acceptance Criteria
 
-- [ ] Install and configure rate limiting middleware (express-rate-limit or similar)
-- [ ] Apply rate limits to all public endpoints (100 requests per 15 minutes per IP)
-- [ ] Apply stricter limits to authentication endpoints (5 requests per 15 minutes per IP)
-- [ ] Add rate limit headers (X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset)
-- [ ] Return 429 Too Many Requests with Retry-After header when limit exceeded
-- [ ] Document rate limits in API documentation
-- [ ] Add tests for rate limiting behavior
+- [x] Install and configure rate limiting middleware (express-rate-limit or similar)
+- [x] Apply rate limits to all public endpoints (100 requests per 15 minutes per IP)
+- [x] Apply stricter limits to authentication endpoints (5 requests per 15 minutes per IP)
+- [x] Add rate limit headers (X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset)
+- [x] Return 429 Too Many Requests with Retry-After header when limit exceeded
+- [x] Document rate limits in API documentation
+- [x] Add tests for rate limiting behavior
 
 ## Implementation Plan
 
@@ -47,4 +47,3 @@ Key points:
 - 5 req/15min for auth protects against brute force attempts
 - Good choice to use standard rate limit headers
 - Make sure we test the Retry-After header calculation
-
