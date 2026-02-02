@@ -20,6 +20,15 @@ Demonstrates using Chant to tackle a business KPI (reducing customer churn from 
 - Coordinate parallel implementation with driver specs and member specs
 - Bridge business objectives to technical implementation
 
+### [TDD Workflow](./tdd-workflow/)
+
+Demonstrates Test-Driven Development with Chant. Shows how to:
+- Analyze test coverage gaps with research specs
+- Store team test standards in `.chant/context/` for agent reference
+- Write acceptance criteria as test cases
+- Coordinate parallel test implementation with driver and member specs
+- Increase test coverage systematically (38% → 85%)
+
 ## What These Examples Show
 
 Each example includes:
