@@ -1,14 +1,14 @@
 ---
 type: research
-status: pending
-prompt: research
+status: in_progress
 depends_on:
-  - 002-reproduction
-informed_by:
-  - .chant/research/issue-42-comprehension.md
-  - tests/regression/test_issue_42.py
+- 002-reproduction
 target_files:
-  - .chant/research/issue-42-root-cause.md
+- .chant/research/issue-42-root-cause.md
+prompt: research
+informed_by:
+- .chant/research/issue-42-comprehension.md
+- tests/regression/test_issue_42.py
 ---
 # Phase 3: Root Cause Analysis - Find the bug in Issue #42
 
@@ -48,8 +48,8 @@ Create a research document at `.chant/research/issue-42-root-cause.md` that iden
 
 ## Acceptance Criteria
 
-- [ ] Research document created at `.chant/research/issue-42-root-cause.md`
-- [ ] Specific buggy code identified with file:line references
-- [ ] Race condition mechanism explained with timing diagram
-- [ ] Root cause clearly stated
-- [ ] Potential fix approaches documented
+- [x] Research document created at `.chant/research/issue-42-root-cause.md`
+- [x] Specific buggy code identified with file:line references
+- [x] Race condition mechanism explained with timing diagram
+- [x] Root cause clearly stated
+- [x] Potential fix approaches documented
