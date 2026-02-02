@@ -212,9 +212,9 @@ enum Commands {
         /// Prompt to use
         #[arg(long)]
         prompt: Option<String>,
-        /// Create a feature branch before executing (optionally with a custom prefix)
-        #[arg(long, num_args = 0..=1, require_equals = true, value_name = "PREFIX")]
-        branch: Option<String>,
+        /// Disable worktree mode (deprecated - worktrees are now default)
+        #[arg(long)]
+        no_branch: bool,
         /// Override dependency checks (work on a blocked spec)
         #[arg(long)]
         skip_deps: bool,
@@ -807,7 +807,7 @@ fn run() -> Result<()> {
         Commands::Work {
             ids,
             prompt,
-            branch,
+            no_branch,
             skip_deps,
             skip_criteria,
             parallel,
@@ -822,25 +822,33 @@ fn run() -> Result<()> {
             chain_max,
             no_merge,
             no_rebase,
-        } => cmd::work::cmd_work(
-            &ids,
-            prompt.as_deref(),
-            branch,
-            skip_deps,
-            skip_criteria,
-            parallel,
-            &label,
-            finalize,
-            allow_no_commits,
-            max_parallel,
-            no_cleanup,
-            cleanup,
-            skip_approval,
-            chain,
-            chain_max,
-            no_merge,
-            no_rebase,
-        ),
+        } => {
+            if no_branch {
+                eprintln!(
+                    "{} Warning: --no-branch is deprecated. Worktree mode is now the default.",
+                    "⚠".yellow()
+                );
+            }
+            cmd::work::cmd_work(
+                &ids,
+                prompt.as_deref(),
+                no_branch,
+                skip_deps,
+                skip_criteria,
+                parallel,
+                &label,
+                finalize,
+                allow_no_commits,
+                max_parallel,
+                no_cleanup,
+                cleanup,
+                skip_approval,
+                chain,
+                chain_max,
+                no_merge,
+                no_rebase,
+            )
+        }
         Commands::Mcp => mcp::run_server(),
         Commands::Status {
             global,

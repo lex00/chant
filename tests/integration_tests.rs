@@ -1591,20 +1591,18 @@ fn test_silent_mode_branch_warning() {
         })
         .unwrap_or("test-spec");
 
-    // Try to work the spec with --branch, should warn but still allow the work
-    let output = run_chant(&silent_repo, &["work", spec_id, "--branch"])
-        .expect("Failed to run work --branch command");
+    // Try to work the spec with --no-branch (branch mode is now default)
+    let output = run_chant(&silent_repo, &["work", spec_id, "--no-branch"])
+        .expect("Failed to run work --no-branch command");
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     let combined = format!("{}\n{}", stdout, stderr);
 
-    // The command should process (whether it succeeds or fails due to other reasons is OK)
-    // We're just checking that --branch doesn't hard-fail
-    // The presence of "Working" indicates chant is proceeding with the work command
+    // The command should show a deprecation warning for --no-branch
     assert!(
-        combined.contains("Working") || output.status.success() || combined.contains("Warning"),
-        "Should proceed with branch work or show warning. Output: {}",
+        combined.contains("deprecated") || combined.contains("Working"),
+        "Should show deprecation warning or proceed with work. Output: {}",
         combined
     );
 

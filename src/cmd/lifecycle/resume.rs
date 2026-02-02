@@ -12,7 +12,7 @@ pub fn cmd_resume(
     id: &str,
     work: bool,
     prompt: Option<&str>,
-    branch: Option<String>,
+    _branch: Option<String>,
 ) -> Result<()> {
     let specs_dir = crate::cmd::ensure_initialized()?;
 
@@ -49,7 +49,7 @@ pub fn cmd_resume(
         cmd::work::cmd_work(
             std::slice::from_ref(&spec_id),
             prompt,
-            branch,
+            false, // no_branch (use worktree by default)
             false, // skip_deps
             false, // skip_criteria
             false, // parallel

@@ -117,7 +117,7 @@ fn format_grade<T: std::fmt::Display>(grade: &T) -> colored::ColoredString {
 pub fn cmd_work(
     ids: &[String],
     prompt_name: Option<&str>,
-    cli_branch: Option<String>,
+    no_branch: bool,
     skip_deps: bool,
     skip_criteria: bool,
     parallel: bool,
@@ -137,15 +137,6 @@ pub fn cmd_work(
     let prompts_dir = PathBuf::from(PROMPTS_DIR);
     let config = Config::load()?;
 
-    // Check for silent mode conflicts
-    let in_silent_mode = is_silent_mode();
-    if in_silent_mode && cli_branch.is_some() {
-        println!(
-            "{} Warning: Creating branches in silent mode will still be visible to the team",
-            "⚠".yellow()
-        );
-    }
-
     // Handle parallel execution mode (with specific IDs or all ready specs)
     if parallel {
         let options = super::ParallelOptions {
@@ -153,7 +144,7 @@ pub fn cmd_work(
             no_cleanup,
             force_cleanup,
             labels,
-            branch_prefix: cli_branch.as_deref(),
+            branch_prefix: None,
             prompt_name,
             specific_ids: ids,
             no_merge,
@@ -168,7 +159,7 @@ pub fn cmd_work(
             max_specs: chain_max,
             labels,
             prompt_name,
-            cli_branch: cli_branch.as_deref(),
+            cli_branch: None,
             skip_deps,
             skip_criteria,
             allow_no_commits,
@@ -192,7 +183,7 @@ pub fn cmd_work(
     }
 
     // If no ID and not parallel, check for TTY
-    let (final_id, final_prompt, final_branch) = if ids.is_empty() {
+    let (final_id, final_prompt, _final_branch) = if ids.is_empty() {
         // If not a TTY, print usage hint instead of launching wizard
         if !atty::is(atty::Stream::Stdin) {
             print_work_usage_hint();
@@ -211,7 +202,7 @@ pub fn cmd_work(
                     no_cleanup,
                     force_cleanup,
                     labels,
-                    branch_prefix: cli_branch.as_deref(),
+                    branch_prefix: None,
                     prompt_name,
                     specific_ids: &[],
                     no_merge,
@@ -415,26 +406,18 @@ pub fn cmd_work(
         }
     }
 
-    // CLI flags override config defaults
-    // Wizard selection overrides both config and CLI (when ids were empty)
-    let use_branch_prefix = cli_branch
-        .as_deref()
-        .unwrap_or(&config.defaults.branch_prefix);
-    let create_branch = if ids.is_empty() {
-        // Wizard mode: use wizard's branch selection
-        final_branch || cli_branch.is_some() || config.defaults.branch
-    } else {
-        // Direct mode: use CLI flags and config
-        cli_branch.is_some() || config.defaults.branch
-    };
+    // Worktree mode is now the default unless --no-branch is specified
+    let use_worktree = !no_branch;
 
-    // Handle branch creation/switching if requested
-    let _branch_name = if create_branch {
-        let branch_name = format!("{}{}", use_branch_prefix, spec.id);
-        crate::cmd::git_ops::create_or_switch_branch(&branch_name)?;
-        spec.frontmatter.branch = Some(branch_name.clone());
-        println!("{} Branch: {}", "→".cyan(), branch_name);
-        Some(branch_name)
+    // Handle worktree creation if enabled
+    let _worktree_path = if use_worktree {
+        // Create worktree for this spec
+        let branch_name = format!("chant/{}", spec.id);
+        let worktree_path = worktree::create_worktree(&spec.id, &branch_name)?;
+        worktree::copy_spec_to_worktree(&spec.id, &worktree_path)?;
+        spec.frontmatter.branch = Some(branch_name);
+        println!("{} Worktree: {}", "→".cyan(), worktree_path.display());
+        Some(worktree_path)
     } else {
         None
     };
@@ -872,7 +855,3 @@ fn auto_select_prompt_for_type(spec: &Spec, prompts_dir: &Path) -> Option<String
     None
 }
 
-/// Check if the system is in silent mode
-fn is_silent_mode() -> bool {
-    std::env::var("CHANT_SILENT").is_ok() || std::env::var("CI").is_ok()
-}
