@@ -204,6 +204,21 @@ pub struct Spec {
     pub body: String,
 }
 
+/// Normalize model names from full Claude model IDs to short names.
+/// Examples: "claude-sonnet-4-20250514" -> "sonnet", "claude-opus-4-5" -> "opus"
+fn normalize_model_name(model: &str) -> String {
+    let lower = model.to_lowercase();
+    if lower.contains("opus") {
+        "opus".to_string()
+    } else if lower.contains("sonnet") {
+        "sonnet".to_string()
+    } else if lower.contains("haiku") {
+        "haiku".to_string()
+    } else {
+        model.to_string()
+    }
+}
+
 impl Spec {
     /// Count unchecked checkboxes (`- [ ]`) in the Acceptance Criteria section only.
     /// Returns the count of unchecked items in that section, skipping code fences.
@@ -335,11 +350,16 @@ impl Spec {
     pub fn parse(id: &str, content: &str) -> Result<Self> {
         let (frontmatter_str, body) = split_frontmatter(content);
 
-        let frontmatter: SpecFrontmatter = if let Some(fm) = frontmatter_str {
+        let mut frontmatter: SpecFrontmatter = if let Some(fm) = frontmatter_str {
             serde_yaml::from_str(&fm).context("Failed to parse spec frontmatter")?
         } else {
             SpecFrontmatter::default()
         };
+
+        // Normalize model name if present
+        if let Some(model) = &frontmatter.model {
+            frontmatter.model = Some(normalize_model_name(model));
+        }
 
         // Extract title from first heading
         let title = extract_title(body);
@@ -1344,7 +1364,7 @@ model: claude-opus-4-5
 Description here.
 "#;
         let spec = Spec::parse("2026-01-24-001-abc", content).unwrap();
-        assert_eq!(spec.frontmatter.model, Some("claude-opus-4-5".to_string()));
+        assert_eq!(spec.frontmatter.model, Some("opus".to_string()));
         assert_eq!(spec.frontmatter.status, SpecStatus::Completed);
         assert_eq!(spec.frontmatter.commits, Some(vec!["abc1234".to_string()]));
     }
@@ -1373,7 +1393,7 @@ status: pending
             id: "2026-01-24-003-ghi".to_string(),
             frontmatter: SpecFrontmatter {
                 status: SpecStatus::Completed,
-                model: Some("claude-opus-4-5".to_string()),
+                model: Some("opus".to_string()),
                 commits: Some(vec!["abc1234".to_string()]),
                 ..Default::default()
             },
@@ -1384,7 +1404,7 @@ status: pending
         spec.save(&spec_path).unwrap();
 
         let saved_content = std::fs::read_to_string(&spec_path).unwrap();
-        assert!(saved_content.contains("model: claude-opus-4-5"));
+        assert!(saved_content.contains("model: opus"));
         assert!(saved_content.contains("commits:"));
     }
 
@@ -3143,5 +3163,70 @@ original_completed_at: 2026-01-27T12:00:00Z
 
         // For now, this is a documentation test
         // Real testing happens via integration tests with actual git repos
+    }
+
+    #[test]
+    fn test_model_normalization_sonnet() {
+        let content = r#"---
+type: code
+status: completed
+model: claude-sonnet-4-20250514
+---
+# Test spec
+"#;
+        let spec = Spec::parse("2026-01-24-001-abc", content).unwrap();
+        assert_eq!(spec.frontmatter.model, Some("sonnet".to_string()));
+    }
+
+    #[test]
+    fn test_model_normalization_opus() {
+        let content = r#"---
+type: code
+status: completed
+model: claude-opus-4-5-20251101
+---
+# Test spec
+"#;
+        let spec = Spec::parse("2026-01-24-002-def", content).unwrap();
+        assert_eq!(spec.frontmatter.model, Some("opus".to_string()));
+    }
+
+    #[test]
+    fn test_model_normalization_haiku() {
+        let content = r#"---
+type: code
+status: completed
+model: claude-haiku-3-5-20241022
+---
+# Test spec
+"#;
+        let spec = Spec::parse("2026-01-24-003-ghi", content).unwrap();
+        assert_eq!(spec.frontmatter.model, Some("haiku".to_string()));
+    }
+
+    #[test]
+    fn test_model_normalization_short_names() {
+        let content = r#"---
+type: code
+status: completed
+model: sonnet
+---
+# Test spec
+"#;
+        let spec = Spec::parse("2026-01-24-004-jkl", content).unwrap();
+        assert_eq!(spec.frontmatter.model, Some("sonnet".to_string()));
+    }
+
+    #[test]
+    fn test_model_normalization_unknown() {
+        let content = r#"---
+type: code
+status: completed
+model: gpt-4
+---
+# Test spec
+"#;
+        let spec = Spec::parse("2026-01-24-005-mno", content).unwrap();
+        assert_eq!(spec.frontmatter.model, Some("gpt-4".to_string()));
     }
 }
