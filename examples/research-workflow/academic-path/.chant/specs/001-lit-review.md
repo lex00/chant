@@ -17,7 +17,7 @@ target_files:
 - [ ] What gaps exist in current research?
 
 ## Acceptance Criteria
-- [ ] Both papers reviewed and summarized
-- [ ] Comparison table created with approach, improvements, and trade-offs
-- [ ] Gaps in research identified
-- [ ] Findings document created in target location
+- [ ] Create `findings/lit-review.md` with summary sections for both papers
+- [ ] Add comparison table to `findings/lit-review.md` with columns: approach, improvements (%), trade-offs
+- [ ] List at least 3 specific research gaps in `findings/lit-review.md`
+- [ ] Verify `findings/lit-review.md` exists and contains all sections

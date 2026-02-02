@@ -16,8 +16,8 @@ target_files:
 - [ ] Are there any security concerns (hardcoded values, unsafe operations)?
 
 ## Acceptance Criteria
-- [ ] All source files scanned and analyzed
-- [ ] Issues categorized by severity (critical, high, medium, low)
-- [ ] Complexity metrics calculated for each function
-- [ ] Recommendations provided with specific file locations
-- [ ] Report generated in target location
+- [ ] Create `analysis/tech-debt-report.md` with list of all TODO/FIXME comments showing file path and line number
+- [ ] Add severity table to `analysis/tech-debt-report.md` with columns: issue, severity, file:line
+- [ ] List cyclomatic complexity for each function >10 in `analysis/tech-debt-report.md`
+- [ ] Add recommendations section to `analysis/tech-debt-report.md` with actionable fixes and file:line references
+- [ ] Verify `analysis/tech-debt-report.md` contains TODO count, severity distribution, and complexity metrics
