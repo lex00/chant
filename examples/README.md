@@ -4,7 +4,15 @@ Real-world examples demonstrating Chant's spec-driven development workflow.
 
 ## Available Examples
 
-Coming soon! We're preparing examples that demonstrate:
+### [Approval Workflow](./approval-workflow/)
+
+Demonstrates Chant's approval workflow with three example specs showing pending, approved, and rejected states. Shows how to:
+- Require human review before spec execution
+- Document approval decisions in spec files
+- Handle rejected specs with feedback
+- Configure automatic approval requirements for agent work
+
+Coming soon - additional examples:
 - Breaking down complex projects into specs
 - Using driver specs to coordinate multi-step workflows
 - Handling dependencies between specs
