@@ -34,7 +34,6 @@
 - [Prompt Guide](guides/prompts.md)
 - [Research Workflows](guides/research.md)
 - [Example Configurations](guides/examples.md)
-- [Ecosystem](guides/ecosystem.md)
 - [Recovery](guides/recovery.md)
 - [Approval Workflow](guides/approval-workflow.md)
 - [OSS Maintainer Workflow](guides/oss-maintainer-workflow/index.md)
@@ -79,6 +78,7 @@
 
 - [CLI Commands](reference/cli.md)
 - [Configuration](reference/config.md)
+- [Provider Configuration](reference/providers.md)
 - [Errors](reference/errors.md)
 - [Search Syntax](reference/search.md)
 - [Git Integration](reference/git.md)

@@ -59,7 +59,7 @@ For planned features and future releases, see [Roadmap](roadmap/roadmap.md).
 | Observability | [observability.md](scale/observability.md) | Local & Team tiers | Scale tier (metrics, daemon-based) |
 | Queue Architecture | [queue.md](scale/queue.md) | Daemon-free (Tiers 1-2) | Advanced backends (Tantivy, PostgreSQL, Redis) |
 | Templates | [templates.md](reference/templates.md) | Basic `{{variable}}` substitution | — |
-| Ecosystem | [ecosystem.md](guides/ecosystem.md) | Provider adapters | Prompt registry, package management |
+| Provider Adapters | [providers.md](reference/providers.md) | Claude, OpenAI, Ollama | Prompt registry, package management |
 | Git Hooks | [git.md](reference/git.md) | Basic validation | Advanced pre/post-commit workflows |
 
 ## Planned but Not Implemented ❌
@@ -74,7 +74,7 @@ For planned features and future releases, see [Roadmap](roadmap/roadmap.md).
 | Cost Tracking | [costs.md](roadmap/planned/costs.md) | v0.4.0 or later |
 | Tantivy Search | [search.md](reference/search.md) | v0.4.0 |
 | DAG Visualization | Planned | v0.4.0 or later |
-| Prompt Registry | [ecosystem.md](guides/ecosystem.md) | v0.4.0 or later |
+| Prompt Registry | Planned | v0.4.0 or later |
 | Edit Command | Planned | v0.4.0 or later |
 
 ## Commands Status Reference

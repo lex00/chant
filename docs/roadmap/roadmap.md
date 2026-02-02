@@ -29,7 +29,7 @@
 
 ### Ecosystem
 
-- **Prompt registry** — Community and private prompt sharing. See [Ecosystem](../guides/ecosystem.md).
+- **Prompt registry** — Community and private prompt sharing.
 - **Template/prompt registry** — Package management for prompt collections.
 
 ## Future Considerations
@@ -41,8 +41,6 @@ Open source prompt sharing:
 - Domain-specific collections (security, TDD, docs)
 - Framework-specific prompts (React, Rails, etc.)
 - Model-specific optimizations
-
-See [ecosystem.md](../guides/ecosystem.md) for design.
 
 Commercial layer (potential):
 - Curated enterprise prompts

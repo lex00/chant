@@ -40,7 +40,6 @@ chant work 001
 - [Research Workflows Guide](guides/research.md)
 - [OSS Maintainer Workflow](guides/oss-maintainer-workflow/index.md)
 - [Examples](guides/examples.md)
-- [Ecosystem Integration](guides/ecosystem.md)
 - [Approval Workflow](guides/approval-workflow.md)
 - [Recovery & Resume](guides/recovery.md)
 
@@ -48,6 +47,7 @@ chant work 001
 
 - [CLI Reference](reference/cli.md)
 - [Configuration Reference](reference/config.md)
+- [Provider Configuration](reference/providers.md)
 - [Errors](reference/errors.md)
 - [Search Syntax](reference/search.md)
 - [Git Integration](reference/git.md)
