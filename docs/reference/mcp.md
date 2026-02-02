@@ -97,9 +97,9 @@ The MCP server exposes 13 tools organized into query (read-only) and mutating ca
 
 | Tool | Description | Parameters |
 |------|-------------|------------|
-| `chant_spec_list` | List all specs | `status` (optional) |
+| `chant_spec_list` | List all specs | `status`, `limit` (optional, default 50) |
 | `chant_spec_get` | Get spec details including body content | `id` (required, partial match supported) |
-| `chant_ready` | List specs ready to be worked (no unmet dependencies) | (none) |
+| `chant_ready` | List specs ready to be worked (no unmet dependencies) | `limit` (optional, default 50) |
 | `chant_status` | Get project status summary with spec counts | `brief`, `include_activity` (optional) |
 | `chant_log` | Read execution log for a spec | `id` (required), `lines` (optional, default: 100) |
 | `chant_search` | Search specs by title and body content | `query` (required), `status` (optional) |
@@ -122,6 +122,13 @@ List all chant specs in the current project.
 
 **Parameters:**
 - `status` (optional): Filter by status - `pending`, `in_progress`, `completed`, `failed`
+- `limit` (optional): Maximum number of specs to return (default: 50)
+
+**Response includes:**
+- `specs`: Array of spec objects
+- `total`: Total count of matching specs (before limit applied)
+- `limit`: The limit that was applied
+- `returned`: Number of specs actually returned
 
 **Example Request:**
 ```json
@@ -187,6 +194,34 @@ Get details of a specific chant spec.
         "text": "{\n  \"id\": \"2026-01-22-001-x7m\",\n  \"title\": \"Add user authentication\",\n  \"status\": \"in_progress\",\n  \"type\": \"feature\",\n  \"body\": \"## Description\\n\\nImplement user auth...\"\n}"
       }
     ]
+  },
+  "id": 1
+}
+```
+
+### chant_ready
+
+List all specs that are ready to be worked (no unmet dependencies).
+
+**Parameters:**
+- `limit` (optional): Maximum number of specs to return (default: 50)
+
+**Response includes:**
+- `specs`: Array of ready spec objects
+- `total`: Total count of ready specs (before limit applied)
+- `limit`: The limit that was applied
+- `returned`: Number of specs actually returned
+
+**Example Request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "chant_ready",
+    "arguments": {
+      "limit": 10
+    }
   },
   "id": 1
 }
@@ -371,6 +406,10 @@ Full JSON schemas as returned by `tools/list`. Only showing key tools; run `echo
           "status": {
             "type": "string",
             "description": "Filter by status (pending, in_progress, completed, failed, ready, blocked)"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum number of specs to return (default: 50)"
           }
         }
       }
@@ -394,7 +433,12 @@ Full JSON schemas as returned by `tools/list`. Only showing key tools; run `echo
       "description": "List all specs that are ready to be worked (no unmet dependencies)",
       "inputSchema": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "description": "Maximum number of specs to return (default: 50)"
+          }
+        }
       }
     },
     {
