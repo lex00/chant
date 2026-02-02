@@ -84,7 +84,10 @@ fn find_next_ready_spec(
         });
     }
 
-    // Return the first ready spec (could add sorting strategy here in the future)
+    // Sort by spec ID to ensure chronological order (IDs are date-based: YYYY-MM-DD-NNN-xxx)
+    ready_specs.sort_by(|a, b| a.id.cmp(&b.id));
+
+    // Return the first (oldest) ready spec
     Ok(ready_specs.into_iter().next())
 }
 
