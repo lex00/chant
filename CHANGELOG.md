@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.11] - 2026-02-02
+
+### Added
+
+- **Complete example workflows**: Five working examples demonstrating chant patterns
+  - `examples/approval-workflow/` - Approval gates with pending/approved/rejected states
+  - `examples/kpi-okr-workflow/` - Business KPI tracking with driver/member specs
+  - `examples/tdd-workflow/` - Test-driven development with coverage analysis
+  - `examples/research-workflow/` - Academic synthesis and developer analysis paths
+  - `examples/oss-maintainer-workflow/` - 6-phase research-driven bug fix workflow
+
+- **Example test infrastructure**: Automated validation for examples
+  - `examples/test-examples.sh` - Main test runner with pattern detection (driver/chain/independent)
+  - Per-example `test-assertions.sh` scripts for semantic validation
+  - Proper error classification (expected vs unexpected failures)
+
+- **Documentation tooling**
+  - mdbook configuration (`docs/book.toml`, `docs/SUMMARY.md`) for documentation site
+  - `scripts/test-docs.sh` - Link validator for markdown documentation
+  - Link integrity checks in example test assertions
+
+- **New prompts**: `standard.md` for general implementation tasks
+
+### Changed
+
+- **Bidirectional documentation links**: All guides now link to examples and vice versa
+- **Provider documentation**: Consolidated to `docs/reference/providers.md`
+
+### Removed
+
+- **ecosystem.md guide**: Removed (90% described unimplemented features). Provider config moved to reference docs.
+
+### Fixed
+
+- **Chain ordering**: `chant work --chain` now respects proper lexicographic ordering using `spec_group::compare_spec_ids`
+- **Quality check timing**: Lint/quality checks now run before worktree/branch creation, not after
+- **Broken documentation links**: Fixed 2 broken links to non-existent `approvals.md`
+
 ## [0.13.4] - 2026-02-01
 
 ### Added
