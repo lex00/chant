@@ -91,6 +91,16 @@ def test_concurrent_writes_both_persist():
             f"Phone update lost! Expected '555-1234', got '{final_user.get('phone')}'"
 
 
+def increment_counter(storage_path, worker_id, iterations):
+    """Worker function to increment counter (must be at module level for pickling)."""
+    store = Store(storage_path)
+    for _ in range(iterations):
+        counter = store.get("counter")
+        counter["value"] += 1
+        counter[f"worker_{worker_id}"] = True
+        store.set("counter", counter)
+
+
 def test_concurrent_writes_stress():
     """
     Stress test with many concurrent writers.
@@ -104,15 +114,6 @@ def test_concurrent_writes_stress():
 
         # Initialize counter
         store.set("counter", {"value": 0})
-
-        # Each worker increments the counter
-        def increment_counter(storage_path, worker_id, iterations):
-            store = Store(storage_path)
-            for _ in range(iterations):
-                counter = store.get("counter")
-                counter["value"] += 1
-                counter[f"worker_{worker_id}"] = True
-                store.set("counter", counter)
 
         num_workers = 4
         iterations = 5

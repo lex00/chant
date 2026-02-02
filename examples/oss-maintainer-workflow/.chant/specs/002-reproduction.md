@@ -1,13 +1,13 @@
 ---
 type: code
-status: pending
-prompt: standard
+status: in_progress
 depends_on:
-  - 001-comprehension
-informed_by:
-  - .chant/research/issue-42-comprehension.md
+- 001-comprehension
 target_files:
-  - tests/regression/test_issue_42.py
+- tests/regression/test_issue_42.py
+prompt: standard
+informed_by:
+- .chant/research/issue-42-comprehension.md
 ---
 # Phase 2: Reproduction - Create failing test for Issue #42
 
@@ -40,9 +40,9 @@ The test should:
 
 ## Acceptance Criteria
 
-- [ ] Test file created at `tests/regression/test_issue_42.py`
-- [ ] Test uses concurrent execution (threading/multiprocessing)
-- [ ] Test writes to the same key from multiple threads/processes
-- [ ] Test verifies both writes are persisted
-- [ ] Test currently fails (demonstrating the bug)
-- [ ] Test includes clear comments explaining what it's checking
+- [x] Test file created at `tests/regression/test_issue_42.py`
+- [x] Test uses concurrent execution (threading/multiprocessing)
+- [x] Test writes to the same key from multiple threads/processes
+- [x] Test verifies both writes are persisted
+- [x] Test currently fails (demonstrating the bug)
+- [x] Test includes clear comments explaining what it's checking
