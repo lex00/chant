@@ -874,10 +874,76 @@ The log file header (spec ID, timestamp, prompt name) is written before the agen
 
 ## Status
 
+Show project status summary with spec counts:
+
 ```bash
-chant status                          # Overview
+chant status                          # Project overview
+chant status --brief                  # Compact one-line summary
+chant status --json                   # JSON output format
+chant status --global                 # Status across all configured repos
+chant status --repo /path/to/repo     # Specific repository (implies --global)
+chant status --watch                  # Watch mode - refresh every 5 seconds
 chant ready                           # Show ready specs
 ```
+
+### Flags
+
+| Flag | Description |
+|------|-------------|
+| `--brief` | Compact single-line output showing key metrics |
+| `--json` | Output status as JSON for programmatic parsing |
+| `--global` | Show status across all configured repositories |
+| `--repo <path>` | Filter to specific repository path (implies `--global`) |
+| `--watch` | Watch mode - automatically refresh status every 5 seconds |
+
+### Brief Mode
+
+Displays a compact single-line summary:
+
+```bash
+$ chant status --brief
+5 ready, 3 in-progress, 12 pending, 2 blocked, 45 completed
+```
+
+### JSON Mode
+
+Outputs structured data for parsing:
+
+```bash
+$ chant status --json
+{
+  "specs": {
+    "ready": 5,
+    "in_progress": 3,
+    "pending": 12,
+    "blocked": 2,
+    "completed": 45,
+    "failed": 0,
+    "cancelled": 1
+  }
+}
+```
+
+### Watch Mode
+
+Continuously monitors project status, refreshing every 5 seconds:
+
+```bash
+$ chant status --watch
+Spec Status (auto-refresh every 5s, press Ctrl+C to stop)
+
+Ready: 5
+In Progress: 3
+Pending: 12
+Blocked: 2
+Completed: 45
+Failed: 0
+Cancelled: 1
+
+[Last updated: 2026-01-28 14:30:15]
+```
+
+Press `Ctrl+C` to exit watch mode.
 
 ## Refresh
 
