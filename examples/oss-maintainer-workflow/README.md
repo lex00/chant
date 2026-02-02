@@ -65,3 +65,7 @@ Outcomes demonstrate:
 - Impact assessed (found 2 other similar patterns)
 - Fix implemented and tested
 - Human gate ensures quality before upstream PR
+
+## See Also
+
+- [OSS Maintainer Workflow Guide](../../docs/guides/oss-maintainer-workflow/index.md) — Complete guide to research-driven bug fixes

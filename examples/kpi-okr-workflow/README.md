@@ -52,3 +52,7 @@ Review the workflow by examining:
 5. Member specs - Each has detailed acceptance criteria for independent execution
 
 Expected outcome: Combined interventions targeting 6.2pp churn reduction (8% → ~3.5%, exceeding 5% target).
+
+## See Also
+
+- [Enterprise KPI/OKR Workflow Guide](../../docs/guides/enterprise/kpi-okr/README.md) — Complete walkthrough with business context

@@ -392,6 +392,7 @@ Chant doesn't help with:
 
 ## See Also
 
+- [Research Workflow Example](../../examples/research-workflow/) — Example demonstrating synthesis and analysis
 - [spec-types.md](../concepts/spec-types.md) — Overview of spec types including research
 - [prompts.md](../concepts/prompts.md) — research-synthesis and research-analysis prompts
 - [autonomy.md](../concepts/autonomy.md) — Drift detection and replay

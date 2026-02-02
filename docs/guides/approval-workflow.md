@@ -352,3 +352,7 @@ chant work spec-id --skip-approval
 ```
 
 This should be used sparingly and documented.
+
+## See Also
+
+- [Approval Workflow Example](../../examples/approval-workflow/) — Example specs demonstrating approval gates

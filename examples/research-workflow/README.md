@@ -69,3 +69,7 @@ Key patterns demonstrated:
 - Research questions as checkboxes track what needs answering
 - `target_files:` specifies where findings should be written
 - Drift detection alerts when source materials change
+
+## See Also
+
+- [Research Workflows Guide](../../docs/guides/research.md) — Complete guide to research specs

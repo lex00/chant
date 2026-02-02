@@ -215,6 +215,7 @@ Fork-internal PRs serve as quality gates:
 
 ## See Also
 
+- [OSS Maintainer Workflow Example](../../../examples/oss-maintainer-workflow/) — Complete example with 6-phase bug fix
 - [Research Workflows Guide](../research.md) — General research workflow concepts
 - [Approval Workflow](../approval-workflow.md) — Approval gates and review
 - [Recovery & Resume](../recovery.md) — Handling failed specs

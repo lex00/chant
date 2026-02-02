@@ -58,15 +58,6 @@ Each example includes:
 - **Member specs** - Auto-generated detailed specs with acceptance criteria
 - **Execution logs** - What the agent did at each step
 
-## Running an Example
-
-Examples will include:
-
-- **Complete `.chant/` folder** - Specs, config, and logs from actual runs
-- **Driver spec** - The high-level goal that gets split into actionable work
-- **Member specs** - Auto-generated detailed specs with acceptance criteria
-- **Execution logs** - What the agent did at each step
-
 ## Testing
 
 Each example includes automated validation to verify it demonstrates the intended workflow correctly.

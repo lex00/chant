@@ -57,3 +57,7 @@ Key patterns demonstrated:
 - Context files store team standards that agents reference
 - Acceptance criteria become test cases with specific assertions
 - Driver specs coordinate parallel test implementation
+
+## See Also
+
+- [Enterprise TDD Workflow Guide](../../docs/guides/enterprise/tdd-workflow/README.md) — Complete TDD workflow walkthrough
