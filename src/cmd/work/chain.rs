@@ -13,6 +13,7 @@ use std::path::Path;
 
 use chant::config::Config;
 use chant::spec::{self, Spec, SpecStatus};
+use chant::spec_group;
 
 use crate::cmd;
 use crate::cmd::finalize::{append_agent_output, finalize_spec};
@@ -85,7 +86,7 @@ fn find_next_ready_spec(
     }
 
     // Sort by spec ID to ensure chronological order (IDs are date-based: YYYY-MM-DD-NNN-xxx)
-    ready_specs.sort_by(|a, b| a.id.cmp(&b.id));
+    ready_specs.sort_by(|a, b| spec_group::compare_spec_ids(&a.id, &b.id));
 
     // Return the first (oldest) ready spec
     Ok(ready_specs.into_iter().next())
