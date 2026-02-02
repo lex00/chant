@@ -206,7 +206,7 @@ run_chant_work() {
 
   if [ $exit_code -ne 0 ]; then
     # Check for expected failure patterns
-    if echo "$output" | grep -q "requires approval\|status: rejected\|approval required"; then
+    if echo "$output" | grep -q "requires approval\|status: rejected\|approval required\|has been rejected"; then
       EXPECTED_FAILURES+=("$context/$spec_id (requires approval or rejected)")
       return 2
     elif echo "$output" | grep -q "config.md not found\|No such file"; then
@@ -236,7 +236,7 @@ run_chant_work_chain() {
 
   if [ $exit_code -ne 0 ]; then
     # Check for expected failure patterns
-    if echo "$output" | grep -q "requires approval\|status: rejected\|approval required"; then
+    if echo "$output" | grep -q "requires approval\|status: rejected\|approval required\|has been rejected"; then
       EXPECTED_FAILURES+=("$context/chain:${chain_specs[*]} (requires approval or rejected)")
       return 2
     elif echo "$output" | grep -q "config.md not found\|No such file"; then
