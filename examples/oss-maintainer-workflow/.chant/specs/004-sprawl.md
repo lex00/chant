@@ -1,13 +1,13 @@
 ---
 type: research
-status: pending
-prompt: research
+status: in_progress
 depends_on:
-  - 003-root-cause
-informed_by:
-  - .chant/research/issue-42-root-cause.md
+- 003-root-cause
 target_files:
-  - .chant/research/issue-42-sprawl.md
+- .chant/research/issue-42-sprawl.md
+prompt: research
+informed_by:
+- .chant/research/issue-42-root-cause.md
 ---
 # Phase 4: Sprawl - Assess impact of Issue #42 bug pattern
 
@@ -44,9 +44,9 @@ Create a research document at `.chant/research/issue-42-sprawl.md` that assesses
 
 ## Acceptance Criteria
 
-- [ ] Research document created at `.chant/research/issue-42-sprawl.md`
-- [ ] Codebase searched for similar patterns
-- [ ] All instances documented with locations
-- [ ] Impact assessment completed
-- [ ] Scope of fix clearly defined
-- [ ] Risk analysis documented
+- [x] Research document created at `.chant/research/issue-42-sprawl.md`
+- [x] Codebase searched for similar patterns
+- [x] All instances documented with locations
+- [x] Impact assessment completed
+- [x] Scope of fix clearly defined
+- [x] Risk analysis documented
