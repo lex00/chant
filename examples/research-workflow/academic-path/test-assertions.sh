@@ -52,13 +52,14 @@ else
     ((FAILED++))
 fi
 
-# Test 5: Verify research questions are structured as checkboxes
-echo -n "✓ Checking spec has checkbox questions... "
-if grep -q "\- \[ \]" ".chant/specs/001-lit-review.md"; then
+# Test 5: Verify acceptance criteria are structured as checkboxes
+echo -n "✓ Checking spec has acceptance criteria checkboxes... "
+if grep -q "## Acceptance Criteria" ".chant/specs/001-lit-review.md" && \
+   grep -q "\- \[" ".chant/specs/001-lit-review.md"; then
     echo "PASS"
     ((PASSED++))
 else
-    echo "FAIL - Research spec missing checkbox questions"
+    echo "FAIL - Research spec missing acceptance criteria checkboxes"
     ((FAILED++))
 fi
 
