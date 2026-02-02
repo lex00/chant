@@ -92,7 +92,7 @@ chant work --parallel ✅ Execute multiple specs
 chant resume        ✅ Resume failed/in_progress spec
 chant finalize      ✅ Manually finalize spec
 chant prep          ✅ Output spec for agent
-chant ready         ✅ Show ready specs
+chant list --ready  ✅ Show ready specs (formerly `chant ready`)
 chant lint          ✅ Validate specs
 chant disk          ✅ Show disk usage
 chant cleanup       ✅ Remove orphan worktrees

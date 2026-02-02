@@ -885,7 +885,7 @@ chant status --json                   # JSON output format
 chant status --global                 # Status across all configured repos
 chant status --repo /path/to/repo     # Specific repository (implies --global)
 chant status --watch                  # Watch mode - refresh every 5 seconds
-chant ready                           # Show ready specs
+chant list --ready                    # Show ready specs
 ```
 
 ### Flags
