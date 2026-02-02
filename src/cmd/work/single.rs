@@ -406,36 +406,6 @@ pub fn cmd_work(
         }
     }
 
-    // Worktree mode is now the default unless --no-branch is specified
-    let use_worktree = !no_branch;
-
-    // Handle worktree creation if enabled
-    let _worktree_path = if use_worktree {
-        // Create worktree for this spec
-        let branch_name = format!("chant/{}", spec.id);
-        let worktree_path = worktree::create_worktree(&spec.id, &branch_name)?;
-        worktree::copy_spec_to_worktree(&spec.id, &worktree_path)?;
-        spec.frontmatter.branch = Some(branch_name);
-        println!("{} Worktree: {}", "→".cyan(), worktree_path.display());
-        Some(worktree_path)
-    } else {
-        None
-    };
-
-    // Resolve prompt: CLI > wizard > frontmatter > auto-select by type > default
-    let resolved_prompt_name = prompt_name
-        .map(std::string::ToString::to_string)
-        .or(final_prompt)
-        .or_else(|| spec.frontmatter.prompt.clone())
-        .or_else(|| auto_select_prompt_for_type(&spec, &prompts_dir))
-        .unwrap_or_else(|| config.defaults.prompt.clone());
-
-    let prompt_path = prompts_dir.join(format!("{}.md", resolved_prompt_name));
-    if !prompt_path.exists() {
-        anyhow::bail!("Prompt not found: {}", resolved_prompt_name);
-    }
-    let prompt_name = resolved_prompt_name.as_str();
-
     // Calculate quality score before starting work (unless --skip-criteria is used)
     if !skip_criteria {
         use chant::score::traffic_light;
@@ -566,6 +536,36 @@ pub fn cmd_work(
             }
         }
     }
+
+    // Worktree mode is now the default unless --no-branch is specified
+    let use_worktree = !no_branch;
+
+    // Handle worktree creation if enabled
+    let _worktree_path = if use_worktree {
+        // Create worktree for this spec
+        let branch_name = format!("chant/{}", spec.id);
+        let worktree_path = worktree::create_worktree(&spec.id, &branch_name)?;
+        worktree::copy_spec_to_worktree(&spec.id, &worktree_path)?;
+        spec.frontmatter.branch = Some(branch_name);
+        println!("{} Worktree: {}", "→".cyan(), worktree_path.display());
+        Some(worktree_path)
+    } else {
+        None
+    };
+
+    // Resolve prompt: CLI > wizard > frontmatter > auto-select by type > default
+    let resolved_prompt_name = prompt_name
+        .map(std::string::ToString::to_string)
+        .or(final_prompt)
+        .or_else(|| spec.frontmatter.prompt.clone())
+        .or_else(|| auto_select_prompt_for_type(&spec, &prompts_dir))
+        .unwrap_or_else(|| config.defaults.prompt.clone());
+
+    let prompt_path = prompts_dir.join(format!("{}.md", resolved_prompt_name));
+    if !prompt_path.exists() {
+        anyhow::bail!("Prompt not found: {}", resolved_prompt_name);
+    }
+    let prompt_name = resolved_prompt_name.as_str();
 
     // Update status to in_progress
     spec.frontmatter.status = SpecStatus::InProgress;
