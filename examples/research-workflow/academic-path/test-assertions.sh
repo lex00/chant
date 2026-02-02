@@ -73,6 +73,31 @@ else
     ((FAILED++))
 fi
 
+# Test 7: Verify README links are valid
+echo -n "✓ Checking README documentation links... "
+BROKEN_LINKS=0
+README_DIR="$(dirname "$EXAMPLE_DIR/README.md")"
+while IFS= read -r line_num link_path; do
+    if [[ -z "$link_path" ]]; then continue; fi
+    cd "$README_DIR"
+    if [[ "$(uname)" == "Darwin" ]]; then
+        target=$(python3 -c "import os; print(os.path.realpath('$link_path'))" 2>/dev/null || echo "")
+    else
+        target=$(realpath "$link_path" 2>/dev/null || echo "")
+    fi
+    cd - >/dev/null
+    if [[ -z "$target" ]] || [[ ! -e "$target" ]]; then
+        ((BROKEN_LINKS++))
+    fi
+done < <(grep -n '\[.*\](.*\.md)' README.md 2>/dev/null | sed -E 's/^([0-9]+):.*\[.*\]\(([^)#]+)(#[^)]+)?\).*/\1 \2/' || echo "")
+if [[ $BROKEN_LINKS -eq 0 ]]; then
+    echo "PASS"
+    ((PASSED++))
+else
+    echo "FAIL - Found $BROKEN_LINKS broken link(s)"
+    ((FAILED++))
+fi
+
 echo ""
 echo "Results: $PASSED passed, $FAILED failed"
 
