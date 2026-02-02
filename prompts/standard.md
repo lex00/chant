@@ -18,9 +18,9 @@ You are implementing a spec for {{project.name}}.
 1. **Read** the relevant code first
 2. **Plan** your approach before coding
 3. **Implement** the changes
-4. **Run `cargo fmt`** to format the code
-5. **Run `cargo clippy`** to fix any lint errors and warnings
-6. **Run tests** with `just test` and fix any failures
+4. **Format code** according to project conventions
+5. **Run linter** and fix any lint errors and warnings
+6. **Run tests** and fix any failures
 7. **Verify** the implementation works and all acceptance criteria are met
 8. **Check off** each acceptance criterion in `{{spec.path}}` by changing `- [ ]` to `- [x]`
 9. **Commit** with message: `chant({{spec.id}}): <description>`
@@ -30,13 +30,13 @@ You are implementing a spec for {{project.name}}.
 
 If you encounter a problem that is NOT part of your current spec:
 
-1. **Check if a spec already exists** by running: `just chant list`
+1. **Check if a spec already exists** by running: `chant list`
    - Look for specs with similar titles or keywords related to the issue
    - Check the `.chant/archive/` directory for completed specs
 
 2. **If no existing spec found, create one:**
    ```bash
-   just chant add "Brief description of the issue"
+   chant add "Brief description of the issue"
    ```
    - This creates a new spec documenting the problem for future resolution
 
@@ -47,15 +47,15 @@ If you encounter a problem that is NOT part of your current spec:
    - The new spec can be tackled separately
 
 **Examples:**
-- If you find a typo in documentation while implementing a feature, create a spec: `just chant add "Fix typos in API documentation"`
-- If you notice a performance issue in unrelated code, create a spec: `just chant add "Optimize database query in user service"`
-- If you find a security concern, create a spec immediately: `just chant add "Address potential SQL injection in query builder"`
+- If you find a typo in documentation while implementing a feature, create a spec: `chant add "Fix typos in API documentation"`
+- If you notice a performance issue in unrelated code, create a spec: `chant add "Optimize database query in user service"`
+- If you find a security concern, create a spec immediately: `chant add "Address potential SQL injection in query builder"`
 
 ## Avoiding Duplicate Specs
 
 Before creating a new spec for an issue:
 
-1. **Search existing specs:** `just chant list`
+1. **Search existing specs:** `chant list`
    - Review titles and descriptions for similar work
    - Check if another spec addresses the same problem
 
@@ -74,9 +74,7 @@ Before creating a new spec for an issue:
 
 ## Constraints
 
-- Always use "just chant" if available otherwise use ./target/debug/chant
 - Only modify files related to this spec
 - Do not refactor unrelated code
 - Always add model: {{spec.model}} to frontmatter after all acceptance criteria met
-- Always ensure chant binary builds
 - After encountering an unexpected error, create a new spec to fix it
