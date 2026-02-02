@@ -1,6 +1,6 @@
 [package]
 name = "chant"
-version = "0.13.7"
+version = "0.13.8"
 edition = "2021"
 description = "Intent Driven Development"
 license = "Apache-2.0"
