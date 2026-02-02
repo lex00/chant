@@ -792,7 +792,6 @@ Re-execute a completed spec's intent against the current codebase:
 chant replay 001                      # Re-execute spec
 chant replay 001 --dry-run            # Preview changes without executing
 chant replay 001 --yes                # Skip confirmation prompts
-chant replay 001 --branch             # Create feature branch
 chant replay 001 --prompt custom      # Use custom prompt
 ```
 
@@ -1106,7 +1105,6 @@ Resume failed or stuck specs by resetting them to pending:
 chant resume 001                      # Reset spec to pending
 chant resume 001 --work               # Reset and immediately re-execute
 chant resume 001 --work --prompt tdd  # Reset and re-execute with specific prompt
-chant resume 001 --work --branch      # Reset and re-execute with feature branch
 ```
 
 The resume command:
