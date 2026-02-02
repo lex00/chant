@@ -67,6 +67,52 @@ Examples will include:
 - **Member specs** - Auto-generated detailed specs with acceptance criteria
 - **Execution logs** - What the agent did at each step
 
+## Testing
+
+Each example includes automated validation to verify it demonstrates the intended workflow correctly.
+
+### Running All Examples
+
+```bash
+./test-examples.sh all
+```
+
+This runs all examples sequentially, executing each workflow and validating the results.
+
+### Running a Single Example
+
+```bash
+./test-examples.sh <example-name>
+```
+
+Available example names:
+- `approval-workflow`
+- `kpi-okr-workflow`
+- `oss-maintainer-workflow`
+- `research-workflow`
+- `tdd-workflow`
+
+### How Validation Works
+
+Each example includes a `test-assertions.sh` script that verifies the workflow produces expected outputs:
+
+- **Spec structure validation**: Confirms specs have required fields (type, dependencies, approval metadata)
+- **Output verification**: Checks that generated files, logs, and artifacts match expectations
+- **State validation**: Verifies specs transition through correct states (pending → in_progress → completed)
+
+### Example: Successful Test Run
+
+```
+=== Approval Workflow Validation ===
+✓ Checking spec files exist... PASS
+✓ Checking pending spec has approval required... PASS
+✓ Checking approved spec has approval metadata... PASS
+✓ Checking rejected spec has rejection metadata... PASS
+✓ Checking config has approval settings... PASS
+
+Results: 5 passed, 0 failed
+```
+
 ## Contributing Examples
 
 Have a great Chant workflow to share? Examples should:
@@ -75,3 +121,4 @@ Have a great Chant workflow to share? Examples should:
 2. Include the complete `.chant/` folder
 3. Have a README explaining the context and results
 4. Show measurable outcomes (tests passing, issues closed, etc.)
+5. Include a `test-assertions.sh` script to validate the workflow
