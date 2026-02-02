@@ -938,17 +938,23 @@ pub fn resolve_spec(specs_dir: &Path, partial_id: &str) -> Result<Spec> {
 
 /// Check if a git branch exists.
 fn branch_exists(branch: &str) -> Result<bool> {
+    // Explicitly set current_dir to ensure correct behavior on Windows
+    let cwd = std::env::current_dir()?;
     let output = Command::new("git")
         .args(["rev-parse", "--verify", branch])
+        .current_dir(&cwd)
         .output()?;
     Ok(output.status.success())
 }
 
 /// Read a spec from a git branch.
 fn read_spec_from_branch(spec_id: &str, branch: &str) -> Result<Spec> {
+    // Explicitly set current_dir to ensure correct behavior on Windows
+    let cwd = std::env::current_dir()?;
     let spec_path = format!(".chant/specs/{}.md", spec_id);
     let output = Command::new("git")
         .args(["show", &format!("{}:{}", branch, spec_path)])
+        .current_dir(&cwd)
         .output()?;
 
     if !output.status.success() {
