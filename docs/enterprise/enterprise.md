@@ -23,8 +23,6 @@ chant init --silent
 
 ## Derived Frontmatter
 
-**Status: Implemented ✅**
-
 Enterprise teams have conventions: branch naming, path structure, ticket systems. Chant extracts metadata automatically during spec completion.
 
 ### How It Works
@@ -241,8 +239,6 @@ Custom_Field: manual_value
 The `[derived]` indicator distinguishes automatically-populated fields from user-entered values.
 
 ## Required Fields
-
-**Status: Implemented ✅**
 
 Enforce required fields for compliance and audit:
 

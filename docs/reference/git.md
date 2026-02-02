@@ -87,7 +87,6 @@ fi
 ```
 
 > **Note:** A `--files` flag for targeted validation is under consideration.
-> See [Planned Features](../planning/lint-files.md) for details.
 
 #### commit-msg
 

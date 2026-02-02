@@ -1781,4 +1781,3 @@ The following commands are planned but not yet implemented:
 - `chant lock` - Manual lock operations
 - `chant agent worker` - Worker mode for continuous execution
 
-See [Planned Features](../roadmap/planned/README.md) for details on these upcoming capabilities.

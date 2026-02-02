@@ -55,4 +55,4 @@ Expected outcome: Combined interventions targeting 6.2pp churn reduction (8% →
 
 ## See Also
 
-- [Enterprise KPI/OKR Workflow Guide](../../docs/guides/enterprise/kpi-okr/README.md) — Complete walkthrough with business context
+- [KPI/OKR Workflow Guide](../../docs/guides/workflows/kpi-okr/README.md) — Complete walkthrough with business context

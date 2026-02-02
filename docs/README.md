@@ -23,8 +23,6 @@ chant work 001
 - [Spec IDs](concepts/ids.md)
 - [Spec Groups](concepts/groups.md)
 - [Dependencies](concepts/deps.md)
-- [Hooks](roadmap/planned/hooks.md) *(Planned)*
-- [Triggers](roadmap/planned/triggers.md) *(Planned)*
 - [Autonomous Workflows](concepts/autonomy.md)
 - [Data Lifecycle](concepts/lifecycle.md)
 - [Skills](concepts/skills.md)
@@ -53,33 +51,15 @@ chant work 001
 - [Git Integration](reference/git.md)
 - [Templates](reference/templates.md)
 - [Schema & Validation](reference/schema.md)
-- [Notifications](roadmap/planned/notifications.md) *(Planned)*
 - [Export](reference/reports.md)
-- [Cost Tracking](roadmap/planned/costs.md) *(Planned)*
 - [Initialization](reference/init.md)
 - [MCP Server](reference/mcp.md)
 - [Versioning](reference/versioning.md)
 - [Output & Progress](reference/output.md)
 
-### Scale
-
-- [Chant at Scale](scale/scale.md)
-- [Daemon Mode](roadmap/planned/daemon.md) *(Planned)*
-- [Multi-Project Support](scale/multi-project.md)
-- [Work Isolation](scale/isolation.md)
-- [Locking & Recovery](scale/locks.md)
-- [Queue Architecture](scale/queue.md)
-- [Metrics](roadmap/planned/metrics.md) *(Planned)*
-- [Observability](scale/observability.md)
-
 ### Enterprise
 
 - [Enterprise Features](enterprise/enterprise.md)
-- [Security](enterprise/security.md)
-
-### Roadmap
-
-- [Roadmap](roadmap/roadmap.md)
 
 ## Building Documentation
 

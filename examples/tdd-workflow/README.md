@@ -60,4 +60,4 @@ Key patterns demonstrated:
 
 ## See Also
 
-- [Enterprise TDD Workflow Guide](../../docs/guides/enterprise/tdd-workflow/README.md) — Complete TDD workflow walkthrough
+- [TDD Workflow Guide](../../docs/guides/workflows/tdd-workflow/README.md) — Complete TDD workflow walkthrough

@@ -356,4 +356,3 @@ lifecycle:
 
 ---
 
-See [Planned Features](../roadmap/planned/README.md) for upcoming lifecycle enhancements including daemon mode and advanced cleanup commands.
