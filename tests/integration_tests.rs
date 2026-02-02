@@ -1886,7 +1886,7 @@ status: in_progress
 
     // Run `chant work MEMBER-ID --finalize --skip-criteria` to trigger finalization
     let finalize_output = Command::new(&chant_binary)
-        .args(["work", &member_id, "--finalize", "--skip-deps"])
+        .args(["work", &member_id, "--finalize", "--skip-criteria"])
         .current_dir(&repo_dir)
         .output()
         .expect("Failed to run chant work --finalize");
