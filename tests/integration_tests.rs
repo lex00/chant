@@ -3062,7 +3062,10 @@ fn test_dependency_chain_updates_after_completion() {
         .expect("Failed to run chant list --ready");
 
     let stdout = String::from_utf8_lossy(&ready_output.stdout);
-    assert!(ready_output.status.success(), "chant list --ready should succeed");
+    assert!(
+        ready_output.status.success(),
+        "chant list --ready should succeed"
+    );
     assert!(
         stdout.contains(spec_c),
         "Spec C should be ready after B is completed. Output: {}",

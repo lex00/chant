@@ -1560,6 +1560,75 @@ fi
 
 ---
 
+## Watch
+
+Automatically finalize specs when their acceptance criteria are met:
+
+```bash
+chant watch                           # Watch and finalize specs
+chant watch --once                    # Run one iteration then exit
+chant watch --dry-run                 # Preview actions without executing
+chant watch --poll-interval 10        # Set poll interval to 10ms (overrides config)
+```
+
+### How It Works
+
+The watch command:
+1. Polls for completed specs at regular intervals
+2. Checks if all acceptance criteria are marked as complete
+3. Automatically finalizes specs when ready
+4. Continues watching (unless `--once` is specified)
+
+### Flags
+
+| Flag | Description |
+|------|-------------|
+| `--once` | Run only one iteration then exit (useful for testing) |
+| `--dry-run` | Show what would be finalized without actually doing it |
+| `--poll-interval MS` | Set poll interval in milliseconds (overrides config setting) |
+
+### Examples
+
+**Basic usage:**
+
+```bash
+chant watch
+```
+
+Watches continuously and finalizes specs when ready.
+
+**One-shot mode for testing:**
+
+```bash
+chant watch --once
+```
+
+Checks once and exits (useful for CI/CD integration or testing).
+
+**Preview mode:**
+
+```bash
+chant watch --dry-run --once
+```
+
+Shows what would be finalized without making changes.
+
+**Custom poll interval:**
+
+```bash
+chant watch --poll-interval 1000
+```
+
+Poll every 1000ms (1 second) instead of using config default.
+
+### Use Cases
+
+- **Continuous integration**: Monitor spec completion in CI pipelines
+- **Background automation**: Run in tmux/screen for automatic finalization
+- **Testing**: Use `--once` to verify watch behavior without blocking
+
+---
+
 ## Planned Commands
 
 The following commands are planned but not yet implemented:
