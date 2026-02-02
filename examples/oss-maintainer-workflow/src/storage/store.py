@@ -1,20 +1,18 @@
 """
 Simple file-based key-value storage.
 
-WARNING: This implementation has a concurrency bug (issue #42).
-It demonstrates a read-modify-write race condition that causes
-data loss when multiple processes write to the same key.
-
-This is intentionally buggy code for educational purposes.
+FIXED: Issue #42 - Added file locking to prevent concurrent write data loss.
+Uses fcntl-based locking to ensure atomic read-modify-write operations.
 """
 
+import fcntl
 import json
 import os
 from pathlib import Path
 
 
 class Store:
-    """File-based key-value store with a concurrency bug."""
+    """File-based key-value store with proper concurrency control."""
 
     def __init__(self, storage_path):
         """Initialize store with a file path."""
@@ -32,40 +30,57 @@ class Store:
         """
         Set a value in the store.
 
-        BUG: This method has a race condition!
-        Between reading and writing, another process can modify the file,
-        causing this write to overwrite their changes.
+        Uses file locking to ensure atomic read-modify-write operation.
+        Multiple processes can safely write concurrently without data loss.
         """
-        data = self._read_all()      # Read entire file
-        data[key] = value             # Modify in memory
-        self._write_all(data)         # Write entire file
-        # If another process writes between read and write, their changes are lost!
+        with self._lock():
+            data = self._read_all()
+            data[key] = value
+            self._write_all(data)
 
     def update(self, key, updates):
         """
         Update multiple fields of a value.
 
-        BUG: Same race condition as set()!
+        Uses file locking to ensure atomic read-modify-write operation.
         """
-        data = self._read_all()
-        if key in data:
-            if isinstance(data[key], dict):
-                data[key].update(updates)
+        with self._lock():
+            data = self._read_all()
+            if key in data:
+                if isinstance(data[key], dict):
+                    data[key].update(updates)
+                else:
+                    data[key] = updates
             else:
                 data[key] = updates
-        else:
-            data[key] = updates
-        self._write_all(data)
+            self._write_all(data)
 
     def delete(self, key):
         """
         Delete a key from the store.
 
-        BUG: Same race condition as set()!
+        Uses file locking to ensure atomic read-modify-write operation.
         """
-        data = self._read_all()
-        data.pop(key, None)
-        self._write_all(data)
+        with self._lock():
+            data = self._read_all()
+            data.pop(key, None)
+            self._write_all(data)
+
+    def increment(self, key, field, amount=1):
+        """
+        Atomically increment a numeric field.
+
+        Uses file locking to ensure atomic read-modify-write operation.
+        """
+        with self._lock():
+            data = self._read_all()
+            if key not in data:
+                data[key] = {}
+            if not isinstance(data[key], dict):
+                raise ValueError(f"Cannot increment field on non-dict value for key {key}")
+            data[key][field] = data[key].get(field, 0) + amount
+            self._write_all(data)
+            return data[key][field]
 
     def _read_all(self):
         """Read the entire storage file."""
@@ -81,6 +96,36 @@ class Store:
         with open(temp_path, 'w') as f:
             json.dump(data, f, indent=2)
         temp_path.replace(self.storage_path)
+
+    def _lock(self):
+        """
+        Context manager for file locking.
+
+        Uses fcntl-based exclusive lock on a separate lock file to coordinate
+        read-modify-write operations across processes. The lock ensures that
+        only one process can perform a read-modify-write cycle at a time,
+        preventing the race condition described in issue #42.
+        """
+        return _FileLock(self.storage_path.with_suffix('.lock'))
+
+
+class _FileLock:
+    """Context manager for fcntl-based file locking."""
+
+    def __init__(self, lock_path):
+        self.lock_path = lock_path
+        self.lock_file = None
+
+    def __enter__(self):
+        self.lock_path.parent.mkdir(parents=True, exist_ok=True)
+        self.lock_file = open(self.lock_path, 'w')
+        fcntl.flock(self.lock_file.fileno(), fcntl.LOCK_EX)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.lock_file:
+            fcntl.flock(self.lock_file.fileno(), fcntl.LOCK_UN)
+            self.lock_file.close()
 
 
 # Example usage demonstrating the bug

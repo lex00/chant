@@ -1,14 +1,14 @@
 ---
 type: code
-status: pending
-prompt: standard
+status: in_progress
 depends_on:
-  - 004-sprawl
-informed_by:
-  - .chant/research/issue-42-root-cause.md
-  - .chant/research/issue-42-sprawl.md
+- 004-sprawl
 target_files:
-  - src/storage/store.py
+- src/storage/store.py
+prompt: standard
+informed_by:
+- .chant/research/issue-42-root-cause.md
+- .chant/research/issue-42-sprawl.md
 ---
 # Phase 5: Fork Fix - Implement fix for Issue #42
 
@@ -48,9 +48,9 @@ After implementing the fix:
 
 ## Acceptance Criteria
 
-- [ ] Fix implemented in `src/storage/store.py`
-- [ ] Race condition eliminated using proper locking
-- [ ] Test from phase 2 now passes
-- [ ] Code includes comments explaining the fix
-- [ ] Similar patterns from phase 4 also fixed
-- [ ] No existing functionality broken
+- [x] Fix implemented in `src/storage/store.py`
+- [x] Race condition eliminated using proper locking
+- [x] Test from phase 2 now passes
+- [x] Code includes comments explaining the fix
+- [x] Similar patterns from phase 4 also fixed
+- [x] No existing functionality broken

@@ -25,9 +25,7 @@ def worker_update_email(storage_path, barrier):
     barrier.wait()
 
     # Update email field
-    user = store.get("user:123") or {}
-    user["email"] = "new@example.com"
-    store.set("user:123", user)
+    store.update("user:123", {"email": "new@example.com"})
 
 
 def worker_update_phone(storage_path, barrier):
@@ -38,9 +36,7 @@ def worker_update_phone(storage_path, barrier):
     barrier.wait()
 
     # Update phone field
-    user = store.get("user:123") or {}
-    user["phone"] = "555-1234"
-    store.set("user:123", user)
+    store.update("user:123", {"phone": "555-1234"})
 
 
 def test_concurrent_writes_both_persist():
@@ -94,11 +90,11 @@ def test_concurrent_writes_both_persist():
 def increment_counter(storage_path, worker_id, iterations):
     """Worker function to increment counter (must be at module level for pickling)."""
     store = Store(storage_path)
-    for _ in range(iterations):
-        counter = store.get("counter")
-        counter["value"] += 1
-        counter[f"worker_{worker_id}"] = True
-        store.set("counter", counter)
+    for i in range(iterations):
+        # Atomically increment the counter
+        store.increment("counter", "value")
+        # Mark this worker's presence
+        store.update("counter", {f"worker_{worker_id}": True})
 
 
 def test_concurrent_writes_stress():
