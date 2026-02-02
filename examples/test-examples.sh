@@ -71,6 +71,28 @@ check_claude_cli() {
   fi
 }
 
+has_subpaths() {
+  local example_dir="$1"
+
+  # Check if there are subdirectories with .chant directories
+  local subpaths=$(find "$example_dir" -mindepth 2 -maxdepth 2 -type d -name ".chant" 2>/dev/null)
+
+  if [ -n "$subpaths" ]; then
+    echo "true"
+  else
+    echo "false"
+  fi
+}
+
+get_subpaths() {
+  local example_dir="$1"
+
+  # Find all subdirectories containing .chant
+  local subpaths=$(find "$example_dir" -mindepth 2 -maxdepth 2 -type d -name ".chant" -exec dirname {} \; 2>/dev/null | sort)
+
+  echo "$subpaths"
+}
+
 validate_example() {
   local example_name="$1"
   local example_dir="$EXAMPLES_DIR/$example_name"
@@ -78,6 +100,11 @@ validate_example() {
   if [ ! -d "$example_dir" ]; then
     echo -e "${RED}Error: Example directory not found: $example_dir${NC}"
     exit 1
+  fi
+
+  # Check for multi-path structure
+  if [ "$(has_subpaths "$example_dir")" == "true" ]; then
+    return 0
   fi
 
   if [ ! -d "$example_dir/.chant/specs" ]; then
@@ -160,6 +187,61 @@ get_independent_spec_ids() {
   echo "${spec_ids[@]}"
 }
 
+run_subpath() {
+  local subpath_dir="$1"
+  local subpath_name=$(basename "$subpath_dir")
+
+  echo -e "${YELLOW}  Running sub-path: $subpath_name${NC}"
+
+  local pattern=$(detect_pattern "$subpath_dir")
+  echo -e "${YELLOW}  Detected pattern: $pattern${NC}"
+
+  cd "$subpath_dir"
+
+  case "$pattern" in
+    driver)
+      local driver_spec=$(get_driver_spec_id "$subpath_dir")
+      if [ -z "$driver_spec" ]; then
+        echo -e "${RED}Error: No driver spec found${NC}"
+        return 1
+      fi
+      echo "  Running: chant work $driver_spec"
+      chant work "$driver_spec"
+      ;;
+
+    chain)
+      local chain_specs=($(get_chain_spec_ids "$subpath_dir"))
+      if [ ${#chain_specs[@]} -eq 0 ]; then
+        echo -e "${RED}Error: No chain specs found${NC}"
+        return 1
+      fi
+      echo "  Running: chant work --chain ${chain_specs[*]}"
+      chant work --chain "${chain_specs[@]}"
+      ;;
+
+    independent)
+      local specs=($(get_independent_spec_ids "$subpath_dir"))
+      if [ ${#specs[@]} -eq 0 ]; then
+        echo -e "${RED}Error: No specs found${NC}"
+        return 1
+      fi
+      echo "  Running ${#specs[@]} independent specs"
+      for spec in "${specs[@]}"; do
+        echo "    Running: chant work $spec"
+        chant work "$spec"
+      done
+      ;;
+  esac
+
+  # Run assertions if test script exists
+  if [ -x "$subpath_dir/test-assertions.sh" ]; then
+    echo "  Running assertions for $subpath_name"
+    "$subpath_dir/test-assertions.sh"
+  fi
+
+  return 0
+}
+
 run_example() {
   local example_name="$1"
   local example_dir="$EXAMPLES_DIR/$example_name"
@@ -167,6 +249,23 @@ run_example() {
   echo -e "${GREEN}Running example: $example_name${NC}"
 
   validate_example "$example_name"
+
+  # Check if this is a multi-path example
+  if [ "$(has_subpaths "$example_dir")" == "true" ]; then
+    echo -e "${YELLOW}Detected multi-path structure${NC}"
+    local subpaths=$(get_subpaths "$example_dir")
+
+    for subpath in $subpaths; do
+      if ! run_subpath "$subpath"; then
+        cd "$SCRIPT_DIR"
+        return 1
+      fi
+    done
+
+    cd "$SCRIPT_DIR"
+    echo -e "${GREEN}✓ Completed: $example_name${NC}"
+    return 0
+  fi
 
   local pattern=$(detect_pattern "$example_dir")
   echo -e "${YELLOW}Detected pattern: $pattern${NC}"
