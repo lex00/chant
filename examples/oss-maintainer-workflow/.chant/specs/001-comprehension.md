@@ -1,9 +1,9 @@
 ---
 type: research
-status: pending
-prompt: research
+status: in_progress
 target_files:
-  - .chant/research/issue-42-comprehension.md
+- .chant/research/issue-42-comprehension.md
+prompt: research
 ---
 # Phase 1: Comprehension - Understand Issue #42
 
@@ -60,8 +60,8 @@ Create a research document at `.chant/research/issue-42-comprehension.md` that c
 
 ## Acceptance Criteria
 
-- [ ] Research document created at `.chant/research/issue-42-comprehension.md`
-- [ ] Problem statement clearly documented
-- [ ] Key environmental factors captured
-- [ ] Initial hypotheses listed
-- [ ] Questions for next phase identified
+- [x] Research document created at `.chant/research/issue-42-comprehension.md`
+- [x] Problem statement clearly documented
+- [x] Key environmental factors captured
+- [x] Initial hypotheses listed
+- [x] Questions for next phase identified
