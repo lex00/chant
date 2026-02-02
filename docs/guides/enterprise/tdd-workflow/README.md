@@ -55,3 +55,7 @@ Chant's spec-driven model naturally aligns with TDD:
 ## Prerequisites
 
 Familiarity with [core concepts](../../../concepts/specs.md) and the [KPI/OKR workflow](../kpi-okr/README.md).
+
+## See Also
+
+- [TDD Workflow Example](../../../../examples/tdd-workflow/) — Working example demonstrating this workflow

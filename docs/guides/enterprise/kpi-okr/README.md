@@ -67,3 +67,7 @@ Week 1          Week 2              Week 2            Week 3         Week 4
 ## Prerequisites
 
 Familiarity with [core concepts](../../../concepts/specs.md), [research workflows](../../research.md), and [approval workflows](../../approval-workflow.md).
+
+## See Also
+
+- [KPI/OKR Workflow Example](../../../../examples/kpi-okr-workflow/) — Working example demonstrating this workflow
