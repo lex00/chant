@@ -120,6 +120,90 @@ pub fn generate_suggestions(score: &SpecScore) -> Vec<String> {
     suggestions
 }
 
+/// Generate detailed actionable guidance with examples for failing dimensions
+///
+/// Provides comprehensive, example-driven guidance on how to fix quality issues.
+/// Returns a multi-line string with "Why This Matters" and "How to Fix" sections.
+pub fn generate_detailed_guidance(score: &SpecScore) -> String {
+    let mut output = String::new();
+
+    // Only generate guidance if there are issues
+    if matches!(score.traffic_light, TrafficLight::Ready) {
+        return output;
+    }
+
+    output.push_str("\nWhy This Matters:\n");
+    output.push_str(
+        "  Agents perform best with ISOLATED tasks that have TESTABLE acceptance criteria.\n",
+    );
+    output.push_str("  Vague specs lead to scope creep, wrong assumptions, and wasted tokens.\n");
+    output.push_str("\nHow to Fix:\n");
+
+    // Confidence guidance
+    if matches!(score.confidence, ConfidenceGrade::C | ConfidenceGrade::D) {
+        let grade_letter = match score.confidence {
+            ConfidenceGrade::D => "D",
+            ConfidenceGrade::C => "C",
+            _ => "",
+        };
+        output.push_str(&format!("\n  Confidence ({} → A):\n", grade_letter));
+        output.push_str("    ✗ \"Update the API\"\n");
+        output.push_str("    ✓ \"In src/api/users.rs, add `get_user_by_email()` method\"\n");
+        output.push_str("    → Add specific file paths, function names, or line numbers\n");
+    }
+
+    // Splittability guidance
+    if matches!(
+        score.splittability,
+        SplittabilityGrade::C | SplittabilityGrade::D
+    ) {
+        let grade_letter = match score.splittability {
+            SplittabilityGrade::D => "D",
+            SplittabilityGrade::C => "C",
+            _ => "",
+        };
+        output.push_str(&format!("\n  Splittability ({} → A):\n", grade_letter));
+        output.push_str("    ✗ \"Add auth and update docs and fix tests\"\n");
+        output.push_str(
+            "    ✓ Split into 3 specs: auth, docs, tests (use depends_on for ordering)\n",
+        );
+        output.push_str("    → Each spec should do ONE thing\n");
+    }
+
+    // AC Quality guidance
+    if matches!(score.ac_quality, ACQualityGrade::C | ACQualityGrade::D) {
+        let grade_letter = match score.ac_quality {
+            ACQualityGrade::D => "D",
+            ACQualityGrade::C => "C",
+            _ => "",
+        };
+        output.push_str(&format!("\n  AC Quality ({} → A):\n", grade_letter));
+        output.push_str("    ✗ \"- [ ] Code works correctly\"\n");
+        output.push_str("    ✗ \"- [ ] Tests pass\"\n");
+        output
+            .push_str("    ✓ \"- [ ] Add `validate_email()` fn in src/utils.rs returning bool\"\n");
+        output.push_str("    ✓ \"- [ ] `cargo test test_validate_email` passes\"\n");
+        output.push_str(
+            "    → Criteria must be: imperative verb + specific location + verifiable outcome\n",
+        );
+    }
+
+    // Complexity guidance
+    if matches!(score.complexity, ComplexityGrade::C | ComplexityGrade::D) {
+        let grade_letter = match score.complexity {
+            ComplexityGrade::D => "D",
+            ComplexityGrade::C => "C",
+            _ => "",
+        };
+        output.push_str(&format!("\n  Complexity ({} → B):\n", grade_letter));
+        output.push_str("    → Split large specs into smaller, focused tasks\n");
+        output.push_str("    → Aim for 1-5 acceptance criteria per spec\n");
+        output.push_str("    → Use `chant split <spec-id>` to break into subtasks\n");
+    }
+
+    output
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

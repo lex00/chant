@@ -1018,6 +1018,7 @@ pub fn cmd_lint(format: LintFormat, verbose: bool) -> Result<()> {
                 score.traffic_light,
                 TrafficLight::Review | TrafficLight::Refine
             ) {
+                // Show basic suggestions
                 let suggestions = generate_suggestions(&score);
                 const MAX_SUGGESTIONS: usize = 3;
                 for (i, suggestion) in suggestions.iter().take(MAX_SUGGESTIONS).enumerate() {
@@ -1026,6 +1027,15 @@ pub fn cmd_lint(format: LintFormat, verbose: bool) -> Result<()> {
                         let remaining = suggestions.len() - MAX_SUGGESTIONS;
                         println!("    {} ... and {} more", "→".cyan(), remaining);
                         break;
+                    }
+                }
+
+                // Show detailed guidance in verbose mode
+                if verbose {
+                    use chant::score::traffic_light::generate_detailed_guidance;
+                    let guidance = generate_detailed_guidance(&score);
+                    if !guidance.is_empty() {
+                        print!("{}", guidance);
                     }
                 }
             }

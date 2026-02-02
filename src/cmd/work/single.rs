@@ -500,6 +500,12 @@ pub fn cmd_work(
                     }
                 }
 
+                // Show detailed guidance
+                let guidance = traffic_light::generate_detailed_guidance(&quality_score);
+                if !guidance.is_empty() {
+                    eprint!("{}", guidance);
+                }
+
                 eprintln!();
 
                 // Prompt user for confirmation (unless non-interactive)
