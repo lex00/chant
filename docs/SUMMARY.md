@@ -119,6 +119,5 @@
 - [Metrics](roadmap/planned/metrics.md)
 - [Hooks](roadmap/planned/hooks.md)
 - [Triggers](roadmap/planned/triggers.md)
-- [Approvals](roadmap/planned/approvals.md)
 - [Cost Tracking](roadmap/planned/costs.md)
 - [Notifications](roadmap/planned/notifications.md)

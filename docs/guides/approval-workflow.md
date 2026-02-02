@@ -45,13 +45,42 @@ chant approve 001-abc --by alice
 
 The spec's approval status changes to `approved`, and an entry is added to the "## Approval Discussion" section.
 
+**What happens during approval:**
+
+1. Validates the spec has `approval.required: true`
+2. Validates the approver name against git committers (warns if not found)
+3. Updates the spec's approval frontmatter:
+   ```yaml
+   approval:
+     required: true
+     status: approved
+     by: alice
+     at: 2026-01-28T14:30:45Z
+   ```
+4. Appends a timestamped entry to the "## Approval Discussion" section
+5. Auto-commits with message: `chant(<spec-id>): approve spec`
+
 ### 3. Execute the Spec
 
 ```bash
 chant work 001-abc
 ```
 
-Work proceeds normally after approval.
+Work proceeds normally after approval. When a spec has `approval.required: true`, `chant work` checks the approval status:
+
+- **Pending**: Work is blocked. You must approve the spec first or use `--skip-approval`.
+- **Rejected**: Work is blocked entirely. Address the feedback and get approval first.
+- **Approved**: Work proceeds normally.
+
+```bash
+$ chant work 001
+Error: Spec requires approval before work can begin
+
+  Approval status: pending
+
+  To approve:  chant approve 001 --by <name>
+  To bypass:   chant work 001 --skip-approval
+```
 
 ### Alternative: Reject the Spec
 
@@ -60,6 +89,22 @@ chant reject 001-abc --by bob --reason "Scope too large, split into auth and ses
 ```
 
 The spec cannot be worked on until the issues are addressed and it is re-approved.
+
+**What happens during rejection:**
+
+1. Validates the spec has `approval.required: true`
+2. Validates the rejector name against git committers (warns if not found)
+3. Updates the spec's approval frontmatter:
+   ```yaml
+   approval:
+     required: true
+     status: rejected
+     by: bob
+     at: 2026-01-28T14:30:45Z
+   ```
+4. Appends the rejection reason to the "## Approval Discussion" section
+5. Auto-commits with message: `chant(<spec-id>): reject spec`
+6. Applies the configured rejection action (see [Rejection Handling Modes](#rejection-handling-modes))
 
 ## Approval Discussion
 
@@ -183,6 +228,28 @@ chant list --activity-since 2h
 
 # Find specs created by a specific person
 chant list --created-by alice
+```
+
+### Visual Indicators
+
+When listing specs, approval-related visual indicators are displayed:
+
+| Indicator | Meaning |
+|-----------|---------|
+| `[needs approval]` (yellow) | Spec requires approval and is pending |
+| `[rejected]` (red) | Spec has been rejected |
+| `[approved]` (green) | Spec has been approved |
+| `👤 <name>` | Created by indicator |
+| `↩ <time>` | Time since last activity (e.g., `2h`, `3d`) |
+| `💬 <count>` | Number of comments in approval discussion |
+| `✓ <name>` (green) | Approved by indicator |
+
+**Example output:**
+
+```
+✓ 2026-01-28-001-abc [approved] Implement feature     👤 alice ↩ 1h 💬 3 ✓ bob
+⚠ 2026-01-28-002-def [needs approval] Fix bug         👤 charlie ↩ 30m
+✗ 2026-01-28-003-ghi [rejected] Improve performance   👤 dave ↩ 2h 💬 5
 ```
 
 ## Example: Team Workflow
