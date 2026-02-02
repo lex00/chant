@@ -854,4 +854,3 @@ fn auto_select_prompt_for_type(spec: &Spec, prompts_dir: &Path) -> Option<String
 
     None
 }
-

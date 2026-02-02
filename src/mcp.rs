@@ -496,6 +496,24 @@ fn handle_tools_call(params: Option<&Value>) -> Result<Value> {
     }
 }
 
+/// Find the project root by walking up from cwd looking for `.chant/` directory.
+///
+/// # Returns
+///
+/// - `Some(path)`: The directory containing `.chant/`
+/// - `None`: No `.chant/` directory found in any parent
+fn find_project_root() -> Option<PathBuf> {
+    let mut current = std::env::current_dir().ok()?;
+    loop {
+        if current.join(".chant").is_dir() {
+            return Some(current);
+        }
+        if !current.pop() {
+            return None;
+        }
+    }
+}
+
 /// Check if chant is initialized and return specs_dir, or an MCP error response.
 ///
 /// # Validation
@@ -515,7 +533,19 @@ fn handle_tools_call(params: Option<&Value>) -> Result<Value> {
 /// - Error message in `content[].text`
 /// - This allows tools to return meaningful errors while maintaining valid JSON-RPC responses
 fn mcp_ensure_initialized() -> Result<PathBuf, Value> {
-    let specs_dir = PathBuf::from(SPECS_DIR);
+    let project_root = find_project_root().ok_or_else(|| {
+        json!({
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Not in a chant project directory. Run `chant init` first or navigate to a directory containing `.chant/`."
+                }
+            ],
+            "isError": true
+        })
+    })?;
+
+    let specs_dir = project_root.join(SPECS_DIR);
     if !specs_dir.exists() {
         return Err(json!({
             "content": [
