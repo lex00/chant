@@ -36,6 +36,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 - **ecosystem.md guide**: Removed (90% described unimplemented features). Provider config moved to reference docs.
+- **Unimplemented documentation**: Descoped planned features as chant nears complete feature set
+  - `docs/scale/` - Daemon mode, advanced queue backends, observability (unimplemented)
+  - `docs/roadmap/` - Planned features (hooks, triggers, notifications, metrics)
+  - `docs/planning/` - Internal planning documents
+  - `docs/enterprise/security.md` - Sandboxing, network controls (unimplemented)
+  - `docs/FEATURE_STATUS.md` - Outdated implementation tracker
+- **Renamed** `docs/guides/enterprise/` → `docs/guides/workflows/` to avoid confusion with enterprise features
 
 ### Fixed
 
