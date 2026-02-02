@@ -984,7 +984,6 @@ pub fn is_completed(spec_id: &str) -> Result<bool> {
 /// # Errors
 ///
 /// Returns an error if git command fails
-
 pub(crate) fn has_success_signals(spec_id: &str) -> Result<bool> {
     // Check for commits with the chant(spec_id): pattern
     let pattern = format!("chant({}):", spec_id);
