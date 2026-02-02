@@ -188,7 +188,7 @@ fn execute_single_spec_in_chain(
     }
 
     // Handle branch creation if requested
-    let create_branch = cli_branch.is_some() || config.defaults.branch;
+    let create_branch = cli_branch.is_some();
     let use_branch_prefix = cli_branch.unwrap_or(&config.defaults.branch_prefix);
     let _branch_name = if create_branch {
         let branch_name = format!("{}{}", use_branch_prefix, spec.id);

@@ -619,8 +619,6 @@ pub struct ProjectConfig {
 pub struct DefaultsConfig {
     #[serde(default = "default_prompt")]
     pub prompt: String,
-    #[serde(default)]
-    pub branch: bool,
     #[serde(default = "default_branch_prefix")]
     pub branch_prefix: String,
     /// Default model name to use when env vars are not set
@@ -663,7 +661,6 @@ impl Default for DefaultsConfig {
     fn default() -> Self {
         Self {
             prompt: default_prompt(),
-            branch: false,
             branch_prefix: default_branch_prefix(),
             model: None,
             split_model: None,
@@ -824,7 +821,6 @@ struct PartialProjectConfig {
 #[derive(Debug, Deserialize, Default)]
 struct PartialDefaultsConfig {
     pub prompt: Option<String>,
-    pub branch: Option<bool>,
     pub branch_prefix: Option<String>,
     pub model: Option<String>,
     pub split_model: Option<String>,
@@ -870,10 +866,6 @@ impl PartialConfig {
                     .prompt
                     .or(global_defaults.prompt)
                     .unwrap_or_else(default_prompt),
-                branch: project_defaults
-                    .branch
-                    .or(global_defaults.branch)
-                    .unwrap_or(false),
                 branch_prefix: project_defaults
                     .branch_prefix
                     .or(global_defaults.branch_prefix)
@@ -934,7 +926,6 @@ project:
 
 defaults:
   prompt: standard
-  branch: false
 ---
 
 # Config
@@ -942,7 +933,6 @@ defaults:
         let config = Config::parse(content).unwrap();
         assert_eq!(config.project.name, "test-project");
         assert_eq!(config.defaults.prompt, "standard");
-        assert!(!config.defaults.branch);
     }
 
     #[test]
@@ -1003,7 +993,6 @@ defaults:
 project:
   prefix: global-prefix
 defaults:
-  branch: true
   branch_prefix: global/
 ---
 "#,
@@ -1015,8 +1004,6 @@ defaults:
             r#"---
 project:
   name: my-project
-defaults:
-  branch: false
 ---
 "#,
         )
@@ -1028,12 +1015,7 @@ defaults:
         assert_eq!(config.project.name, "my-project");
         // Prefix from global (not set in project)
         assert_eq!(config.project.prefix.as_deref(), Some("global-prefix"));
-        // branch=false overrides global branch=true (project explicitly sets it)
-        // Actually, our merge logic checks if project.defaults.branch is true
-        // Since project has branch: false, we use global's value
-        // Wait, that's not right - let me check the logic
-        assert!(!config.defaults.branch); // Project sets false
-                                          // branch_prefix from global (project uses default)
+        // branch_prefix from global (project uses default)
         assert_eq!(config.defaults.branch_prefix, "global/");
     }
 

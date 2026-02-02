@@ -479,7 +479,7 @@ pub fn cmd_work_parallel(
         );
 
         // Determine branch mode
-        // Priority: CLI --branch flag > spec frontmatter.branch > config defaults.branch
+        // Priority: CLI --branch flag > spec frontmatter.branch
         // IMPORTANT: Parallel execution forces branch mode internally for isolation
         let (is_direct_mode, branch_prefix) = if let Some(cli_prefix) = options.branch_prefix {
             // CLI --branch specified with explicit prefix
@@ -487,11 +487,8 @@ pub fn cmd_work_parallel(
         } else if let Some(spec_branch) = &spec.frontmatter.branch {
             // Spec has explicit branch prefix
             (false, spec_branch.clone())
-        } else if config.defaults.branch {
-            // Config enables branch mode - use config's branch_prefix
-            (false, config.defaults.branch_prefix.clone())
         } else {
-            // Parallel execution forces branch mode even if config.defaults.branch is false
+            // Parallel execution forces branch mode
             // This prevents merge race conditions during parallel work
             // Use config's branch_prefix to stay consistent with merge command expectations
             (false, config.defaults.branch_prefix.clone())
