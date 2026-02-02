@@ -127,8 +127,7 @@ When implementing a spec:
 
 - `chant work <spec-id>` - Execute a spec
   - Non-TTY hint: When stdin is not a terminal, provide spec ID explicitly: `chant work <SPEC_ID>`
-  - Optional: `--prompt <name>`, `--branch`, `--force`, `--finalize`
-- `chant work <spec-id> --branch` - Execute with feature branch
+  - Optional: `--prompt <name>`, `--force`, `--finalize`
 - `chant work --parallel` - Execute all ready specs in parallel
   - Supports: `--max-parallel N` to limit concurrent agents
   - Supports: `--label <LABEL>` to execute only labeled specs

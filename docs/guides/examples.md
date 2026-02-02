@@ -6,7 +6,7 @@ Complete example configurations for different deployment scenarios.
 
 ## Solo Developer
 
-Single developer, direct commits, simple workflow.
+Single developer, branch mode disabled, simple workflow.
 
 ### Directory Structure
 
@@ -36,7 +36,7 @@ defaults:
 
 # My Project
 
-Direct commits to main. Simple workflow.
+Branch mode disabled. Simple workflow.
 ```
 
 ### Sample Spec

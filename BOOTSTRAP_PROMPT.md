@@ -97,9 +97,9 @@ chant show <id>  # status: completed
 ### Phase 1: Git+ (One Feature at a Time)
 
 ```bash
-chant add "Add --branch flag to create feature branches"
+chant add "Add feature branch creation based on defaults.branch config"
 chant work <id>
-# Test: chant work --branch <spec> creates a branch
+# Test: chant work <spec> creates a branch when defaults.branch is true
 
 chant add "Add --pr flag to create pull requests via gh CLI"
 chant work <id>
@@ -198,7 +198,7 @@ The git history should show:
 Example git log:
 ```
 abc1234 chant(2024-01-15-003-x7m): Add --pr flag for PR creation
-def5678 chant(2024-01-15-002-q2n): Add --branch flag for feature branches
+def5678 chant(2024-01-15-002-q2n): Add feature branch support
 ghi9012 chant(2024-01-15-001-a3k): Test spec execution
 jkl3456 Phase 0: Implement bootstrap core
 mno7890 Initial commit: documentation

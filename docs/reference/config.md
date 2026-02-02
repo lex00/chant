@@ -34,8 +34,8 @@ schema:
 
 # Project Configuration
 
-Direct commits to main by default. No PRs unless
-explicitly requested per-spec.
+Branch mode disabled by default. Feature branches created when
+explicitly requested per-spec or when defaults.branch is true.
 
 ## Prompts
 
@@ -211,7 +211,7 @@ project:
   name: quick-prototype
 
 defaults:
-  branch: false   # Override: direct commits for this project
+  branch: false   # Override: disable branch mode for this project
 ---
 ```
 
