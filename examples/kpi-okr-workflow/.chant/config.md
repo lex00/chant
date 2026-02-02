@@ -1,3 +1,7 @@
+---
+# No specific frontmatter configuration for this example
+---
+
 # Chant Configuration
 
 This is a demonstration example showing a completed KPI/OKR workflow.

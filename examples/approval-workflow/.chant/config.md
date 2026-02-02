@@ -1,12 +1,12 @@
-# Approval Workflow Example Configuration
-
-This configuration demonstrates approval workflow settings for agent-assisted work.
-
 ---
 approval:
   require_approval_for_agent_work: true
   rejection_action: manual
 ---
+
+# Approval Workflow Example Configuration
+
+This configuration demonstrates approval workflow settings for agent-assisted work.
 
 ## Settings Explained
 
