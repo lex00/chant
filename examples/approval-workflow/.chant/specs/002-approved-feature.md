@@ -1,8 +1,7 @@
 ---
-id: 002-approved-feature
-title: Add rate limiting to API endpoints
-created: 2026-02-01T08:00:00Z
+type: implementation
 status: pending
+prompt: standard
 approval:
   required: true
   status: approved

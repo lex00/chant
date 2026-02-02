@@ -1,13 +1,14 @@
 ---
 type: code
 status: pending
+prompt: standard
 depends_on:
-- 004-sprawl
+  - 004-sprawl
 informed_by:
-- .chant/research/issue-42-root-cause.md
-- .chant/research/issue-42-sprawl.md
+  - .chant/research/issue-42-root-cause.md
+  - .chant/research/issue-42-sprawl.md
 target_files:
-- src/storage/store.py
+  - src/storage/store.py
 ---
 # Phase 5: Fork Fix - Implement fix for Issue #42
 

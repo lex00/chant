@@ -1,12 +1,13 @@
 ---
 type: code
 status: pending
+prompt: standard
 depends_on:
-- 001-comprehension
+  - 001-comprehension
 informed_by:
-- .chant/research/issue-42-comprehension.md
+  - .chant/research/issue-42-comprehension.md
 target_files:
-- tests/regression/test_issue_42.py
+  - tests/regression/test_issue_42.py
 ---
 # Phase 2: Reproduction - Create failing test for Issue #42
 

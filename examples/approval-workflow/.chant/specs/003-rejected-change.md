@@ -1,8 +1,7 @@
 ---
-id: 003-rejected-change
-title: Migrate all database queries to raw SQL
-created: 2026-02-01T14:00:00Z
+type: implementation
 status: pending
+prompt: standard
 approval:
   required: true
   status: rejected

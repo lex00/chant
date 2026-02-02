@@ -1,5 +1,6 @@
 ---
 type: research
+status: pending
 prompt: research-analysis
 informed_by:
   - src/**/*.rs

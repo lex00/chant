@@ -1,16 +1,11 @@
 ---
 type: driver
 status: completed
-labels:
-  - payments
-  - tdd
-  - q1-coverage
+prompt: standard
 members:
   - 002-test-suite-driver.1
   - 002-test-suite-driver.2
   - 002-test-suite-driver.3
-completed_at: 2026-01-20T12:45:00Z
-model: claude-sonnet-4-5-20250929
 ---
 
 # Payment service test coverage expansion

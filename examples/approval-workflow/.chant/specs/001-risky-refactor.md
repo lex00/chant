@@ -1,8 +1,7 @@
 ---
-id: 001-risky-refactor
-title: Refactor authentication system to use JWT tokens
-created: 2026-02-01T10:30:00Z
+type: implementation
 status: pending
+prompt: standard
 approval:
   required: true
   status: pending

@@ -1,15 +1,7 @@
 ---
 type: research
 status: completed
-labels:
-  - kpi-churn
-  - q1-2026
-needs_approval: true
-approval:
-  required: true
-  status: approved
-completed_at: 2026-01-14T16:45:00Z
-model: claude-haiku-4-5-20251001
+prompt: research
 informed_by:
   - .chant/context/kpi-churn-q1/datadog-churn-metrics.md
   - .chant/context/kpi-churn-q1/zendesk-support-patterns.md

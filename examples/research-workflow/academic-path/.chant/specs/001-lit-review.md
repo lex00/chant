@@ -1,5 +1,6 @@
 ---
 type: research
+status: pending
 prompt: research-synthesis
 informed_by:
   - papers/smith2025.md

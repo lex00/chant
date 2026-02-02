@@ -1,15 +1,11 @@
 ---
 type: code
 status: completed
-labels:
-  - payments
-  - tdd
-  - unit
-parent: 002-test-suite-driver
+prompt: standard
+depends_on:
+  - 002-test-suite-driver
 target_files:
   - tests/payments/test_currency_conversion.py
-completed_at: 2026-01-20T11:05:00Z
-model: claude-sonnet-4-5-20250929
 ---
 
 # Add tests for currency conversion in refunds

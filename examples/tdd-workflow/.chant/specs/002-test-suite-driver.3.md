@@ -1,15 +1,11 @@
 ---
 type: code
 status: completed
-labels:
-  - payments
-  - tdd
-  - unit
-parent: 002-test-suite-driver
+prompt: standard
+depends_on:
+  - 002-test-suite-driver
 target_files:
   - tests/payments/test_refund_retry.py
-completed_at: 2026-01-20T11:45:00Z
-model: claude-sonnet-4-5-20250929
 ---
 
 # Add tests for refund retry logic

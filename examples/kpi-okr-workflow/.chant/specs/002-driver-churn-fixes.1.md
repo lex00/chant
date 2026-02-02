@@ -1,13 +1,9 @@
 ---
 type: implementation
 status: completed
-labels:
-  - kpi-churn
-  - q1-2026
-  - onboarding
-driver: 002-driver-churn-fixes
-completed_at: 2026-01-20T11:30:00Z
-model: claude-haiku-4-5-20251001
+prompt: standard
+depends_on:
+  - 002-driver-churn-fixes
 ---
 
 # Build onboarding wizard for new users

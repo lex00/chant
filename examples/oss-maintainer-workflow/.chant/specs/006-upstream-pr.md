@@ -1,12 +1,13 @@
 ---
 type: documentation
 status: pending
+prompt: standard
 depends_on:
-- 005-fork-fix
+  - 005-fork-fix
 informed_by:
-- .chant/research/issue-42-comprehension.md
-- .chant/research/issue-42-root-cause.md
-- .chant/research/issue-42-sprawl.md
+  - .chant/research/issue-42-comprehension.md
+  - .chant/research/issue-42-root-cause.md
+  - .chant/research/issue-42-sprawl.md
 ---
 # Phase 6: Upstream PR - Human gate before opening real PR
 

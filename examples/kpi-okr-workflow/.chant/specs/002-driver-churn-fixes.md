@@ -1,17 +1,13 @@
 ---
 type: driver
 status: completed
-labels:
-  - kpi-churn
-  - q1-2026
+prompt: standard
 depends_on:
   - 001-research-churn-drivers
 members:
   - 002-driver-churn-fixes.1
   - 002-driver-churn-fixes.2
   - 002-driver-churn-fixes.3
-completed_at: 2026-01-22T14:12:00Z
-model: claude-haiku-4-5-20251001
 ---
 
 # Reduce Q1 churn: implement approved interventions

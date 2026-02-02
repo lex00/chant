@@ -1,12 +1,13 @@
 ---
 type: research
 status: pending
+prompt: research
 depends_on:
-- 003-root-cause
+  - 003-root-cause
 informed_by:
-- .chant/research/issue-42-root-cause.md
+  - .chant/research/issue-42-root-cause.md
 target_files:
-- .chant/research/issue-42-sprawl.md
+  - .chant/research/issue-42-sprawl.md
 ---
 # Phase 4: Sprawl - Assess impact of Issue #42 bug pattern
 

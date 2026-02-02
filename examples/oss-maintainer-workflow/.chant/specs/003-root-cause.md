@@ -1,13 +1,14 @@
 ---
 type: research
 status: pending
+prompt: research
 depends_on:
-- 002-reproduction
+  - 002-reproduction
 informed_by:
-- .chant/research/issue-42-comprehension.md
-- tests/regression/test_issue_42.py
+  - .chant/research/issue-42-comprehension.md
+  - tests/regression/test_issue_42.py
 target_files:
-- .chant/research/issue-42-root-cause.md
+  - .chant/research/issue-42-root-cause.md
 ---
 # Phase 3: Root Cause Analysis - Find the bug in Issue #42
 

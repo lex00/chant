@@ -1,8 +1,9 @@
 ---
 type: research
 status: pending
+prompt: research
 target_files:
-- .chant/research/issue-42-comprehension.md
+  - .chant/research/issue-42-comprehension.md
 ---
 # Phase 1: Comprehension - Understand Issue #42
 

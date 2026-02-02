@@ -1,13 +1,9 @@
 ---
 type: implementation
 status: completed
-labels:
-  - kpi-churn
-  - q1-2026
-  - integrations
-driver: 002-driver-churn-fixes
-completed_at: 2026-01-21T15:45:00Z
-model: claude-haiku-4-5-20251001
+prompt: standard
+depends_on:
+  - 002-driver-churn-fixes
 ---
 
 # Promote Slack integration to general availability

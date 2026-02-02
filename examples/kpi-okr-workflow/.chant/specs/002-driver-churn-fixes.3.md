@@ -1,13 +1,9 @@
 ---
 type: implementation
 status: completed
-labels:
-  - kpi-churn
-  - q1-2026
-  - team-collaboration
-driver: 002-driver-churn-fixes
-completed_at: 2026-01-21T09:15:00Z
-model: claude-haiku-4-5-20251001
+prompt: standard
+depends_on:
+  - 002-driver-churn-fixes
 ---
 
 # Improve team invite UX

@@ -1,15 +1,11 @@
 ---
 type: research
 status: completed
-labels:
-  - payments
-  - tdd
+prompt: research
 informed_by:
   - .chant/context/tdd-standards/coverage-requirements.md
 target_files:
   - .chant/context/payments-coverage-analysis.md
-completed_at: 2026-01-19T14:30:00Z
-model: claude-sonnet-4-5-20250929
 ---
 
 # Analyze payment service test coverage gaps
