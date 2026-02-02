@@ -4,9 +4,10 @@ Real-world examples demonstrating Chant's spec-driven development workflow.
 
 ## Available Examples
 
-| Example | Description | Complexity |
-|---------|-------------|------------|
-| [SwiftyJSON Swift 6 Upgrade](./swiftyjson/) | Upgrade a 23k-star library to Swift 6 with Sendable support | Medium |
+Coming soon! We're preparing examples that demonstrate:
+- Breaking down complex projects into specs
+- Using driver specs to coordinate multi-step workflows
+- Handling dependencies between specs
 
 ## What These Examples Show
 
@@ -19,31 +20,12 @@ Each example includes:
 
 ## Running an Example
 
-To explore an example without executing:
+Examples will include:
 
-```bash
-cd examples/swiftyjson
-ls chant/specs/           # View the specs
-cat chant/specs/swift6-upgrade.md   # Read the driver
-```
-
-To reproduce the workflow on the actual project:
-
-```bash
-# Clone the target project
-git clone https://github.com/SwiftyJSON/SwiftyJSON.git
-cd SwiftyJSON
-
-# Copy the example's chant folder
-cp -r /path/to/examples/swiftyjson/chant .chant
-
-# Reset specs to pending and run
-# (or just chant init and create the driver spec)
-chant init
-chant add "Upgrade to Swift 6 with Sendable support"
-chant split <spec-id>
-chant work <spec-id>
-```
+- **Complete `.chant/` folder** - Specs, config, and logs from actual runs
+- **Driver spec** - The high-level goal that gets split into actionable work
+- **Member specs** - Auto-generated detailed specs with acceptance criteria
+- **Execution logs** - What the agent did at each step
 
 ## Contributing Examples
 

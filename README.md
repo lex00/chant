@@ -114,9 +114,7 @@ chant work 001
 
 ## Examples
 
-See the [examples/](./examples/) folder for real-world workflows:
-
-- **[SwiftyJSON Swift 6 Upgrade](./examples/swiftyjson/)** - Upgrade a 23k-star library to Swift 6 with Sendable support in ~15 minutes
+See the [examples/](./examples/) folder for real-world workflows (coming soon).
 
 ## Development
 
