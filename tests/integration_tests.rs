@@ -3939,8 +3939,8 @@ This spec tests that finalization updates the status field.
     );
     assert_eq!(
         reloaded_spec.frontmatter.model,
-        Some("claude-haiku-4-5".to_string()),
-        "model should be persisted"
+        Some("haiku".to_string()),
+        "model should be normalized on load"
     );
 
     // Cleanup
