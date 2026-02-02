@@ -1,129 +1,54 @@
 # KPI/OKR Workflow Example
 
-This example demonstrates using Chant to tackle a business KPI: reducing customer churn from 8% to 5% in Q1 2026.
+## Overview
 
-## Scenario
+This example demonstrates using Chant to tackle a business KPI: reducing customer churn from 8% to 5% in Q1 2026. It shows human-agent collaboration where humans curate data and agents analyze it, using context files, research specs, and coordinated parallel implementation through a driver spec pattern.
 
-**Company:** Acme SaaS Corp
-**Problem:** 8% monthly churn, concentrated in first 30 days after signup
-**Goal:** Reduce churn to 5% by Q1 end
-**Team:** Sarah (Engineering Lead), Mike (Data Analyst), agents (Research & Implementation)
+## Structure
 
-## Workflow Phases
+The workflow consists of two main specs:
 
-### Phase 1: Data Ingestion (Human-Driven)
+1. **001-research-churn-drivers.md** - Research spec that analyzes context files to identify churn drivers and produces research findings
+2. **002-driver-churn-fixes.md** - Driver spec coordinating three parallel implementations:
+   - **002-driver-churn-fixes.1.md** - Build onboarding wizard (~3.5pp churn impact)
+   - **002-driver-churn-fixes.2.md** - Promote Slack integration to GA (~1.5pp impact)
+   - **002-driver-churn-fixes.3.md** - Improve team invite UX (~1.2pp impact)
 
-Mike gathers data from external systems and creates markdown digests:
-
-```
-External Systems ──> Human Digest ──> .chant/context/ ──> Agent Analysis
-(Datadog, Zendesk)    (Markdown)       (Git-tracked)      (Research spec)
-```
-
-**Files created:**
+Context files in `.chant/context/kpi-churn-q1/`:
 - `datadog-churn-metrics.md` - Churn rates, timing, feature adoption
 - `zendesk-support-patterns.md` - Support ticket analysis
 - `user-survey-summary.md` - Exit survey verbatims
+- `research-findings.md` - Agent-produced analysis (output from spec 001)
 
-These digests are committed to git, making them available for agent analysis.
+## Usage
 
-### Phase 2: Research (Agent-Driven)
-
-Sarah creates a research spec (`001-research-churn-drivers.md`) that:
-- References the three context files using `informed_by:`
-- Asks specific research questions
-- Produces `research-findings.md` with actionable recommendations
-
-The agent identifies three churn drivers:
-1. **Failed onboarding** (~3.5pp impact) - No guided setup flow
-2. **Missing integrations** (~1.5pp impact) - No Slack, difficult imports
-3. **Team discovery friction** (~1.2pp impact) - Invite feature buried in settings
-
-### Phase 3: Implementation (Coordinated)
-
-Sarah creates a driver spec (`002-driver-churn-fixes.md`) that coordinates three parallel implementations:
-
-- **Member 1** (`002-driver-churn-fixes.1.md`) - Build onboarding wizard
-- **Member 2** (`002-driver-churn-fixes.2.md`) - Promote Slack integration to GA
-- **Member 3** (`002-driver-churn-fixes.3.md`) - Improve team invite UX
-
-Each member spec has detailed acceptance criteria and can be worked independently.
-
-## Key Patterns Demonstrated
-
-### Context References
-```yaml
-informed_by:
-  - .chant/context/kpi-churn-q1/datadog-churn-metrics.md
-  - .chant/context/kpi-churn-q1/zendesk-support-patterns.md
-  - .chant/context/kpi-churn-q1/user-survey-summary.md
+Execute the research spec with the driver pattern:
+```bash
+cd examples/kpi-okr-workflow
+chant work 001  # Run research spec first
+chant work 002  # Run driver spec (coordinates members 1-3)
 ```
 
-Agents read these files to ground their analysis in real data.
-
-### Research Output
-```yaml
-target_files:
-  - .chant/context/kpi-churn-q1/research-findings.md
+Or work member specs independently in parallel:
+```bash
+chant work 002.1  # Onboarding wizard
+chant work 002.2  # Slack integration
+chant work 002.3  # Team invite UX
 ```
 
-The research spec produces a findings document that becomes the basis for implementation decisions.
-
-### Driver Coordination
-```yaml
-type: driver
-members:
-  - 2026-01-16-002-abc-1
-  - 2026-01-16-002-abc-2
-  - 2026-01-16-002-abc-3
+View spec status:
+```bash
+chant list
+chant show 002  # View driver spec and member status
 ```
 
-The driver spec tracks completion of all member specs, enabling parallel work.
+## Testing
 
-## What This Example Shows
+Review the workflow by examining:
+1. Context files in `.chant/context/kpi-churn-q1/` - See how external data is structured
+2. Research spec `001-research-churn-drivers.md` - Uses `informed_by:` to reference context
+3. Research output `research-findings.md` - Agent analysis of the data
+4. Driver spec `002-driver-churn-fixes.md` - Coordinates parallel work with `members:` field
+5. Member specs - Each has detailed acceptance criteria for independent execution
 
-1. **Human-agent collaboration** - Humans curate data, agents analyze it
-2. **Context ingestion** - Using `.chant/context/` for external data
-3. **Research specs** - Producing actionable insights from data
-4. **Driver specs** - Coordinating multi-part implementations
-5. **Parallel execution** - Independent member specs worked concurrently
-
-## Expected Outcome
-
-Combined interventions targeting 6.2pp churn reduction:
-- 8% → ~3.5% (exceeds 5% target)
-- Addresses 63% of early-stage churn
-- Validated by cross-referencing three data sources
-
-## Running This Example
-
-This is a demonstration example showing completed specs. To replicate the workflow:
-
-1. **Review the context files** in `.chant/context/kpi-churn-q1/`
-2. **Examine the research spec** (`001-research-churn-drivers.md`)
-3. **See the research output** (`research-findings.md`)
-4. **Study the driver spec** (`002-driver-churn-fixes.md`)
-5. **Explore member specs** showing parallel implementation pattern
-
-## Files in This Example
-
-```
-examples/kpi-okr-workflow/
-├── README.md                              # This file
-├── .chant/
-│   ├── config.md                          # Project configuration
-│   ├── context/
-│   │   └── kpi-churn-q1/
-│   │       ├── datadog-churn-metrics.md   # Mock Datadog data
-│   │       ├── zendesk-support-patterns.md # Mock Zendesk data
-│   │       ├── user-survey-summary.md     # Mock survey data
-│   │       └── research-findings.md       # Research output
-│   ├── specs/
-│   │   ├── 001-research-churn-drivers.md  # Research spec (completed)
-│   │   ├── 002-driver-churn-fixes.md      # Driver spec
-│   │   ├── 002-driver-churn-fixes.1.md    # Member: onboarding wizard
-│   │   ├── 002-driver-churn-fixes.2.md    # Member: Slack integration
-│   │   └── 002-driver-churn-fixes.3.md    # Member: team invite UX
-│   └── prompts/
-│       └── standard.md                    # Standard prompt template
-```
+Expected outcome: Combined interventions targeting 6.2pp churn reduction (8% → ~3.5%, exceeding 5% target).

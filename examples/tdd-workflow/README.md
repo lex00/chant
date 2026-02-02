@@ -1,147 +1,59 @@
 # TDD Workflow Example
 
-This example demonstrates Chant's Test-Driven Development workflow, showing how specs naturally support test-first development.
+## Overview
 
-## Scenario
+This example demonstrates Chant's Test-Driven Development workflow for systematically improving test coverage. The Payments team at Acme SaaS Corp increases refund module coverage from 38% to 85%+ using research-driven test planning and parallel test implementation through a driver spec pattern.
 
-The Payments team at Acme SaaS Corp needs to improve test coverage for their refund processing flow. Current coverage is 38%, and production incidents revealed untested edge cases.
+## Structure
 
-**Goal:** Increase refund module coverage from 38% to 85%+ using systematic TDD practices.
+The workflow consists of two main specs:
 
-## TDD Workflow Phases
+1. **001-coverage-analysis.md** - Research spec that analyzes existing test coverage gaps and prioritizes work based on production incidents
+2. **002-test-suite-driver.md** - Driver spec coordinating three parallel test implementations:
+   - **002-test-suite-driver.1.md** - Refund flow tests (16 test cases)
+   - **002-test-suite-driver.2.md** - Currency conversion tests (4 test cases)
+   - **002-test-suite-driver.3.md** - Retry logic tests (4 test cases)
 
-### 1. Research: Coverage Analysis
+Context files in `.chant/context/tdd-standards/`:
+- `coverage-requirements.md` - Team coverage policies by module
+- `test-patterns.md` - Naming conventions and assertion requirements
 
-**Spec:** `001-coverage-analysis.md`
+## Usage
 
-A research spec analyzes existing test coverage gaps, identifies untested code paths, and prioritizes work based on production incidents.
-
-Key features:
-- Uses `informed_by:` to reference team test standards
-- Produces `target_files:` with coverage analysis results
-- Cross-references production logs to find real gaps
-
-### 2. Planning: Test Suite Design
-
-**Spec:** `002-test-suite-driver.md`
-
-A driver spec coordinates multiple test implementation specs, organizing work by test category.
-
-Key features:
-- Driver with 3 member specs for parallel execution
-- Each member spec focuses on specific test categories
-- Acceptance criteria written as test cases
-
-### 3. Implementation: Write Tests
-
-**Member Specs:**
-- `002-test-suite-driver.1.md` - Refund flow tests
-- `002-test-suite-driver.2.md` - Currency conversion tests
-- `002-test-suite-driver.3.md` - Retry logic tests
-
-Each spec includes:
-- Test categories (Happy Path, Authorization, Edge Cases, Error Handling)
-- Specific test assertions as acceptance criteria
-- Target test files
-
-## Project Structure
-
-```
-examples/tdd-workflow/
-├── README.md                               # This file
-├── .chant/
-│   ├── config.md                           # TDD standards enforcement
-│   ├── context/
-│   │   └── tdd-standards/
-│   │       ├── coverage-requirements.md    # Team coverage policies
-│   │       └── test-patterns.md            # Naming conventions
-│   ├── specs/
-│   │   ├── 001-coverage-analysis.md        # Research spec
-│   │   ├── 002-test-suite-driver.md        # Driver spec
-│   │   ├── 002-test-suite-driver.1.md      # Member: refund tests
-│   │   ├── 002-test-suite-driver.2.md      # Member: currency tests
-│   │   └── 002-test-suite-driver.3.md      # Member: retry tests
-│   └── prompts/
-│       └── standard.md                     # Default prompt
-├── src/
-│   └── payments/
-│       └── refund.py                       # Sample code to test
-└── tests/
-    └── payments/
-        └── test_refund_flow.py             # Generated tests
+Execute the TDD workflow with the driver pattern:
+```bash
+cd examples/tdd-workflow
+chant work 001  # Run coverage analysis first
+chant work 002  # Run driver spec (coordinates members 1-3)
 ```
 
-## What This Demonstrates
+Or work member specs independently in parallel:
+```bash
+chant work 002.1  # Refund flow tests
+chant work 002.2  # Currency conversion tests
+chant work 002.3  # Retry logic tests
+```
 
-### Context Standards
+Create your own TDD workflow:
+```bash
+mkdir -p .chant/context/tdd-standards
+# Add coverage-requirements.md and test-patterns.md
+chant add "Analyze test coverage gaps in payments module" --type research
+chant add "Add comprehensive tests for payment refund flow"
+chant work <spec-id>
+```
 
-`.chant/context/tdd-standards/` contains team test standards:
-- **coverage-requirements.md** - Coverage targets by module
-- **test-patterns.md** - Naming conventions and assertion requirements
+## Testing
 
-Agents reference these standards when writing tests, ensuring consistency.
+Verify the TDD workflow:
+1. Review team test standards in `.chant/context/tdd-standards/`
+2. Examine research spec `001-coverage-analysis.md` with `informed_by:` and `target_files:` usage
+3. Check driver spec `002-test-suite-driver.md` showing acceptance criteria as test cases
+4. Explore member specs organized by test category (Happy Path, Edge Cases, Error Handling)
+5. Run generated tests to verify coverage improvement
 
-### Research Specs
-
-The coverage analysis spec (`001-coverage-analysis.md`) uses:
-- `type: research` - Indicates investigation, not code changes
-- `informed_by:` - References context files with team standards
-- `target_files:` - Specifies where to save analysis results
-
-### Test Planning
-
-The test suite driver (`002-test-suite-driver.md`) shows:
-- Acceptance criteria as test cases
-- Test organization by category (Happy Path, Edge Cases, etc.)
-- Specific assertions in each criterion
-
-### Driver + Members
-
-The driver spec coordinates 3 member specs:
-- Member 1: Refund flow tests (16 test cases)
-- Member 2: Currency conversion tests (4 test cases)
-- Member 3: Retry logic tests (4 test cases)
-
-All member specs can run in parallel, speeding up test implementation.
-
-## Running This Example
-
-This is a standalone demonstration. To use this pattern in your project:
-
-1. **Create test standards:**
-   ```bash
-   mkdir -p .chant/context/tdd-standards
-   # Add coverage-requirements.md and test-patterns.md
-   ```
-
-2. **Analyze coverage:**
-   ```bash
-   chant add "Analyze test coverage gaps in payments module" --type research
-   ```
-
-3. **Plan tests:**
-   ```bash
-   chant add "Add comprehensive tests for payment refund flow"
-   ```
-
-4. **Execute:**
-   ```bash
-   chant work <spec-id>
-   ```
-
-## Key Takeaways
-
-1. **Research specs** analyze coverage gaps before writing code
-2. **Context files** store team standards that agents reference
-3. **Acceptance criteria** become test cases when written as specific assertions
-4. **Driver specs** coordinate parallel test implementation across categories
-5. **Test-first** approach ensures tests describe behavior, not implementation
-
-## Based On
-
-This example is extracted from the guide: `docs/guides/enterprise/tdd-workflow/`
-
-For detailed explanations of each phase, see:
-- [01-scenario.md](../../docs/guides/enterprise/tdd-workflow/01-scenario.md) - The business context
-- [03-test-planning.md](../../docs/guides/enterprise/tdd-workflow/03-test-planning.md) - Using specs as test plans
-- [04-execution.md](../../docs/guides/enterprise/tdd-workflow/04-execution.md) - Agent-driven test implementation
+Key patterns demonstrated:
+- Research specs analyze coverage gaps before writing code
+- Context files store team standards that agents reference
+- Acceptance criteria become test cases with specific assertions
+- Driver specs coordinate parallel test implementation

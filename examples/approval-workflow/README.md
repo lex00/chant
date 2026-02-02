@@ -1,16 +1,20 @@
 # Approval Workflow Example
 
-This example demonstrates Chant's approval workflow, showing how specs can require human review before execution begins.
+## Overview
 
-## What's Demonstrated
+This example demonstrates Chant's approval workflow, showing how specs can require human review before execution begins. It includes three specs showing different approval states: pending, approved, and rejected.
 
-This example includes three specs showing different approval states:
+## Structure
 
-1. **Pending approval** (`001-risky-refactor.md`) - A spec requiring approval before work can begin
-2. **Approved spec** (`002-approved-feature.md`) - A spec that was reviewed and approved
-3. **Rejected spec** (`003-rejected-change.md`) - A spec that was rejected with feedback
+This example includes three specs:
 
-## Exploring the Example
+1. **001-risky-refactor.md** - A spec requiring approval before work can begin (pending approval)
+2. **002-approved-feature.md** - A spec that was reviewed and approved
+3. **003-rejected-change.md** - A spec that was rejected with feedback
+
+All three specs demonstrate independent execution patterns - each can be worked on separately with `chant work <spec-id>` after appropriate approval.
+
+## Usage
 
 View the configuration:
 ```bash
@@ -29,32 +33,6 @@ View a specific spec:
 ```bash
 chant show 001
 ```
-
-## Key Features Shown
-
-### Configuration
-The `.chant/config.md` demonstrates:
-- `approval.require_approval_for_agent_work: true` - Auto-require approval for agent work
-- `approval.rejection_action: manual` - Manual handling of rejected specs
-
-### Pending Approval
-Spec `001-risky-refactor.md` shows:
-- Created with `--needs-approval` flag
-- `approval.required: true` and `approval.status: pending` in frontmatter
-- Cannot be worked on until approved
-
-### Approved Spec
-Spec `002-approved-feature.md` shows:
-- Approval frontmatter with approver and timestamp
-- Entry in "Approval Discussion" section documenting the approval
-
-### Rejected Spec
-Spec `003-rejected-change.md` shows:
-- Rejection frontmatter with rejector and timestamp
-- Entry in "Approval Discussion" section with rejection reason
-- Cannot be worked on until issues are addressed and re-approved
-
-## Reproducing the Workflow
 
 Create a spec requiring approval:
 ```bash
@@ -77,11 +55,16 @@ Execute after approval:
 chant work spec-id
 ```
 
-## Learn More
+## Testing
 
-See the full guide at `docs/guides/approval-workflow.md` for:
-- When to require approval
-- Rejection handling modes (manual, dependency, group)
-- Activity tracking
-- Emergency bypass options
-- Team and solo developer workflows
+The configuration demonstrates:
+- `approval.require_approval_for_agent_work: true` - Auto-require approval for agent work
+- `approval.rejection_action: manual` - Manual handling of rejected specs
+
+Test the workflow by:
+1. Creating a spec with `--needs-approval` flag
+2. Reviewing with `chant show`
+3. Approving or rejecting with reasons
+4. Executing approved specs with `chant work`
+
+Learn more in the full guide at `docs/guides/approval-workflow.md`.
