@@ -303,7 +303,10 @@ pub fn confirm_re_finalize(spec_id: &str, force_flag: bool) -> Result<bool> {
         spec_id
     );
     println!("This will update commits and completion timestamp to now.");
-    println!("Use {} to skip this confirmation.", "--skip-criteria".cyan());
+    println!(
+        "Use {} to skip this confirmation.",
+        "--skip-criteria".cyan()
+    );
 
     use std::io::{self, Write};
     print!("Continue? [y/N] ");
