@@ -114,6 +114,7 @@ chant derive        ✅ Manual field derivation
 chant approve       ✅ Approve spec for work
 chant reject        ✅ Reject spec with reason
 chant activity      ✅ View recent spec activity
+chant watch         ✅ Watch and finalize specs
 ```
 
 ### Planned but Not Implemented ❌
