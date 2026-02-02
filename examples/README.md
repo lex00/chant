@@ -38,6 +38,17 @@ Demonstrates using Chant for research with two main patterns. Shows how to:
 - Analyze codebase for technical debt (developer path)
 - Leverage drift detection when source materials change
 
+### [OSS Maintainer Workflow](./oss-maintainer-workflow/)
+
+Demonstrates a 6-phase research-driven bug fix workflow for open source maintainers. Shows how to:
+- Systematically investigate complex bugs through comprehension and reproduction phases
+- Conduct root cause analysis and impact assessment before implementing fixes
+- Use research specs with `target_files:` to document findings
+- Build informed chains with `informed_by:` across multiple investigation phases
+- Stage fixes in fork before creating upstream PRs
+- Implement human gates for critical decision points
+- Handle concurrent write bugs with proper analysis and testing
+
 ## What These Examples Show
 
 Each example includes:
