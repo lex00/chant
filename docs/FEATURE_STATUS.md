@@ -50,6 +50,7 @@ For planned features and future releases, see [Roadmap](roadmap/roadmap.md).
 | Activity Command | [cli.md](reference/cli.md) | ✅ Complete | v0.3.6 |
 | Approval List Filters | [cli.md](reference/cli.md) | ✅ Complete | v0.3.6 |
 | Rejection Modes | [config.md](reference/config.md) | ✅ Complete | v0.3.6 |
+| Site Generation | [cli.md](reference/cli.md) | ✅ Complete | v0.3.0 |
 
 ## Partially Implemented ⚠️
 
@@ -114,6 +115,10 @@ chant derive        ✅ Manual field derivation
 chant approve       ✅ Approve spec for work
 chant reject        ✅ Reject spec with reason
 chant activity      ✅ View recent spec activity
+chant site          ✅ Static site generation
+chant site init     ✅ Initialize theme directory
+chant site build    ✅ Build static site
+chant site serve    ✅ Serve site locally
 ```
 
 ### Planned but Not Implemented ❌
