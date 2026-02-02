@@ -1,49 +1,53 @@
-# Implementation
+# Fork Fix + Staging PR
 
-Develop an informed fix based on thorough root cause analysis.
+Implement the fix in your fork and create a fork-internal PR for review before submitting upstream.
 
-## Why Informed Implementation?
+## Why Fork-Internal Staging PR?
 
-With research complete, implementation becomes straightforward:
+For OSS maintainers, the staging PR pattern provides:
 
-- **No guessing** — You know exactly what to change
-- **Confidence** — The approach has been evaluated against alternatives
-- **Focus** — Edge cases are already identified
-- **Testability** — The reproduction test validates your fix
+- **Review isolation** — Review the fix in your fork before exposing it upstream
+- **Iteration space** — Make changes without upstream visibility
+- **Quality gate** — Ensure CI passes before creating upstream PR
+- **Clean history** — Squash and polish commits before going upstream
 
-## Implementation Workflow
+The staging PR is internal to your fork (e.g., `yourfork:fix/issue-1234` → `yourfork:main`), not to upstream.
+
+## Fork Fix Workflow
 
 ```
-Research Output      Implementation Spec       Working Fix        Review
-      │                     │                      │                │
-      ▼                     ▼                      ▼                ▼
-┌───────────────┐     ┌───────────┐         ┌──────────┐     ┌───────────┐
-│ RCA Document  │     │ Run       │         │ Code     │     │ Validated │
-│ • Root cause  │────▶│ implement │────────▶│ changes  │────▶│ fix with  │
-│ • Recommended │     │ prompt    │         │ + tests  │     │ passing   │
-│   approach    │     └───────────┘         │ pass     │     │ tests     │
-└───────────────┘                           └──────────┘     └───────────┘
+Research        Implementation       Working Fix      Staging PR       Human Gate
+ Output              Spec                                                  │
+   │                  │                   │                │               ▼
+   ▼                  ▼                   ▼                ▼          ┌──────────┐
+┌────────┐      ┌──────────┐       ┌──────────┐    ┌───────────┐    │ Review   │
+│Sprawl  │      │Fix in    │       │Code      │    │Fork-      │───▶│ staging  │
+│research│─────▶│fork      │──────▶│changes   │───▶│internal   │    │ PR then  │
+│        │      │          │       │+ tests   │    │PR         │    │ create   │
+└────────┘      └──────────┘       └──────────┘    └───────────┘    │upstream  │
+                                                                     └──────────┘
 ```
 
-## Creating an Implementation Spec
+## Creating a Fork Fix Spec
 
 ```bash
 chant add "Fix issue #1234: Add locking to concurrent writes" --type code
 ```
 
-Edit the spec to reference the research:
+Edit the spec to reference all research phases:
 
 ```yaml
 ---
 type: code
 status: ready
-prompt: implement
 labels:
   - fix
   - issue-1234
 informed_by:
-  - .chant/specs/2026-01-29-003-ghi.md     # Research spec
-  - .chant/research/issue-1234-rca.md       # RCA document
+  - .chant/specs/2026-02-02-003-ghi.md     # Root cause research spec
+  - .chant/specs/2026-02-02-004-jkl.md     # Sprawl research spec
+  - .chant/research/issue-1234-root-cause.md
+  - .chant/research/issue-1234-sprawl.md
 target_files:
   - src/storage/store.rs
   - tests/storage/concurrent_test.rs
@@ -108,20 +112,43 @@ Output:
 - Release notes section in spec
 ```
 
+## Creating the Staging PR
+
+After implementing the fix, create a fork-internal PR:
+
+```bash
+# Push to your fork
+git push origin fix/issue-1234
+
+# Create PR against YOUR fork's main branch (not upstream)
+gh pr create \
+  --base yourusername:main \
+  --head yourusername:fix/issue-1234 \
+  --title "Fix #1234: Data loss on concurrent writes" \
+  --body "Research-backed fix. See .chant/research/ for analysis."
+```
+
+This staging PR:
+- Runs CI in your fork
+- Allows iteration without upstream noise
+- Can be reviewed by the agent or other maintainers
+- Serves as quality gate before upstream PR
+
 ## Connecting Research to Implementation
 
-The key difference from ad-hoc fixing is the explicit connection:
+The implementation is informed by all research phases:
 
 ```yaml
 informed_by:
-  - .chant/specs/2026-01-29-003-ghi.md  # Research spec
+  - .chant/specs/2026-02-02-003-ghi.md  # Root cause research
+  - .chant/specs/2026-02-02-004-jkl.md  # Sprawl research
 ```
 
-The agent reads the research first, which provides:
-- Why the recommended approach was chosen
+The agent reads all research, which provides:
+- What the root cause is
+- What files are affected
 - What edge cases to handle
-- Which files to modify
-- What trade-offs were considered
+- What tests to add
 
 ## Implementation Best Practices
 
@@ -349,8 +376,18 @@ cargo clippy
 cargo fmt --check
 ```
 
+## Staging PR Review
+
+The staging PR should be reviewed before creating the upstream PR:
+
+1. **Automated checks:** CI must pass
+2. **Agent review:** Optional agent-based review spec
+3. **Manual review:** Maintainer reviews the staging PR
+4. **Iteration:** Make changes until staging PR is approved
+
+Once staging PR is approved, proceed to create the upstream PR (next phase).
+
 ## See Also
 
-- [Root Cause Analysis](03-research.md) — Previous step: understand why
-- [Validation & Review](05-review.md) — Next step: independent verification
-- [Complete Walkthrough](09-example.md) — See implementation in full context
+- [Codebase Sprawl Research](04-sprawl.md) — Previous step: identify all affected files
+- [Upstream PR](06-upstream-pr.md) — Next step: human creates upstream PR

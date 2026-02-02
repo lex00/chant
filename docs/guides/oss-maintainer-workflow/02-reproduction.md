@@ -1,6 +1,6 @@
-# Reproduction Case
+# Reproducibility
 
-Create a minimal failing test before diving into root cause analysis.
+Create a minimal failing test before diving into root cause analysis. Reproduction can be automatic (agent creates test) or assisted (agent provides instructions).
 
 ## Why Reproduce First?
 
@@ -11,7 +11,17 @@ Reproduction provides:
 - **Baseline** to verify when the fix works
 - **Documentation** for future regression testing
 
-A reproduction spec produces a failing test that becomes input to research.
+## Automatic vs Assisted Reproduction
+
+**Automatic:** Agent creates a failing test that demonstrates the bug
+- Best for: Unit-testable bugs, clear reproduction steps
+- Output: Failing test file
+
+**Assisted:** Agent provides instructions for manual reproduction
+- Best for: UI bugs, system-level issues, environment-specific bugs
+- Output: Step-by-step reproduction instructions
+
+A reproduction spec produces either a failing test or reproduction instructions.
 
 ## Reproduction Workflow
 
@@ -329,8 +339,35 @@ mod issue_1234_concurrent_write;
 mod issue_1235_unicode_filenames;
 ```
 
+## Assisted Reproduction Example
+
+When automatic reproduction isn't possible:
+
+```markdown
+## Assisted Reproduction Instructions
+
+**Environment:** macOS 14.2, requires physical display
+
+**Steps:**
+1. Open the application
+2. Navigate to Settings > Display
+3. Change resolution to 1920x1080
+4. Click "Apply" twice rapidly
+
+**Expected:** Settings should save
+**Actual:** Second click causes UI freeze
+
+**Additional context:**
+- Only occurs on macOS with Retina displays
+- Requires physical interaction (cannot be automated)
+- Happens ~80% of the time
+
+**For developer:**
+- Check event queue handling in `src/ui/settings.rs:234`
+- Suspect race condition in resolution change handler
+```
+
 ## See Also
 
-- [Issue Triage](01-triage.md) — Previous step: assess before reproducing
-- [Root Cause Analysis](03-research.md) — Next step: investigate why the bug exists
-- [Complete Walkthrough](09-example.md) — See reproduction in full context
+- [Comprehension Research](01-comprehension.md) — Previous step: understand the issue
+- [Root Cause Research](03-root-cause.md) — Next step: investigate why the bug exists

@@ -16,18 +16,19 @@ Open source maintainers face a common problem: incoming issues require deep inve
 Chant enables a systematic workflow where understanding precedes action:
 
 ```
-Issue Report    Triage      Reproduction     Research        Implementation    Review
-    │             │              │               │                  │             │
-    ▼             ▼              ▼               ▼                  ▼             ▼
-┌─────────┐  ┌─────────┐   ┌──────────┐   ┌───────────┐    ┌────────────┐   ┌─────────┐
-│ GitHub  │  │ Assess  │   │ Failing  │   │ Root Cause│    │  Informed  │   │ Verify  │
-│  Issue  │─▶│ Quality │─▶ │  Test    │─▶ │  Analysis │─▶  │    Fix     │─▶ │ & Ship  │
-│         │  │         │   │          │   │           │    │            │   │         │
-└─────────┘  └─────────┘   └──────────┘   └───────────┘    └────────────┘   └─────────┘
-                │               │              │                 │
-                ▼               ▼              ▼                 ▼
-            triage.md     reproduce.md   research.md       implement.md
-              spec            spec           spec              spec
+Issue       Comprehension   Repro    Root Cause   Sprawl      Fork Fix    Upstream PR
+Report         Research                Research    Research                (Human Gate)
+  │               │            │          │           │            │             │
+  ▼               ▼            ▼          ▼           ▼            ▼             ▼
+┌──────┐    ┌──────────┐  ┌──────┐  ┌──────────┐ ┌────────┐ ┌─────────┐  ┌──────────┐
+│GitHub│    │Understand│  │Test  │  │Find Root │ │Expand  │ │Fix in   │  │Human     │
+│Issue │───▶│What It   │─▶│Repro │─▶│Cause     │─▶│View    │─▶│Fork +   │─▶│Creates   │
+│      │    │Is About  │  │      │  │          │ │        │ │Staging  │  │Real PR   │
+└──────┘    └──────────┘  └──────┘  └──────────┘ └────────┘ │PR       │  └──────────┘
+                │             │          │           │        └─────────┘
+                ▼             ▼          ▼           ▼             │
+           target_files  reproduce  target_files target_files informed_by
+              spec         spec        spec        spec      (research specs)
 ```
 
 Each stage produces a spec that informs the next, creating an auditable trail from issue to resolution.
@@ -54,94 +55,102 @@ Specs serve as handoff documents. One maintainer can triage, another can researc
 
 | Stage | Spec Type | Output | Purpose |
 |-------|-----------|--------|---------|
-| [Triage](01-triage.md) | `task` | Assessment + questions | Filter and categorize incoming issues |
-| [Reproduction](02-reproduction.md) | `task` | Failing test | Confirm and isolate the bug |
-| [Research](03-research.md) | `task` | RCA document | Deep investigation of root cause |
-| [Implementation](04-implementation.md) | `code` | Working fix | Informed fix based on research |
-| [Review](05-review.md) | `task` | Approval decision | Independent validation |
-| [Documentation](06-documentation.md) | `documentation` | Updated docs | User-facing documentation |
-| [Release](07-release.md) | `task` | Release notes | User-friendly changelog |
+| [Comprehension](01-comprehension.md) | `research` | `target_files` | Understand what the issue is about |
+| [Reproducibility](02-reproduction.md) | `task` | Failing test or instructions | Confirm and isolate the bug (auto/assisted) |
+| [Root Cause](03-root-cause.md) | `research` | `target_files` | Determine what needs to be fixed |
+| [Codebase Sprawl](04-sprawl.md) | `research` | `target_files` | Expand view based on root cause |
+| [Fork Fix](05-fork-fix.md) | `code` | Working fix + staging PR | Fix in fork, create fork-internal PR |
+| [Upstream PR](06-upstream-pr.md) | `task` | Real PR | Human gate → create upstream PR |
 
 ## Quick Start
 
 Here's a minimal example of the full workflow:
 
 ```bash
-# 1. Triage the issue
-chant add "Triage issue #1234: Data loss on concurrent writes" --type task
-# Edit spec, then:
-chant work <triage-spec-id> --prompt triage
+# 1. Comprehension research
+chant add "Comprehension: issue #1234" --type research
+# Edit spec to set: target_files: [.chant/research/issue-1234-comprehension.md]
+chant work <comprehension-spec-id>
 
-# 2. Create reproduction case
+# 2. Reproducibility
 chant add "Reproduce issue #1234" --type task
-# Edit spec to add: informed_by: [<triage-spec-id>]
-chant work <repro-spec-id> --prompt reproduce
+# Edit spec to add: informed_by: [<comprehension-spec-id>]
+chant work <repro-spec-id>
 
-# 3. Research root cause
-chant add "Research root cause: issue #1234" --type task
-# Edit spec to add: informed_by: [<repro-spec-id>, relevant-docs, source-files]
-chant work <research-spec-id> --prompt research
+# 3. Root cause research
+chant add "Root cause: issue #1234" --type research
+# Edit spec to add: informed_by: [<comprehension-spec-id>, <repro-spec-id>]
+#                   target_files: [.chant/research/issue-1234-root-cause.md]
+chant work <root-cause-spec-id>
 
-# 4. Implement the fix
+# 4. Sprawl research
+chant add "Sprawl: issue #1234" --type research
+# Edit spec to add: informed_by: [<root-cause-spec-id>]
+#                   target_files: [.chant/research/issue-1234-sprawl.md]
+chant work <sprawl-spec-id>
+
+# 5. Fork fix with staging PR
 chant add "Fix issue #1234: Use locking for concurrent writes" --type code
-# Edit spec to add: informed_by: [<research-spec-id>]
-chant work <impl-spec-id> --prompt implement
+# Edit spec to add: informed_by: [<root-cause-spec-id>, <sprawl-spec-id>]
+chant work <impl-spec-id>
+# Agent creates staging PR in fork (not upstream)
 
-# 5. Independent review
-chant add "Review fix for issue #1234" --type task
-# Edit spec to add: informed_by: [<repro-spec-id>, <impl-spec-id>]
-chant work <review-spec-id> --prompt review
-chant approve <impl-spec-id> --by "maintainer-name"
-
-# 6. Update documentation (if needed)
-chant drift  # Check for documentation drift
-chant add "Document concurrent write locking API" --type documentation
-# Edit spec to add: informed_by: [<impl-spec-id>]
-chant work <doc-spec-id> --prompt document
-
-# 7. Merge all completed specs
-chant merge --all
+# 6. Human gate → upstream PR
+# Human reviews staging PR in fork, then creates real PR to upstream
+gh pr create --base upstream/main --title "Fix #1234"
 ```
 
-## Custom Prompts
+## Workflow Summary
 
-This workflow uses custom prompts for each stage. See [Prompt Guide](../prompts.md) for general prompt concepts, then install these prompts:
+The six phases work together:
 
-| Prompt | Stage | Purpose |
-|--------|-------|---------|
-| `triage` | Triage | Assess and categorize issues |
-| `reproduce` | Reproduction | Create minimal failing tests |
-| `research` | Research | Deep root cause investigation |
-| `implement` | Implementation | Informed fix development |
-| `review` | Review | Independent validation |
-| `document` | Documentation | User-facing documentation |
-
-Copy the prompt files from the [prompts section](#installing-prompts) to `.chant/prompts/` in your project.
+1. **Comprehension** → Understand the issue, produce `target_files`
+2. **Reproducibility** → Confirm with test or instructions
+3. **Root Cause** → Find the bug, produce `target_files`
+4. **Sprawl** → Expand view, produce complete `target_files`
+5. **Fork Fix** → Implement + staging PR in fork
+6. **Upstream PR** → Human reviews staging PR → creates upstream PR
 
 ## Guide Pages
 
-1. **[Issue Triage](01-triage.md)** — Assess incoming issues before deep work
-2. **[Reproduction Case](02-reproduction.md)** — Create minimal failing tests
-3. **[Root Cause Analysis](03-research.md)** — Deep investigation workflow (core concept)
-4. **[Implementation](04-implementation.md)** — Informed fix development (core concept)
-5. **[Validation & Review](05-review.md)** — Independent verification and approval
-6. **[Documentation](06-documentation.md)** — Documentation specs with drift detection
-7. **[Release Coordination](07-release.md)** — Aggregate fixes into release notes
-8. **[Advanced Patterns](08-advanced.md)** — Security, breaking changes, parallel work
-9. **[Complete Walkthrough](09-example.md)** — Real-world example from start to finish
+1. **[Comprehension Research](01-comprehension.md)** — Understand what the issue is about
+2. **[Reproducibility](02-reproduction.md)** — Create failing tests (auto/assisted)
+3. **[Root Cause Research](03-root-cause.md)** — Determine what needs to be fixed
+4. **[Codebase Sprawl Research](04-sprawl.md)** — Expand view based on root cause
+5. **[Fork Fix + Staging PR](05-fork-fix.md)** — Fix in fork with fork-internal PR
+6. **[Upstream PR](06-upstream-pr.md)** — Human gate before creating real PR
 
-## Installing Prompts
+## Key Concepts
 
-Create these files in `.chant/prompts/`:
+### target_files Pattern
 
-- [`triage.md`](../../prompts/triage.md) — Issue triage prompt
-- [`reproduce.md`](../../prompts/reproduce.md) — Reproduction case prompt
-- [`research.md`](../../prompts/research.md) — Root cause analysis prompt
-- [`implement.md`](../../prompts/implement.md) — Implementation prompt
-- [`review.md`](../../prompts/review.md) — Review prompt
-- [`document.md`](../../prompts/document.md) — Documentation prompt
+Research specs produce `target_files` that feed into later phases:
 
-See [Advanced Patterns](08-advanced.md) for prompt customization based on issue type.
+```yaml
+# Comprehension research
+target_files:
+  - .chant/research/issue-1234-comprehension.md
+
+# Root cause research uses comprehension output
+informed_by:
+  - .chant/research/issue-1234-comprehension.md
+target_files:
+  - .chant/research/issue-1234-root-cause.md
+
+# Implementation uses all research
+informed_by:
+  - .chant/research/issue-1234-root-cause.md
+  - .chant/research/issue-1234-sprawl.md
+```
+
+### Fork-Staging Pattern
+
+Fork-internal PRs serve as quality gates:
+
+1. Agent implements in fork
+2. Agent creates staging PR (fork branch → fork main)
+3. Human reviews staging PR
+4. Human creates upstream PR (fork branch → upstream main)
 
 ## Prerequisites
 

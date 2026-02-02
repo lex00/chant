@@ -1,6 +1,6 @@
-# Root Cause Analysis
+# Root Cause Research
 
-Deep investigation to understand WHY the bug exists before attempting a fix.
+Determine what needs to be fixed by investigating WHY the bug exists.
 
 ## Why Research First?
 
@@ -29,36 +29,34 @@ Reproduction      Research Spec         RCA Document        Implementation
      └── Also: relevant docs, source files
 ```
 
-## Creating a Research Spec
+## Creating a Root Cause Research Spec
 
 ```bash
-chant add "Research root cause: issue #1234 concurrent write data loss" --type task
+chant add "Root cause: issue #1234 concurrent write data loss" --type research
 ```
 
-Edit the spec to reference all relevant context:
+Edit the spec to reference comprehension output:
 
 ```yaml
 ---
-type: task
+type: research
 status: ready
-prompt: research
 labels:
-  - research
+  - root-cause
   - issue-1234
 informed_by:
-  - .chant/specs/2026-01-29-002-def.md    # Reproduction spec
+  - .chant/specs/2026-02-02-001-abc.md    # Comprehension spec
+  - .chant/specs/2026-02-02-002-def.md    # Reproduction spec
   - tests/regression/issue_1234_test.rs    # The failing test
-  - docs/architecture/storage.md           # Relevant architecture docs
-  - src/storage/store.rs                   # Primary source file
-  - src/storage/concurrent.rs              # Related concurrency code
 target_files:
-  - .chant/research/issue-1234-rca.md
+  - .chant/research/issue-1234-root-cause.md
 ---
 
-# Research root cause: issue #1234 concurrent write data loss
+# Root cause: issue #1234 concurrent write data loss
 
 ## Context
 
+Comprehension research identified storage layer as affected component.
 Reproduction spec confirmed data loss during concurrent writes.
 Failing test: `tests/regression/issue_1234_test.rs`
 
@@ -67,17 +65,12 @@ Failing test: `tests/regression/issue_1234_test.rs`
 - [ ] Where exactly does data loss occur in the write path?
 - [ ] What synchronization mechanism is currently used?
 - [ ] Why does the synchronization fail under concurrency?
-- [ ] Are there similar patterns elsewhere that might have the same bug?
-- [ ] What are the trade-offs between potential fixes?
 
 ## Acceptance Criteria
 
 - [ ] Root cause identified with code references
 - [ ] Affected code paths documented
-- [ ] 2-3 potential approaches evaluated with trade-offs
-- [ ] Recommended approach with justification
-- [ ] Edge cases and risks identified
-- [ ] Files that need modification listed
+- [ ] Target files list produced for sprawl research phase
 ```
 
 ## The Research Prompt
