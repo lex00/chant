@@ -25,7 +25,7 @@ needs_approval: true
 approval:
   required: true
   status: pending
-context:
+informed_by:
   - .chant/context/kpi-churn-q1/datadog-churn-metrics-2026-01.md
   - .chant/context/kpi-churn-q1/zendesk-support-patterns.md
   - .chant/context/kpi-churn-q1/user-survey-summary.md

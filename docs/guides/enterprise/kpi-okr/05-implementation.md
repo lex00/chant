@@ -65,7 +65,7 @@ labels:
   - q1-2026
   - onboarding
 parent: 2026-01-16-002-abc
-context:
+informed_by:
   - .chant/context/kpi-churn-q1/research-findings.md
 target_files:
   - src/components/onboarding/wizard.tsx
