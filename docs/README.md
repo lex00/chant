@@ -83,12 +83,12 @@ chant work 001
 
 ## Installation
 
-```bash
-# Coming soon
-brew install chant
-# or
-cargo install chant
-```
+See the [Installation Guide](https://lex00.github.io/chant/getting-started/installation.html) for detailed instructions.
+
+**Quick options:**
+- **Homebrew:** `brew tap lex00/tap && brew install chant`
+- **Cargo:** `cargo install --git https://github.com/lex00/chant`
+- **Direct download:** Visit the [Releases page](https://github.com/lex00/chant/releases/latest)
 
 ---
 
