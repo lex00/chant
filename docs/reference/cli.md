@@ -1510,6 +1510,7 @@ fi
 
 ---
 
+
 ## Watch
 
 Automatically finalize specs when their acceptance criteria are met:
@@ -1576,6 +1577,148 @@ Poll every 1000ms (1 second) instead of using config default.
 - **Continuous integration**: Monitor spec completion in CI pipelines
 - **Background automation**: Run in tmux/screen for automatic finalization
 - **Testing**: Use `--once` to verify watch behavior without blocking
+
+---
+
+## Site Generation
+
+Generate static documentation sites from specs:
+
+```bash
+chant site init                       # Initialize theme directory
+chant site init --force-overwrite     # Overwrite existing theme files
+chant site build                      # Build static site
+chant site build --output ./dist      # Build to custom directory
+chant site serve                      # Serve site locally (default port: 3000)
+chant site serve --port 8080          # Serve on custom port
+chant site serve --output ./dist      # Serve from custom directory
+```
+
+### Site Init
+
+Initialize the theme directory with customizable templates:
+
+```bash
+chant site init                       # Create theme files at .chant/site/theme
+chant site init --force-overwrite     # Overwrite existing theme files
+```
+
+The `init` command:
+1. Creates `.chant/site/theme/` directory
+2. Copies default templates for customization:
+   - `index.html` - Homepage template
+   - `spec.html` - Individual spec page template
+   - `styles.css` - Site stylesheet
+   - Other theme assets
+3. Lists created files with descriptions
+4. Provides next steps for customization
+
+**Flags:**
+- `--force-overwrite` - Overwrite existing theme files without prompting
+
+**Example output:**
+
+```
+✓ Theme initialized at .chant/site/theme
+
+Created files:
+  index.html - Homepage template
+  spec.html - Individual spec page template
+  styles.css - Site stylesheet
+
+Next steps:
+  1. Edit templates in .chant/site/theme
+  2. Run chant site build to generate the site
+  3. Run chant site serve to preview locally
+```
+
+### Site Build
+
+Build a static site from all specs:
+
+```bash
+chant site build                      # Build to configured output directory
+chant site build --output ./dist      # Build to custom directory
+chant site build -o ./docs            # Short form
+```
+
+The build command:
+1. Loads all specs from `.chant/specs/`
+2. Uses custom theme from `.chant/site/theme/` if available
+3. Falls back to embedded default theme
+4. Generates static HTML files
+5. Writes to output directory (default: `.chant/site/dist`)
+
+**Flags:**
+- `--output DIR`, `-o DIR` - Output directory (overrides config)
+
+**Example output:**
+
+```
+→ Building site to .chant/site/dist
+  Found 142 specs
+  Using custom theme from .chant/site/theme
+
+✓ Site built successfully
+  142 specs included
+  285 files written
+  Output: .chant/site/dist
+
+Next steps:
+  Preview locally: chant site serve --port 3000
+  Deploy: Copy .chant/site/dist to your web server
+```
+
+### Site Serve
+
+Start a local HTTP server to preview the site:
+
+```bash
+chant site serve                      # Serve on port 3000 (default)
+chant site serve --port 8080          # Serve on custom port
+chant site serve -p 8080              # Short form
+chant site serve --output ./dist      # Serve from custom directory
+chant site serve -o ./dist            # Short form
+```
+
+The serve command:
+1. Checks that the site has been built
+2. Starts an HTTP server on the specified port
+3. Serves static files from the output directory
+4. Logs requests to stdout
+5. Runs until Ctrl+C
+
+**Flags:**
+- `--port PORT`, `-p PORT` - Port to serve on (default: 3000)
+- `--output DIR`, `-o DIR` - Output directory to serve (default: from config)
+
+**Example output:**
+
+```
+→ Serving .chant/site/dist at http://127.0.0.1:3000
+Press Ctrl+C to stop
+  200 / .chant/site/dist/index.html
+  200 /styles.css .chant/site/dist/styles.css
+  200 /specs/2026-01-27-001-abc.html .chant/site/dist/specs/2026-01-27-001-abc.html
+```
+
+### Configuration
+
+Configure site generation in `.chant/config.md`:
+
+```yaml
+site:
+  output_dir: .chant/site/dist        # Output directory for build
+  title: "Project Specs"              # Site title
+  description: "Documentation site"   # Site description
+```
+
+**Use cases:**
+- **Documentation**: Generate a browsable spec catalog for your team
+- **Publishing**: Create a public documentation site from specs
+- **Archiving**: Build a static snapshot of all specs
+- **Review**: Share specs with stakeholders via a web interface
+
 
 ---
 
