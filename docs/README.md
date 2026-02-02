@@ -41,7 +41,7 @@ chant work 001
 - [OSS Maintainer Workflow](guides/oss-maintainer-workflow/index.md)
 - [Examples](guides/examples.md)
 - [Ecosystem Integration](guides/ecosystem.md)
-- [Approvals](roadmap/planned/approvals.md) *(Planned)*
+- [Approval Workflow](guides/approval-workflow.md)
 - [Recovery & Resume](guides/recovery.md)
 
 ### Reference
