@@ -1058,6 +1058,7 @@ fn tool_chant_diagnose(arguments: Option<&Value>) -> Result<Value> {
     let report_json = json!({
         "spec_id": report.spec_id,
         "status": format!("{:?}", report.status).to_lowercase(),
+        "location": report.location,
         "checks": checks_json,
         "diagnosis": report.diagnosis,
         "suggestion": report.suggestion

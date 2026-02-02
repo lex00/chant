@@ -12,6 +12,7 @@ use std::process::Command;
 
 use crate::paths::SPECS_DIR;
 use crate::spec::{Spec, SpecStatus};
+use crate::worktree::get_active_worktree;
 
 /// A single diagnostic check result.
 #[derive(Debug, Clone)]
@@ -55,6 +56,7 @@ pub struct DiagnosticReport {
     pub checks: Vec<CheckResult>,
     pub diagnosis: String,
     pub suggestion: Option<String>,
+    pub location: String,
 }
 
 impl DiagnosticReport {
@@ -96,11 +98,22 @@ fn check_spec_file(spec_file: &Path) -> CheckResult {
 }
 
 /// Check if a log file exists and get its age.
-fn check_log_file(spec_id: &str) -> CheckResult {
-    let log_file = PathBuf::from(format!(".chant/.store/{}.log", spec_id));
+fn check_log_file(spec_id: &str, base_path: &Path) -> CheckResult {
+    let log_file = base_path
+        .join(".chant/.store")
+        .join(format!("{}.log", spec_id));
+
+    let location_hint = if base_path.to_string_lossy().contains("/tmp/chant-") {
+        "worktree"
+    } else {
+        "main"
+    };
 
     if !log_file.exists() {
-        return CheckResult::fail("Log file", "Does not exist");
+        return CheckResult::fail(
+            "Log file",
+            format!("Does not exist (checked in {})", location_hint),
+        );
     }
 
     match fs::metadata(&log_file) {
@@ -128,7 +141,10 @@ fn check_log_file(spec_id: &str) -> CheckResult {
 
             CheckResult::pass_with_details(
                 "Log file",
-                format!("Exists ({} bytes), last modified: {}", size, age_str),
+                format!(
+                    "Exists ({} bytes), last modified: {} (checked in {})",
+                    size, age_str, location_hint
+                ),
             )
         }
         Err(e) => CheckResult::fail("Log file", format!("Cannot read metadata: {}", e)),
@@ -136,13 +152,30 @@ fn check_log_file(spec_id: &str) -> CheckResult {
 }
 
 /// Check if there's a lock file.
-fn check_lock_file(spec_id: &str) -> CheckResult {
-    let lock_file = PathBuf::from(format!(".chant/.locks/{}.lock", spec_id));
+fn check_lock_file(spec_id: &str, base_path: &Path) -> CheckResult {
+    let lock_file = base_path
+        .join(".chant/.locks")
+        .join(format!("{}.lock", spec_id));
+
+    let location_hint = if base_path.to_string_lossy().contains("/tmp/chant-") {
+        "worktree"
+    } else {
+        "main"
+    };
 
     if lock_file.exists() {
-        CheckResult::pass_with_details("Lock file", "Present (spec may be running)")
+        CheckResult::pass_with_details(
+            "Lock file",
+            format!(
+                "Present (spec may be running) (checked in {})",
+                location_hint
+            ),
+        )
     } else {
-        CheckResult::pass_with_details("Lock file", "Not present")
+        CheckResult::pass_with_details(
+            "Lock file",
+            format!("Not present (checked in {})", location_hint),
+        )
     }
 }
 
@@ -243,7 +276,17 @@ fn check_status_consistency(spec: &Spec, commit_exists: bool, unchecked: usize) 
 
 /// Run all diagnostic checks on a spec.
 pub fn diagnose_spec(spec_id: &str) -> Result<DiagnosticReport> {
-    let specs_dir = Path::new(SPECS_DIR);
+    // Check if spec has an active worktree
+    let (base_path, location) = if let Some(worktree) = get_active_worktree(spec_id) {
+        (
+            worktree.clone(),
+            format!("worktree: {}", worktree.display()),
+        )
+    } else {
+        (PathBuf::from("."), "main repository".to_string())
+    };
+
+    let specs_dir = base_path.join(SPECS_DIR);
     let spec_file = specs_dir.join(format!("{}.md", spec_id));
 
     // Load the spec
@@ -256,10 +299,10 @@ pub fn diagnose_spec(spec_id: &str) -> Result<DiagnosticReport> {
     checks.push(check_spec_file(&spec_file));
 
     // 2. Log file check
-    checks.push(check_log_file(spec_id));
+    checks.push(check_log_file(spec_id, &base_path));
 
     // 3. Lock file check
-    checks.push(check_lock_file(spec_id));
+    checks.push(check_lock_file(spec_id, &base_path));
 
     // 4. Git commit check
     let commit_result = check_git_commit(spec_id);
@@ -283,6 +326,7 @@ pub fn diagnose_spec(spec_id: &str) -> Result<DiagnosticReport> {
         checks,
         diagnosis,
         suggestion,
+        location,
     })
 }
 
@@ -371,6 +415,7 @@ mod tests {
             checks: vec![CheckResult::pass("Check 1"), CheckResult::pass("Check 2")],
             diagnosis: "All good".to_string(),
             suggestion: None,
+            location: "main repository".to_string(),
         };
 
         assert!(report.all_passed());
@@ -388,6 +433,7 @@ mod tests {
             ],
             diagnosis: "Some issues".to_string(),
             suggestion: None,
+            location: "main repository".to_string(),
         };
 
         assert!(!report.all_passed());

@@ -60,6 +60,7 @@ pub fn cmd_diagnose(id: &str) -> Result<()> {
         SpecStatus::Cancelled => "cancelled".dimmed(),
     };
     println!("Status: {}", status_str);
+    println!("Location: {}", report.location.bright_black());
 
     println!("\n{}:", "Checks".bold());
     for check in &report.checks {
