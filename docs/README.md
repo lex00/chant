@@ -81,6 +81,25 @@ chant work 001
 
 - [Roadmap](roadmap/roadmap.md)
 
+## Building Documentation
+
+This documentation is built using [mdbook](https://rust-lang.github.io/mdBook/).
+
+To build the documentation locally:
+
+```bash
+# Install mdbook if needed
+cargo install mdbook
+
+# Build the documentation
+mdbook build docs
+
+# Or serve with live reload
+mdbook serve docs
+```
+
+The built documentation will be in `docs/book/`.
+
 ## Installation
 
 See the [Installation Guide](https://lex00.github.io/chant/getting-started/installation.html) for detailed instructions.
