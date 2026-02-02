@@ -263,6 +263,10 @@ fn handle_tools_list() -> Result<Value> {
                         "status": {
                             "type": "string",
                             "description": "Filter by status (pending, in_progress, completed, failed, ready, blocked)"
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum number of specs to return (default: 50)"
                         }
                     }
                 }
@@ -279,6 +283,19 @@ fn handle_tools_list() -> Result<Value> {
                         }
                     },
                     "required": ["id"]
+                }
+            },
+            {
+                "name": "chant_ready",
+                "description": "List all specs that are ready to be worked (no unmet dependencies)",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum number of specs to return (default: 50)"
+                        }
+                    }
                 }
             },
             {
@@ -463,6 +480,7 @@ fn handle_tools_call(params: Option<&Value>) -> Result<Value> {
         // Query tools (read-only)
         "chant_spec_list" => tool_chant_spec_list(arguments),
         "chant_spec_get" => tool_chant_spec_get(arguments),
+        "chant_ready" => tool_chant_ready(arguments),
         "chant_status" => tool_chant_status(arguments),
         "chant_log" => tool_chant_log(arguments),
         "chant_search" => tool_chant_search(arguments),
@@ -538,7 +556,16 @@ fn tool_chant_spec_list(arguments: Option<&Value>) -> Result<Value> {
         }
     }
 
-    let specs_json: Vec<Value> = specs
+    // Get limit (default 50)
+    let limit = arguments
+        .and_then(|a| a.get("limit"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(50) as usize;
+
+    let total = specs.len();
+    let limited_specs: Vec<_> = specs.into_iter().take(limit).collect();
+
+    let specs_json: Vec<Value> = limited_specs
         .iter()
         .map(|s| {
             json!({
@@ -552,11 +579,18 @@ fn tool_chant_spec_list(arguments: Option<&Value>) -> Result<Value> {
         })
         .collect();
 
+    let response = json!({
+        "specs": specs_json,
+        "total": total,
+        "limit": limit,
+        "returned": limited_specs.len()
+    });
+
     Ok(json!({
         "content": [
             {
                 "type": "text",
-                "text": serde_json::to_string_pretty(&specs_json)?
+                "text": serde_json::to_string_pretty(&response)?
             }
         ]
     }))
@@ -610,6 +644,61 @@ fn tool_chant_spec_get(arguments: Option<&Value>) -> Result<Value> {
             {
                 "type": "text",
                 "text": serde_json::to_string_pretty(&spec_json)?
+            }
+        ]
+    }))
+}
+
+fn tool_chant_ready(arguments: Option<&Value>) -> Result<Value> {
+    let specs_dir = match mcp_ensure_initialized() {
+        Ok(dir) => dir,
+        Err(err_response) => return Ok(err_response),
+    };
+
+    let mut specs = load_all_specs(&specs_dir)?;
+    specs.sort_by(|a, b| spec_group::compare_spec_ids(&a.id, &b.id));
+
+    // Filter to ready specs only
+    let all_specs = specs.clone();
+    specs.retain(|s| s.is_ready(&all_specs));
+    // Filter out group specs - they are containers, not actionable work
+    specs.retain(|s| s.frontmatter.r#type != "group");
+
+    // Get limit (default 50)
+    let limit = arguments
+        .and_then(|a| a.get("limit"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(50) as usize;
+
+    let total = specs.len();
+    let limited_specs: Vec<_> = specs.into_iter().take(limit).collect();
+
+    let specs_json: Vec<Value> = limited_specs
+        .iter()
+        .map(|s| {
+            json!({
+                "id": s.id,
+                "title": s.title,
+                "status": format!("{:?}", s.frontmatter.status).to_lowercase(),
+                "type": s.frontmatter.r#type,
+                "depends_on": s.frontmatter.depends_on,
+                "labels": s.frontmatter.labels
+            })
+        })
+        .collect();
+
+    let response = json!({
+        "specs": specs_json,
+        "total": total,
+        "limit": limit,
+        "returned": limited_specs.len()
+    });
+
+    Ok(json!({
+        "content": [
+            {
+                "type": "text",
+                "text": serde_json::to_string_pretty(&response)?
             }
         ]
     }))
@@ -1408,21 +1497,22 @@ mod tests {
     fn test_handle_tools_list() {
         let result = handle_tools_list().unwrap();
         let tools = result["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 12);
-        // Query tools (6)
+        assert_eq!(tools.len(), 13);
+        // Query tools (7)
         assert_eq!(tools[0]["name"], "chant_spec_list");
         assert_eq!(tools[1]["name"], "chant_spec_get");
-        assert_eq!(tools[2]["name"], "chant_status");
-        assert_eq!(tools[3]["name"], "chant_log");
-        assert_eq!(tools[4]["name"], "chant_search");
-        assert_eq!(tools[5]["name"], "chant_diagnose");
+        assert_eq!(tools[2]["name"], "chant_ready");
+        assert_eq!(tools[3]["name"], "chant_status");
+        assert_eq!(tools[4]["name"], "chant_log");
+        assert_eq!(tools[5]["name"], "chant_search");
+        assert_eq!(tools[6]["name"], "chant_diagnose");
         // Mutating tools (6)
-        assert_eq!(tools[6]["name"], "chant_spec_update");
-        assert_eq!(tools[7]["name"], "chant_add");
-        assert_eq!(tools[8]["name"], "chant_finalize");
-        assert_eq!(tools[9]["name"], "chant_resume");
-        assert_eq!(tools[10]["name"], "chant_cancel");
-        assert_eq!(tools[11]["name"], "chant_archive");
+        assert_eq!(tools[7]["name"], "chant_spec_update");
+        assert_eq!(tools[8]["name"], "chant_add");
+        assert_eq!(tools[9]["name"], "chant_finalize");
+        assert_eq!(tools[10]["name"], "chant_resume");
+        assert_eq!(tools[11]["name"], "chant_cancel");
+        assert_eq!(tools[12]["name"], "chant_archive");
     }
 
     #[test]
@@ -1467,5 +1557,44 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("activity"));
+    }
+
+    #[test]
+    fn test_chant_ready_has_limit_param() {
+        let result = handle_tools_list().unwrap();
+        let tools = result["tools"].as_array().unwrap();
+        let ready_tool = tools.iter().find(|t| t["name"] == "chant_ready").unwrap();
+
+        let props = &ready_tool["inputSchema"]["properties"];
+        assert!(
+            props.get("limit").is_some(),
+            "chant_ready should have 'limit' property"
+        );
+        assert_eq!(props["limit"]["type"], "integer");
+        assert!(props["limit"]["description"]
+            .as_str()
+            .unwrap()
+            .contains("50"));
+    }
+
+    #[test]
+    fn test_chant_spec_list_has_limit_param() {
+        let result = handle_tools_list().unwrap();
+        let tools = result["tools"].as_array().unwrap();
+        let list_tool = tools
+            .iter()
+            .find(|t| t["name"] == "chant_spec_list")
+            .unwrap();
+
+        let props = &list_tool["inputSchema"]["properties"];
+        assert!(
+            props.get("limit").is_some(),
+            "chant_spec_list should have 'limit' property"
+        );
+        assert_eq!(props["limit"]["type"], "integer");
+        assert!(props["limit"]["description"]
+            .as_str()
+            .unwrap()
+            .contains("50"));
     }
 }
