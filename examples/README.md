@@ -12,10 +12,13 @@ Demonstrates Chant's approval workflow with three example specs showing pending,
 - Handle rejected specs with feedback
 - Configure automatic approval requirements for agent work
 
-Coming soon - additional examples:
-- Breaking down complex projects into specs
-- Using driver specs to coordinate multi-step workflows
-- Handling dependencies between specs
+### [KPI/OKR Workflow](./kpi-okr-workflow/)
+
+Demonstrates using Chant to tackle a business KPI (reducing customer churn from 8% to 5%). Shows how to:
+- Ingest external data into `.chant/context/` for agent analysis
+- Use research specs with `informed_by:` to reference context files
+- Coordinate parallel implementation with driver specs and member specs
+- Bridge business objectives to technical implementation
 
 ## What These Examples Show
 
