@@ -380,6 +380,20 @@ pub fn merge_single_spec(
     should_delete_branch: bool,
     dry_run: bool,
 ) -> Result<MergeResult> {
+    // In dry_run mode, try to get current branch but don't fail if we're not in a repo
+    if dry_run {
+        let original_branch = get_current_branch().unwrap_or_default();
+        return Ok(MergeResult {
+            spec_id: spec_id.to_string(),
+            success: true,
+            original_branch,
+            merged_to: main_branch.to_string(),
+            branch_deleted: should_delete_branch,
+            branch_delete_warning: None,
+            dry_run: true,
+        });
+    }
+
     // Save current branch
     let original_branch = get_current_branch()?;
 
