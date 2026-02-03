@@ -2,16 +2,14 @@
 //!
 //! Provides formatters that transform StatusData into different output formats.
 
-use colored::Colorize;
-
-use crate::spec::SpecStatus;
 use crate::status::{AttentionItem, InProgressItem, ReadyItem, StatusData, TodayActivity};
+use crate::ui;
 
 /// Format StatusData as regular multi-section text output
 pub fn format_regular_status(data: &StatusData) -> String {
     let mut output = vec![
-        "Chant Status".bold().to_string(),
-        "============".to_string(),
+        ui::colors::heading("Chant Status").to_string(),
+        ui::format::separator(12),
         String::new(),
         format_counts(&data.counts),
         String::new(),
@@ -19,16 +17,16 @@ pub fn format_regular_status(data: &StatusData) -> String {
 
     // Today section
     if data.today.completed > 0 || data.today.started > 0 || data.today.created > 0 {
-        output.push("Today".bold().to_string());
-        output.push("─────".to_string());
+        output.push(ui::colors::heading("Today").to_string());
+        output.push(ui::format::separator(5));
         output.push(format_today(&data.today));
         output.push(String::new());
     }
 
     // Attention section (only if there are items)
     if !data.attention.is_empty() {
-        output.push("Attention".bold().to_string());
-        output.push("─────────".to_string());
+        output.push(ui::colors::heading("Attention").to_string());
+        output.push(ui::format::separator(9));
         for item in &data.attention {
             output.push(format_attention_item(item));
         }
@@ -37,8 +35,8 @@ pub fn format_regular_status(data: &StatusData) -> String {
 
     // In Progress section (only if there are items)
     if !data.in_progress.is_empty() {
-        output.push("In Progress".bold().to_string());
-        output.push("───────────".to_string());
+        output.push(ui::colors::heading("In Progress").to_string());
+        output.push(ui::format::separator(11));
         for item in &data.in_progress {
             output.push(format_in_progress_item(item));
         }
@@ -46,17 +44,18 @@ pub fn format_regular_status(data: &StatusData) -> String {
     }
 
     // Ready section
-    output.push(format!("Ready ({})", data.ready_count).bold().to_string());
-    output.push("──────".to_string());
+    output.push(ui::colors::heading(&format!("Ready ({})", data.ready_count)).to_string());
+    output.push(ui::format::separator(6));
     if data.ready_count == 0 {
-        output.push("  (no specs ready)".dimmed().to_string());
+        output.push(ui::colors::secondary("  (no specs ready)").to_string());
     } else {
         for item in &data.ready {
             output.push(format_ready_item(item));
         }
         if data.ready_count > 5 {
             let remaining = data.ready_count - 5;
-            output.push(format!("  ... and {} more", remaining).dimmed().to_string());
+            output
+                .push(ui::colors::secondary(&format!("  ... and {} more", remaining)).to_string());
         }
     }
 
@@ -94,21 +93,17 @@ fn format_today(today: &TodayActivity) -> String {
     let mut parts = Vec::new();
 
     if today.completed > 0 {
-        parts.push(
-            format!("+{} completed", today.completed)
-                .green()
-                .to_string(),
-        );
+        parts.push(ui::colors::success(&format!("+{} completed", today.completed)).to_string());
     }
     if today.started > 0 {
-        parts.push(format!("+{} started", today.started).yellow().to_string());
+        parts.push(ui::colors::warning(&format!("+{} started", today.started)).to_string());
     }
     if today.created > 0 {
-        parts.push(format!("+{} created", today.created).blue().to_string());
+        parts.push(ui::colors::info(&format!("+{} created", today.created)).to_string());
     }
 
     if parts.is_empty() {
-        "  (no activity today)".dimmed().to_string()
+        ui::colors::secondary("  (no activity today)").to_string()
     } else {
         format!("  {}", parts.join(", "))
     }
@@ -116,103 +111,47 @@ fn format_today(today: &TodayActivity) -> String {
 
 /// Format an attention item (failed or blocked)
 fn format_attention_item(item: &AttentionItem) -> String {
-    let symbol = match item.status {
-        SpecStatus::Failed | SpecStatus::NeedsAttention => "✗".red(),
-        SpecStatus::Blocked => "◌".yellow(),
-        _ => "?".normal(),
-    };
+    let symbol = ui::attention_symbol(&item.status);
 
     let title = item.title.as_deref().unwrap_or("(untitled)");
-    let truncated_title = truncate_title(title, 60);
+    let truncated_title = ui::format::truncate_title(title, 60);
 
     format!(
         "  {} {}  {} ({})",
         symbol,
-        item.id.cyan(),
+        ui::colors::identifier(&item.id),
         truncated_title,
-        item.ago.dimmed()
+        ui::colors::secondary(&item.ago)
     )
 }
 
 /// Format an in-progress item
 fn format_in_progress_item(item: &InProgressItem) -> String {
     let title = item.title.as_deref().unwrap_or("(untitled)");
-    let truncated_title = truncate_title(title, 60);
+    let truncated_title = ui::format::truncate_title(title, 60);
 
-    let elapsed_str = format_elapsed_minutes(item.elapsed_minutes);
+    let elapsed_str = ui::format::elapsed_minutes(item.elapsed_minutes);
 
     format!(
         "  {} {}  ({})",
-        item.id.cyan(),
+        ui::colors::identifier(&item.id),
         truncated_title,
-        elapsed_str.dimmed()
+        ui::colors::secondary(&elapsed_str)
     )
 }
 
 /// Format a ready item
 fn format_ready_item(item: &ReadyItem) -> String {
     let title = item.title.as_deref().unwrap_or("(untitled)");
-    let truncated_title = truncate_title(title, 60);
+    let truncated_title = ui::format::truncate_title(title, 60);
 
-    format!("  {} {}", item.id.cyan(), truncated_title)
-}
-
-/// Truncate a title to fit terminal width
-fn truncate_title(title: &str, max_len: usize) -> String {
-    if title.len() <= max_len {
-        title.to_string()
-    } else {
-        format!("{}...", &title[..max_len.saturating_sub(3)])
-    }
-}
-
-/// Format elapsed time in minutes to human-readable string
-fn format_elapsed_minutes(minutes: i64) -> String {
-    if minutes < 1 {
-        "just now".to_string()
-    } else if minutes < 60 {
-        format!("{}m", minutes)
-    } else if minutes < 1440 {
-        // Less than 24 hours
-        let hours = minutes / 60;
-        let mins = minutes % 60;
-        if mins == 0 {
-            format!("{}h", hours)
-        } else {
-            format!("{}h {}m", hours, mins)
-        }
-    } else {
-        // 24 hours or more
-        let days = minutes / 1440;
-        format!("{}d", days)
-    }
+    format!("  {} {}", ui::colors::identifier(&item.id), truncated_title)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::HashMap;
-
-    #[test]
-    fn test_truncate_title() {
-        assert_eq!(truncate_title("short", 10), "short");
-        assert_eq!(truncate_title("exactly ten", 11), "exactly ten");
-        assert_eq!(
-            truncate_title("this is a very long title", 10),
-            "this is..."
-        );
-    }
-
-    #[test]
-    fn test_format_elapsed_minutes() {
-        assert_eq!(format_elapsed_minutes(0), "just now");
-        assert_eq!(format_elapsed_minutes(30), "30m");
-        assert_eq!(format_elapsed_minutes(60), "1h");
-        assert_eq!(format_elapsed_minutes(90), "1h 30m");
-        assert_eq!(format_elapsed_minutes(120), "2h");
-        assert_eq!(format_elapsed_minutes(1440), "1d");
-        assert_eq!(format_elapsed_minutes(2880), "2d");
-    }
 
     #[test]
     fn test_format_counts() {

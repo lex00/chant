@@ -3,33 +3,13 @@
 //! # Doc Audit
 //! - ignore: internal implementation detail
 
-use colored::{ColoredString, Colorize};
+use colored::Colorize;
 use pulldown_cmark::{Event, Parser, Tag, TagEnd};
 
-use chant::spec::SpecStatus;
+use chant::ui;
 
-/// Returns a colored status icon for the given spec status.
-///
-/// Icons:
-/// - Pending: ○ (white)
-/// - InProgress: ◐ (yellow)
-/// - Completed: ● (green)
-/// - Failed: ✗ (red)
-/// - NeedsAttention: ⚠ (yellow)
-/// - Ready: ◕ (cyan)
-/// - Blocked: ⊗ (red)
-pub fn status_icon(status: &SpecStatus) -> ColoredString {
-    match status {
-        SpecStatus::Pending => "○".white(),
-        SpecStatus::InProgress => "◐".yellow(),
-        SpecStatus::Completed => "●".green(),
-        SpecStatus::Failed => "✗".red(),
-        SpecStatus::NeedsAttention => "⚠".yellow(),
-        SpecStatus::Ready => "◕".cyan(),
-        SpecStatus::Blocked => "⊗".red(),
-        SpecStatus::Cancelled => "✓".dimmed(),
-    }
-}
+/// Re-export status_icon from ui module for backward compatibility
+pub use chant::ui::status_icon;
 
 /// Renders markdown text to the terminal with ANSI formatting
 pub fn render_markdown(markdown: &str) {
@@ -168,13 +148,7 @@ impl TerminalRenderer {
     fn handle_end_tag(&mut self, tag_end: TagEnd) {
         match tag_end {
             TagEnd::Heading(_) => {
-                let formatted = match self.heading_level {
-                    1 => self.buffer.bold().to_string(),
-                    2 => self.buffer.bold().cyan().to_string(),
-                    3 => self.buffer.bold().blue().to_string(),
-                    4 => self.buffer.bold().magenta().to_string(),
-                    _ => self.buffer.bold().to_string(),
-                };
+                let formatted = ui::colors::markdown_heading(&self.buffer, self.heading_level);
                 println!("{}", formatted);
                 self.buffer.clear();
                 self.heading_level = 0;
