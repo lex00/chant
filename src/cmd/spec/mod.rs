@@ -12,7 +12,7 @@ mod approve;
 mod dag;
 mod delete;
 mod edit;
-mod lint;
+pub mod lint;
 mod list;
 mod show;
 
