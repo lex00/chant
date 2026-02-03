@@ -41,7 +41,7 @@ Detection: PID file exists but process is gone.
 ### Machine Reboot
 
 ```bash
-$ chant status
+$ chant list --summary
 Warning: Found 2 specs with stale locks
 
 $ chant recover

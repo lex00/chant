@@ -98,7 +98,7 @@ When a spec is created with `--needs-approval`, it must be approved before work 
 - Waiting for one or more specs in `depends_on` to complete
 - Status automatically applied when spec is loaded if dependencies incomplete
 - Excluded from `chant work` until dependencies complete
-- Use `chant status` to see which specs are blocked
+- Use `chant list --summary` to see which specs are blocked
 
 ### In Progress
 - Spec is currently being executed by an agent
@@ -146,7 +146,7 @@ When a spec has unmet dependencies:
 **View blocked specs:**
 ```bash
 chant list --status blocked          # Show all blocked specs
-chant status                          # See overview with block reasons
+chant list --summary                 # See overview with block reasons
 ```
 
 ## Retention Policies

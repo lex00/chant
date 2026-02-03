@@ -53,9 +53,9 @@ The agent:
 ### 4. Review Changes
 
 ```bash
-git log -1        # View the commit
-chant status      # Check spec status
-chant show 001    # View spec details
+git log -1             # View the commit
+chant list --summary   # Check spec status
+chant show 001         # View spec details
 ```
 
 ## Understanding Prompts
@@ -166,10 +166,10 @@ chant work 001 --prompt security  # Security review
 ### Checking Status
 
 ```bash
-chant status    # Project summary
-chant list      # All specs
-chant show 001  # Spec details
-chant log 001   # Execution log
+chant list --summary   # Project summary
+chant list             # All specs
+chant show 001         # Spec details
+chant log 001          # Execution log
 ```
 
 ## Key Concepts

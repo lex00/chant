@@ -53,7 +53,7 @@ chant init
 chant silent
 
 # Verify silent mode is active
-chant status
+chant list --summary
 ```
 
 Now when you use chant's workflow (comprehension → research → implementation), all your specs and research artifacts stay local. Your eventual pull request will contain only the final code changes, tests, and documentation—no `.chant/` artifacts.

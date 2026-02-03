@@ -229,7 +229,7 @@ Will be removed in v4.0
 Config check on load:
 
 ```bash
-$ chant status
+$ chant list --summary
 Warning: Deprecated config fields detected:
   - 'workers' → use 'parallelism'
 

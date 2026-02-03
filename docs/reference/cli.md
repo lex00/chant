@@ -101,6 +101,10 @@ chant list --ready --label feature           # Combine filters
 | `--repo PATH` | Filter to specific repository path (implies `--global`) |
 | `--project NAME` | Filter to specific project within repository |
 | `--main-only` | Skip branch resolution for in_progress specs (debug option) |
+| `--summary` | Show project status summary (replaces `chant status`) |
+| `--watch` | Watch mode - refresh every 5 seconds (requires `--summary`) |
+| `--brief` | Brief single-line output (requires `--summary`) |
+| `--json` | JSON output (requires `--summary`) |
 
 #### Type Filtering
 
@@ -807,14 +811,16 @@ The log file header (spec ID, timestamp, prompt name) is written before the agen
 Show project status summary with spec counts:
 
 ```bash
-chant status                          # Project overview
-chant status --brief                  # Compact one-line summary
-chant status --json                   # JSON output format
-chant status --global                 # Status across all configured repos
-chant status --repo /path/to/repo     # Specific repository (implies --global)
-chant status --watch                  # Watch mode - refresh every 5 seconds
+chant list --summary                  # Project overview (replaces 'chant status')
+chant list --summary --brief          # Compact one-line summary
+chant list --summary --json           # JSON output format
+chant list --summary --global         # Status across all configured repos
+chant list --summary --repo /path     # Specific repository (implies --global)
+chant list --summary --watch          # Watch mode - refresh every 5 seconds
 chant list --ready                    # Show ready specs
 ```
+
+**Note:** The `chant status` command has been replaced by `chant list --summary`. The `--summary` flag provides the same functionality for displaying project status summaries.
 
 ### Flags
 
@@ -831,7 +837,7 @@ chant list --ready                    # Show ready specs
 Displays a compact single-line summary:
 
 ```bash
-$ chant status --brief
+$ chant list --summary --brief
 5 ready, 3 in-progress, 12 pending, 2 blocked, 45 completed
 ```
 
@@ -840,7 +846,7 @@ $ chant status --brief
 Outputs structured data for parsing:
 
 ```bash
-$ chant status --json
+$ chant list --summary --json
 {
   "specs": {
     "ready": 5,
@@ -859,7 +865,7 @@ $ chant status --json
 Continuously monitors project status, refreshing every 5 seconds:
 
 ```bash
-$ chant status --watch
+$ chant list --summary --watch
 Spec Status (auto-refresh every 5s, press Ctrl+C to stop)
 
 Ready: 5
