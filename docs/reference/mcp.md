@@ -91,7 +91,7 @@ MCP provides a standardized way to expose tools to AI agents.
 
 ## Tools
 
-The MCP server exposes 16 tools organized into query (read-only) and mutating categories.
+The MCP server exposes 18 tools organized into query (read-only) and mutating categories.
 
 ### Query Tools (read-only)
 
@@ -118,6 +118,8 @@ The MCP server exposes 16 tools organized into query (read-only) and mutating ca
 | `chant_archive` | Move a completed spec to archive | `id` (required) |
 | `chant_work_start` | Start working on a spec asynchronously | `id` (required), `chain` (optional), `parallel` (optional) |
 | `chant_work_list` | List running work processes | `process_id` (optional), `include_completed` (optional) |
+| `chant_pause` | Pause a running work process for a spec | `id` (required) |
+| `chant_takeover` | Take over a running spec, stopping the agent and analyzing progress | `id` (required), `force` (optional) |
 
 ### chant_spec_list
 
@@ -697,6 +699,158 @@ Start working on a spec asynchronously (spawns background process and returns im
 }
 ```
 
+### chant_pause
+
+Pause a running work process for a spec.
+
+**Parameters:**
+- `id` (required): Spec ID (full or partial match)
+
+**Behavior:**
+- Stops the running agent process for the spec
+- Updates the spec status back to `in_progress` (preserving work)
+- Allows manual intervention or corrections before resuming
+- Does not fail the spec - it remains ready for continuation
+
+**Example Request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "chant_pause",
+    "arguments": {
+      "id": "001"
+    }
+  },
+  "id": 1
+}
+```
+
+**Example Response (success):**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Successfully paused work for spec '2026-02-02-001-xyz'"
+      }
+    ]
+  },
+  "id": 1
+}
+```
+
+**Example Response (error - no process running):**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Failed to pause work for spec '2026-02-02-001-xyz': No running process found"
+      }
+    ],
+    "isError": true
+  },
+  "id": 1
+}
+```
+
+### chant_takeover
+
+Take over a running spec, stopping the agent and analyzing progress.
+
+**Parameters:**
+- `id` (required): Spec ID (full or partial match)
+- `force` (optional, boolean): Force takeover even if no active process detected (default: false)
+
+**Behavior:**
+- Stops the running agent process (if any)
+- Analyzes the spec's current state and execution log
+- Provides a summary of progress and recommendations
+- Returns structured analysis including:
+  - Current state of the spec
+  - Recent log activity (tail)
+  - Suggested next steps
+
+**Response format:**
+```json
+{
+  "spec_id": "2026-02-02-001-xyz",
+  "analysis": "Agent was implementing feature X. Made progress on 3/5 acceptance criteria.",
+  "log_tail": "Last 20 lines of execution log...",
+  "suggestion": "Continue by completing the remaining 2 acceptance criteria."
+}
+```
+
+**Example Request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "chant_takeover",
+    "arguments": {
+      "id": "001"
+    }
+  },
+  "id": 1
+}
+```
+
+**Example Response (success):**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\n  \"spec_id\": \"2026-02-02-001-xyz\",\n  \"analysis\": \"Agent was implementing authentication feature. Completed user model and login endpoint.\",\n  \"log_tail\": \"[2026-02-02 14:30:00] Created UserModel\\n[2026-02-02 14:32:15] Implemented login endpoint\\n[2026-02-02 14:35:00] Running tests...\",\n  \"suggestion\": \"Complete remaining acceptance criteria: session management and logout endpoint.\"\n}"
+      }
+    ]
+  },
+  "id": 1
+}
+```
+
+**Example Request (with force):**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "chant_takeover",
+    "arguments": {
+      "id": "001",
+      "force": true
+    }
+  },
+  "id": 2
+}
+```
+
+**Example Response (error):**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Failed to take over spec '2026-02-02-001-xyz': Spec not currently being worked"
+      }
+    ],
+    "isError": true
+  },
+  "id": 1
+}
+```
+
 ## Tool Schemas
 
 Full JSON schemas as returned by `tools/list`. Only showing key tools; run `echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | chant mcp` for the complete list.
@@ -950,6 +1104,38 @@ Full JSON schemas as returned by `tools/list`. Only showing key tools; run `echo
           "parallel": {
             "type": "integer",
             "description": "Number of parallel workers (requires multiple ready specs)"
+          }
+        },
+        "required": ["id"]
+      }
+    },
+    {
+      "name": "chant_pause",
+      "description": "Pause a running work process for a spec",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Spec ID (full or partial)"
+          }
+        },
+        "required": ["id"]
+      }
+    },
+    {
+      "name": "chant_takeover",
+      "description": "Take over a running spec, stopping the agent and analyzing progress",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Spec ID (full or partial)"
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Force takeover even if no active process detected (default: false)"
           }
         },
         "required": ["id"]
