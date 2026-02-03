@@ -51,6 +51,7 @@ fn is_process_running(pid: u32) -> bool {
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Process handling differs on Windows")]
 fn test_takeover_stops_running_process() {
     let repo_dir = PathBuf::from("/tmp/test-chant-takeover-stop");
     let _ = common::cleanup_test_repo(&repo_dir);
