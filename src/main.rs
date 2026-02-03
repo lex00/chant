@@ -410,26 +410,6 @@ enum Commands {
         #[arg(long, num_args = 0..=1, require_equals = true, value_name = "PREFIX")]
         branch: Option<String>,
     },
-    /// Replay a completed spec - re-execute it with the same or updated options
-    Replay {
-        /// Spec ID (full or partial)
-        id: String,
-        /// Prompt to use for execution
-        #[arg(long)]
-        prompt: Option<String>,
-        /// Create a feature branch before executing (optionally with a custom prefix)
-        #[arg(long, num_args = 0..=1, require_equals = true, value_name = "PREFIX")]
-        branch: Option<String>,
-        /// Skip validation of unchecked acceptance criteria
-        #[arg(long)]
-        skip_validation: bool,
-        /// Preview the replay without executing (show what would happen)
-        #[arg(long)]
-        dry_run: bool,
-        /// Skip confirmation prompt and proceed directly with replay
-        #[arg(long)]
-        yes: bool,
-    },
     /// Cancel a spec (soft-delete with status change)
     Cancel {
         /// Spec ID (full or partial)
@@ -937,21 +917,6 @@ fn run() -> Result<()> {
             prompt,
             branch,
         } => cmd::lifecycle::cmd_resume(&id, work, prompt.as_deref(), branch),
-        Commands::Replay {
-            id,
-            prompt,
-            branch,
-            skip_validation,
-            dry_run,
-            yes,
-        } => cmd::lifecycle::cmd_replay(
-            &id,
-            prompt.as_deref(),
-            branch,
-            skip_validation,
-            dry_run,
-            yes,
-        ),
         Commands::Cancel {
             id,
             skip_checks,

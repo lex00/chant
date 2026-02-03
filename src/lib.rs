@@ -65,7 +65,6 @@ pub mod merge_errors;
 pub mod prompt;
 pub mod prompts;
 pub mod provider;
-pub mod replay;
 pub mod retry;
 pub mod score;
 pub mod scoring;
