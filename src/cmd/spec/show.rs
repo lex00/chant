@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use chant::config::Config;
 use chant::spec;
 
+use crate::cmd::prep::strip_agent_conversation;
 use crate::render;
 
 // ============================================================================
@@ -100,7 +101,59 @@ pub(crate) fn key_to_title_case(key: &str) -> String {
 // SHOW COMMAND
 // ============================================================================
 
-pub fn cmd_show(id: &str, show_body: bool, no_render: bool) -> Result<()> {
+pub fn cmd_show(id: &str, show_body: bool, no_render: bool, raw: bool, clean: bool) -> Result<()> {
+    // Handle --raw mode: output just the body
+    if raw {
+        let spec = if id.contains(':') {
+            // Cross-repo spec ID format: "repo:spec-id"
+            let parts: Vec<&str> = id.splitn(2, ':').collect();
+            if parts.len() != 2 {
+                anyhow::bail!("Invalid spec ID format. Use 'repo:spec-id' for cross-repo specs");
+            }
+
+            let repo_name = parts[0];
+            let spec_id = parts[1];
+
+            // Load from global config repos
+            let config = Config::load_merged()?;
+            if !config.repos.iter().any(|r| r.name == repo_name) {
+                anyhow::bail!(
+                    "Repository '{}' not found in global config. Available repos: {}",
+                    repo_name,
+                    config
+                        .repos
+                        .iter()
+                        .map(|r| r.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+            }
+
+            let repo_config = config.repos.iter().find(|r| r.name == repo_name).unwrap();
+            let repo_path = shellexpand::tilde(&repo_config.path).to_string();
+            let repo_path = PathBuf::from(repo_path);
+            let specs_dir = repo_path.join(".chant/specs");
+
+            spec::resolve_spec(&specs_dir, spec_id)?
+        } else {
+            // Local spec ID
+            let specs_dir = crate::cmd::ensure_initialized()?;
+            spec::resolve_spec(&specs_dir, id)?
+        };
+
+        // Get the body content
+        let body = if clean {
+            strip_agent_conversation(&spec.body)
+        } else {
+            spec.body.clone()
+        };
+
+        // Output the spec content
+        println!("{}", body);
+
+        return Ok(());
+    }
+
     let spec = if id.contains(':') {
         // Cross-repo spec ID format: "repo:spec-id"
         let parts: Vec<&str> = id.splitn(2, ':').collect();

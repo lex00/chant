@@ -165,6 +165,12 @@ enum Commands {
         /// Disable markdown rendering
         #[arg(long)]
         no_render: bool,
+        /// Output raw spec body without frontmatter or formatting (for agents)
+        #[arg(long)]
+        raw: bool,
+        /// Strip agent conversation sections (used with --raw)
+        #[arg(long)]
+        clean: bool,
     },
     /// Edit a spec in $EDITOR
     Edit {
@@ -773,7 +779,9 @@ fn run() -> Result<()> {
             id,
             body,
             no_render,
-        } => cmd::spec::cmd_show(&id, body, no_render),
+            raw,
+            clean,
+        } => cmd::spec::cmd_show(&id, body, no_render, raw, clean),
         Commands::Edit { id } => cmd::spec::cmd_edit(&id),
         Commands::Search {
             query,

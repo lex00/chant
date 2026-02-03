@@ -18,7 +18,7 @@ use chant::spec;
 /// Strip agent conversation sections from spec body.
 /// Removes markdown sections like "## Agent Conversation" or similar that may have been added during previous runs.
 /// Only removes level 2 headers (##) and their direct content, preserving level 3+ headers as regular content.
-fn strip_agent_conversation(body: &str) -> String {
+pub fn strip_agent_conversation(body: &str) -> String {
     let lines: Vec<&str> = body.lines().collect();
     let mut result = Vec::new();
     let mut skip_section = false;
