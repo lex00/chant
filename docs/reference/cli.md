@@ -887,6 +887,51 @@ Cancelled: 1
 
 Press `Ctrl+C` to exit watch mode.
 
+## Man Pages
+
+Chant includes Unix-style manual pages generated using `clap_mangen`. Man pages provide comprehensive command documentation accessible via the `man` command.
+
+### Generating Man Pages
+
+Generate the man page during development:
+
+```bash
+chant man --out-dir ./target
+```
+
+This creates `chant.1` in the specified directory.
+
+### Installation
+
+To install the man page system-wide:
+
+```bash
+# Generate the man page
+chant man --out-dir /tmp
+
+# Copy to system man directory (requires sudo)
+sudo cp /tmp/chant.1 /usr/share/man/man1/
+
+# Update man database (Linux)
+sudo mandb
+
+# View the installed man page
+man chant
+```
+
+On macOS, the man database updates automatically when man pages are added to `/usr/share/man/`.
+
+### Accessing Documentation
+
+Once installed, access chant documentation via:
+
+```bash
+man chant              # View the full manual
+man chant | grep -A 5 "chant work"  # Search for specific commands
+```
+
+The man page includes all commands, flags, and usage examples from the CLI help system.
+
 ## Visualization
 
 ### Dependency Graph
