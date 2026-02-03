@@ -47,7 +47,11 @@ target_files:
   - .chant/research/issue-1234-comprehension.md
 ---
 
-# Comprehension: issue #1234
+# Phase 1: Comprehension - Understand Issue #1234
+
+## Context
+
+A user has reported issue #1234. Before jumping to solutions, we need to understand what they're actually experiencing.
 
 ## Issue Summary
 

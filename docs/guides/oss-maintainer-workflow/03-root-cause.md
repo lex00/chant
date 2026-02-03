@@ -52,13 +52,15 @@ target_files:
   - .chant/research/issue-1234-root-cause.md
 ---
 
-# Root cause: issue #1234 concurrent write data loss
+# Phase 3: Root Cause Analysis - Find the bug in Issue #1234
 
 ## Context
 
-Comprehension research identified storage layer as affected component.
-Reproduction spec confirmed data loss during concurrent writes.
-Failing test: `tests/regression/issue_1234_test.rs`
+We now have:
+- Understanding of the problem from phase 1
+- A failing test that reproduces the issue from phase 2
+
+Now we need to identify the exact code causing the bug.
 
 ## Research Questions
 

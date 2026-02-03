@@ -1,4 +1,4 @@
-# Upstream PR (Human Gate)
+# Phase 6: Upstream PR - Human gate before opening real PR
 
 After the staging PR is approved in your fork, create the upstream PR to the main project.
 
@@ -60,21 +60,20 @@ Review the staging PR for:
 Create a review spec for agent-based review:
 
 ```bash
-chant add "Review staging PR for issue #1234" --type task
+chant add "Phase 6: Upstream PR - Human review for issue #1234" --type documentation
 ```
 
 ```yaml
 ---
-type: task
+type: documentation
 status: ready
-labels:
-  - review
-  - issue-1234
+depends_on:
+  - 005-fork-fix
+prompt: standard
 informed_by:
-  - .chant/specs/2026-02-02-002-def.md  # Reproduction spec
-  - .chant/specs/2026-02-02-005-mno.md  # Implementation spec
-target_files:
-  - .chant/reviews/issue-1234-review.md
+  - .chant/research/issue-1234-comprehension.md
+  - .chant/research/issue-1234-root-cause.md
+  - .chant/research/issue-1234-sprawl.md
 ---
 
 # Review staging PR for issue #1234

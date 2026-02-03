@@ -1,4 +1,4 @@
-# Fork Fix + Staging PR
+# Phase 5: Fork Fix - Implement fix for Issue #1234
 
 Implement the fix in your fork and create a fork-internal PR for review before submitting upstream.
 
@@ -40,26 +40,26 @@ Edit the spec to reference all research phases:
 ---
 type: code
 status: ready
-labels:
-  - fix
-  - issue-1234
-informed_by:
-  - .chant/specs/2026-02-02-003-ghi.md     # Root cause research spec
-  - .chant/specs/2026-02-02-004-jkl.md     # Sprawl research spec
-  - .chant/research/issue-1234-root-cause.md
-  - .chant/research/issue-1234-sprawl.md
+depends_on:
+  - 004-sprawl
 target_files:
   - src/storage/store.rs
   - tests/storage/concurrent_test.rs
+prompt: standard
+informed_by:
+  - .chant/research/issue-1234-root-cause.md
+  - .chant/research/issue-1234-sprawl.md
 ---
 
-# Fix issue #1234: Add locking to concurrent writes
+# Phase 5: Fork Fix - Implement fix for Issue #1234
 
 ## Context
 
-Research spec (2026-01-29-003-ghi) identified root cause and recommended
-pessimistic locking approach. See `.chant/research/issue-1234-rca.md`
-for full analysis.
+We have completed our research:
+- Phase 3 identified the root cause: [brief summary]
+- Phase 4 assessed the scope: [found N similar patterns]
+
+Now we implement the fix in our fork before creating an upstream PR.
 
 ## Approach
 
@@ -142,12 +142,14 @@ This staging PR:
 The implementation is informed by all research phases:
 
 ```yaml
+depends_on:
+  - 004-sprawl
 informed_by:
-  - .chant/specs/2026-02-02-003-ghi.md  # Root cause research
-  - .chant/specs/2026-02-02-004-jkl.md  # Sprawl research
+  - .chant/research/issue-1234-root-cause.md
+  - .chant/research/issue-1234-sprawl.md
 ```
 
-The agent reads all research, which provides:
+The agent reads the research outputs, which provide:
 - What the root cause is
 - What files are affected
 - What edge cases to handle
@@ -293,21 +295,22 @@ When implementation is complete:
 ---
 type: code
 status: completed
-prompt: implement
-labels:
-  - fix
-  - issue-1234
-informed_by:
-  - .chant/specs/2026-01-29-003-ghi.md
-  - .chant/research/issue-1234-rca.md
+depends_on:
+  - 004-sprawl
 target_files:
   - src/storage/store.rs
   - tests/storage/concurrent_test.rs
-model: claude-sonnet-4-20250514
+prompt: standard
+informed_by:
+  - .chant/research/issue-1234-root-cause.md
+  - .chant/research/issue-1234-sprawl.md
+commits:
+  - ghi789b
 completed_at: 2026-01-29T18:00:00Z
+model: sonnet
 ---
 
-# Fix issue #1234: Add locking to concurrent writes
+# Phase 5: Fork Fix - Implement fix for Issue #1234
 
 ## Release Notes
 

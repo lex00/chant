@@ -40,22 +40,23 @@ Edit the spec to reference root cause research:
 ---
 type: research
 status: ready
-labels:
-  - sprawl
-  - issue-1234
-informed_by:
-  - .chant/specs/2026-02-02-003-ghi.md  # Root cause research spec
-  - .chant/research/issue-1234-root-cause.md  # Root cause output
+depends_on:
+  - 003-root-cause
 target_files:
   - .chant/research/issue-1234-sprawl.md
+prompt: research
+informed_by:
+  - .chant/research/issue-1234-root-cause.md
 ---
 
-# Sprawl: issue #1234
+# Phase 4: Sprawl - Assess impact of Issue #1234 bug pattern
 
 ## Context
 
-Root cause research identified the bug in `src/storage/store.rs:145`.
-This sprawl research expands the view to find all affected code.
+Phase 3 identified the root cause: [brief summary of the bug]. Before implementing a fix, we need to understand:
+- Is this pattern used elsewhere in the codebase?
+- What other systems might be affected?
+- How big is this fix going to be?
 
 ## Research Questions
 
@@ -171,23 +172,29 @@ Alternative: Create separate specs for each phase if complex.
 Sprawl research is informed by root cause research:
 
 ```yaml
-# Root cause research finds the bug
+# Root cause research (003) finds the bug
 type: research
+depends_on:
+  - 002-reproduction
+informed_by:
+  - .chant/research/issue-1234-comprehension.md
 target_files:
   - .chant/research/issue-1234-root-cause.md
 
-# Sprawl research expands the view
+# Sprawl research (004) expands the view
 type: research
+depends_on:
+  - 003-root-cause
 informed_by:
-  - .chant/specs/2026-02-02-003-ghi.md  # Root cause spec
+  - .chant/research/issue-1234-root-cause.md
 target_files:
   - .chant/research/issue-1234-sprawl.md
 
-# Implementation uses both
+# Implementation (005) uses both research outputs
 type: code
+depends_on:
+  - 004-sprawl
 informed_by:
-  - .chant/specs/2026-02-02-003-ghi.md  # Root cause spec
-  - .chant/specs/2026-02-02-004-jkl.md  # Sprawl spec
   - .chant/research/issue-1234-root-cause.md
   - .chant/research/issue-1234-sprawl.md
 ```
