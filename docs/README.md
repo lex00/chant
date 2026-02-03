@@ -13,7 +13,6 @@ chant work 001
 
 - [Quickstart](getting-started/quickstart.md)
 - [Philosophy](getting-started/philosophy.md)
-- [Value Proposition](getting-started/value.md)
 
 ### Core Concepts
 
