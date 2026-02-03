@@ -52,9 +52,11 @@ Prompts support variable substitution using `{{variable}}` syntax.
 | `bootstrap` | **(Default)** Minimal prompt that delegates to `chant prep` |
 | `standard` | Read → Plan → Implement → Verify → Commit |
 | `split` | Split driver into group members |
-| `documentation` | Read tracked code, write documentation |
-| `research-synthesis` | Synthesize sources into findings |
+| `document` | Write user-facing documentation |
+| `research` | Deep root cause analysis for issues |
 | `merge-conflict` | Resolve git conflicts during rebase |
+
+> See [Prompt Guide: Built-in Prompts](../guides/prompts.md#built-in-prompts) for full examples and detailed explanations.
 
 ## Prompt Selection
 

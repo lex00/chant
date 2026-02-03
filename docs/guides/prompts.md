@@ -2,6 +2,8 @@
 
 This guide covers prompt authoring, examples, and advanced techniques.
 
+> **See also:** [Prompts Concept](../concepts/prompts.md) for basic usage, template variables reference, and built-in prompts overview.
+
 ## Why Prompts Matter
 
 Prompts are the core of Chant. Everything else is infrastructure.
@@ -131,17 +133,7 @@ If you cannot complete:
 
 ## Template Variables
 
-Prompts use `{{variable}}` syntax:
-
-| Variable | Description |
-|----------|-------------|
-| `{{project.name}}` | Project name |
-| `{{spec.id}}` | Spec identifier |
-| `{{spec.title}}` | First heading |
-| `{{spec.description}}` | Full spec body |
-| `{{spec.target_files}}` | Target files list |
-| `{{worktree.path}}` | Worktree path (parallel) |
-| `{{worktree.branch}}` | Branch name (parallel) |
+Prompts use `{{variable}}` syntax. See the [template variables reference](../concepts/prompts.md#template-variables) for the complete list of available variables and their descriptions.
 
 ## Prompt Inheritance
 
@@ -166,9 +158,32 @@ The `{{> parent}}` marker indicates where the parent prompt content should be in
 
 ## Built-in Prompts
 
+> See [Prompts Concept: Built-in Prompts](../concepts/prompts.md#built-in-prompts) for a quick reference table of all built-in prompts.
+
+### bootstrap.md
+
+The default prompt. Minimal and efficient - delegates to `chant prep` for instructions.
+
+```markdown
+---
+name: bootstrap
+purpose: Minimal bootstrap prompt that defers to prep command
+---
+
+You are implementing spec {{spec.id}} for {{project.name}}.
+
+Run this command to get your instructions:
+
+```
+chant prep {{spec.id}}
+```
+
+Follow the instructions returned by that command.
+```
+
 ### standard.md
 
-The default. Balanced approach for most tasks.
+Balanced approach for most tasks. Read → Plan → Implement → Verify → Commit.
 
 ```markdown
 ---
@@ -199,25 +214,6 @@ You are implementing a spec for {{project.name}}.
 - Only modify files related to this spec
 - Follow existing code patterns
 - Do not refactor unrelated code
-```
-
-### minimal.md
-
-Quick fixes, less ceremony.
-
-```markdown
----
-name: minimal
-purpose: Quick fixes with minimal overhead
----
-
-# Quick Fix
-
-{{spec.description}}
-
-Make the change. Commit as `chant({{spec.id}}): <description>`.
-
-Keep it simple. Don't over-engineer.
 ```
 
 ### split.md
