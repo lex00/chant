@@ -294,6 +294,9 @@ enum Commands {
         /// Show disk usage of chant artifacts
         #[arg(long)]
         disk: bool,
+        /// Show status of all chant worktrees
+        #[arg(long)]
+        worktrees: bool,
     },
     /// Refresh dependency status for all specs
     Refresh {
@@ -869,8 +872,11 @@ fn run() -> Result<()> {
             brief,
             json,
             disk,
+            worktrees,
         } => {
-            if disk {
+            if worktrees {
+                cmd::worktree::cmd_worktree_status()
+            } else if disk {
                 cmd::disk::cmd_disk()
             } else {
                 cmd::spec::cmd_status(global, repo.as_deref(), watch, brief, json)
