@@ -163,6 +163,11 @@ enum Commands {
         #[arg(long)]
         no_render: bool,
     },
+    /// Edit a spec in $EDITOR
+    Edit {
+        /// Spec ID (full or partial)
+        id: String,
+    },
     /// Search specs by title and body content
     Search {
         /// Search query (omit to launch interactive wizard)
@@ -752,6 +757,7 @@ fn run() -> Result<()> {
             body,
             no_render,
         } => cmd::spec::cmd_show(&id, body, no_render),
+        Commands::Edit { id } => cmd::spec::cmd_edit(&id),
         Commands::Search {
             query,
             title_only,
