@@ -15,7 +15,7 @@ pub use server::run_server;
 mod tests {
     use super::handlers::{handle_method, handle_notification};
     use super::protocol::{JsonRpcResponse, PROTOCOL_VERSION, SERVER_NAME};
-    use serde_json::{json, Value};
+    use serde_json::json;
 
     #[test]
     fn test_handle_initialize() {
