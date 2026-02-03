@@ -1101,11 +1101,12 @@ project:
     }
 
     #[test]
-    fn test_load_merged_defaults_model() {
+    fn test_config_merge_priority() {
         let tmp = TempDir::new().unwrap();
         let global_path = tmp.path().join("global.md");
         let project_path = tmp.path().join("project.md");
 
+        // Test case 1: defaults.model - global used when project doesn't specify
         fs::write(
             &global_path,
             r#"---
@@ -1115,7 +1116,6 @@ defaults:
 "#,
         )
         .unwrap();
-
         fs::write(
             &project_path,
             r#"---
@@ -1125,28 +1125,10 @@ project:
 "#,
         )
         .unwrap();
-
         let config = Config::load_merged_from(Some(&global_path), &project_path, None).unwrap();
-        // Global model is used when project doesn't specify
         assert_eq!(config.defaults.model, Some("claude-opus-4".to_string()));
-    }
 
-    #[test]
-    fn test_load_merged_defaults_model_project_overrides() {
-        let tmp = TempDir::new().unwrap();
-        let global_path = tmp.path().join("global.md");
-        let project_path = tmp.path().join("project.md");
-
-        fs::write(
-            &global_path,
-            r#"---
-defaults:
-  model: claude-opus-4
----
-"#,
-        )
-        .unwrap();
-
+        // Test case 2: defaults.model - project overrides global
         fs::write(
             &project_path,
             r#"---
@@ -1158,9 +1140,7 @@ defaults:
 "#,
         )
         .unwrap();
-
         let config = Config::load_merged_from(Some(&global_path), &project_path, None).unwrap();
-        // Project model overrides global
         assert_eq!(config.defaults.model, Some("claude-sonnet-4".to_string()));
     }
 
@@ -1465,11 +1445,12 @@ enterprise:
     }
 
     #[test]
-    fn test_load_merged_enterprise_config() {
+    fn test_config_merge_priority_enterprise() {
         let tmp = TempDir::new().unwrap();
         let global_path = tmp.path().join("global.md");
         let project_path = tmp.path().join("project.md");
 
+        // Global enterprise config used when project doesn't specify
         fs::write(
             &global_path,
             r#"---
@@ -1484,7 +1465,20 @@ enterprise:
 "#,
         )
         .unwrap();
+        fs::write(
+            &project_path,
+            r#"---
+project:
+  name: my-project
+---
+"#,
+        )
+        .unwrap();
+        let config = Config::load_merged_from(Some(&global_path), &project_path, None).unwrap();
+        assert!(config.enterprise.derived.contains_key("global_field"));
+        assert_eq!(config.enterprise.required.len(), 1);
 
+        // Project enterprise overrides global
         fs::write(
             &project_path,
             r#"---
@@ -1501,10 +1495,7 @@ enterprise:
 "#,
         )
         .unwrap();
-
         let config = Config::load_merged_from(Some(&global_path), &project_path, None).unwrap();
-
-        // Project enterprise overrides global
         assert!(config.enterprise.derived.contains_key("project_field"));
         assert!(!config.enterprise.derived.contains_key("global_field"));
         assert_eq!(config.enterprise.required.len(), 1);
@@ -1618,11 +1609,12 @@ approval: {}
     }
 
     #[test]
-    fn test_load_merged_approval_config() {
+    fn test_config_merge_priority_approval() {
         let tmp = TempDir::new().unwrap();
         let global_path = tmp.path().join("global.md");
         let project_path = tmp.path().join("project.md");
 
+        // Global approval config used when project doesn't specify
         fs::write(
             &global_path,
             r#"---
@@ -1632,7 +1624,6 @@ approval:
 "#,
         )
         .unwrap();
-
         fs::write(
             &project_path,
             r#"---
@@ -1642,31 +1633,13 @@ project:
 "#,
         )
         .unwrap();
-
         let config = Config::load_merged_from(Some(&global_path), &project_path, None).unwrap();
-        // Global sets dependency, project doesn't override
         assert_eq!(
             config.approval.rejection_action,
             RejectionAction::Dependency
         );
-    }
 
-    #[test]
-    fn test_load_merged_approval_config_project_overrides() {
-        let tmp = TempDir::new().unwrap();
-        let global_path = tmp.path().join("global.md");
-        let project_path = tmp.path().join("project.md");
-
-        fs::write(
-            &global_path,
-            r#"---
-approval:
-  rejection_action: dependency
----
-"#,
-        )
-        .unwrap();
-
+        // Project approval overrides global
         fs::write(
             &project_path,
             r#"---
@@ -1678,9 +1651,7 @@ approval:
 "#,
         )
         .unwrap();
-
         let config = Config::load_merged_from(Some(&global_path), &project_path, None).unwrap();
-        // Project overrides global
         assert_eq!(config.approval.rejection_action, RejectionAction::Group);
     }
 
@@ -1977,11 +1948,12 @@ lint: {}
     }
 
     #[test]
-    fn test_load_merged_lint_config() {
+    fn test_config_merge_priority_lint() {
         let tmp = TempDir::new().unwrap();
         let global_path = tmp.path().join("global.md");
         let project_path = tmp.path().join("project.md");
 
+        // Global lint config used when project doesn't specify
         fs::write(
             &global_path,
             r#"---
@@ -1994,7 +1966,6 @@ lint:
 "#,
         )
         .unwrap();
-
         fs::write(
             &project_path,
             r#"---
@@ -2004,33 +1975,11 @@ project:
 "#,
         )
         .unwrap();
-
         let config = Config::load_merged_from(Some(&global_path), &project_path, None).unwrap();
-
-        // Global lint config is used when project doesn't specify
         assert_eq!(config.lint.thresholds.complexity_criteria, 15);
         assert!(config.lint.disable.contains(&"global-rule".to_string()));
-    }
 
-    #[test]
-    fn test_load_merged_lint_config_project_overrides() {
-        let tmp = TempDir::new().unwrap();
-        let global_path = tmp.path().join("global.md");
-        let project_path = tmp.path().join("project.md");
-
-        fs::write(
-            &global_path,
-            r#"---
-lint:
-  thresholds:
-    complexity_criteria: 15
-  disable:
-    - global-rule
----
-"#,
-        )
-        .unwrap();
-
+        // Project lint config overrides global
         fs::write(
             &project_path,
             r#"---
@@ -2045,10 +1994,7 @@ lint:
 "#,
         )
         .unwrap();
-
         let config = Config::load_merged_from(Some(&global_path), &project_path, None).unwrap();
-
-        // Project lint config overrides global
         assert_eq!(config.lint.thresholds.complexity_criteria, 25);
         assert!(config.lint.disable.contains(&"project-rule".to_string()));
         assert!(!config.lint.disable.contains(&"global-rule".to_string()));
@@ -2232,11 +2178,12 @@ watch:
     }
 
     #[test]
-    fn test_load_merged_watch_config() {
+    fn test_config_merge_priority_watch() {
         let tmp = TempDir::new().unwrap();
         let global_path = tmp.path().join("global.md");
         let project_path = tmp.path().join("project.md");
 
+        // Global watch config used when project doesn't specify
         fs::write(
             &global_path,
             r#"---
@@ -2248,7 +2195,6 @@ watch:
 "#,
         )
         .unwrap();
-
         fs::write(
             &project_path,
             r#"---
@@ -2258,32 +2204,11 @@ project:
 "#,
         )
         .unwrap();
-
         let config = Config::load_merged_from(Some(&global_path), &project_path, None).unwrap();
-
-        // Global watch config is used when project doesn't specify
         assert_eq!(config.watch.poll_interval_ms, 15000);
         assert_eq!(config.watch.failure.max_retries, 10);
-    }
 
-    #[test]
-    fn test_load_merged_watch_config_project_overrides() {
-        let tmp = TempDir::new().unwrap();
-        let global_path = tmp.path().join("global.md");
-        let project_path = tmp.path().join("project.md");
-
-        fs::write(
-            &global_path,
-            r#"---
-watch:
-  poll_interval_ms: 15000
-  failure:
-    max_retries: 10
----
-"#,
-        )
-        .unwrap();
-
+        // Project watch config overrides global
         fs::write(
             &project_path,
             r#"---
@@ -2298,10 +2223,7 @@ watch:
 "#,
         )
         .unwrap();
-
         let config = Config::load_merged_from(Some(&global_path), &project_path, None).unwrap();
-
-        // Project watch config overrides global
         assert_eq!(config.watch.poll_interval_ms, 3000);
         assert_eq!(config.watch.failure.max_retries, 2);
         assert_eq!(
