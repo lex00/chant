@@ -154,6 +154,18 @@ enum Commands {
         /// Skip branch resolution for in_progress specs (debug option)
         #[arg(long)]
         main_only: bool,
+        /// Show project status summary
+        #[arg(long)]
+        summary: bool,
+        /// Watch mode - refresh every 5 seconds (requires --summary)
+        #[arg(long)]
+        watch: bool,
+        /// Brief single-line output (requires --summary)
+        #[arg(long)]
+        brief: bool,
+        /// JSON output (requires --summary)
+        #[arg(long)]
+        json: bool,
     },
     /// Show spec details
     Show {
@@ -764,21 +776,35 @@ fn run() -> Result<()> {
             mentions,
             count,
             main_only,
-        } => cmd::spec::cmd_list(
-            ready,
-            &label,
-            r#type.as_deref(),
-            status.as_deref(),
-            global,
-            repo.as_deref(),
-            project.as_deref(),
-            approval.as_deref(),
-            created_by.as_deref(),
-            activity_since.as_deref(),
-            mentions.as_deref(),
-            count,
-            main_only,
-        ),
+            summary,
+            watch,
+            brief,
+            json,
+        } => {
+            if summary {
+                cmd::spec::cmd_status(global, repo.as_deref(), watch, brief, json)
+            } else {
+                // Check that watch, brief, json are not used without --summary
+                if watch || brief || json {
+                    anyhow::bail!("Error: --watch, --brief, and --json require --summary flag.\n\nUsage: chant list --summary [--watch] [--brief | --json]");
+                }
+                cmd::spec::cmd_list(
+                    ready,
+                    &label,
+                    r#type.as_deref(),
+                    status.as_deref(),
+                    global,
+                    repo.as_deref(),
+                    project.as_deref(),
+                    approval.as_deref(),
+                    created_by.as_deref(),
+                    activity_since.as_deref(),
+                    mentions.as_deref(),
+                    count,
+                    main_only,
+                )
+            }
+        }
         Commands::Show {
             id,
             body,
