@@ -568,7 +568,7 @@ enum Commands {
         id: String,
     },
     /// Git merge driver for spec files (called by git, not directly by users)
-    #[command(name = "merge-driver")]
+    #[command(name = "merge-driver", hide = true)]
     MergeDriver {
         /// Path to base (common ancestor) version
         base: PathBuf,
