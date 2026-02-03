@@ -177,3 +177,68 @@ jobs:
           git add Formula/chant.rb
           git commit -m "Update chant to v${{ steps.version.outputs.version }}"
           git push origin main
+
+  update-scoop:
+    needs: build-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p assets
+          gh release download ${{ github.ref_name }} --dir assets
+
+      - name: Compute SHA256 hash for Windows
+        id: hash
+        run: |
+          cd assets
+          SHA_WINDOWS=$(sha256sum chant-windows-x86_64.exe | awk '{print $1}')
+          echo "sha_windows=$SHA_WINDOWS" >> $GITHUB_OUTPUT
+
+      - name: Clone scoop-bucket
+        env:
+          GH_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
+        run: |
+          git clone https://x-access-token:${{ secrets.SCOOP_BUCKET_TOKEN }}@github.com/lex00/scoop-bucket.git /tmp/scoop-bucket
+
+      - name: Update chant.json
+        run: |
+          cat > /tmp/scoop-bucket/chant.json << 'EOF'
+          {
+              "version": "${{ steps.version.outputs.version }}",
+              "description": "Intent Driven Development tool with specification-driven execution",
+              "homepage": "https://github.com/lex00/chant",
+              "license": "Apache-2.0",
+              "url": "https://github.com/lex00/chant/releases/download/v${{ steps.version.outputs.version }}/chant-windows-x86_64.exe",
+              "hash": "${{ steps.hash.outputs.sha_windows }}",
+              "bin": "chant-windows-x86_64.exe",
+              "checkver": {
+                  "github": "https://github.com/lex00/chant"
+              },
+              "autoupdate": {
+                  "url": "https://github.com/lex00/chant/releases/download/v$version/chant-windows-x86_64.exe"
+              }
+          }
+          EOF
+
+      - name: Commit and push
+        env:
+          GH_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
+        run: |
+          cd /tmp/scoop-bucket
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add chant.json
+          git commit -m "Update chant to v${{ steps.version.outputs.version }}"
+          git push origin main
