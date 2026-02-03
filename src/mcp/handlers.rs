@@ -1683,6 +1683,12 @@ fn tool_chant_work_start(arguments: Option<&Value>) -> Result<Value> {
 
     let spec_id = spec.id.clone();
 
+    // Update status to in_progress before spawning agent (matches CLI behavior)
+    let mut spec = spec;
+    spec.frontmatter.status = SpecStatus::InProgress;
+    let spec_path = specs_dir.join(format!("{}.md", spec_id));
+    spec.save(&spec_path)?;
+
     // Build command based on mode
     let mut cmd = Command::new("chant");
     cmd.arg("work").arg(&spec_id);

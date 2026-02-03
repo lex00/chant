@@ -227,9 +227,10 @@ fn check_status_consistency(spec: &Spec, commit_exists: bool, unchecked: usize) 
                 CheckResult::pass("Status consistency")
             }
         }
-        SpecStatus::Paused => {
-            CheckResult::pass_with_details("Status consistency", "Paused (work stopped mid-execution)")
-        }
+        SpecStatus::Paused => CheckResult::pass_with_details(
+            "Status consistency",
+            "Paused (work stopped mid-execution)",
+        ),
         SpecStatus::Completed => {
             if !commit_exists {
                 CheckResult::fail(
