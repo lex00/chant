@@ -631,6 +631,13 @@ enum Commands {
         #[arg(long)]
         type_: Option<String>,
     },
+    /// Generate man page
+    #[command(hide = true)]
+    Man {
+        /// Output directory for the man page (defaults to current directory)
+        #[arg(long)]
+        out_dir: Option<PathBuf>,
+    },
 }
 
 /// Subcommands for worktree management
@@ -1095,6 +1102,7 @@ impl cmd::dispatch::Execute for Commands {
                 label,
                 type_,
             } => cmd::spec::cmd_dag(&detail, status.as_deref(), &label, type_.as_deref()),
+            Commands::Man { out_dir } => cmd_man(out_dir.as_ref()),
         }
     }
 }
@@ -2404,6 +2412,24 @@ fn cmd_version(verbose: bool) -> Result<()> {
         println!("built: {}", BUILD_DATE);
     }
 
+    Ok(())
+}
+
+fn cmd_man(out_dir: Option<&PathBuf>) -> Result<()> {
+    let cmd = Cli::command();
+    let man = clap_mangen::Man::new(cmd);
+    let mut buffer = Vec::new();
+    man.render(&mut buffer)?;
+
+    let output_dir = out_dir
+        .map(|p| p.to_owned())
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    std::fs::create_dir_all(&output_dir)?;
+    let man_path = output_dir.join("chant.1");
+    std::fs::write(&man_path, buffer)?;
+
+    println!("Man page written to: {}", man_path.display());
     Ok(())
 }
 
