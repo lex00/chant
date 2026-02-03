@@ -15,6 +15,15 @@ use std::path::{Path, PathBuf};
 use crate::provider::{ProviderConfig, ProviderType};
 use crate::spec::split_frontmatter;
 
+/// Macro to generate default functions for serde attributes
+macro_rules! default_fn {
+    ($name:ident, $type:ty, $value:expr) => {
+        fn $name() -> $type {
+            $value
+        }
+    };
+}
+
 /// Rejection action mode for approval workflow
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -80,29 +89,12 @@ pub struct LintThresholds {
     pub simple_words: usize,
 }
 
-fn default_complexity_criteria() -> usize {
-    10
-}
-
-fn default_complexity_files() -> usize {
-    5
-}
-
-fn default_complexity_words() -> usize {
-    50
-}
-
-fn default_simple_criteria() -> usize {
-    1
-}
-
-fn default_simple_files() -> usize {
-    1
-}
-
-fn default_simple_words() -> usize {
-    3
-}
+default_fn!(default_complexity_criteria, usize, 10);
+default_fn!(default_complexity_files, usize, 5);
+default_fn!(default_complexity_words, usize, 50);
+default_fn!(default_simple_criteria, usize, 1);
+default_fn!(default_simple_files, usize, 1);
+default_fn!(default_simple_words, usize, 3);
 
 impl Default for LintThresholds {
     fn default() -> Self {
@@ -159,17 +151,9 @@ pub struct FailureConfig {
     pub on_permanent_failure: OnPermanentFailure,
 }
 
-fn default_max_retries() -> usize {
-    3
-}
-
-fn default_retry_delay_ms() -> u64 {
-    60_000 // 60 seconds
-}
-
-fn default_backoff_multiplier() -> f64 {
-    2.0
-}
+default_fn!(default_max_retries, usize, 3);
+default_fn!(default_retry_delay_ms, u64, 60_000); // 60 seconds
+default_fn!(default_backoff_multiplier, f64, 2.0);
 
 impl Default for FailureConfig {
     fn default() -> Self {
@@ -194,9 +178,7 @@ pub struct WatchConfig {
     pub failure: FailureConfig,
 }
 
-fn default_poll_interval_ms() -> u64 {
-    5000 // 5 seconds
-}
+default_fn!(default_poll_interval_ms, u64, 5000); // 5 seconds
 
 impl Default for WatchConfig {
     fn default() -> Self {
@@ -334,17 +316,9 @@ pub struct SiteConfig {
     pub timeline: SiteTimelineConfig,
 }
 
-fn default_site_output_dir() -> String {
-    "./public/".to_string()
-}
-
-fn default_site_base_url() -> String {
-    "/".to_string()
-}
-
-fn default_site_title() -> String {
-    "Project Specs".to_string()
-}
+default_fn!(default_site_output_dir, String, "./public/".to_string());
+default_fn!(default_site_base_url, String, "/".to_string());
+default_fn!(default_site_title, String, "Project Specs".to_string());
 
 /// Configuration for what specs to include in the site
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -357,13 +331,15 @@ pub struct SiteIncludeConfig {
     pub labels: Vec<String>,
 }
 
-fn default_include_statuses() -> Vec<String> {
+default_fn!(
+    default_include_statuses,
+    Vec<String>,
     vec![
         "completed".to_string(),
         "in_progress".to_string(),
         "pending".to_string(),
     ]
-}
+);
 
 impl Default for SiteIncludeConfig {
     fn default() -> Self {
@@ -405,9 +381,7 @@ pub struct SiteFeaturesConfig {
     pub label_indexes: bool,
 }
 
-fn default_true() -> bool {
-    true
-}
+default_fn!(default_true, bool, true);
 
 impl Default for SiteFeaturesConfig {
     fn default() -> Self {
@@ -542,21 +516,10 @@ pub struct AgentConfig {
     pub weight: usize,
 }
 
-fn default_agent_weight() -> usize {
-    1
-}
-
-fn default_agent_name() -> String {
-    "main".to_string()
-}
-
-fn default_agent_command() -> String {
-    "claude".to_string()
-}
-
-fn default_max_concurrent() -> usize {
-    2
-}
+default_fn!(default_agent_weight, usize, 1);
+default_fn!(default_agent_name, String, "main".to_string());
+default_fn!(default_agent_command, String, "claude".to_string());
+default_fn!(default_max_concurrent, usize, 2);
 
 impl Default for AgentConfig {
     fn default() -> Self {
@@ -583,21 +546,14 @@ pub struct CleanupConfig {
     pub auto_run: bool,
 }
 
-fn default_stagger_delay_ms() -> u64 {
-    1000 // Default 1 second between agent spawns
-}
-
-fn default_stagger_jitter_ms() -> u64 {
-    200 // Default 20% of stagger_delay_ms (200ms is 20% of 1000ms)
-}
-
-fn default_cleanup_enabled() -> bool {
-    true
-}
-
-fn default_cleanup_prompt() -> String {
+default_fn!(default_stagger_delay_ms, u64, 1000); // Default 1 second between agent spawns
+default_fn!(default_stagger_jitter_ms, u64, 200); // Default 20% of stagger_delay_ms (200ms is 20% of 1000ms)
+default_fn!(default_cleanup_enabled, bool, true);
+default_fn!(
+    default_cleanup_prompt,
+    String,
     "parallel-cleanup".to_string()
-}
+);
 
 impl Default for CleanupConfig {
     fn default() -> Self {
@@ -641,21 +597,10 @@ pub struct DefaultsConfig {
     pub prompt_extensions: Vec<String>,
 }
 
-fn default_rotation_strategy() -> String {
-    "none".to_string()
-}
-
-fn default_prompt() -> String {
-    "bootstrap".to_string()
-}
-
-fn default_branch_prefix() -> String {
-    "chant/".to_string()
-}
-
-fn default_main_branch() -> String {
-    "main".to_string()
-}
+default_fn!(default_rotation_strategy, String, "none".to_string());
+default_fn!(default_prompt, String, "bootstrap".to_string());
+default_fn!(default_branch_prefix, String, "chant/".to_string());
+default_fn!(default_main_branch, String, "main".to_string());
 
 impl Default for DefaultsConfig {
     fn default() -> Self {
