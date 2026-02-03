@@ -174,6 +174,7 @@ The six phases work together:
 4. **[Codebase Sprawl Research](04-sprawl.md)** — Expand view based on root cause
 5. **[Fork Fix + Staging PR](05-fork-fix.md)** — Fix in fork with fork-internal PR
 6. **[Upstream PR](06-upstream-pr.md)** — Human gate before creating real PR
+7. **[Advanced Patterns](08-advanced.md)** — Configuration and advanced workflows
 
 ## Key Concepts
 
