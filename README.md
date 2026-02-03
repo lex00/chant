@@ -14,51 +14,7 @@ Chant is a spec execution platform for AI-assisted development. Specs are markdo
 
 ## Installation
 
-Get Chant up and running in seconds:
-
-**Quick Install (Linux/macOS):**
-```bash
-curl -fsSL https://github.com/lex00/chant/releases/latest/download/chant-linux-x86_64 -o chant
-chmod +x chant
-sudo mv chant /usr/local/bin/
-```
-
-### Homebrew
-
-Install chant using Homebrew on macOS or Linux:
-
-```bash
-brew tap lex00/tap
-brew install chant
-```
-
-**Other methods:**
-- [Homebrew](#homebrew): `brew tap lex00/tap && brew install chant`
-- [Cargo](#): `cargo install --git https://github.com/lex00/chant`
-- [Download binaries](#): Visit the [Releases page](https://github.com/lex00/chant/releases/latest)
-- [Build from source](#): Clone and run `cargo build --release`
-
-For detailed platform-specific instructions and troubleshooting, see the [Installation Guide](https://lex00.github.io/chant/getting-started/installation.html).
-
-### Shell Completion
-
-Enable tab completion for your shell:
-
-```bash
-# Bash
-chant completion bash > /etc/bash_completion.d/chant
-
-# Zsh
-chant completion zsh > "${fpath[1]}/_chant"
-
-# Fish
-chant completion fish > ~/.config/fish/completions/chant.fish
-
-# PowerShell
-chant completion powershell >> $PROFILE
-```
-
-For detailed setup instructions, see the [Shell Completion Guide](https://lex00.github.io/chant/getting-started/shell-completion.html).
+See the [Installation Guide](https://lex00.github.io/chant/getting-started/installation.html) for detailed platform-specific instructions.
 
 ## Documentation
 
