@@ -54,7 +54,7 @@ pub struct PromptMetadata {
 
 /// Returns all bundled prompts with their metadata
 pub fn all_bundled_prompts() -> Vec<PromptMetadata> {
-    let mut prompts = vec![
+    let prompts = vec![
         PromptMetadata {
             name: "standard",
             purpose: "Default execution prompt",
@@ -89,7 +89,8 @@ pub fn all_bundled_prompts() -> Vec<PromptMetadata> {
 
     // Include dev-only prompts when running in debug mode
     #[cfg(debug_assertions)]
-    {
+    let prompts = {
+        let mut prompts = prompts;
         prompts.extend(vec![
             PromptMetadata {
                 name: "bootstrap",
@@ -117,7 +118,8 @@ pub fn all_bundled_prompts() -> Vec<PromptMetadata> {
                 content: dev::RESEARCH_SYNTHESIS,
             },
         ]);
-    }
+        prompts
+    };
 
     prompts
 }
