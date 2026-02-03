@@ -4,7 +4,7 @@ Chant's spec-driven model naturally aligns with Test-Driven Development. This pa
 
 ## The Natural Alignment
 
-TDD and spec-driven development share the same philosophy: define expected behavior before implementation.
+TDD and spec-driven development share the same approach: define expected behavior before implementation. See [philosophy](../../getting-started/philosophy.md) for chant's broader design principles.
 
 ```
 Traditional TDD:

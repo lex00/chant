@@ -52,9 +52,11 @@ branch: true         # This spec needs a branch
 
 > **Note:** Git hooks are optional and can be set up manually using the scripts below.
 
-### Philosophy
+### Design Principle
 
 Git hooks enhance the workflow but are **optional** - no Chant feature depends on them.
+
+See [philosophy](../getting-started/philosophy.md) for chant's broader design principles.
 
 ### Available Hooks
 

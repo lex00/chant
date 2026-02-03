@@ -5,7 +5,7 @@
 > The `chant export` command is fully implemented as of v0.3.0.
 > You can export specs to JSON, CSV, and Markdown formats with filtering options.
 
-## Philosophy
+## Design Principle
 
 Chant exports spec data. External tools make reports.
 
@@ -13,7 +13,7 @@ Chant exports spec data. External tools make reports.
 Chant exports raw data → Agents/tools process → Human-readable reports
 ```
 
-This keeps chant focused: spec execution, not report generation.
+This keeps chant focused on spec execution, not report generation. See [philosophy](../getting-started/philosophy.md) for the broader approach.
 
 ## Basic Export
 

@@ -1,8 +1,10 @@
 # Testing Strategy
 
-## Philosophy
+## Approach
 
 Design integration tests first. Unit tests emerge from implementation. Tests exercise the complete system.
+
+See [philosophy](../getting-started/philosophy.md) for chant's broader design principles.
 
 ## Test Hierarchy
 

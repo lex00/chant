@@ -24,7 +24,7 @@ progress: |
 
 ## Why Markdown?
 
-Consistent with philosophy: **markdown IS the UI**.
+Consistent with [chant's philosophy](../getting-started/philosophy.md): **markdown IS the UI**.
 
 - Watch with `tail -f .chant/specs/2026-01-22-001-x7m.md`
 - View in any editor with auto-reload

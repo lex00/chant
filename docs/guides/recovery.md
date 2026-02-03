@@ -1,8 +1,10 @@
 # Recovery & Resume
 
-## Philosophy
+## Approach
 
 Failures happen. Chant detects failures, preserves work, makes recovery explicit, and never loses data (git tracks everything).
+
+See [philosophy](../getting-started/philosophy.md) for chant's broader design principles.
 
 ## Quick Reference
 
