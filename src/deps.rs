@@ -60,7 +60,13 @@ fn resolve_local_dependency(dep_id: &str, specs_dir: &Path) -> Result<Spec> {
         .join("archive");
 
     if archive_dir.exists() {
-        // Search for the spec in archived directories
+        // First check for spec directly in archive directory
+        let direct_path = archive_dir.join(format!("{}.md", dep_id));
+        if direct_path.exists() {
+            return Spec::load(&direct_path);
+        }
+
+        // Also search in subdirectories (for projects with nested archives)
         for entry in std::fs::read_dir(&archive_dir).context("Failed to read archive directory")? {
             let entry = entry?;
             let path = entry.path();
@@ -224,7 +230,13 @@ fn is_spec_archived(spec_id: &str, specs_dir: &Path) -> bool {
         return false;
     }
 
-    // Search for the spec in archived directories
+    // First check for spec directly in archive directory
+    let direct_path = archive_dir.join(format!("{}.md", spec_id));
+    if direct_path.exists() {
+        return true;
+    }
+
+    // Also search in subdirectories (for projects with nested archives)
     if let Ok(entries) = std::fs::read_dir(&archive_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
