@@ -395,6 +395,90 @@ Some initial content...
 Implementation complete. All tests passing.
 ```
 
+### chant_add
+
+Create a new spec with description.
+
+**Parameters:**
+- `description` (required): Description of work to be done (becomes spec title)
+- `prompt` (optional): Optional prompt template name to use
+
+**Response Format:**
+
+The response includes the spec ID and linting diagnostics (if any). Each diagnostic has:
+- `severity`: "error" or "warning"
+- `rule`: The lint rule name (e.g., "complexity", "coupling", "type", "model_waste")
+- `message`: Human-readable diagnostic message
+- `suggestion`: Optional suggestion for fixing the issue
+
+**Linting Diagnostics:**
+
+When a spec is created, it is automatically linted. Diagnostics are appended to the response text in the format:
+```
+[SEVERITY] rule_name: Message
+  → Suggestion (if present)
+```
+
+Common lint rules:
+- `complexity`: Spec exceeds complexity thresholds (criteria count, file count, word count)
+- `coupling`: Spec references other spec IDs in body text
+- `type`: Invalid or missing spec type
+- `model_waste`: Using expensive model on simple spec
+- `approval`: Approval schema inconsistencies
+- `output`: Output schema validation issues
+- `dependency`: Missing or invalid dependency references
+- `required`: Missing required enterprise fields
+- `title`: Missing spec title
+- `parse`: YAML frontmatter parse errors
+
+**Example Request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "chant_add",
+    "arguments": {
+      "description": "Add user authentication",
+      "prompt": "feature"
+    }
+  },
+  "id": 1
+}
+```
+
+**Example Response (success, no diagnostics):**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Created spec: 2026-01-22-001-x7m"
+      }
+    ]
+  },
+  "id": 1
+}
+```
+
+**Example Response (with linting diagnostics):**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Created spec: 2026-01-22-001-x7m\n\nLint diagnostics:\n  [WARNING] complexity: Spec has 15 acceptance criteria (threshold: 10)\n    → Consider splitting into smaller, focused specs\n  [ERROR] type: Invalid spec type 'feature'. Must be one of: code, docs, fix"
+      }
+    ]
+  },
+  "id": 1
+}
+```
+
 ### chant_log
 
 Read execution log for a spec.
