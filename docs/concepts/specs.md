@@ -110,9 +110,9 @@ verification_status: passed   # passed | partial | failed (after verify)
 verification_failures:        # List of failed acceptance criteria
   - "Criterion description"
 
-# Replay
-replayed_at: 2026-01-22T16:00:00Z    # Timestamp of last replay
-replay_count: 1               # Number of times replayed
+# Re-execution tracking
+replayed_at: 2026-01-22T16:00:00Z    # Timestamp of last re-execution
+replay_count: 1               # Number of times re-executed
 original_completed_at: 2026-01-15T14:30:00Z  # Preserved from first completion
 ---
 ```
@@ -188,10 +188,10 @@ $ chant drift
   2026-01-24-005-abc (documentation)
     src/api/handler.rs (modified: 2026-01-25)
 
-$ chant replay 005  # Re-run to update documentation
+$ chant work 005 --skip-criteria  # Re-run to update documentation
 ```
 
-See [autonomy.md](autonomy.md) for more on drift and replay.
+See [autonomy.md](autonomy.md) for more on drift detection.
 
 ## Readiness
 

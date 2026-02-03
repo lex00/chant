@@ -14,7 +14,7 @@ Specs aren't just todos—they're specifications that persist, verify themselves
 
 ```
 Traditional: Spec → Work → Done → Forget
-Chant:       Spec → Work → Done → Verify → Drift? → Replay → ...
+Chant:       Spec → Work → Done → Verify → Drift? → Re-work → ...
 ```
 
 ## Autonomy Spectrum

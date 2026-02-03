@@ -66,6 +66,7 @@ chant add "Fix authentication bug"           # Create spec with description
 chant add "Risky refactor" --needs-approval  # Create spec requiring approval
 chant list                                   # List all specs
 chant show 2026-01-22-001-x7m                # Show spec details
+chant edit 001                               # Edit spec in $EDITOR
 ```
 
 ### Interactive Wizard for Add
@@ -229,6 +230,17 @@ chant list --global --approval pending --count
 chant list --global --status ready --type code --label urgent
 ```
 
+### Edit Spec
+
+Open a spec in your default editor:
+
+```bash
+chant edit 2026-01-22-001-x7m              # Open spec in $EDITOR
+chant edit 001                             # Partial ID matching works
+```
+
+Uses the `$EDITOR` environment variable. Falls back to `vi` on Unix or `notepad` on Windows if not set.
+
 ### Cancel Spec
 
 Soft-delete a spec by marking it cancelled. The spec file is preserved but excluded from lists and execution:
@@ -263,7 +275,7 @@ chant cancel 2026-01-22-001-x7m --force        # Force cancellation (skip safety
 chant work                                 # Interactive wizard to select specs
 chant work 2026-01-22-001-x7m              # Execute single spec
 chant work 2026-01-22-001-x7m --prompt tdd # Execute with specific prompt
-chant work 2026-01-22-001-x7m --force      # Replay a completed spec
+chant work 2026-01-22-001-x7m --skip-deps  # Override dependency checks
 chant work 2026-01-22-001-x7m --skip-approval  # Bypass approval check
 chant work --parallel                      # Execute all ready specs in parallel
 chant work --parallel --label auth         # Execute ready specs with label
@@ -319,32 +331,29 @@ chant prep 001 --clean                     # Strip agent conversation sections
 
 The prep command is useful for:
 - Getting the spec content ready for the agent to process
-- Removing stale agent conversation sections from replayed specs (with `--clean`)
+- Removing stale agent conversation sections from re-executed specs (with `--clean`)
 - Preparing specs for the bootstrap prompt workflow
 
-By default, `chant prep` outputs the spec body. With the `--clean` flag, it removes any "## Agent Conversation", "## Execution Result", or similar sections that may have been added during previous runs, ensuring a clean slate for replay scenarios.
+By default, `chant prep` outputs the spec body. With the `--clean` flag, it removes any "## Agent Conversation", "## Execution Result", or similar sections that may have been added during previous runs, ensuring a clean slate for re-execution.
 
-### The --force Flag
+### Skip Flags
 
-The `--force` flag for `chant work` serves two purposes:
-
-1. **Override dependency checks** - Work on a blocked spec that has unsatisfied dependencies
-2. **Skip acceptance criteria validation** - Complete a spec without all criteria checked
+The `--skip-deps` and `--skip-criteria` flags for `chant work` allow overriding safety checks:
 
 ```bash
 # Work on blocked spec (bypasses dependency checks)
-chant work 001 --force
+chant work 001 --skip-deps
 
 # Complete spec without all criteria checked
-chant work 001 --force
+chant work 001 --skip-criteria
 ```
 
 #### Overriding Dependency Checks
 
-When a spec is blocked due to unsatisfied dependencies, `--force` allows you to proceed anyway:
+When a spec is blocked due to unsatisfied dependencies, `--skip-deps` allows you to proceed anyway:
 
 ```bash
-$ chant work 2026-01-22-003-abc --force
+$ chant work 2026-01-22-003-abc --skip-deps
 ⚠ Warning: Forcing work on spec (skipping dependency checks)
   Skipping dependencies: 2026-01-22-001-x7m (in_progress)
 → Working 2026-01-22-003-abc with prompt 'standard'
@@ -357,12 +366,10 @@ $ chant work 2026-01-22-003-abc --force
 
 #### Skipping Acceptance Criteria Validation
 
-The `--force` flag also allows completing a spec even if some acceptance criteria checkboxes are not marked as complete. Use this when:
+The `--skip-criteria` flag allows completing a spec even if some acceptance criteria checkboxes are not marked as complete. Use this when:
 - Requirements changed after spec was created
 - A criterion is no longer applicable
 - You want to complete with manual verification
-
-**Note:** For re-executing completed specs, use `chant work --force` instead of replaying.
 
 ### Acceptance Criteria Validation
 
@@ -891,6 +898,39 @@ Cancelled: 1
 ```
 
 Press `Ctrl+C` to exit watch mode.
+
+## Visualization
+
+### Dependency Graph
+
+Show spec dependencies as an ASCII graph:
+
+```bash
+chant dag                              # Full graph with all details
+chant dag --detail minimal             # IDs only
+chant dag --detail titles              # IDs and titles
+chant dag --status pending             # Filter by status
+chant dag --label auth                 # Filter by label
+chant dag --type code                  # Filter by type
+```
+
+### Detail Levels
+
+| Level | Description |
+|-------|-------------|
+| `minimal` | Show only spec IDs |
+| `titles` | Show IDs and titles |
+| `full` | Show IDs, titles, status, and labels (default) |
+
+### Example Output
+
+```bash
+$ chant dag --detail titles
+2026-02-01-001-abc  Add authentication
+├── 2026-02-01-002-def  Add login endpoint
+│   └── 2026-02-01-003-ghi  Add session management
+└── 2026-02-01-004-jkl  Add logout endpoint
+```
 
 ## Refresh
 
