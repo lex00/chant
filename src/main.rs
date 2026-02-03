@@ -291,6 +291,9 @@ enum Commands {
         /// JSON output
         #[arg(long)]
         json: bool,
+        /// Show disk usage of chant artifacts
+        #[arg(long)]
+        disk: bool,
     },
     /// Refresh dependency status for all specs
     Refresh {
@@ -500,8 +503,6 @@ enum Commands {
         #[arg(long, short)]
         output: Option<String>,
     },
-    /// Show disk usage of chant artifacts
-    Disk,
     /// Show git-based activity feed for spec operations
     Activity {
         /// Filter by author name (case-insensitive substring match)
@@ -867,7 +868,14 @@ fn run() -> Result<()> {
             watch,
             brief,
             json,
-        } => cmd::spec::cmd_status(global, repo.as_deref(), watch, brief, json),
+            disk,
+        } => {
+            if disk {
+                cmd::disk::cmd_disk()
+            } else {
+                cmd::spec::cmd_status(global, repo.as_deref(), watch, brief, json)
+            }
+        }
         Commands::Refresh { verbose } => cmd::refresh::cmd_refresh(verbose),
         Commands::Lint { format, verbose } => {
             let lint_format = match format.to_lowercase().as_str() {
@@ -992,7 +1000,6 @@ fn run() -> Result<()> {
             fields.as_deref(),
             output.as_deref(),
         ),
-        Commands::Disk => cmd::disk::cmd_disk(),
         Commands::Activity { by, since, spec } => {
             cmd::activity::cmd_activity(by.as_deref(), since.as_deref(), spec.as_deref())
         }
