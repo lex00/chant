@@ -14,11 +14,11 @@ parallel:
   agents:
   - name: claude2
     command: claude2
-    max_concurrent: 3
+    max_concurrent: 2
     weight: 1
   - name: claude3
     command: claude3
-    max_concurrent: 3
+    max_concurrent: 2
     weight: 1
   cleanup:
     enabled: true

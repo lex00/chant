@@ -22,6 +22,12 @@ COPY templates ./templates
 COPY prompts ./prompts
 COPY prompts-dev ./prompts-dev
 
+# Build args for git SHA and build date
+ARG GIT_SHA=unknown
+ARG BUILD_DATE=unknown
+ENV GIT_SHA=$GIT_SHA
+ENV BUILD_DATE=$BUILD_DATE
+
 # Build the application with musl for static linking
 RUN cargo build --release --target x86_64-unknown-linux-musl
 
