@@ -1117,6 +1117,40 @@ fn is_worktree_clean(spec_id: &str) -> Result<bool> {
 mod tests {
     use super::*;
 
+    fn assert_verification_fields(
+        spec: &Spec,
+        last_verified: Option<&str>,
+        verification_status: Option<&str>,
+        verification_failures: Option<Vec<&str>>,
+    ) {
+        assert_eq!(
+            spec.frontmatter.last_verified,
+            last_verified.map(String::from)
+        );
+        assert_eq!(
+            spec.frontmatter.verification_status,
+            verification_status.map(String::from)
+        );
+        assert_eq!(
+            spec.frontmatter.verification_failures,
+            verification_failures.map(|v| v.iter().map(|s| s.to_string()).collect())
+        );
+    }
+
+    fn assert_replay_fields(
+        spec: &Spec,
+        replayed_at: Option<&str>,
+        replay_count: Option<u32>,
+        original_completed_at: Option<&str>,
+    ) {
+        assert_eq!(spec.frontmatter.replayed_at, replayed_at.map(String::from));
+        assert_eq!(spec.frontmatter.replay_count, replay_count);
+        assert_eq!(
+            spec.frontmatter.original_completed_at,
+            original_completed_at.map(String::from)
+        );
+    }
+
     #[test]
     fn test_parse_spec() {
         let content = r#"---
@@ -2198,17 +2232,11 @@ verification_failures:
 Description here.
 "#;
         let spec = Spec::parse("2026-01-26-001-abc", content).unwrap();
-        assert_eq!(
-            spec.frontmatter.last_verified,
-            Some("2026-01-26T10:30:00Z".to_string())
-        );
-        assert_eq!(
-            spec.frontmatter.verification_status,
-            Some("passed".to_string())
-        );
-        assert_eq!(
-            spec.frontmatter.verification_failures,
-            Some(vec!["test_case_1".to_string(), "test_case_2".to_string()])
+        assert_verification_fields(
+            &spec,
+            Some("2026-01-26T10:30:00Z"),
+            Some("passed"),
+            Some(vec!["test_case_1", "test_case_2"]),
         );
     }
 
@@ -2224,9 +2252,7 @@ status: pending
 Description here.
 "#;
         let spec = Spec::parse("2026-01-26-002-def", content).unwrap();
-        assert_eq!(spec.frontmatter.last_verified, None);
-        assert_eq!(spec.frontmatter.verification_status, None);
-        assert_eq!(spec.frontmatter.verification_failures, None);
+        assert_verification_fields(&spec, None, None, None);
     }
 
     #[test]
@@ -2242,12 +2268,7 @@ last_verified: 2026-01-25T15:00:00Z
 Description here.
 "#;
         let spec = Spec::parse("2026-01-26-003-ghi", content).unwrap();
-        assert_eq!(
-            spec.frontmatter.last_verified,
-            Some("2026-01-25T15:00:00Z".to_string())
-        );
-        assert_eq!(spec.frontmatter.verification_status, None);
-        assert_eq!(spec.frontmatter.verification_failures, None);
+        assert_verification_fields(&spec, Some("2026-01-25T15:00:00Z"), None, None);
     }
 
     #[test]
@@ -2287,20 +2308,13 @@ Description here.
         };
 
         spec.save(&spec_path).unwrap();
-
         let loaded_spec = Spec::load(&spec_path).unwrap();
 
-        assert_eq!(
-            loaded_spec.frontmatter.last_verified,
-            Some("2026-01-26T12:00:00Z".to_string())
-        );
-        assert_eq!(
-            loaded_spec.frontmatter.verification_status,
-            Some("passed".to_string())
-        );
-        assert_eq!(
-            loaded_spec.frontmatter.verification_failures,
-            Some(vec!["failure_1".to_string()])
+        assert_verification_fields(
+            &loaded_spec,
+            Some("2026-01-26T12:00:00Z"),
+            Some("passed"),
+            Some(vec!["failure_1"]),
         );
     }
 
@@ -2344,15 +2358,7 @@ verification_failures:
 Description here.
 "#;
         let spec = Spec::parse("2026-01-26-007-stu", content).unwrap();
-        assert_eq!(spec.frontmatter.last_verified, None);
-        assert_eq!(
-            spec.frontmatter.verification_status,
-            Some("in_progress".to_string())
-        );
-        assert_eq!(
-            spec.frontmatter.verification_failures,
-            Some(vec!["test_a".to_string()])
-        );
+        assert_verification_fields(&spec, None, Some("in_progress"), Some(vec!["test_a"]));
     }
 
     #[test]
@@ -2399,14 +2405,11 @@ replay_count: 2
 Description here.
 "#;
         let spec = Spec::parse("2026-01-26-001-abc", content).unwrap();
-        assert_eq!(
-            spec.frontmatter.replayed_at,
-            Some("2026-01-26T14:00:00Z".to_string())
-        );
-        assert_eq!(spec.frontmatter.replay_count, Some(2));
-        assert_eq!(
-            spec.frontmatter.original_completed_at,
-            Some("2026-01-20T10:00:00Z".to_string())
+        assert_replay_fields(
+            &spec,
+            Some("2026-01-26T14:00:00Z"),
+            Some(2),
+            Some("2026-01-20T10:00:00Z"),
         );
     }
 
@@ -2423,9 +2426,7 @@ completed_at: 2026-01-20T10:00:00Z
 Description here.
 "#;
         let spec = Spec::parse("2026-01-26-002-def", content).unwrap();
-        assert_eq!(spec.frontmatter.replayed_at, None);
-        assert_eq!(spec.frontmatter.replay_count, None);
-        assert_eq!(spec.frontmatter.original_completed_at, None);
+        assert_replay_fields(&spec, None, None, None);
     }
 
     #[test]
@@ -2452,14 +2453,11 @@ Description here.
         spec.save(&spec_path).unwrap();
         let loaded_spec = Spec::load(&spec_path).unwrap();
 
-        assert_eq!(
-            loaded_spec.frontmatter.replayed_at,
-            Some("2026-01-26T14:00:00Z".to_string())
-        );
-        assert_eq!(loaded_spec.frontmatter.replay_count, Some(1));
-        assert_eq!(
-            loaded_spec.frontmatter.original_completed_at,
-            Some("2026-01-20T10:00:00Z".to_string())
+        assert_replay_fields(
+            &loaded_spec,
+            Some("2026-01-26T14:00:00Z"),
+            Some(1),
+            Some("2026-01-20T10:00:00Z"),
         );
     }
 
@@ -2531,9 +2529,7 @@ replay_count: 3
 Description here.
 "#;
         let spec = Spec::parse("2026-01-26-006-pqr", content).unwrap();
-        assert_eq!(spec.frontmatter.replay_count, Some(3));
-        assert_eq!(spec.frontmatter.replayed_at, None);
-        assert_eq!(spec.frontmatter.original_completed_at, None);
+        assert_replay_fields(&spec, None, Some(3), None);
     }
 
     #[test]
