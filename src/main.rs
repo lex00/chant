@@ -442,34 +442,23 @@ enum Commands {
         #[arg(long, num_args = 0..=1, require_equals = true, value_name = "PREFIX")]
         branch: Option<String>,
     },
-    /// Cancel a spec (soft-delete with status change)
+    /// Cancel a spec (soft-delete with status change, or hard-delete with --delete)
     Cancel {
         /// Spec ID (full or partial)
         id: String,
         /// Skip safety checks (status and dependency validation)
         #[arg(long)]
         skip_checks: bool,
-        /// Dry run - show what would be cancelled
+        /// Hard delete: permanently remove spec file and artifacts (default: soft cancel to 'cancelled' status)
         #[arg(long)]
-        dry_run: bool,
-        /// Skip confirmation prompt
-        #[arg(long)]
-        yes: bool,
-    },
-    /// Delete a spec and clean up artifacts
-    Delete {
-        /// Spec ID (full or partial)
-        id: String,
-        /// Skip safety checks (status and dependency validation)
-        #[arg(long)]
-        skip_checks: bool,
-        /// Delete driver and all members
+        delete: bool,
+        /// Delete driver and all members (only with --delete)
         #[arg(long)]
         cascade: bool,
-        /// Delete associated git branch
+        /// Delete associated git branch (only with --delete)
         #[arg(long)]
         delete_branch: bool,
-        /// Dry run - show what would be deleted
+        /// Dry run - show what would be cancelled or deleted
         #[arg(long)]
         dry_run: bool,
         /// Skip confirmation prompt
@@ -991,17 +980,24 @@ fn run() -> Result<()> {
         Commands::Cancel {
             id,
             skip_checks,
-            dry_run,
-            yes,
-        } => cmd::spec::cmd_cancel(&id, skip_checks, dry_run, yes),
-        Commands::Delete {
-            id,
-            skip_checks,
+            delete,
             cascade,
             delete_branch,
             dry_run,
             yes,
-        } => cmd::spec::cmd_delete(&id, skip_checks, cascade, delete_branch, dry_run, yes),
+        } => {
+            if delete {
+                cmd::spec::cmd_delete(&id, skip_checks, cascade, delete_branch, dry_run, yes)
+            } else {
+                if cascade {
+                    anyhow::bail!("--cascade can only be used with --delete");
+                }
+                if delete_branch {
+                    anyhow::bail!("--delete-branch can only be used with --delete");
+                }
+                cmd::spec::cmd_cancel(&id, skip_checks, dry_run, yes)
+            }
+        }
         Commands::Config { validate } => {
             if validate {
                 cmd::config::cmd_config_validate()
