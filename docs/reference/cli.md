@@ -2,59 +2,21 @@
 
 ## Initialization
 
-Initialize chant in a new project:
+Initialize chant in a new project. For detailed setup instructions, see the [Initialization Guide](init.md).
 
 ```bash
-chant init                                 # Interactive wizard (guided setup)
+chant init                                 # Interactive wizard (recommended)
 chant init --name my-project               # Direct mode with project name
-chant init --name my-project --minimal     # Only create config.md (no templates)
-chant init --name my-project --silent      # Keep .chant/ local-only (gitignored)
+chant init --minimal                       # Only create config.md (no templates)
+chant init --silent                        # Keep .chant/ local-only (gitignored)
 chant init --agent claude                  # Create CLAUDE.md for AI instructions
-chant init --agent cursor --agent amazonq  # Create .cursorrules and Amazon Q rules
 ```
 
-### Interactive Wizard Mode
-
-When you run `chant init` without any flags, you'll be guided through setup interactively:
-
-```
-? Project name: my-project (auto-detected)
-? Include prompt templates? Yes
-? Keep .chant/ local only (gitignored)? No
-? Initialize agent configuration?
-› None
-  Claude Code (CLAUDE.md)
-  Cursor (.cursorrules)
-  Amazon Q (.amazonq/rules.md)
-  Generic (.ai-instructions)
-  All of the above
-```
-
-The wizard will:
-1. Auto-detect your project name from `package.json`, `Cargo.toml`, `go.mod`, or directory name
-2. Ask if you want prompt templates (standard and split prompts)
-3. Ask if you want silent mode (.chant/ local-only)
-4. Ask for your preferred model provider (Claude CLI, Ollama, OpenAI)
-5. Ask for your default model (opus, sonnet, haiku, or custom)
-6. Offer to create agent configuration files (Claude Code, Cursor, Amazon Q, etc.)
-
-When Claude agent is selected, the wizard also creates `.mcp.json` for MCP server integration.
-
-> **Tip:** The wizard is the recommended path for new users - it explains each option and prevents configuration mistakes.
-
-### Direct Mode
-
-Use flags to skip the wizard and initialize directly:
-
-- `--name PROJECT`: Override detected project name
-- `--minimal`: Only create config.md (skip prompt templates)
-- `--silent`: Keep .chant/ local-only, not tracked in git
-- `--agent PROVIDER`: Create configuration for an AI agent provider (can be specified multiple times)
-- `--provider PROVIDER`: Set default model provider (`claude`, `ollama`, `openai`)
-- `--model MODEL`: Set default model (`opus`, `sonnet`, `haiku`, or custom model name)
-- `--force`: Overwrite existing .chant/ directory
-
-Supported agent providers: `claude`, `cursor`, `amazonq`, `generic`, `all`
+See [Initialization Guide](init.md) for details on:
+- Interactive wizard setup
+- Direct mode flags
+- Agent configuration options
+- Silent mode for enterprise environments
 
 ## Spec Management
 
