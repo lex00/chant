@@ -1149,11 +1149,65 @@ status: pending
 
     std::fs::write(&filepath, content)?;
 
+    // Lint the newly created spec
+    let lint_diagnostics = match chant::spec::Spec::load(&filepath) {
+        Ok(spec) => {
+            use crate::cmd::spec::lint::{
+                validate_approval_schema, validate_model_waste, validate_output_schema,
+                validate_spec_complexity, validate_spec_coupling, validate_spec_type,
+            };
+
+            let mut diagnostics = Vec::new();
+
+            // Load config for thresholds
+            let config = chant::config::Config::load().ok();
+            let default_thresholds = chant::config::LintThresholds::default();
+            let thresholds = config
+                .as_ref()
+                .map(|c| &c.lint.thresholds)
+                .unwrap_or(&default_thresholds);
+
+            // Run validation checks
+            diagnostics.extend(validate_spec_type(&spec));
+            diagnostics.extend(validate_spec_complexity(&spec, thresholds));
+            diagnostics.extend(validate_spec_coupling(&spec));
+            diagnostics.extend(validate_model_waste(&spec, thresholds));
+            diagnostics.extend(validate_approval_schema(&spec));
+            diagnostics.extend(validate_output_schema(&spec));
+
+            diagnostics
+        }
+        Err(_) => Vec::new(),
+    };
+
+    // Build response with diagnostics if any
+    let mut response_text = format!("Created spec: {}", new_id);
+
+    if !lint_diagnostics.is_empty() {
+        response_text.push_str("\n\nLint diagnostics:");
+        for diagnostic in &lint_diagnostics {
+            use crate::cmd::spec::lint::Severity;
+            let severity_str = match diagnostic.severity {
+                Severity::Error => "ERROR",
+                Severity::Warning => "WARNING",
+            };
+            response_text.push_str(&format!(
+                "\n  [{}] {}: {}",
+                severity_str,
+                diagnostic.rule.as_str(),
+                diagnostic.message
+            ));
+            if let Some(ref suggestion) = diagnostic.suggestion {
+                response_text.push_str(&format!("\n    → {}", suggestion));
+            }
+        }
+    }
+
     Ok(json!({
         "content": [
             {
                 "type": "text",
-                "text": format!("Created spec: {}", new_id)
+                "text": response_text
             }
         ]
     }))
