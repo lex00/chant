@@ -3,61 +3,14 @@
 //! These tests verify the entire worktree-based parallel execution flow end-to-end,
 //! covering success paths, edge cases, and both direct and branch modes.
 
+mod common;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 // Import serial_test for marking tests that must run serially
 use serial_test::serial;
-
-// ============================================================================
-// SETUP & HELPERS
-// ============================================================================
-
-/// Initialize a temporary git repository for testing
-fn setup_test_repo(repo_dir: &Path) -> std::io::Result<()> {
-    fs::create_dir_all(repo_dir)?;
-
-    // Initialize git repo with explicit 'main' branch name
-    let output = Command::new("git")
-        .args(["init", "-b", "main"])
-        .current_dir(repo_dir)
-        .output()?;
-    assert!(output.status.success(), "Failed to init repo");
-
-    // Configure git
-    Command::new("git")
-        .args(["config", "user.email", "test@example.com"])
-        .current_dir(repo_dir)
-        .output()?;
-
-    Command::new("git")
-        .args(["config", "user.name", "Test User"])
-        .current_dir(repo_dir)
-        .output()?;
-
-    // Create initial commit
-    fs::write(repo_dir.join("README.md"), "# Test Repo")?;
-    Command::new("git")
-        .args(["add", "."])
-        .current_dir(repo_dir)
-        .output()?;
-
-    Command::new("git")
-        .args(["commit", "-m", "Initial commit"])
-        .current_dir(repo_dir)
-        .output()?;
-
-    Ok(())
-}
-
-/// Clean up a test repository directory
-fn cleanup_test_repo(repo_dir: &Path) -> std::io::Result<()> {
-    if repo_dir.exists() {
-        fs::remove_dir_all(repo_dir)?;
-    }
-    Ok(())
-}
 
 /// Get all branches in a repo (for verification)
 fn get_branches(repo_dir: &Path) -> Vec<String> {
@@ -131,9 +84,9 @@ Test specification for integration testing.
 #[serial]
 fn test_worktree_creation_basic() {
     let repo_dir = PathBuf::from("/tmp/test-chant-wt-basic");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
     std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
@@ -165,16 +118,16 @@ fn test_worktree_creation_basic() {
         .current_dir(&repo_dir)
         .output();
     let _ = fs::remove_dir_all(&worktree_path);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 #[test]
 #[serial]
 fn test_multiple_worktrees_parallel() {
     let repo_dir = PathBuf::from("/tmp/test-chant-wt-multiple");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
     std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
@@ -244,21 +197,21 @@ fn test_multiple_worktrees_parallel() {
             .current_dir(&repo_dir)
             .output();
     }
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 #[test]
 #[serial]
 fn test_direct_mode_merge_and_cleanup() {
     let repo_dir = PathBuf::from("/tmp/test-chant-direct-mode");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
     let result = std::env::set_current_dir(&repo_dir);
     if result.is_err() {
-        let _ = cleanup_test_repo(&repo_dir);
+        let _ = common::cleanup_test_repo(&repo_dir);
         panic!("Failed to change directory");
     }
 
@@ -278,7 +231,7 @@ fn test_direct_mode_merge_and_cleanup() {
     let _ = std::env::set_current_dir(&original_dir);
 
     if wt_result.is_err() {
-        let _ = cleanup_test_repo(&repo_dir);
+        let _ = common::cleanup_test_repo(&repo_dir);
         panic!("Failed to create worktree");
     }
 
@@ -287,16 +240,16 @@ fn test_direct_mode_merge_and_cleanup() {
 
     // Clean up for next test
     let _ = fs::remove_dir_all(&wt_path);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 #[test]
 #[serial]
 fn test_branch_mode_preserves_branch() {
     let repo_dir = PathBuf::from("/tmp/test-chant-branch-mode");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
     std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
@@ -352,21 +305,21 @@ fn test_branch_mode_preserves_branch() {
         .current_dir(&repo_dir)
         .output();
     let _ = fs::remove_dir_all(&wt_path);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 #[test]
 #[serial]
 fn test_merge_conflict_preserves_branch() {
     let repo_dir = PathBuf::from("/tmp/test-chant-conflict");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
     let result = std::env::set_current_dir(&repo_dir);
     if result.is_err() {
-        let _ = cleanup_test_repo(&repo_dir);
+        let _ = common::cleanup_test_repo(&repo_dir);
         panic!("Failed to change directory");
     }
 
@@ -391,16 +344,16 @@ fn test_merge_conflict_preserves_branch() {
         .args(["branch", "-D", branch])
         .current_dir(&repo_dir)
         .output();
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 #[test]
 #[serial]
 fn test_worktree_cleanup_on_failure() {
     let repo_dir = PathBuf::from("/tmp/test-chant-cleanup-failure");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
     std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
@@ -438,16 +391,16 @@ fn test_worktree_cleanup_on_failure() {
         .args(["branch", "-D", &branch])
         .current_dir(&repo_dir)
         .output();
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 #[test]
 #[serial]
 fn test_concurrent_worktree_isolation() {
     let repo_dir = PathBuf::from("/tmp/test-chant-isolation");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
     std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
@@ -561,16 +514,16 @@ fn test_concurrent_worktree_isolation() {
         .args(["branch", "-D", &branch_2])
         .current_dir(&repo_dir)
         .output();
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 #[test]
 #[serial]
 fn test_worktree_idempotent_cleanup() {
     let repo_dir = PathBuf::from("/tmp/test-chant-idempotent");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
     std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
@@ -622,7 +575,7 @@ fn test_worktree_idempotent_cleanup() {
         .args(["branch", "-D", &branch])
         .current_dir(&repo_dir)
         .output();
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 #[test]
@@ -735,10 +688,10 @@ fn commit_in_worktree(wt_path: &Path, message: &str) -> std::io::Result<()> {
 #[serial]
 fn test_full_workflow_with_conflict_detection() {
     let repo_dir = PathBuf::from("/tmp/test-chant-conflict-workflow");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
     // Setup: Create isolated test repository with chant structure
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
     std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
@@ -932,7 +885,7 @@ impl Config {
             .current_dir(&repo_dir)
             .output();
     }
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 /// Test conflict spec metadata structure
@@ -1043,7 +996,7 @@ original_spec: 2026-01-25-conflict-001
 #[serial]
 fn test_new_developer_experience() {
     let test_dir = PathBuf::from("/tmp/test-chant-new-dev");
-    let _ = cleanup_test_repo(&test_dir);
+    let _ = common::cleanup_test_repo(&test_dir);
 
     // Get the root of the current chant repository
     let repo_root = std::env::var("CARGO_MANIFEST_DIR").unwrap();
@@ -1166,7 +1119,7 @@ fn test_new_developer_experience() {
     }
 
     // Cleanup
-    let _ = cleanup_test_repo(&test_dir);
+    let _ = common::cleanup_test_repo(&test_dir);
 }
 
 // ============================================================================
@@ -1203,10 +1156,10 @@ fn test_new_developer_experience() {
 #[cfg(unix)] // Uses Unix-specific /tmp paths
 fn test_new_user_workflow_ollama() {
     let repo_dir = PathBuf::from("/tmp/test-chant-user-workflow-ollama");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
     // Step 1: Create fresh git repository
-    if setup_test_repo(&repo_dir).is_err() {
+    if common::setup_test_repo(&repo_dir).is_err() {
         panic!("Failed to setup test repository");
     }
 
@@ -1218,7 +1171,7 @@ fn test_new_user_workflow_ollama() {
 
     if !init_output.status.success() {
         let _ = std::env::set_current_dir(&original_dir);
-        let _ = cleanup_test_repo(&repo_dir);
+        let _ = common::cleanup_test_repo(&repo_dir);
         eprintln!(
             "Chant init failed: {}",
             String::from_utf8_lossy(&init_output.stderr)
@@ -1230,7 +1183,7 @@ fn test_new_user_workflow_ollama() {
     let chant_dir = repo_dir.join(".chant");
     if !chant_dir.exists() {
         let _ = std::env::set_current_dir(&original_dir);
-        let _ = cleanup_test_repo(&repo_dir);
+        let _ = common::cleanup_test_repo(&repo_dir);
         panic!(".chant directory was not created");
     }
 
@@ -1238,7 +1191,7 @@ fn test_new_user_workflow_ollama() {
     let config_path = chant_dir.join("config.md");
     if !config_path.exists() {
         let _ = std::env::set_current_dir(&original_dir);
-        let _ = cleanup_test_repo(&repo_dir);
+        let _ = common::cleanup_test_repo(&repo_dir);
         panic!(".chant/config.md was not created");
     }
 
@@ -1254,7 +1207,7 @@ fn test_new_user_workflow_ollama() {
 
     if !add_output.status.success() {
         let _ = std::env::set_current_dir(&original_dir);
-        let _ = cleanup_test_repo(&repo_dir);
+        let _ = common::cleanup_test_repo(&repo_dir);
         eprintln!(
             "Chant add failed: {}",
             String::from_utf8_lossy(&add_output.stderr)
@@ -1272,7 +1225,7 @@ fn test_new_user_workflow_ollama() {
 
     if spec_files.is_empty() {
         let _ = std::env::set_current_dir(&original_dir);
-        let _ = cleanup_test_repo(&repo_dir);
+        let _ = common::cleanup_test_repo(&repo_dir);
         panic!("No spec file was created");
     }
 
@@ -1300,7 +1253,7 @@ fn test_new_user_workflow_ollama() {
         eprintln!("Ollama is not available - skipping execution test");
         // Skip gracefully - this is not a test failure
         let _ = std::env::set_current_dir(&original_dir);
-        let _ = cleanup_test_repo(&repo_dir);
+        let _ = common::cleanup_test_repo(&repo_dir);
         return;
     }
 
@@ -1321,7 +1274,7 @@ fn test_new_user_workflow_ollama() {
         eprintln!("Available models: {}", models_output_str);
         // Gracefully skip
         let _ = std::env::set_current_dir(&original_dir);
-        let _ = cleanup_test_repo(&repo_dir);
+        let _ = common::cleanup_test_repo(&repo_dir);
         return;
     }
 
@@ -1346,7 +1299,7 @@ fn test_new_user_workflow_ollama() {
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 // ============================================================================
@@ -1435,16 +1388,16 @@ fn test_silent_mode_isolation() {
     let silent_repo = PathBuf::from("/tmp/test-chant-silent-private");
 
     // Cleanup from previous runs
-    let _ = cleanup_test_repo(&normal_repo);
-    let _ = cleanup_test_repo(&silent_repo);
+    let _ = common::cleanup_test_repo(&normal_repo);
+    let _ = common::cleanup_test_repo(&silent_repo);
 
     // Setup: Create and initialize git repos
     assert!(
-        setup_test_repo(&normal_repo).is_ok(),
+        common::setup_test_repo(&normal_repo).is_ok(),
         "Setup normal repo failed"
     );
     assert!(
-        setup_test_repo(&silent_repo).is_ok(),
+        common::setup_test_repo(&silent_repo).is_ok(),
         "Setup silent repo failed"
     );
 
@@ -1538,8 +1491,8 @@ fn test_silent_mode_isolation() {
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&normal_repo);
-    let _ = cleanup_test_repo(&silent_repo);
+    let _ = common::cleanup_test_repo(&normal_repo);
+    let _ = common::cleanup_test_repo(&silent_repo);
 }
 
 #[test]
@@ -1549,11 +1502,11 @@ fn test_silent_mode_branch_warning() {
     let silent_repo = PathBuf::from("/tmp/test-chant-silent-branch-warn");
 
     // Cleanup from previous runs
-    let _ = cleanup_test_repo(&silent_repo);
+    let _ = common::cleanup_test_repo(&silent_repo);
 
     // Setup
     assert!(
-        setup_test_repo(&silent_repo).is_ok(),
+        common::setup_test_repo(&silent_repo).is_ok(),
         "Setup silent repo failed"
     );
 
@@ -1608,7 +1561,7 @@ fn test_silent_mode_branch_warning() {
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&silent_repo);
+    let _ = common::cleanup_test_repo(&silent_repo);
 }
 
 #[test]
@@ -1618,10 +1571,10 @@ fn test_silent_mode_init_on_tracked_fails() {
     let repo = PathBuf::from("/tmp/test-chant-silent-tracked");
 
     // Cleanup from previous runs
-    let _ = cleanup_test_repo(&repo);
+    let _ = common::cleanup_test_repo(&repo);
 
     // Setup
-    assert!(setup_test_repo(&repo).is_ok(), "Setup repo failed");
+    assert!(common::setup_test_repo(&repo).is_ok(), "Setup repo failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
 
@@ -1668,7 +1621,7 @@ fn test_silent_mode_init_on_tracked_fails() {
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo);
+    let _ = common::cleanup_test_repo(&repo);
 }
 
 #[test]
@@ -1678,11 +1631,11 @@ fn test_silent_mode_exclude_file_structure() {
     let silent_repo = PathBuf::from("/tmp/test-chant-silent-exclude-struct");
 
     // Cleanup from previous runs
-    let _ = cleanup_test_repo(&silent_repo);
+    let _ = common::cleanup_test_repo(&silent_repo);
 
     // Setup
     assert!(
-        setup_test_repo(&silent_repo).is_ok(),
+        common::setup_test_repo(&silent_repo).is_ok(),
         "Setup silent repo failed"
     );
 
@@ -1743,7 +1696,7 @@ fn test_silent_mode_exclude_file_structure() {
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&silent_repo);
+    let _ = common::cleanup_test_repo(&silent_repo);
 }
 
 // ============================================================================
@@ -1765,9 +1718,9 @@ fn test_silent_mode_exclude_file_structure() {
 #[cfg(unix)]
 fn test_driver_auto_completes_with_real_commits() {
     let repo_dir = PathBuf::from("/tmp/test-chant-driver-real-commits");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
     let chant_binary = get_chant_binary();
@@ -1937,7 +1890,7 @@ status: in_progress
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 // ============================================================================
@@ -1951,7 +1904,7 @@ fn test_lint_required_fields_missing() {
     let repo_dir = PathBuf::from("/tmp/test-chant-lint-required-missing");
     let chant_binary = get_chant_binary();
 
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
     std::fs::create_dir_all(&repo_dir).expect("Failed to create temp dir");
 
     // Initialize repo
@@ -2038,7 +1991,7 @@ This spec is missing branch, model, and labels fields.
     );
 
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 #[test]
@@ -2048,7 +2001,7 @@ fn test_lint_required_fields_present() {
     let repo_dir = PathBuf::from("/tmp/test-chant-lint-required-present");
     let chant_binary = get_chant_binary();
 
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
     std::fs::create_dir_all(&repo_dir).expect("Failed to create temp dir");
 
     // Initialize repo
@@ -2123,7 +2076,7 @@ This spec has branch and labels fields.
     );
 
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 #[test]
@@ -2133,7 +2086,7 @@ fn test_lint_no_required_fields_configured() {
     let repo_dir = PathBuf::from("/tmp/test-chant-lint-no-required");
     let chant_binary = get_chant_binary();
 
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
     std::fs::create_dir_all(&repo_dir).expect("Failed to create temp dir");
 
     // Initialize repo
@@ -2200,16 +2153,16 @@ This spec should pass even without required fields since none are configured.
     );
 
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 #[test]
 #[serial]
 fn test_show_displays_derived_field_indicators() {
     let repo_dir = PathBuf::from("/tmp/test-chant-show-derived");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
     std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
@@ -2266,16 +2219,16 @@ This is a test spec to verify derived field indicators in show command.
     );
 
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 #[test]
 #[serial]
 fn test_export_includes_derived_fields_metadata() {
     let repo_dir = PathBuf::from("/tmp/test-chant-export-derived");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
     std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
@@ -2374,7 +2327,7 @@ Test spec for export with derived fields.
     }
 
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 // ============================================================================
@@ -2452,9 +2405,9 @@ fn run_chant_list(repo_dir: &Path) -> String {
 #[serial]
 fn test_dependency_chain_updates() {
     let repo_dir = PathBuf::from("/tmp/test-chant-dep-chain");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
     let chant_binary = get_chant_binary();
@@ -2531,7 +2484,7 @@ fn test_dependency_chain_updates() {
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 /// Test dependency status updates via direct file edit (reload from disk)
@@ -2539,9 +2492,9 @@ fn test_dependency_chain_updates() {
 #[serial]
 fn test_dependency_status_after_direct_file_edit() {
     let repo_dir = PathBuf::from("/tmp/test-chant-dep-file-edit");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
     let chant_binary = get_chant_binary();
@@ -2592,7 +2545,7 @@ fn test_dependency_status_after_direct_file_edit() {
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 /// Test parallel dependency resolution (multiple specs depending on same blocker)
@@ -2600,9 +2553,9 @@ fn test_dependency_status_after_direct_file_edit() {
 #[serial]
 fn test_parallel_dependency_resolution() {
     let repo_dir = PathBuf::from("/tmp/test-chant-dep-parallel");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
     let chant_binary = get_chant_binary();
@@ -2655,7 +2608,7 @@ fn test_parallel_dependency_resolution() {
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 /// Test --skip-deps flag bypasses dependency checks
@@ -2663,9 +2616,9 @@ fn test_parallel_dependency_resolution() {
 #[serial]
 fn test_force_flag_bypasses_dependency_check() {
     let repo_dir = PathBuf::from("/tmp/test-chant-dep-force");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
     let chant_binary = get_chant_binary();
@@ -2768,7 +2721,7 @@ fn test_force_flag_bypasses_dependency_check() {
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 /// Test that blocked spec error shows detailed dependency information
@@ -2776,9 +2729,9 @@ fn test_force_flag_bypasses_dependency_check() {
 #[serial]
 fn test_blocked_spec_shows_detailed_error() {
     let repo_dir = PathBuf::from("/tmp/test-chant-blocked-detail");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
     let chant_binary = get_chant_binary();
@@ -2879,7 +2832,7 @@ This spec blocks spec B.
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 /// Test --skip-deps flag warning shows which dependencies are being skipped
@@ -2887,9 +2840,9 @@ This spec blocks spec B.
 #[serial]
 fn test_force_flag_shows_skipped_dependencies() {
     let repo_dir = PathBuf::from("/tmp/test-chant-dep-force-warn");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
     let chant_binary = get_chant_binary();
@@ -2958,7 +2911,7 @@ fn test_force_flag_shows_skipped_dependencies() {
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 /// Test that completing a spec automatically reports unblocked dependents
@@ -2972,8 +2925,8 @@ fn test_dependency_chain_updates_after_completion() {
 
     // Setup test repo
     let repo_dir = PathBuf::from("/tmp/test-dependency-chain");
-    let _ = cleanup_test_repo(&repo_dir);
-    setup_test_repo(&repo_dir).expect("Failed to setup test repo");
+    let _ = common::cleanup_test_repo(&repo_dir);
+    common::setup_test_repo(&repo_dir).expect("Failed to setup test repo");
 
     // Change to repo directory
     std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
@@ -3072,7 +3025,7 @@ fn test_dependency_chain_updates_after_completion() {
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 #[test]
@@ -3082,11 +3035,11 @@ fn test_env_based_derivation_end_to_end() {
     let repo_dir = PathBuf::from("/tmp/test-chant-env-deriv");
     let chant_binary = get_chant_binary();
 
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
     std::fs::create_dir_all(&repo_dir).expect("Failed to create temp dir");
 
     // Initialize test repo with setup_test_repo helper
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     // Manually set up .chant directory (similar to init test)
     let chant_dir = repo_dir.join(".chant");
@@ -3134,7 +3087,7 @@ enterprise:
             String::from_utf8_lossy(&add_output.stdout)
         );
         let _ = std::env::set_current_dir(&original_dir);
-        let _ = cleanup_test_repo(&repo_dir);
+        let _ = common::cleanup_test_repo(&repo_dir);
         panic!("chant add failed");
     }
 
@@ -3183,7 +3136,7 @@ enterprise:
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 #[test]
@@ -3193,7 +3146,7 @@ fn test_missing_env_var_graceful_failure() {
     let repo_dir = PathBuf::from("/tmp/test-chant-missing-env");
     let chant_binary = get_chant_binary();
 
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
     std::fs::create_dir_all(&repo_dir).expect("Failed to create temp dir");
 
     // Initialize repo
@@ -3277,7 +3230,7 @@ enterprise:
             String::from_utf8_lossy(&add_output.stdout)
         );
         let _ = std::env::set_current_dir(&original_dir);
-        let _ = cleanup_test_repo(&repo_dir);
+        let _ = common::cleanup_test_repo(&repo_dir);
         panic!("chant add failed");
     }
 
@@ -3344,7 +3297,7 @@ enterprise:
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 #[test]
@@ -3354,7 +3307,7 @@ fn test_partial_env_vars_available() {
     let repo_dir = PathBuf::from("/tmp/test-chant-partial-env");
     let chant_binary = get_chant_binary();
 
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
     std::fs::create_dir_all(&repo_dir).expect("Failed to create temp dir");
 
     // Initialize repo
@@ -3436,7 +3389,7 @@ enterprise:
             String::from_utf8_lossy(&add_output.stdout)
         );
         let _ = std::env::set_current_dir(&original_dir);
-        let _ = cleanup_test_repo(&repo_dir);
+        let _ = common::cleanup_test_repo(&repo_dir);
         panic!("chant add failed");
     }
 
@@ -3492,7 +3445,7 @@ enterprise:
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 #[test]
@@ -3503,9 +3456,9 @@ fn test_no_derivation_when_config_empty() {
     let repo_dir = PathBuf::from("/tmp/test-chant-no-config");
     let chant_binary = get_chant_binary();
 
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     // Manually set up .chant directory
     let chant_dir = repo_dir.join(".chant");
@@ -3543,7 +3496,7 @@ project:
             String::from_utf8_lossy(&add_output.stdout)
         );
         let _ = std::env::set_current_dir(&original_dir);
-        let _ = cleanup_test_repo(&repo_dir);
+        let _ = common::cleanup_test_repo(&repo_dir);
         panic!("chant add failed");
     }
 
@@ -3580,7 +3533,7 @@ project:
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 #[test]
@@ -3591,9 +3544,9 @@ fn test_no_derivation_when_enterprise_derived_empty() {
     let repo_dir = PathBuf::from("/tmp/test-chant-empty-derived");
     let chant_binary = get_chant_binary();
 
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     // Manually set up .chant directory
     let chant_dir = repo_dir.join(".chant");
@@ -3634,7 +3587,7 @@ enterprise:
             String::from_utf8_lossy(&add_output.stdout)
         );
         let _ = std::env::set_current_dir(&original_dir);
-        let _ = cleanup_test_repo(&repo_dir);
+        let _ = common::cleanup_test_repo(&repo_dir);
         panic!("chant add failed");
     }
 
@@ -3671,7 +3624,7 @@ enterprise:
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 /// Test the `chant derive <SPEC_ID>` command re-derives fields for a single spec
@@ -3688,9 +3641,9 @@ fn test_chant_derive_single_spec() {
     let repo_dir = PathBuf::from("/tmp/test-chant-derive-single");
     let chant_binary = get_chant_binary();
 
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
 
@@ -3821,7 +3774,7 @@ Enterprise config added after spec creation.
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 /// Test that spec status is updated to 'completed' after finalization in parallel mode
@@ -3833,9 +3786,9 @@ fn test_spec_status_updated_after_finalization() {
 
     let original_dir = std::env::current_dir().expect("Failed to get current dir");
     let repo_dir = PathBuf::from("/tmp/test-chant-status-update");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     // Set working directory to repo
     let _ = std::env::set_current_dir(&repo_dir);
@@ -3943,7 +3896,7 @@ This spec tests that finalization updates the status field.
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 /// Test that invalid regex patterns in enterprise config are handled gracefully
@@ -3959,9 +3912,9 @@ fn test_invalid_regex_pattern_graceful_failure() {
     let repo_dir = PathBuf::from("/tmp/test-chant-invalid-regex");
     let chant_binary = get_chant_binary();
 
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     // Manually set up .chant directory
     let chant_dir = repo_dir.join(".chant");
@@ -4017,7 +3970,7 @@ enterprise:
             String::from_utf8_lossy(&add_output.stdout)
         );
         let _ = std::env::set_current_dir(&original_dir);
-        let _ = cleanup_test_repo(&repo_dir);
+        let _ = common::cleanup_test_repo(&repo_dir);
         panic!("chant add failed - command should succeed despite invalid regex");
     }
 
@@ -4077,7 +4030,7 @@ enterprise:
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 // ============================================================================
@@ -4120,10 +4073,10 @@ fn test_parallel_work_and_merge_workflow() {
     use chant::spec::{Spec, SpecStatus};
 
     let repo_dir = PathBuf::from("/tmp/test-chant-parallel-merge-workflow");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
     // Step 1: Setup test repository
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
 
@@ -4132,7 +4085,7 @@ fn test_parallel_work_and_merge_workflow() {
         run_chant(&repo_dir, &["init", "--minimal"]).expect("Failed to run chant init");
     if !init_output.status.success() {
         let _ = std::env::set_current_dir(&original_dir);
-        let _ = cleanup_test_repo(&repo_dir);
+        let _ = common::cleanup_test_repo(&repo_dir);
         panic!(
             "Chant init failed: {}",
             String::from_utf8_lossy(&init_output.stderr)
@@ -4218,7 +4171,7 @@ Test specification for parallel workflow testing.
 
     if !wt1_output.status.success() {
         let _ = std::env::set_current_dir(&original_dir);
-        let _ = cleanup_test_repo(&repo_dir);
+        let _ = common::cleanup_test_repo(&repo_dir);
         panic!(
             "Failed to create worktree 1: {}",
             String::from_utf8_lossy(&wt1_output.stderr)
@@ -4245,7 +4198,7 @@ Test specification for parallel workflow testing.
             .output();
         let _ = fs::remove_dir_all(&wt_path1);
         let _ = std::env::set_current_dir(&original_dir);
-        let _ = cleanup_test_repo(&repo_dir);
+        let _ = common::cleanup_test_repo(&repo_dir);
         panic!(
             "Failed to create worktree 2: {}",
             String::from_utf8_lossy(&wt2_output.stderr)
@@ -4448,7 +4401,7 @@ Test specification for parallel workflow testing.
     let _ = fs::remove_dir_all(&wt_path1);
     let _ = fs::remove_dir_all(&wt_path2);
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 /// Test that `chant merge --finalize` marks specs as completed after successful merge
@@ -4459,9 +4412,9 @@ fn test_merge_finalize_flag() {
     use chant::spec::{Spec, SpecStatus};
 
     let repo_dir = PathBuf::from("/tmp/test-chant-merge-finalize");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
 
@@ -4470,7 +4423,7 @@ fn test_merge_finalize_flag() {
         run_chant(&repo_dir, &["init", "--minimal"]).expect("Failed to run chant init");
     if !init_output.status.success() {
         let _ = std::env::set_current_dir(&original_dir);
-        let _ = cleanup_test_repo(&repo_dir);
+        let _ = common::cleanup_test_repo(&repo_dir);
         panic!(
             "Chant init failed: {}",
             String::from_utf8_lossy(&init_output.stderr)
@@ -4578,7 +4531,7 @@ Test spec for merge --finalize flag.
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 /// Test that merge does not try to checkout a deleted branch after successful merge
@@ -4587,9 +4540,9 @@ Test spec for merge --finalize flag.
 #[cfg(unix)]
 fn test_merge_no_checkout_deleted_branch() {
     let repo_dir = PathBuf::from("/tmp/test-chant-merge-no-checkout-deleted");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
 
@@ -4598,7 +4551,7 @@ fn test_merge_no_checkout_deleted_branch() {
         run_chant(&repo_dir, &["init", "--minimal"]).expect("Failed to run chant init");
     if !init_output.status.success() {
         let _ = std::env::set_current_dir(&original_dir);
-        let _ = cleanup_test_repo(&repo_dir);
+        let _ = common::cleanup_test_repo(&repo_dir);
         panic!("Chant init failed");
     }
 
@@ -4693,7 +4646,7 @@ Test that merge doesn't checkout deleted branch.
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 /// Test that finalization checks the spec's branch field before checking main
@@ -4704,9 +4657,9 @@ fn test_finalization_checks_spec_branch_field() {
     use chant::spec::{Spec, SpecStatus};
 
     let repo_dir = PathBuf::from("/tmp/test-chant-finalize-branch-field");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
 
@@ -4715,7 +4668,7 @@ fn test_finalization_checks_spec_branch_field() {
         run_chant(&repo_dir, &["init", "--minimal"]).expect("Failed to run chant init");
     if !init_output.status.success() {
         let _ = std::env::set_current_dir(&original_dir);
-        let _ = cleanup_test_repo(&repo_dir);
+        let _ = common::cleanup_test_repo(&repo_dir);
         panic!("Chant init failed");
     }
 
@@ -4819,7 +4772,7 @@ Test that finalization checks branch field.
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 // ============================================================================
@@ -4856,9 +4809,9 @@ Test specification for chain testing.
 #[serial]
 fn test_chain_with_specific_ids_validates_all_ids() {
     let repo_dir = PathBuf::from("/tmp/test-chant-chain-specific");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
     let chant_binary = get_chant_binary();
@@ -4911,7 +4864,7 @@ fn test_chain_with_specific_ids_validates_all_ids() {
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 /// Test that `chant work --chain` (no IDs) looks for ready specs
@@ -4919,9 +4872,9 @@ fn test_chain_with_specific_ids_validates_all_ids() {
 #[serial]
 fn test_chain_without_ids_checks_ready_specs() {
     let repo_dir = PathBuf::from("/tmp/test-chant-chain-no-ids");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
     let chant_binary = get_chant_binary();
@@ -4963,7 +4916,7 @@ fn test_chain_without_ids_checks_ready_specs() {
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 /// Test that chain with specific IDs shows note about ignoring --label filter
@@ -4971,9 +4924,9 @@ fn test_chain_without_ids_checks_ready_specs() {
 #[serial]
 fn test_chain_with_ids_ignores_label_filter() {
     let repo_dir = PathBuf::from("/tmp/test-chant-chain-label-ignore");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
     let chant_binary = get_chant_binary();
@@ -5022,7 +4975,7 @@ fn test_chain_with_ids_ignores_label_filter() {
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 /// Test that chain skips non-ready specs with warning
@@ -5030,9 +4983,9 @@ fn test_chain_with_ids_ignores_label_filter() {
 #[serial]
 fn test_chain_skips_non_ready_specs() {
     let repo_dir = PathBuf::from("/tmp/test-chant-chain-skip-non-ready");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
     let chant_binary = get_chant_binary();
@@ -5080,7 +5033,7 @@ fn test_chain_skips_non_ready_specs() {
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 /// Test that chain with --chain-max stops after N specs
@@ -5088,9 +5041,9 @@ fn test_chain_skips_non_ready_specs() {
 #[serial]
 fn test_chain_max_limit_applies() {
     let repo_dir = PathBuf::from("/tmp/test-chant-chain-max");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
     let chant_binary = get_chant_binary();
@@ -5132,7 +5085,7 @@ fn test_chain_max_limit_applies() {
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 // ============================================================================
@@ -5346,9 +5299,9 @@ fn test_finalize_validates_output_schema() {
 
     let original_dir = std::env::current_dir().expect("Failed to get current dir");
     let repo_dir = PathBuf::from("/tmp/test-chant-finalize-validation");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     // Set working directory to repo
     let _ = std::env::set_current_dir(&repo_dir);
@@ -5464,7 +5417,7 @@ Done.
 
     // Clean up
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 /// Test that finalize command fails in strict mode when validation fails
@@ -5475,9 +5428,9 @@ fn test_finalize_strict_mode_validation_failure() {
 
     let original_dir = std::env::current_dir().expect("Failed to get current dir");
     let repo_dir = PathBuf::from("/tmp/test-chant-finalize-strict");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     // Set working directory to repo
     let _ = std::env::set_current_dir(&repo_dir);
@@ -5588,7 +5541,7 @@ Done.
 
     // Clean up
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 /// Test that --status blocked correctly identifies specs with incomplete dependencies
@@ -5602,7 +5555,7 @@ fn test_status_blocked_filter_with_dependencies() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let repo_dir = temp_dir.path().to_path_buf();
 
-    setup_test_repo(&repo_dir).expect("Failed to setup test repo");
+    common::setup_test_repo(&repo_dir).expect("Failed to setup test repo");
 
     std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
 
@@ -5694,8 +5647,8 @@ fn test_status_blocked_filter_no_blocked_specs() {
     let original_dir = std::env::current_dir().expect("Failed to get current dir");
     let repo_dir = PathBuf::from("/tmp/test-blocked-filter-none");
 
-    let _ = cleanup_test_repo(&repo_dir);
-    setup_test_repo(&repo_dir).expect("Failed to setup test repo");
+    let _ = common::cleanup_test_repo(&repo_dir);
+    common::setup_test_repo(&repo_dir).expect("Failed to setup test repo");
 
     std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
 
@@ -5736,7 +5689,7 @@ fn test_status_blocked_filter_no_blocked_specs() {
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 /// Test --status blocked when all specs are blocked
@@ -5747,8 +5700,8 @@ fn test_status_blocked_filter_all_blocked() {
     let original_dir = std::env::current_dir().expect("Failed to get current dir");
     let repo_dir = PathBuf::from("/tmp/test-blocked-filter-all");
 
-    let _ = cleanup_test_repo(&repo_dir);
-    setup_test_repo(&repo_dir).expect("Failed to setup test repo");
+    let _ = common::cleanup_test_repo(&repo_dir);
+    common::setup_test_repo(&repo_dir).expect("Failed to setup test repo");
 
     std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
 
@@ -5808,7 +5761,7 @@ fn test_status_blocked_filter_all_blocked() {
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 /// Test --status blocked with mixed statuses (pending, completed, in_progress)
@@ -5819,8 +5772,8 @@ fn test_status_blocked_filter_mixed_statuses() {
     let original_dir = std::env::current_dir().expect("Failed to get current dir");
     let repo_dir = PathBuf::from("/tmp/test-blocked-filter-mixed");
 
-    let _ = cleanup_test_repo(&repo_dir);
-    setup_test_repo(&repo_dir).expect("Failed to setup test repo");
+    let _ = common::cleanup_test_repo(&repo_dir);
+    common::setup_test_repo(&repo_dir).expect("Failed to setup test repo");
 
     std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
 
@@ -5896,7 +5849,7 @@ fn test_status_blocked_filter_mixed_statuses() {
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 /// Helper to create a spec that requires approval
@@ -5939,8 +5892,8 @@ fn test_status_blocked_filter_with_approval_requirements() {
     let original_dir = std::env::current_dir().expect("Failed to get current dir");
     let repo_dir = PathBuf::from("/tmp/test-blocked-filter-approval");
 
-    let _ = cleanup_test_repo(&repo_dir);
-    setup_test_repo(&repo_dir).expect("Failed to setup test repo");
+    let _ = common::cleanup_test_repo(&repo_dir);
+    common::setup_test_repo(&repo_dir).expect("Failed to setup test repo");
 
     std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
 
@@ -6021,7 +5974,7 @@ fn test_status_blocked_filter_with_approval_requirements() {
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 /// Test that completed specs with required approval do NOT show as blocked (Approach A)
@@ -6032,8 +5985,8 @@ fn test_completed_specs_with_approval_not_blocked() {
     let original_dir = std::env::current_dir().expect("Failed to get current dir");
     let repo_dir = PathBuf::from("/tmp/test-blocked-filter-completed-approval");
 
-    let _ = cleanup_test_repo(&repo_dir);
-    setup_test_repo(&repo_dir).expect("Failed to setup test repo");
+    let _ = common::cleanup_test_repo(&repo_dir);
+    common::setup_test_repo(&repo_dir).expect("Failed to setup test repo");
 
     std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
 
@@ -6084,7 +6037,7 @@ fn test_completed_specs_with_approval_not_blocked() {
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 /// Test that merge blocks specs requiring unapproved approval
@@ -6095,8 +6048,8 @@ fn test_merge_blocks_unapproved_specs() {
     let original_dir = std::env::current_dir().expect("Failed to get current dir");
     let repo_dir = PathBuf::from("/tmp/test-merge-blocks-unapproved");
 
-    let _ = cleanup_test_repo(&repo_dir);
-    setup_test_repo(&repo_dir).expect("Failed to setup test repo");
+    let _ = common::cleanup_test_repo(&repo_dir);
+    common::setup_test_repo(&repo_dir).expect("Failed to setup test repo");
 
     std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
 
@@ -6153,7 +6106,7 @@ fn test_merge_blocks_unapproved_specs() {
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 // ============================================================================
@@ -6165,9 +6118,9 @@ fn test_merge_blocks_unapproved_specs() {
 #[serial]
 fn test_worktree_status_with_active_worktree() {
     let repo_dir = PathBuf::from("/tmp/test-chant-wt-status-active");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
     std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
@@ -6233,7 +6186,7 @@ fn test_worktree_status_with_active_worktree() {
         .output();
     let _ = fs::remove_dir_all(&wt_path);
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 /// Test `chant worktree status` with no worktrees shows appropriate message
@@ -6241,9 +6194,9 @@ fn test_worktree_status_with_active_worktree() {
 #[serial]
 fn test_worktree_status_no_worktrees() {
     let repo_dir = PathBuf::from("/tmp/test-chant-wt-status-empty");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
     std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
@@ -6275,7 +6228,7 @@ fn test_worktree_status_no_worktrees() {
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 /// Test `chant worktree status` shows multiple worktrees
@@ -6283,9 +6236,9 @@ fn test_worktree_status_no_worktrees() {
 #[serial]
 fn test_worktree_status_multiple_worktrees() {
     let repo_dir = PathBuf::from("/tmp/test-chant-wt-status-multi");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
     std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
@@ -6359,7 +6312,7 @@ fn test_worktree_status_multiple_worktrees() {
         let _ = fs::remove_dir_all(wt_path);
     }
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 /// Test `chant worktree status` output includes expected fields
@@ -6367,9 +6320,9 @@ fn test_worktree_status_multiple_worktrees() {
 #[serial]
 fn test_worktree_status_output_format() {
     let repo_dir = PathBuf::from("/tmp/test-chant-wt-status-fmt");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
     std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
@@ -6439,7 +6392,7 @@ fn test_worktree_status_output_format() {
         .output();
     let _ = fs::remove_dir_all(&wt_path);
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 // ============================================================================
@@ -6450,9 +6403,9 @@ fn test_worktree_status_output_format() {
 #[serial]
 fn test_load_with_branch_resolution_non_in_progress() {
     let repo_dir = PathBuf::from("/tmp/test-chant-branch-resolution-non-in-progress");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
     std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
@@ -6535,16 +6488,16 @@ This is DIFFERENT content on the branch.
         .args(["branch", "-D", &branch])
         .current_dir(&repo_dir)
         .output();
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 #[test]
 #[serial]
 fn test_load_with_branch_resolution_in_progress_with_branch() {
     let repo_dir = PathBuf::from("/tmp/test-chant-branch-resolution-in-progress");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
     std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
@@ -6638,16 +6591,16 @@ This is the BRANCH version with progress.
         .args(["branch", "-D", &branch])
         .current_dir(&repo_dir)
         .output();
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 #[test]
 #[serial]
 fn test_load_with_branch_resolution_explicit_branch_field() {
     let repo_dir = PathBuf::from("/tmp/test-chant-branch-resolution-explicit");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
     std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
@@ -6740,16 +6693,16 @@ This is from the CUSTOM BRANCH.
         .args(["branch", "-D", custom_branch])
         .current_dir(&repo_dir)
         .output();
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 #[test]
 #[serial]
 fn test_load_with_branch_resolution_no_branch_exists() {
     let repo_dir = PathBuf::from("/tmp/test-chant-branch-resolution-no-branch");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
     std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
@@ -6794,16 +6747,16 @@ This is the main version, no branch exists.
 
     // Cleanup
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
 
 #[test]
 #[serial]
 fn test_load_with_branch_resolution_spec_not_on_branch() {
     let repo_dir = PathBuf::from("/tmp/test-chant-branch-resolution-spec-not-on-branch");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
     std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
@@ -6879,5 +6832,5 @@ This is the main version.
         .args(["branch", "-D", &branch])
         .current_dir(&repo_dir)
         .output();
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }

@@ -3,61 +3,20 @@
 //! Tests that specs being worked are correctly marked as in_progress
 //! when running `chant work` in parallel mode.
 
+mod common;
+
 use serial_test::serial;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
-/// Helper to initialize a temporary git repo for testing.
-fn setup_test_repo(repo_dir: &std::path::Path) -> std::io::Result<()> {
-    fs::create_dir_all(repo_dir)?;
-
-    let output = Command::new("git")
-        .args(["init", "-b", "main"])
-        .current_dir(repo_dir)
-        .output()?;
-    assert!(output.status.success(), "git init failed");
-
-    Command::new("git")
-        .args(["config", "user.email", "test@example.com"])
-        .current_dir(repo_dir)
-        .output()?;
-
-    Command::new("git")
-        .args(["config", "user.name", "Test User"])
-        .current_dir(repo_dir)
-        .output()?;
-
-    // Create initial commit
-    fs::write(repo_dir.join("README.md"), "# Test")?;
-    Command::new("git")
-        .args(["add", "."])
-        .current_dir(repo_dir)
-        .output()?;
-
-    Command::new("git")
-        .args(["commit", "-m", "Initial commit"])
-        .current_dir(repo_dir)
-        .output()?;
-
-    Ok(())
-}
-
-/// Helper to clean up test repos.
-fn cleanup_test_repo(repo_dir: &std::path::Path) -> std::io::Result<()> {
-    if repo_dir.exists() {
-        fs::remove_dir_all(repo_dir)?;
-    }
-    Ok(())
-}
-
 #[test]
 #[serial]
 fn test_spec_marked_in_progress_when_copied_to_worktree() {
     let repo_dir = PathBuf::from("/tmp/test-chant-in-progress-status");
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 
-    assert!(setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
     std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
@@ -144,5 +103,5 @@ This spec tests that status is updated to in_progress.
         .current_dir(&repo_dir)
         .output();
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = cleanup_test_repo(&repo_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
 }
