@@ -70,26 +70,12 @@ jobs:
         run: |
           codesign -f -s - ${{ matrix.asset_name }}
 
-      - name: Import GPG key
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
-          echo "${{ secrets.GPG_PASSPHRASE }}" | gpg --batch --yes --passphrase-fd 0 --pinentry-mode loopback --list-secret-keys
-
-      - name: Sign binary with GPG
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          echo "${{ secrets.GPG_PASSPHRASE }}" | gpg --batch --yes --passphrase-fd 0 --pinentry-mode loopback --detach-sign --armor ${{ matrix.asset_name }}
-
       - name: Upload Release Asset
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload ${{ github.ref_name }} ${{ matrix.asset_name }}
-          if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
-            gh release upload ${{ github.ref_name }} ${{ matrix.asset_name }}.asc
-          fi
 
   update-homebrew:
     needs: build-release
