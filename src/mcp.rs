@@ -506,6 +506,23 @@ fn handle_tools_list() -> Result<Value> {
                     },
                     "required": ["id"]
                 }
+            },
+            {
+                "name": "chant_work_list",
+                "description": "List running work processes",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "process_id": {
+                            "type": "string",
+                            "description": "Filter to specific process"
+                        },
+                        "include_completed": {
+                            "type": "boolean",
+                            "description": "Include recently completed processes"
+                        }
+                    }
+                }
             }
         ]
     }))
@@ -539,6 +556,7 @@ fn handle_tools_call(params: Option<&Value>) -> Result<Value> {
         "chant_archive" => tool_chant_archive(arguments),
         "chant_verify" => tool_chant_verify(arguments),
         "chant_work_start" => tool_chant_work_start(arguments),
+        "chant_work_list" => tool_chant_work_list(arguments),
         _ => anyhow::bail!("Unknown tool: {}", name),
     }
 }
@@ -1840,6 +1858,160 @@ fn tool_chant_work_start(arguments: Option<&Value>) -> Result<Value> {
     }))
 }
 
+fn tool_chant_work_list(arguments: Option<&Value>) -> Result<Value> {
+    let project_root =
+        find_project_root().ok_or_else(|| anyhow::anyhow!("Project root not found"))?;
+
+    let processes_dir = project_root.join(".chant/processes");
+
+    // Create directory if it doesn't exist
+    if !processes_dir.exists() {
+        std::fs::create_dir_all(&processes_dir)?;
+    }
+
+    // Parse optional filters
+    let filter_process_id = arguments
+        .and_then(|a| a.get("process_id"))
+        .and_then(|v| v.as_str());
+    let include_completed = arguments
+        .and_then(|a| a.get("include_completed"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    // Read all process files
+    let entries = std::fs::read_dir(&processes_dir)?;
+    let mut processes: Vec<Value> = Vec::new();
+    let mut running = 0;
+    let mut completed_count = 0;
+    let mut failed_count = 0;
+
+    for entry in entries {
+        let entry = entry?;
+        let path = entry.path();
+
+        if path.extension().and_then(|s| s.to_str()) != Some("json") {
+            continue;
+        }
+
+        // Read process info
+        let content = std::fs::read_to_string(&path)?;
+        let mut process_info: Value = serde_json::from_str(&content)?;
+
+        let process_id = process_info["process_id"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+        let spec_id = process_info["spec_id"].as_str().unwrap_or("").to_string();
+        let pid = process_info["pid"].as_u64().unwrap_or(0) as u32;
+        let started_at = process_info["started_at"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+        let mode = process_info["mode"]
+            .as_str()
+            .unwrap_or("single")
+            .to_string();
+
+        // Apply process_id filter
+        if let Some(filter_id) = filter_process_id {
+            if !process_id.contains(filter_id) {
+                continue;
+            }
+        }
+
+        // Check if process is still running
+        let is_running = if cfg!(unix) {
+            // Use kill -0 to check if process exists
+            Command::new("kill")
+                .args(["-0", &pid.to_string()])
+                .output()
+                .map(|output| output.status.success())
+                .unwrap_or(false)
+        } else {
+            // On non-Unix, we can't reliably check, so assume running
+            true
+        };
+
+        let status = if is_running {
+            running += 1;
+            "running"
+        } else {
+            // Check if spec is completed or failed
+            let specs_dir = match mcp_ensure_initialized() {
+                Ok(dir) => dir,
+                Err(_) => {
+                    completed_count += 1;
+                    process_info["status"] = json!("completed");
+                    process_info["completed_at"] = json!(chrono::Local::now().to_rfc3339());
+                    processes.push(process_info);
+                    continue;
+                }
+            };
+
+            if let Ok(spec) = resolve_spec(&specs_dir, &spec_id) {
+                match spec.frontmatter.status {
+                    SpecStatus::Completed => {
+                        completed_count += 1;
+                        "completed"
+                    }
+                    SpecStatus::Failed => {
+                        failed_count += 1;
+                        "failed"
+                    }
+                    _ => {
+                        completed_count += 1;
+                        "completed"
+                    }
+                }
+            } else {
+                completed_count += 1;
+                "completed"
+            }
+        };
+
+        // Skip completed processes if not requested
+        if !include_completed && status != "running" {
+            continue;
+        }
+
+        // Add status and completed_at to process_info
+        process_info["status"] = json!(status);
+        if status != "running" {
+            process_info["completed_at"] = json!(chrono::Local::now().to_rfc3339());
+        }
+
+        processes.push(json!({
+            "process_id": process_id,
+            "spec_id": spec_id,
+            "pid": pid,
+            "status": status,
+            "started_at": started_at,
+            "completed_at": process_info.get("completed_at"),
+            "mode": mode
+        }));
+    }
+
+    let summary = json!({
+        "running": running,
+        "completed": completed_count,
+        "failed": failed_count
+    });
+
+    let response = json!({
+        "processes": processes,
+        "summary": summary
+    });
+
+    Ok(json!({
+        "content": [
+            {
+                "type": "text",
+                "text": serde_json::to_string_pretty(&response)?
+            }
+        ]
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1855,7 +2027,7 @@ mod tests {
     fn test_handle_tools_list() {
         let result = handle_tools_list().unwrap();
         let tools = result["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 15);
+        assert_eq!(tools.len(), 16);
         // Query tools (7)
         assert_eq!(tools[0]["name"], "chant_spec_list");
         assert_eq!(tools[1]["name"], "chant_spec_get");
@@ -1864,7 +2036,7 @@ mod tests {
         assert_eq!(tools[4]["name"], "chant_log");
         assert_eq!(tools[5]["name"], "chant_search");
         assert_eq!(tools[6]["name"], "chant_diagnose");
-        // Mutating tools (8)
+        // Mutating tools (9)
         assert_eq!(tools[7]["name"], "chant_spec_update");
         assert_eq!(tools[8]["name"], "chant_add");
         assert_eq!(tools[9]["name"], "chant_finalize");
@@ -1873,6 +2045,7 @@ mod tests {
         assert_eq!(tools[12]["name"], "chant_archive");
         assert_eq!(tools[13]["name"], "chant_verify");
         assert_eq!(tools[14]["name"], "chant_work_start");
+        assert_eq!(tools[15]["name"], "chant_work_list");
     }
 
     #[test]

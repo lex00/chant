@@ -533,6 +533,81 @@ Verify a spec meets its acceptance criteria.
 }
 ```
 
+### chant_work_list
+
+List running work processes.
+
+**Parameters:**
+- `process_id` (optional): Filter to specific process
+- `include_completed` (optional, boolean): Include recently completed processes
+
+**Response format:**
+```json
+{
+  "processes": [
+    {
+      "process_id": "2026-02-02-001-xyz-12345",
+      "spec_id": "2026-02-02-001-xyz",
+      "pid": 12345,
+      "status": "running|completed|failed",
+      "started_at": "2026-02-02T10:30:00Z",
+      "completed_at": null,
+      "mode": "single"
+    }
+  ],
+  "summary": {
+    "running": 2,
+    "completed": 5,
+    "failed": 0
+  }
+}
+```
+
+**Example Request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "chant_work_list",
+    "arguments": {}
+  },
+  "id": 1
+}
+```
+
+**Example Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\n  \"processes\": [...],\n  \"summary\": {\n    \"running\": 2,\n    \"completed\": 5,\n    \"failed\": 0\n  }\n}"
+      }
+    ]
+  },
+  "id": 1
+}
+```
+
+**Example Request (with filter):**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "chant_work_list",
+    "arguments": {
+      "process_id": "001",
+      "include_completed": true
+    }
+  },
+  "id": 2
+}
+```
+
 ### chant_work_start
 
 Start working on a spec asynchronously (spawns background process and returns immediately).
