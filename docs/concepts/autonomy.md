@@ -7,7 +7,6 @@ Specs that execute, verify, and correct themselves:
 - **Execute**: `chant work` invokes an agent to implement the spec
 - **Verify**: `chant verify` re-checks acceptance criteria
 - **Detect Drift**: Find when reality diverges from intent
-- **Replay**: `chant replay` re-executes intent to fix drift
 
 ## The Vision: Intent Durability
 
@@ -26,7 +25,7 @@ Chant:       Spec → Work → Done → Verify → Drift? → Replay → ...
 | **Trusted** | Agent works, auto-merge low-risk | High-risk only |
 | **Autonomous** | Agent works, auto-merge, human notified | Exceptions only |
 
-> **Note:** Currently implemented features are `chant verify`, `chant replay`, and `chant drift`. Auto-merge and autonomy levels are planned for future releases.
+> **Note:** Currently implemented features are `chant verify` and `chant drift`. Auto-merge and autonomy levels are planned for future releases.
 
 ## Decision Handling
 
@@ -107,43 +106,7 @@ Drift Report:
   089: Auth middleware - file deleted
 ```
 
-## Replay
 
-Re-execute intent to fix drift:
-
-```bash
-$ chant replay 023
-Replaying spec 023: Add rate limiting
-Agent re-implementing using current patterns...
-Replay complete.
-```
-
-| Replay | Retry |
-|--------|-------|
-| Re-execute completed spec | Re-attempt failed spec |
-| Against current codebase | From where it left off |
-| Fixes drift | Fixes failure |
-
-## Configuration
-
-```yaml
-# config.md
-autonomy:
-  level: supervised
-  auto_merge:
-    - labels: [trivial, deps]
-    - tests_passing: true
-
-  limits:
-    cost_per_spec: 5.00
-    files_per_spec: 10
-
-drift:
-  detect:
-    - type: file_deleted
-    - type: tests_failing
-    - type: criteria_unmet
-```
 
 ## Patterns
 
@@ -161,24 +124,16 @@ deploy:
     - chant verify --all --exit-code
 ```
 
-### Auto-Replay on Drift
-```yaml
-drift:
-  auto_replay:
-    enabled: true
-    require_approval: true
-```
 
 ## Audit Trail
 
-Specs track verification and replay:
+Specs track verification:
 
 ```yaml
 ---
 status: completed
 completed_at: 2026-01-10T15:30:00Z
 last_verified: 2026-01-15T00:00:00Z
-replayed_at: 2026-01-22T10:00:00Z
 ---
 ```
 

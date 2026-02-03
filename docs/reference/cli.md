@@ -362,7 +362,7 @@ The `--force` flag also allows completing a spec even if some acceptance criteri
 - A criterion is no longer applicable
 - You want to complete with manual verification
 
-**Note:** For re-executing completed specs, use `chant replay` instead of `--force`.
+**Note:** For re-executing completed specs, use `chant work --force` instead of replaying.
 
 ### Acceptance Criteria Validation
 
@@ -784,60 +784,6 @@ chant verify --all --exit-code
 - **Scheduled Checks**: Run nightly to catch regressions
 - **Continuous Verification**: Gate deployments on spec verification
 
-## Replay
-
-Re-execute a completed spec's intent against the current codebase:
-
-```bash
-chant replay 001                      # Re-execute spec
-chant replay 001 --dry-run            # Preview changes without executing
-chant replay 001 --yes                # Skip confirmation prompts
-chant replay 001 --prompt custom      # Use custom prompt
-```
-
-### What Replay Does
-
-Replay re-executes a completed spec's intent:
-
-```
-Original (2 months ago):  Spec → Agent → Code
-Replay (now):             Spec → Agent → Current Code
-```
-
-The agent:
-1. Reads the original spec
-2. Analyzes the current codebase
-3. Re-implements the spec's intent (may differ from original implementation)
-4. Creates new commits with changes
-
-### Replay vs Retry
-
-| | Replay | Retry |
-|------|--------|-------|
-| **For** | Completed specs | Failed specs |
-| **Against** | Current codebase | Where it left off |
-| **Purpose** | Fix drift, verify intent | Fix failure, complete work |
-| **Command** | `chant replay` | `chant resume --work` |
-
-### Use Cases
-
-- **Fix Drift**: Re-apply intent after code changes deleted original implementation
-- **Verify Intent**: Ensure spec would still succeed with current codebase
-- **Update Patterns**: Re-implement using new patterns or frameworks
-- **One-off Fixes**: Quickly reapply specification when needed
-
-### Frontmatter Updates
-
-When a spec is replayed, these fields are updated:
-
-```yaml
----
-status: completed
-replayed_at: 2026-01-22T16:00:00Z
-replay_count: 1
-original_completed_at: 2026-01-15T14:30:00Z   # Preserved from original
----
-```
 
 ## Logs
 
@@ -1770,14 +1716,4 @@ site:
 
 ---
 
-## Planned Commands
-
-The following commands are planned but not yet implemented:
-
-- `chant edit` - Interactive spec editing
-- `chant dag` - Dependency graph visualization
-- `chant daemon` - Background process for scale deployments
-- `chant queue` - Queue management for worker pools
-- `chant lock` - Manual lock operations
-- `chant agent worker` - Worker mode for continuous execution
 

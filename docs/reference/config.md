@@ -121,31 +121,6 @@ schema:
     status:
       enum: [pending, in_progress, completed, failed]
 
-# Optional - scale deployment settings (requires daemon - planned)
-scale:
-  # Project prefix auto-detection (monorepos)
-  id_prefix:
-    from: path              # or: explicit
-    pattern: "packages/([^/]+)/"
-
-  # Daemon settings
-  daemon:
-    enabled: false          # Auto-start daemon
-    socket: /tmp/chant.sock
-    metrics_port: 9090      # 0 = disabled
-    api_port: 8080          # 0 = disabled
-
-  # Worktree settings
-  worktree:
-    sparse: false           # Use sparse checkout
-    pattern: "packages/{{project}}/"
-    pool_size: 10           # Reusable worktree pool
-
-  # Resource limits
-  limits:
-    max_agents: 100
-    max_per_project: 10
-    spec_timeout: 30m
 ---
 ```
 
