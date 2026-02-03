@@ -136,6 +136,59 @@ chant work 2026-01-22-001-x7m -v        # Verbose (more detail)
 chant work 2026-01-22-001-x7m -vv       # Debug (agent prompts visible)
 ```
 
+## Progress Bars
+
+### Chain Execution
+
+`chant work --chain` displays a progress bar tracking completion across the chain:
+
+```bash
+$ chant work --chain
+
+→ Starting chain execution (5 specs)...
+
+⠋ [=====>---------------------------------] 2/5 Working on 2026-01-22-002-x7n
+```
+
+The progress bar shows:
+- Current position / total specs
+- Current spec being worked on
+- Visual progress indicator
+
+Progress updates as each spec completes, providing real-time visibility into chain execution.
+
+### Parallel Execution
+
+`chant work --parallel` shows a multi-progress display with:
+- Overall completion across all specs
+- Individual progress bars for each worker (optional, when verbose)
+
+```bash
+$ chant work --parallel 3
+
+→ Starting parallel execution...
+  • agent-1: 3 specs
+  • agent-2: 2 specs
+  • agent-3: 2 specs
+
+⠋ [===============>----------------------] 4/7 specs completed
+```
+
+The main progress bar tracks overall completion, updating as workers finish their assigned specs.
+
+### Display Details
+
+Progress bars use the `indicatif` library with:
+- Spinner animation (⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
+- Bar width: 40 characters
+- Progress chars: `=>`
+- Colors: cyan/blue bar, green spinner
+
+Progress bars are automatically hidden in:
+- `--quiet` mode
+- Non-TTY environments
+- `--json` output mode
+
 ## Structured Output
 
 For tooling:
