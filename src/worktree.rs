@@ -173,9 +173,14 @@ pub fn copy_spec_to_worktree(spec_id: &str, worktree_path: &Path) -> Result<()> 
     let main_spec_path = git_root
         .join(".chant/specs")
         .join(format!("{}.md", spec_id));
-    let worktree_spec_path = worktree_path
-        .join(".chant/specs")
-        .join(format!("{}.md", spec_id));
+    let worktree_specs_dir = worktree_path.join(".chant/specs");
+    let worktree_spec_path = worktree_specs_dir.join(format!("{}.md", spec_id));
+
+    // Ensure the .chant/specs directory exists in the worktree
+    std::fs::create_dir_all(&worktree_specs_dir).context(format!(
+        "Failed to create specs directory in worktree: {:?}",
+        worktree_specs_dir
+    ))?;
 
     // Copy the spec file from main to worktree
     std::fs::copy(&main_spec_path, &worktree_spec_path).context(format!(
