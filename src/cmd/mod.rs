@@ -13,6 +13,7 @@ pub mod commits;
 pub mod config;
 pub mod derive;
 pub mod disk;
+pub mod dispatch;
 pub mod export;
 pub mod finalize;
 pub mod git_ops;

@@ -5,6 +5,8 @@
 //! - Spec verification (acceptance criteria validation)
 //! - Config validation (configuration file validation)
 
+#![allow(dead_code)] // Framework is being progressively adopted
+
 use anyhow::Result;
 use colored::Colorize;
 
