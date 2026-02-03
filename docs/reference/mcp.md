@@ -91,7 +91,7 @@ MCP provides a standardized way to expose tools to AI agents.
 
 ## Tools
 
-The MCP server exposes 14 tools organized into query (read-only) and mutating categories.
+The MCP server exposes 15 tools organized into query (read-only) and mutating categories.
 
 ### Query Tools (read-only)
 
@@ -116,6 +116,7 @@ The MCP server exposes 14 tools organized into query (read-only) and mutating ca
 | `chant_resume` | Reset a failed spec to pending | `id` (required) |
 | `chant_cancel` | Cancel a spec | `id` (required) |
 | `chant_archive` | Move a completed spec to archive | `id` (required) |
+| `chant_work_start` | Start working on a spec asynchronously | `id` (required), `chain` (optional), `parallel` (optional) |
 
 ### chant_spec_list
 
@@ -532,6 +533,94 @@ Verify a spec meets its acceptance criteria.
 }
 ```
 
+### chant_work_start
+
+Start working on a spec asynchronously (spawns background process and returns immediately).
+
+**Parameters:**
+- `id` (required): Spec ID (full or partial match)
+- `chain` (optional, boolean): Continue to next ready spec after completion
+- `parallel` (optional, integer): Number of parallel workers (requires multiple ready specs)
+
+**Response format:**
+```json
+{
+  "process_id": "2026-02-02-001-xyz-12345",
+  "spec_id": "2026-02-02-001-xyz",
+  "pid": 12345,
+  "started_at": "2026-02-02T10:30:00Z",
+  "mode": "single|chain|parallel(N)"
+}
+```
+
+**Process tracking:**
+- Process info is stored in `.chant/processes/<process_id>.json`
+- Use `chant_log` with `offset` or `since` parameters to monitor progress
+- Use `chant_status` with `include_activity` to see if the spec is being worked
+
+**Example Request (single spec):**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "chant_work_start",
+    "arguments": {
+      "id": "001"
+    }
+  },
+  "id": 1
+}
+```
+
+**Example Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\n  \"process_id\": \"2026-02-02-001-xyz-12345\",\n  \"spec_id\": \"2026-02-02-001-xyz\",\n  \"pid\": 12345,\n  \"started_at\": \"2026-02-02T10:30:00Z\",\n  \"mode\": \"single\"\n}"
+      }
+    ]
+  },
+  "id": 1
+}
+```
+
+**Example Request (chain mode):**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "chant_work_start",
+    "arguments": {
+      "id": "001",
+      "chain": true
+    }
+  },
+  "id": 2
+}
+```
+
+**Example Request (parallel mode):**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "chant_work_start",
+    "arguments": {
+      "id": "001",
+      "parallel": 3
+    }
+  },
+  "id": 3
+}
+```
+
 ## Tool Schemas
 
 Full JSON schemas as returned by `tools/list`. Only showing key tools; run `echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | chant mcp` for the complete list.
@@ -763,6 +852,28 @@ Full JSON schemas as returned by `tools/list`. Only showing key tools; run `echo
           "id": {
             "type": "string",
             "description": "Spec ID (full or partial)"
+          }
+        },
+        "required": ["id"]
+      }
+    },
+    {
+      "name": "chant_work_start",
+      "description": "Start working on a spec asynchronously (returns immediately)",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Spec ID (full or partial)"
+          },
+          "chain": {
+            "type": "boolean",
+            "description": "Continue to next ready spec after completion"
+          },
+          "parallel": {
+            "type": "integer",
+            "description": "Number of parallel workers (requires multiple ready specs)"
           }
         },
         "required": ["id"]

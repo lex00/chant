@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
+use std::process::{Command, Stdio};
 
 use chant::diagnose;
 use chant::id;
@@ -483,6 +484,28 @@ fn handle_tools_list() -> Result<Value> {
                     },
                     "required": ["id"]
                 }
+            },
+            {
+                "name": "chant_work_start",
+                "description": "Start working on a spec asynchronously (returns immediately)",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "string",
+                            "description": "Spec ID (full or partial)"
+                        },
+                        "chain": {
+                            "type": "boolean",
+                            "description": "Continue to next ready spec after completion"
+                        },
+                        "parallel": {
+                            "type": "integer",
+                            "description": "Number of parallel workers (requires multiple ready specs)"
+                        }
+                    },
+                    "required": ["id"]
+                }
             }
         ]
     }))
@@ -515,6 +538,7 @@ fn handle_tools_call(params: Option<&Value>) -> Result<Value> {
         "chant_cancel" => tool_chant_cancel(arguments),
         "chant_archive" => tool_chant_archive(arguments),
         "chant_verify" => tool_chant_verify(arguments),
+        "chant_work_start" => tool_chant_work_start(arguments),
         _ => anyhow::bail!("Unknown tool: {}", name),
     }
 }
@@ -1730,6 +1754,92 @@ fn tool_chant_verify(arguments: Option<&Value>) -> Result<Value> {
     }))
 }
 
+fn tool_chant_work_start(arguments: Option<&Value>) -> Result<Value> {
+    let specs_dir = match mcp_ensure_initialized() {
+        Ok(dir) => dir,
+        Err(err_response) => return Ok(err_response),
+    };
+
+    let args = arguments.ok_or_else(|| anyhow::anyhow!("Missing arguments"))?;
+
+    let id = args
+        .get("id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Missing required parameter: id"))?;
+
+    let chain = args.get("chain").and_then(|v| v.as_bool()).unwrap_or(false);
+    let parallel = args.get("parallel").and_then(|v| v.as_u64());
+
+    // Resolve spec to get full ID
+    let spec = match resolve_spec(&specs_dir, id) {
+        Ok(s) => s,
+        Err(e) => {
+            return Ok(json!({
+                "content": [
+                    {
+                        "type": "text",
+                        "text": e.to_string()
+                    }
+                ],
+                "isError": true
+            }));
+        }
+    };
+
+    let spec_id = spec.id.clone();
+
+    // Build command based on mode
+    let mut cmd = Command::new("chant");
+    cmd.arg("work").arg(&spec_id);
+
+    let mode = if let Some(p) = parallel {
+        cmd.arg("--parallel").arg(p.to_string());
+        format!("parallel({})", p)
+    } else if chain {
+        cmd.arg("--chain");
+        "chain".to_string()
+    } else {
+        "single".to_string()
+    };
+
+    // Spawn as background process
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+
+    let child = cmd.spawn().context("Failed to spawn chant work process")?;
+
+    let pid = child.id();
+    let started_at = chrono::Local::now().to_rfc3339();
+    let process_id = format!("{}-{}", spec_id, pid);
+
+    // Store process info
+    let project_root =
+        find_project_root().ok_or_else(|| anyhow::anyhow!("Project root not found"))?;
+    let processes_dir = project_root.join(".chant/processes");
+    std::fs::create_dir_all(&processes_dir)?;
+
+    let process_info = json!({
+        "process_id": process_id,
+        "spec_id": spec_id,
+        "pid": pid,
+        "started_at": started_at,
+        "mode": mode
+    });
+
+    let process_file = processes_dir.join(format!("{}.json", process_id));
+    std::fs::write(&process_file, serde_json::to_string_pretty(&process_info)?)?;
+
+    Ok(json!({
+        "content": [
+            {
+                "type": "text",
+                "text": serde_json::to_string_pretty(&process_info)?
+            }
+        ]
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1745,7 +1855,7 @@ mod tests {
     fn test_handle_tools_list() {
         let result = handle_tools_list().unwrap();
         let tools = result["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 14);
+        assert_eq!(tools.len(), 15);
         // Query tools (7)
         assert_eq!(tools[0]["name"], "chant_spec_list");
         assert_eq!(tools[1]["name"], "chant_spec_get");
@@ -1754,7 +1864,7 @@ mod tests {
         assert_eq!(tools[4]["name"], "chant_log");
         assert_eq!(tools[5]["name"], "chant_search");
         assert_eq!(tools[6]["name"], "chant_diagnose");
-        // Mutating tools (7)
+        // Mutating tools (8)
         assert_eq!(tools[7]["name"], "chant_spec_update");
         assert_eq!(tools[8]["name"], "chant_add");
         assert_eq!(tools[9]["name"], "chant_finalize");
@@ -1762,6 +1872,7 @@ mod tests {
         assert_eq!(tools[11]["name"], "chant_cancel");
         assert_eq!(tools[12]["name"], "chant_archive");
         assert_eq!(tools[13]["name"], "chant_verify");
+        assert_eq!(tools[14]["name"], "chant_work_start");
     }
 
     #[test]
