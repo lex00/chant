@@ -448,11 +448,11 @@ enum Commands {
         #[arg(long, num_args = 0..=1, require_equals = true, value_name = "PREFIX")]
         branch: Option<String>,
     },
-    /// Stop a running work process for a spec
-    Stop {
+    /// Pause a running work process for a spec
+    Pause {
         /// Spec ID (full or partial)
         id: String,
-        /// Force stop without confirmation
+        /// Force pause without confirmation
         #[arg(long)]
         force: bool,
     },
@@ -1030,7 +1030,7 @@ impl cmd::dispatch::Execute for Commands {
                 prompt,
                 branch,
             } => cmd::lifecycle::cmd_resume(&id, work, prompt.as_deref(), branch),
-            Commands::Stop { id, force } => cmd::stop::cmd_stop(&id, force),
+            Commands::Pause { id, force } => cmd::pause::cmd_pause(&id, force),
             Commands::Takeover { id, force } => {
                 let result = cmd::takeover::cmd_takeover(&id, force)?;
                 println!("\n{}", "Analysis:".bold());

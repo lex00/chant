@@ -158,8 +158,9 @@ fn merge_status(_base: &SpecStatus, ours: &SpecStatus, theirs: &SpecStatus) -> S
             SpecStatus::Blocked => 3,
             SpecStatus::Pending => 4,
             SpecStatus::Ready => 5,
-            SpecStatus::InProgress => 6,
-            SpecStatus::Completed => 7,
+            SpecStatus::Paused => 6,
+            SpecStatus::InProgress => 7,
+            SpecStatus::Completed => 8,
         }
     };
 

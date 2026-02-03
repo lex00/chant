@@ -321,8 +321,8 @@ fn handle_tools_list() -> Result<Value> {
                 }
             },
             {
-                "name": "chant_stop",
-                "description": "Stop a running work process for a spec",
+                "name": "chant_pause",
+                "description": "Pause a running work process for a spec",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -385,7 +385,7 @@ fn handle_tools_call(params: Option<&Value>) -> Result<Value> {
         "chant_verify" => tool_chant_verify(arguments),
         "chant_work_start" => tool_chant_work_start(arguments),
         "chant_work_list" => tool_chant_work_list(arguments),
-        "chant_stop" => tool_chant_stop(arguments),
+        "chant_pause" => tool_chant_pause(arguments),
         "chant_takeover" => tool_chant_takeover(arguments),
         _ => anyhow::bail!("Unknown tool: {}", name),
     }
@@ -752,6 +752,7 @@ fn tool_chant_status(arguments: Option<&Value>) -> Result<Value> {
         match spec.frontmatter.status {
             SpecStatus::Pending => pending += 1,
             SpecStatus::InProgress => in_progress += 1,
+            SpecStatus::Paused => in_progress += 1, // Count paused as in_progress for summary
             SpecStatus::Completed => completed += 1,
             SpecStatus::Failed => failed += 1,
             SpecStatus::Ready => pending += 1, // Ready is computed, treat as pending
@@ -1888,7 +1889,7 @@ fn tool_chant_work_list(arguments: Option<&Value>) -> Result<Value> {
     }))
 }
 
-fn tool_chant_stop(arguments: Option<&Value>) -> Result<Value> {
+fn tool_chant_pause(arguments: Option<&Value>) -> Result<Value> {
     let specs_dir = match mcp_ensure_initialized() {
         Ok(dir) => dir,
         Err(err_response) => return Ok(err_response),
@@ -1917,13 +1918,13 @@ fn tool_chant_stop(arguments: Option<&Value>) -> Result<Value> {
         }
     };
 
-    // Try to stop the work process
-    match chant::pid::stop_spec_work(&spec.id) {
+    // Pause the work (stops process and updates status)
+    match crate::cmd::pause::cmd_pause(&spec.id, true) {
         Ok(()) => Ok(json!({
             "content": [
                 {
                     "type": "text",
-                    "text": format!("Successfully stopped work process for spec '{}'", spec.id)
+                    "text": format!("Successfully paused work for spec '{}'", spec.id)
                 }
             ]
         })),
@@ -1931,7 +1932,7 @@ fn tool_chant_stop(arguments: Option<&Value>) -> Result<Value> {
             "content": [
                 {
                     "type": "text",
-                    "text": format!("Failed to stop work process for spec '{}': {}", spec.id, e)
+                    "text": format!("Failed to pause work for spec '{}': {}", spec.id, e)
                 }
             ],
             "isError": true

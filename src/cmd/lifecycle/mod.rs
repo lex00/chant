@@ -52,6 +52,7 @@ pub fn cmd_diagnose(id: &str) -> Result<()> {
     let status_str = match report.status {
         SpecStatus::Pending => "pending".white(),
         SpecStatus::InProgress => "in_progress".yellow(),
+        SpecStatus::Paused => "paused".cyan(),
         SpecStatus::Completed => "completed".green(),
         SpecStatus::Failed => "failed".red(),
         SpecStatus::NeedsAttention => "needs_attention".yellow(),

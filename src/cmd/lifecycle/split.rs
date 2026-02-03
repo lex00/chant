@@ -108,6 +108,9 @@ fn cmd_split_impl(
             SpecStatus::InProgress => {
                 anyhow::bail!("Cannot split spec that is in progress");
             }
+            SpecStatus::Paused => {
+                anyhow::bail!("Cannot split paused spec");
+            }
             SpecStatus::Completed => {
                 anyhow::bail!("Cannot split completed spec");
             }

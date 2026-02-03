@@ -35,6 +35,7 @@ fn status_label(status: &SpecStatus) -> &'static str {
     match status {
         SpecStatus::Pending => "pending",
         SpecStatus::InProgress => "in_progress",
+        SpecStatus::Paused => "paused",
         SpecStatus::Completed => "completed",
         SpecStatus::Failed => "failed",
         SpecStatus::NeedsAttention => "needs_attention",

@@ -116,6 +116,7 @@ pub fn aggregate_status(specs_dir: &Path) -> Result<StatusData> {
     // Initialize all status counts to 0
     data.counts.insert("pending".to_string(), 0);
     data.counts.insert("in_progress".to_string(), 0);
+    data.counts.insert("paused".to_string(), 0);
     data.counts.insert("completed".to_string(), 0);
     data.counts.insert("failed".to_string(), 0);
     data.counts.insert("blocked".to_string(), 0);
@@ -151,6 +152,7 @@ pub fn aggregate_status(specs_dir: &Path) -> Result<StatusData> {
         let status_key = match spec.frontmatter.status {
             SpecStatus::Pending => "pending",
             SpecStatus::InProgress => "in_progress",
+            SpecStatus::Paused => "paused",
             SpecStatus::Completed => "completed",
             SpecStatus::Failed | SpecStatus::NeedsAttention => "failed",
             SpecStatus::Blocked => "blocked",

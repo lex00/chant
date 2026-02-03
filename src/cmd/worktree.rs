@@ -174,6 +174,7 @@ fn format_status(status: &SpecStatus) -> String {
         SpecStatus::Pending => "pending".dimmed().to_string(),
         SpecStatus::Ready => "ready".cyan().to_string(),
         SpecStatus::InProgress => "in_progress".yellow().to_string(),
+        SpecStatus::Paused => "paused".cyan().to_string(),
         SpecStatus::Completed => "completed".green().to_string(),
         SpecStatus::Failed => "failed".red().to_string(),
         SpecStatus::NeedsAttention => "needs_attention".red().bold().to_string(),

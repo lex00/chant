@@ -1,24 +1,26 @@
-//! Stop command for terminating running work processes
+//! Pause command for pausing running work processes
 
 use anyhow::Result;
 use colored::Colorize;
 
 use chant::pid;
-use chant::spec;
+use chant::spec::{self, SpecStatus};
 
-/// Stop a running work process for a spec
-pub fn cmd_stop(id: &str, force: bool) -> Result<()> {
+/// Pause a running work process for a spec
+pub fn cmd_pause(id: &str, force: bool) -> Result<()> {
     let specs_dir = crate::cmd::ensure_initialized()?;
 
     // Resolve the spec ID
-    let spec = spec::resolve_spec(&specs_dir, id)?;
-    let spec_id = &spec.id;
+    let mut spec = spec::resolve_spec(&specs_dir, id)?;
+    let spec_id = spec.id.clone();
+    let spec_path = specs_dir.join(format!("{}.md", spec_id));
 
-    println!("{} Stopping work for spec {}", "→".cyan(), spec_id.cyan());
+    println!("{} Pausing work for spec {}", "→".cyan(), spec_id.cyan());
 
     // Check if there's a PID file
-    let pid = pid::read_pid_file(spec_id)?;
+    let pid = pid::read_pid_file(&spec_id)?;
 
+    let mut process_stopped = false;
     if let Some(pid) = pid {
         if pid::is_process_running(pid) {
             // Process is running, stop it
@@ -27,8 +29,9 @@ pub fn cmd_stop(id: &str, force: bool) -> Result<()> {
             if force {
                 println!("  {} Sending SIGTERM to process {}", "•".cyan(), pid);
                 pid::stop_process(pid)?;
-                pid::remove_pid_file(spec_id)?;
-                println!("{} Stopped work for spec {}", "✓".green(), spec_id);
+                pid::remove_pid_file(&spec_id)?;
+                process_stopped = true;
+                println!("  {} Process stopped", "✓".green());
             } else {
                 println!("{} Use --force to stop the process", "⚠".yellow());
                 anyhow::bail!(
@@ -44,12 +47,7 @@ pub fn cmd_stop(id: &str, force: bool) -> Result<()> {
                 "•".cyan(),
                 pid
             );
-            pid::remove_pid_file(spec_id)?;
-            println!(
-                "{} Cleaned up stale PID file for spec {}",
-                "✓".green(),
-                spec_id
-            );
+            pid::remove_pid_file(&spec_id)?;
         }
     } else {
         println!(
@@ -57,6 +55,17 @@ pub fn cmd_stop(id: &str, force: bool) -> Result<()> {
             "⚠".yellow(),
             spec_id
         );
+    }
+
+    // Update spec status to paused if it was in_progress
+    if spec.frontmatter.status == SpecStatus::InProgress {
+        spec.frontmatter.status = SpecStatus::Paused;
+        spec.save(&spec_path)?;
+        println!("  {} Status set to: paused", "•".cyan());
+    }
+
+    if process_stopped {
+        println!("{} Paused work for spec {}", "✓".green(), spec_id);
     }
 
     Ok(())

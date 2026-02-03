@@ -672,7 +672,7 @@ fn cmd_status_once(global: bool, repo_filter: Option<&str>, brief: bool, json: b
             let entry = per_repo_stats.entry(repo_name).or_insert((0, 0, 0, 0));
             match spec.frontmatter.status {
                 SpecStatus::Pending | SpecStatus::Ready | SpecStatus::Blocked => entry.0 += 1,
-                SpecStatus::InProgress => entry.1 += 1,
+                SpecStatus::InProgress | SpecStatus::Paused => entry.1 += 1,
                 SpecStatus::Completed => entry.2 += 1,
                 SpecStatus::Failed | SpecStatus::NeedsAttention => entry.3 += 1,
                 SpecStatus::Cancelled => {

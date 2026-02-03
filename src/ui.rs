@@ -45,6 +45,7 @@ pub fn status_icon(status: &SpecStatus) -> ColoredString {
     match status {
         SpecStatus::Pending => "○".white(),
         SpecStatus::InProgress => "◐".yellow(),
+        SpecStatus::Paused => "◑".cyan(),
         SpecStatus::Completed => "●".green(),
         SpecStatus::Failed => "✗".red(),
         SpecStatus::NeedsAttention => "⚠".yellow(),

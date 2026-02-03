@@ -30,25 +30,29 @@ pub fn cmd_takeover(id: &str, force: bool) -> Result<TakeoverResult> {
 
     println!("{} Taking over spec {}", "→".cyan(), spec_id.cyan());
 
-    // Check if there's a PID file
+    // Pause the work (stops process and sets status to paused)
     let pid = pid::read_pid_file(&spec_id)?;
-
-    if let Some(pid) = pid {
+    let was_running = if let Some(pid) = pid {
         if pid::is_process_running(pid) {
             println!("  {} Stopping running process (PID: {})", "•".cyan(), pid);
             pid::stop_process(pid)?;
             pid::remove_pid_file(&spec_id)?;
             println!("  {} Process stopped", "✓".green());
+            true
         } else {
             println!("  {} Cleaning up stale PID file", "•".cyan());
             pid::remove_pid_file(&spec_id)?;
+            false
         }
-    } else if !force {
-        anyhow::bail!(
-            "Spec {} is not currently running. Use --force to analyze anyway.",
-            spec_id
-        );
-    }
+    } else {
+        if !force {
+            anyhow::bail!(
+                "Spec {} is not currently running. Use --force to analyze anyway.",
+                spec_id
+            );
+        }
+        false
+    };
 
     // Read and analyze the log
     let log_path = PathBuf::from(LOGS_DIR).join(format!("{}.log", spec_id));
@@ -70,9 +74,9 @@ pub fn cmd_takeover(id: &str, force: bool) -> Result<TakeoverResult> {
     // Generate suggestion based on spec status and analysis
     let suggestion = generate_suggestion(&spec, &analysis);
 
-    // Update spec status to pending if it was in_progress
+    // Update spec status to paused if it was in_progress
     if spec.frontmatter.status == SpecStatus::InProgress {
-        spec.frontmatter.status = SpecStatus::Pending;
+        spec.frontmatter.status = SpecStatus::Paused;
     }
 
     // Append takeover analysis to spec body
@@ -87,7 +91,9 @@ pub fn cmd_takeover(id: &str, force: bool) -> Result<TakeoverResult> {
     spec.save(&spec_path)?;
 
     println!("{} Updated spec with takeover analysis", "✓".green());
-    println!("  {} Status reset to: pending", "•".cyan());
+    if was_running {
+        println!("  {} Status set to: paused", "•".cyan());
+    }
     println!("  {} Analysis appended to spec body", "•".cyan());
 
     Ok(TakeoverResult {
@@ -199,7 +205,8 @@ fn generate_suggestion(spec: &spec::Spec, analysis: &str) -> String {
 
     // Check if there are errors
     if analysis.to_lowercase().contains("error") {
-        suggestions.push("Review the errors in the log and address them before resuming.".to_string());
+        suggestions
+            .push("Review the errors in the log and address them before resuming.".to_string());
     }
 
     // Check acceptance criteria
@@ -213,7 +220,8 @@ fn generate_suggestion(spec: &spec::Spec, analysis: &str) -> String {
 
     // General suggestions
     suggestions.push("Continue working on this spec manually or adjust the approach.".to_string());
-    suggestions.push("When ready to resume automated work, use `chant work <spec-id>`.".to_string());
+    suggestions
+        .push("When ready to resume automated work, use `chant work <spec-id>`.".to_string());
 
     suggestions.join("\n")
 }

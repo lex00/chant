@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use chant::config::Config;
 use chant::git;
 use chant::paths::{ARCHIVE_DIR, LOGS_DIR};
+use chant::pid;
 use chant::spec::{self, SpecStatus};
 use chant::worktree;
 
@@ -281,6 +282,19 @@ pub fn cmd_cancel(id: &str, force: bool, dry_run: bool, yes: bool) -> Result<()>
             spec_id,
             driver_id
         );
+    }
+
+    // Stop any running process
+    let pid = pid::read_pid_file(spec_id)?;
+    if let Some(pid) = pid {
+        if pid::is_process_running(pid) {
+            println!("  {} Stopping running process (PID: {})", "•".cyan(), pid);
+            pid::stop_process(pid)?;
+            pid::remove_pid_file(spec_id)?;
+            println!("  {} Process stopped", "✓".green());
+        } else {
+            pid::remove_pid_file(spec_id)?;
+        }
     }
 
     // Check safety constraints

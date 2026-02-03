@@ -8,6 +8,7 @@ pub enum SpecStatus {
     #[default]
     Pending,
     InProgress,
+    Paused,
     Completed,
     Failed,
     NeedsAttention,
