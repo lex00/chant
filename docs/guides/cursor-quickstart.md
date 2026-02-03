@@ -18,46 +18,13 @@ This guide walks you through:
 
 ## Step 1: Install Chant
 
-Choose the installation method that works for you:
+See the [Installation Guide](../getting-started/installation.md) for complete installation instructions.
 
-### Homebrew (macOS/Linux)
-
-```bash
-brew install lex00/tap/chant
-```
-
-### Quick Install (Linux/macOS)
-
-```bash
-# Linux
-curl -fsSL https://github.com/lex00/chant/releases/latest/download/chant-linux-x86_64 -o chant
-chmod +x chant
-sudo mv chant /usr/local/bin/
-
-# macOS Intel
-curl -fsSL https://github.com/lex00/chant/releases/latest/download/chant-macos-x86_64 -o chant
-chmod +x chant
-sudo mv chant /usr/local/bin/
-
-# macOS Apple Silicon
-curl -fsSL https://github.com/lex00/chant/releases/latest/download/chant-macos-aarch64 -o chant
-chmod +x chant
-sudo mv chant /usr/local/bin/
-```
-
-### Cargo (from source)
-
-```bash
-cargo install --git https://github.com/lex00/chant
-```
-
-**Verify installation:**
+Once installed, verify it's working:
 
 ```bash
 chant --version
 ```
-
-For more installation options, see the [Installation Guide](../getting-started/installation.md).
 
 ## Step 2: Initialize Your Project
 
