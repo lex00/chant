@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.13.11] - 2026-02-02
 
+### Changed
+
+- **Merge driver setup**: Consolidated `chant merge-driver-setup` into `chant init --merge-driver` flag
+
 ### Added
 
 - **Complete example workflows**: Five working examples demonstrating chant patterns

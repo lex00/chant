@@ -67,6 +67,9 @@ enum Commands {
         /// Set default model (opus, sonnet, haiku, or custom model name)
         #[arg(long, value_name = "MODEL")]
         model: Option<String>,
+        /// Set up git merge driver for spec files
+        #[arg(long)]
+        merge_driver: bool,
     },
     /// Add a new spec
     Add {
@@ -577,9 +580,6 @@ enum Commands {
         /// Path to other version (theirs)
         other: PathBuf,
     },
-    /// Show setup instructions for the spec merge driver
-    #[command(name = "merge-driver-setup")]
-    MergeDriverSetup,
     /// Generate shell completion script
     Completion {
         /// Shell to generate completions for (bash, zsh, fish, powershell)
@@ -696,6 +696,7 @@ fn run() -> Result<()> {
             agent,
             provider,
             model,
+            merge_driver,
         } => cmd_init(
             subcommand.as_deref(),
             name,
@@ -705,6 +706,7 @@ fn run() -> Result<()> {
             agent,
             provider,
             model,
+            merge_driver,
         ),
         Commands::Add {
             description,
@@ -1023,7 +1025,6 @@ fn run() -> Result<()> {
             current,
             other,
         } => cmd_merge_driver(&base, &current, &other),
-        Commands::MergeDriverSetup => cmd_merge_driver_setup(),
         Commands::Completion { shell } => cmd_completion(shell),
         Commands::Site { command } => match command {
             SiteCommands::Init { force_overwrite } => cmd::site::cmd_site_init(force_overwrite),
@@ -1061,44 +1062,6 @@ fn cmd_merge_driver(base: &Path, current: &Path, other: &Path) -> Result<()> {
         Err(e) => {
             eprintln!("Merge driver error: {}", e);
             std::process::exit(2);
-        }
-    }
-}
-
-/// Set up the merge driver and show status
-fn cmd_merge_driver_setup() -> Result<()> {
-    match chant::merge_driver::setup_merge_driver() {
-        Ok(result) => {
-            if result.git_config_set && result.gitattributes_updated {
-                println!("{} Merge driver fully configured", "Done!".green());
-                println!("  {} Git config updated", "✓".green());
-                println!("  {} .gitattributes updated", "✓".green());
-            } else if result.git_config_set {
-                println!("{} Merge driver configured", "Done!".green());
-                println!("  {} Git config updated", "✓".green());
-                println!("  {} .gitattributes already configured", "•".cyan());
-            } else if result.gitattributes_updated {
-                println!("{} Merge driver partially configured", "Done!".yellow());
-                println!("  {} .gitattributes updated", "✓".green());
-                if let Some(warning) = result.warning {
-                    println!("  {} {}", "⚠".yellow(), warning);
-                }
-            } else {
-                println!("{} Merge driver already configured", "ℹ".cyan());
-            }
-            println!("\n{}", "How it works:".bold());
-            println!("  The merge driver automatically resolves spec file conflicts by:");
-            println!("  • Preferring the more advanced status (completed > in_progress > pending)");
-            println!("  • Merging commit lists without duplicates");
-            println!("  • Taking completed_at and model from whichever side has them");
-            println!("  • Using 3-way merge for body content (shows conflict markers if needed)");
-            Ok(())
-        }
-        Err(e) => {
-            eprintln!("{} Failed to set up merge driver: {}", "Error:".red(), e);
-            eprintln!("\n{}", "Manual setup instructions:".bold());
-            println!("{}", chant::merge_driver::get_setup_instructions());
-            Err(e)
         }
     }
 }
@@ -1560,6 +1523,7 @@ fn cmd_init(
     agents: Vec<String>,
     provider: Option<String>,
     model: Option<String>,
+    merge_driver: bool,
 ) -> Result<()> {
     // Handle 'prompts' subcommand for upgrading prompts on existing projects
     if let Some("prompts") = subcommand {
@@ -2050,10 +2014,16 @@ Project initialized on {}.
 
     // Set up the merge driver for spec files (handles .gitattributes and git config)
     // This ensures branch mode works correctly by auto-resolving frontmatter conflicts
-    let merge_driver_result = chant::merge_driver::setup_merge_driver();
-    let merge_driver_warning = match &merge_driver_result {
-        Ok(result) => result.warning.clone(),
-        Err(e) => Some(format!("Failed to set up merge driver: {}", e)),
+    // Only run if --merge-driver flag is set
+    let (merge_driver_warning, merge_driver_result_opt) = if merge_driver {
+        let merge_driver_result = chant::merge_driver::setup_merge_driver();
+        let warning = match &merge_driver_result {
+            Ok(result) => result.warning.clone(),
+            Err(e) => Some(format!("Failed to set up merge driver: {}", e)),
+        };
+        (warning, Some(merge_driver_result))
+    } else {
+        (None, None)
     };
 
     // Handle silent mode: add .chant/ to .git/info/exclude
@@ -2293,12 +2263,7 @@ Project initialized on {}.
     // Show merge driver setup status
     if let Some(warning) = merge_driver_warning {
         eprintln!("{} Merge driver: {}", "Warning:".yellow(), warning);
-        eprintln!(
-            "  {} Run {} for manual setup instructions",
-            "•".yellow(),
-            "chant merge-driver-setup".cyan()
-        );
-    } else if let Ok(result) = merge_driver_result {
+    } else if let Some(Ok(result)) = merge_driver_result_opt {
         if result.git_config_set {
             println!(
                 "{} Merge driver configured (auto-resolves spec file conflicts)",
@@ -2445,6 +2410,7 @@ mod tests {
                 vec![],
                 None,
                 None,
+                false,
             );
 
             assert!(result.is_ok());
@@ -2473,6 +2439,7 @@ mod tests {
                 vec![],
                 None,
                 None,
+                false,
             );
 
             assert!(result.is_ok());
@@ -2502,6 +2469,7 @@ mod tests {
                 vec!["claude".to_string()],
                 None,
                 None,
+                false,
             );
 
             assert!(result.is_ok());
@@ -2529,6 +2497,7 @@ mod tests {
                 vec![],
                 None,
                 None,
+                false,
             );
             assert!(result1.is_ok());
 
@@ -2545,6 +2514,7 @@ mod tests {
                 vec![],
                 None,
                 None,
+                false,
             );
             assert!(result2.is_ok()); // Should still be Ok, just skip re-initialization
 
@@ -2558,6 +2528,7 @@ mod tests {
                 vec![],
                 None,
                 None,
+                false,
             );
             assert!(result3.is_ok());
 
@@ -2598,6 +2569,7 @@ mod tests {
                 vec![],
                 None,
                 None,
+                false,
             );
             assert!(result1.is_ok());
             assert!(temp_dir.path().join(".chant/config.md").exists());
@@ -2621,6 +2593,7 @@ mod tests {
                 vec![],
                 None,
                 None,
+                false,
             );
             assert!(result2.is_ok());
 
@@ -2652,6 +2625,7 @@ mod tests {
                 vec!["claude".to_string()],
                 None,
                 None,
+                false,
             );
             assert!(result1.is_ok());
             assert!(temp_dir.path().join("CLAUDE.md").exists());
@@ -2669,6 +2643,7 @@ mod tests {
                 vec!["claude".to_string()],
                 None,
                 None,
+                false,
             );
             assert!(result2.is_ok());
             assert!(temp_dir.path().join("CLAUDE.md").exists());
@@ -2698,6 +2673,7 @@ mod tests {
                 vec![],
                 Some("ollama".to_string()),
                 Some("llama3".to_string()),
+                false,
             );
 
             assert!(result.is_ok());
@@ -2729,6 +2705,7 @@ mod tests {
                 vec![],
                 None,
                 None,
+                false,
             );
             assert!(result1.is_ok());
 
@@ -2746,6 +2723,7 @@ mod tests {
                 vec![],
                 Some("ollama".to_string()),
                 None,
+                false,
             );
             assert!(result2.is_ok());
 
@@ -2774,6 +2752,7 @@ mod tests {
                 vec![],
                 None,
                 None,
+                false,
             );
             assert!(result1.is_ok());
 
@@ -2787,6 +2766,7 @@ mod tests {
                 vec![],
                 None,
                 Some("claude-opus-4".to_string()),
+                false,
             );
             assert!(result2.is_ok());
 
@@ -2815,6 +2795,7 @@ mod tests {
                 vec![],
                 None,
                 None,
+                false,
             );
             assert!(result1.is_ok());
             assert!(!temp_dir.path().join("CLAUDE.md").exists());
@@ -2829,6 +2810,7 @@ mod tests {
                 vec!["claude".to_string()],
                 None,
                 None,
+                false,
             );
             assert!(result2.is_ok());
             assert!(temp_dir.path().join("CLAUDE.md").exists());

@@ -96,6 +96,7 @@ mod tests {
                 vec![],
                 None,
                 None,
+                false,
             )
             .expect("Failed to init chant");
 
@@ -124,6 +125,7 @@ mod tests {
                 vec![],
                 None,
                 None,
+                false,
             )
             .expect("Failed to init chant");
 
