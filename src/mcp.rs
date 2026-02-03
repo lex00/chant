@@ -461,6 +461,20 @@ fn handle_tools_list() -> Result<Value> {
                     },
                     "required": ["id"]
                 }
+            },
+            {
+                "name": "chant_verify",
+                "description": "Verify a spec meets its acceptance criteria",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "string",
+                            "description": "Spec ID (full or partial)"
+                        }
+                    },
+                    "required": ["id"]
+                }
             }
         ]
     }))
@@ -492,6 +506,7 @@ fn handle_tools_call(params: Option<&Value>) -> Result<Value> {
         "chant_resume" => tool_chant_resume(arguments),
         "chant_cancel" => tool_chant_cancel(arguments),
         "chant_archive" => tool_chant_archive(arguments),
+        "chant_verify" => tool_chant_verify(arguments),
         _ => anyhow::bail!("Unknown tool: {}", name),
     }
 }
@@ -1512,6 +1527,141 @@ fn tool_chant_archive(arguments: Option<&Value>) -> Result<Value> {
     }))
 }
 
+fn tool_chant_verify(arguments: Option<&Value>) -> Result<Value> {
+    let specs_dir = match mcp_ensure_initialized() {
+        Ok(dir) => dir,
+        Err(err_response) => return Ok(err_response),
+    };
+
+    let args = arguments.ok_or_else(|| anyhow::anyhow!("Missing arguments"))?;
+
+    let id = args
+        .get("id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Missing required parameter: id"))?;
+
+    let spec = match resolve_spec(&specs_dir, id) {
+        Ok(s) => s,
+        Err(e) => {
+            return Ok(json!({
+                "content": [
+                    {
+                        "type": "text",
+                        "text": e.to_string()
+                    }
+                ],
+                "isError": true
+            }));
+        }
+    };
+
+    let spec_id = spec.id.clone();
+
+    // Count checked and unchecked criteria
+    let unchecked_count = spec.count_unchecked_checkboxes();
+
+    // Find total checkboxes in Acceptance Criteria section
+    let total_count: usize = {
+        let acceptance_criteria_marker = "## Acceptance Criteria";
+        let mut in_ac_section = false;
+        let mut in_code_fence = false;
+        let mut count = 0;
+
+        for line in spec.body.lines() {
+            let trimmed = line.trim_start();
+
+            if trimmed.starts_with("```") {
+                in_code_fence = !in_code_fence;
+                continue;
+            }
+
+            if !in_code_fence && trimmed.starts_with(acceptance_criteria_marker) {
+                in_ac_section = true;
+                continue;
+            }
+
+            if in_ac_section && trimmed.starts_with("## ") && !in_code_fence {
+                break;
+            }
+
+            if in_ac_section
+                && !in_code_fence
+                && (trimmed.starts_with("- [x]") || trimmed.starts_with("- [ ]"))
+            {
+                count += 1;
+            }
+        }
+
+        count
+    };
+
+    let checked_count = total_count.saturating_sub(unchecked_count);
+    let verified = unchecked_count == 0 && total_count > 0;
+
+    // Extract unchecked items
+    let unchecked_items = if unchecked_count > 0 {
+        let acceptance_criteria_marker = "## Acceptance Criteria";
+        let mut in_ac_section = false;
+        let mut in_code_fence = false;
+        let mut items = Vec::new();
+
+        for line in spec.body.lines() {
+            let trimmed = line.trim_start();
+
+            if trimmed.starts_with("```") {
+                in_code_fence = !in_code_fence;
+                continue;
+            }
+
+            if !in_code_fence && trimmed.starts_with(acceptance_criteria_marker) {
+                in_ac_section = true;
+                continue;
+            }
+
+            if in_ac_section && trimmed.starts_with("## ") && !in_code_fence {
+                break;
+            }
+
+            if in_ac_section && !in_code_fence && trimmed.starts_with("- [ ]") {
+                items.push(trimmed.to_string());
+            }
+        }
+
+        items
+    } else {
+        Vec::new()
+    };
+
+    let verification_notes = if total_count == 0 {
+        "No acceptance criteria found".to_string()
+    } else if verified {
+        "All acceptance criteria met".to_string()
+    } else {
+        format!("{} criteria not yet checked", unchecked_count)
+    };
+
+    let result = json!({
+        "spec_id": spec_id,
+        "verified": verified,
+        "criteria": {
+            "total": total_count,
+            "checked": checked_count,
+            "unchecked": unchecked_count
+        },
+        "unchecked_items": unchecked_items,
+        "verification_notes": verification_notes
+    });
+
+    Ok(json!({
+        "content": [
+            {
+                "type": "text",
+                "text": serde_json::to_string_pretty(&result)?
+            }
+        ]
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1527,7 +1677,7 @@ mod tests {
     fn test_handle_tools_list() {
         let result = handle_tools_list().unwrap();
         let tools = result["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 13);
+        assert_eq!(tools.len(), 14);
         // Query tools (7)
         assert_eq!(tools[0]["name"], "chant_spec_list");
         assert_eq!(tools[1]["name"], "chant_spec_get");
@@ -1536,13 +1686,14 @@ mod tests {
         assert_eq!(tools[4]["name"], "chant_log");
         assert_eq!(tools[5]["name"], "chant_search");
         assert_eq!(tools[6]["name"], "chant_diagnose");
-        // Mutating tools (6)
+        // Mutating tools (7)
         assert_eq!(tools[7]["name"], "chant_spec_update");
         assert_eq!(tools[8]["name"], "chant_add");
         assert_eq!(tools[9]["name"], "chant_finalize");
         assert_eq!(tools[10]["name"], "chant_resume");
         assert_eq!(tools[11]["name"], "chant_cancel");
         assert_eq!(tools[12]["name"], "chant_archive");
+        assert_eq!(tools[13]["name"], "chant_verify");
     }
 
     #[test]

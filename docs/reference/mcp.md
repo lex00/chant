@@ -91,7 +91,7 @@ MCP provides a standardized way to expose tools to AI agents.
 
 ## Tools
 
-The MCP server exposes 13 tools organized into query (read-only) and mutating categories.
+The MCP server exposes 14 tools organized into query (read-only) and mutating categories.
 
 ### Query Tools (read-only)
 
@@ -104,6 +104,7 @@ The MCP server exposes 13 tools organized into query (read-only) and mutating ca
 | `chant_log` | Read execution log for a spec | `id` (required), `lines` (optional, default: 100) |
 | `chant_search` | Search specs by title and body content | `query` (required), `status` (optional) |
 | `chant_diagnose` | Diagnose issues with a spec | `id` (required) |
+| `chant_verify` | Verify a spec meets its acceptance criteria | `id` (required) |
 
 ### Mutating Tools
 
@@ -390,6 +391,60 @@ Some initial content...
 Implementation complete. All tests passing.
 ```
 
+### chant_verify
+
+Verify a spec meets its acceptance criteria.
+
+**Parameters:**
+- `id` (required): Spec ID (full or partial match)
+
+**Example Request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "chant_verify",
+    "arguments": {
+      "id": "001"
+    }
+  },
+  "id": 1
+}
+```
+
+**Example Response (success):**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\n  \"spec_id\": \"2026-02-02-001-xyz\",\n  \"verified\": true,\n  \"criteria\": {\n    \"total\": 5,\n    \"checked\": 5,\n    \"unchecked\": 0\n  },\n  \"unchecked_items\": [],\n  \"verification_notes\": \"All acceptance criteria met\"\n}"
+      }
+    ]
+  },
+  "id": 1
+}
+```
+
+**Example Response (failure):**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\n  \"spec_id\": \"2026-02-02-001-xyz\",\n  \"verified\": false,\n  \"criteria\": {\n    \"total\": 5,\n    \"checked\": 3,\n    \"unchecked\": 2\n  },\n  \"unchecked_items\": [\n    \"- [ ] Tests added\",\n    \"- [ ] Documentation updated\"\n  ],\n  \"verification_notes\": \"2 criteria not yet checked\"\n}"
+      }
+    ]
+  },
+  "id": 1
+}
+```
+
 ## Tool Schemas
 
 Full JSON schemas as returned by `tools/list`. Only showing key tools; run `echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | chant mcp` for the complete list.
@@ -593,6 +648,20 @@ Full JSON schemas as returned by `tools/list`. Only showing key tools; run `echo
     {
       "name": "chant_archive",
       "description": "Move a completed spec to the archive directory",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Spec ID (full or partial)"
+          }
+        },
+        "required": ["id"]
+      }
+    },
+    {
+      "name": "chant_verify",
+      "description": "Verify a spec meets its acceptance criteria",
       "inputSchema": {
         "type": "object",
         "properties": {
