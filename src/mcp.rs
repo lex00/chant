@@ -328,6 +328,14 @@ fn handle_tools_list() -> Result<Value> {
                         "lines": {
                             "type": "integer",
                             "description": "Number of lines to return (default: 100)"
+                        },
+                        "offset": {
+                            "type": "integer",
+                            "description": "Start from byte offset (for incremental reads)"
+                        },
+                        "since": {
+                            "type": "string",
+                            "description": "ISO timestamp - only lines after this time"
                         }
                     },
                     "required": ["id"]
@@ -1007,7 +1015,12 @@ fn tool_chant_log(arguments: Option<&Value>) -> Result<Value> {
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("Missing required parameter: id"))?;
 
-    let lines = args.get("lines").and_then(|v| v.as_u64()).unwrap_or(100) as usize;
+    let lines = args
+        .get("lines")
+        .and_then(|v| v.as_u64())
+        .map(|v| v as usize);
+    let byte_offset = args.get("offset").and_then(|v| v.as_u64());
+    let since = args.get("since").and_then(|v| v.as_str());
 
     // Resolve spec to get full ID
     let spec = match resolve_spec(&specs_dir, id) {
@@ -1042,21 +1055,76 @@ fn tool_chant_log(arguments: Option<&Value>) -> Result<Value> {
 
     // Read log file
     let content = std::fs::read_to_string(&log_path)?;
-    let all_lines: Vec<&str> = content.lines().collect();
+    let file_byte_len = content.len() as u64;
 
-    // Return last N lines
-    let start = if all_lines.len() > lines {
-        all_lines.len() - lines
+    // Filter by offset if provided
+    let content_after_offset = if let Some(offset) = byte_offset {
+        if offset >= file_byte_len {
+            // Offset is at or beyond end of file
+            String::new()
+        } else {
+            content[(offset as usize)..].to_string()
+        }
+    } else {
+        content.clone()
+    };
+
+    // Filter by timestamp if provided
+    let content_after_since = if let Some(since_ts) = since {
+        if let Ok(since_time) = chrono::DateTime::parse_from_rfc3339(since_ts) {
+            content_after_offset
+                .lines()
+                .filter(|line| {
+                    // Try to parse timestamp from line start
+                    // Assumes log format: YYYY-MM-DDTHH:MM:SS.sssZ ...
+                    if line.len() >= 24 {
+                        if let Ok(line_time) = chrono::DateTime::parse_from_rfc3339(&line[..24]) {
+                            return line_time > since_time;
+                        }
+                    }
+                    true // Include lines without parseable timestamps
+                })
+                .collect::<Vec<&str>>()
+                .join("\n")
+        } else {
+            content_after_offset
+        }
+    } else {
+        content_after_offset
+    };
+
+    // Apply lines limit
+    let all_lines: Vec<&str> = content_after_since.lines().collect();
+    let lines_limit = lines.unwrap_or(100);
+    let start = if all_lines.len() > lines_limit {
+        all_lines.len() - lines_limit
     } else {
         0
     };
     let log_output = all_lines[start..].join("\n");
 
+    // Calculate new byte offset
+    let new_byte_offset = if byte_offset.is_some() {
+        file_byte_len
+    } else {
+        content.len() as u64
+    };
+
+    let has_more = all_lines.len() > lines_limit;
+    let line_count = all_lines[start..].len();
+
+    let response = json!({
+        "content": log_output,
+        "byte_offset": new_byte_offset,
+        "line_count": line_count,
+        "has_more": has_more
+    });
+
     Ok(json!({
         "content": [
             {
                 "type": "text",
-                "text": log_output
+                "text": serde_json::to_string_pretty(&response)?
             }
         ]
     }))

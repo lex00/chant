@@ -101,7 +101,7 @@ The MCP server exposes 14 tools organized into query (read-only) and mutating ca
 | `chant_spec_get` | Get spec details including body content | `id` (required, partial match supported) |
 | `chant_ready` | List specs ready to be worked (no unmet dependencies) | `limit` (optional, default 50) |
 | `chant_status` | Get project status summary with spec counts | `brief`, `include_activity` (optional) |
-| `chant_log` | Read execution log for a spec | `id` (required), `lines` (optional, default: 100) |
+| `chant_log` | Read execution log for a spec | `id` (required), `lines` (optional, default: 100), `offset` (optional), `since` (optional, ISO timestamp) |
 | `chant_search` | Search specs by title and body content | `query` (required), `status` (optional) |
 | `chant_diagnose` | Diagnose issues with a spec | `id` (required) |
 | `chant_verify` | Verify a spec meets its acceptance criteria | `id` (required) |
@@ -391,6 +391,93 @@ Some initial content...
 Implementation complete. All tests passing.
 ```
 
+### chant_log
+
+Read execution log for a spec.
+
+**Parameters:**
+- `id` (required): Spec ID (full or partial match)
+- `lines` (optional): Number of lines to return (default: 100)
+- `offset` (optional): Start from byte offset (for incremental reads)
+- `since` (optional): ISO timestamp - only return lines after this time
+
+**Response format:**
+```json
+{
+  "content": "log content...",
+  "byte_offset": 15234,
+  "line_count": 50,
+  "has_more": true
+}
+```
+
+**Polling pattern for incremental reads:**
+1. First call: `chant_log(id)` → returns content + `byte_offset`
+2. Subsequent calls: `chant_log(id, offset=15234)` → only new content since that offset
+
+**Example Request (basic):**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "chant_log",
+    "arguments": {
+      "id": "001"
+    }
+  },
+  "id": 1
+}
+```
+
+**Example Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\n  \"content\": \"Log line 1\\nLog line 2\\n...\",\n  \"byte_offset\": 15234,\n  \"line_count\": 100,\n  \"has_more\": false\n}"
+      }
+    ]
+  },
+  "id": 1
+}
+```
+
+**Example Request (incremental polling):**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "chant_log",
+    "arguments": {
+      "id": "001",
+      "offset": 15234
+    }
+  },
+  "id": 2
+}
+```
+
+**Example Request (filter by timestamp):**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "chant_log",
+    "arguments": {
+      "id": "001",
+      "since": "2026-02-02T10:00:00Z"
+    }
+  },
+  "id": 3
+}
+```
+
 ### chant_verify
 
 Verify a spec meets its acceptance criteria.
@@ -526,6 +613,14 @@ Full JSON schemas as returned by `tools/list`. Only showing key tools; run `echo
           "lines": {
             "type": "integer",
             "description": "Number of lines to return (default: 100)"
+          },
+          "offset": {
+            "type": "integer",
+            "description": "Start from byte offset (for incremental reads)"
+          },
+          "since": {
+            "type": "string",
+            "description": "ISO timestamp - only lines after this time"
           }
         },
         "required": ["id"]
