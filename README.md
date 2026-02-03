@@ -28,19 +28,13 @@ just docs-serve
 
 ## Quick Start
 
-**1. Run the interactive setup wizard:**
+**1. Initialize your project:**
 
 ```bash
 chant init
 ```
 
-The wizard guides you through:
-- Project configuration
-- Model provider selection (Claude CLI, Ollama, OpenAI)
-- Default model selection
-- Agent integration (creates CLAUDE.md and .mcp.json automatically)
-
-**2. Create your first spec:**
+**2. Create a spec:**
 
 ```bash
 chant add "Add user authentication"
@@ -52,7 +46,7 @@ chant add "Add user authentication"
 chant work 001
 ```
 
-> **Tip:** For CI/CD or scripts, use flags directly: `chant init --agent claude --provider claude --model opus`
+For detailed setup instructions, see the [Quick Start Guide](https://lex00.github.io/chant/getting-started/quickstart.html).
 
 ## Core Concepts
 

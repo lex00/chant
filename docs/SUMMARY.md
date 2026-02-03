@@ -30,6 +30,7 @@
 
 # Guides
 
+- [Cursor Quick Start](guides/cursor-quickstart.md)
 - [Prompt Guide](guides/prompts.md)
 - [Research Workflows](guides/research.md)
 - [Example Configurations](guides/examples.md)

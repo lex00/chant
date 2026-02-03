@@ -1,92 +1,132 @@
-# Quickstart
+# Quick Start
 
-## The One Thing to Understand
+Get started with chant in 5 minutes.
 
-**Prompts define what agents do.**
+## Installation
 
-Everything else (specs, git, CLI) is infrastructure. Prompts are the behavior.
+Choose your installation method:
 
+**Homebrew (macOS/Linux):**
+```bash
+brew tap lex00/tap
+brew install chant
 ```
-.chant/prompts/
-  standard.md     ← "How to implement a spec"
-  split.md        ← "How to break down work"
+
+**Quick Install (Linux/macOS):**
+```bash
+# Linux
+curl -fsSL https://github.com/lex00/chant/releases/latest/download/chant-linux-x86_64 -o chant
+chmod +x chant
+sudo mv chant /usr/local/bin/
+
+# macOS Intel
+curl -fsSL https://github.com/lex00/chant/releases/latest/download/chant-macos-x86_64 -o chant
+chmod +x chant
+sudo mv chant /usr/local/bin/
+
+# macOS Apple Silicon
+curl -fsSL https://github.com/lex00/chant/releases/latest/download/chant-macos-aarch64 -o chant
+chmod +x chant
+sudo mv chant /usr/local/bin/
 ```
 
-A prompt is a markdown file that tells the agent what to do. It contains instructions on how to complete work, what to check, how to test, and when to commit.
+**From source:**
+```bash
+cargo install --git https://github.com/lex00/chant
+```
+
+**Verify:**
+```bash
+chant --version
+```
+
+For more details, see the [Installation Guide](installation.md).
 
 ## Your First 5 Minutes
 
-### 1. Run the Interactive Setup Wizard
+### 1. Initialize Your Project
 
 ```bash
 chant init
 ```
 
-The wizard guides you through all configuration:
-- **Project name**: Auto-detected from package.json, Cargo.toml, or directory name
-- **Model provider**: Claude CLI (recommended), Ollama (local), or OpenAI API
-- **Default model**: opus, sonnet, haiku, or custom
-- **Agent configuration**: Creates CLAUDE.md and .mcp.json when Claude is selected
+The wizard guides you through:
+- Project name (auto-detected)
+- Model provider (Claude CLI, Ollama, OpenAI)
+- Default model (opus, sonnet, haiku, or custom)
+- Agent configuration (creates CLAUDE.md and .mcp.json)
 
-> **Tip:** For CI/CD or scripts, use flags directly: `chant init --agent claude --provider claude`
+> **Tip:** For CI/CD, use flags: `chant init --agent claude --provider claude --model opus`
 
-### 2. Look at the Default Prompt
-
-```bash
-cat .chant/prompts/standard.md
-```
-
-### 3. Create a Spec
+### 2. Create a Spec
 
 ```bash
-chant add "Fix the login bug"
+chant add "Add welcome message to homepage"
 ```
 
-### 4. Run It
+Creates `.chant/specs/2026-02-03-001-xyz.md`:
+
+```markdown
+---
+status: pending
+---
+
+# Add welcome message to homepage
+```
+
+### 3. Execute the Spec
 
 ```bash
 chant work 001
 ```
 
-The agent reads `standard.md`, sees your spec, and executes.
+The agent:
+1. Reads your spec and acceptance criteria
+2. Explores the codebase
+3. Makes the necessary changes
+4. Commits with: `chant(001): <description>`
 
-## Built-in Prompts
+### 4. Review Changes
 
-Chant comes with ready-to-use prompts for different workflows:
+```bash
+git log -1        # View the commit
+chant status      # Check spec status
+chant show 001    # View spec details
+```
 
-### bootstrap.md (Default)
-A minimal prompt that tells the agent to run `chant prep <spec-id>` to get the actual spec content. This:
-- Reduces initial prompt size (helps with API rate limits)
-- Supports replay/resume scenarios cleanly
-- Separates spec content from agent instructions
+## Understanding Prompts
 
-**Used when:** `chant work <spec-id>` (no prompt specified)
+**Prompts define what agents do.**
 
-### standard.md
-The full prompt for implementing specs. It instructs the agent to:
-- Read relevant code first
-- Plan the approach
-- Implement changes
-- Verify the implementation works
-- Commit with a proper message
+Chant uses markdown prompts to control agent behavior:
 
-**Used when:** `chant work <spec-id> --prompt standard`
+```
+.chant/prompts/
+  bootstrap.md    ← Default (minimal, bootstraps full prompt)
+  standard.md     ← Full implementation instructions
+  split.md        ← Break down large specs
+```
 
-### split.md
-A specialized prompt for analyzing driver specs and proposing how to break them down into smaller member specs. It:
-- Analyzes the specification and acceptance criteria
-- Proposes a sequence of member specs
-- Ensures each member leaves code in compilable state
-- Provides detailed acceptance criteria for each member
+### Default Prompt
 
-**Used when:** `chant split <spec-id>` or `chant work <spec-id> --prompt split`
+```bash
+chant work 001  # Uses bootstrap.md
+```
 
-## Customizing Behavior
+The bootstrap prompt tells the agent to run `chant prep 001` to load the full spec and instructions.
 
-Want different agent behavior? Edit the prompt.
+### Custom Prompts
+
+```bash
+chant work 001 --prompt standard  # Use full prompt directly
+chant work 001 --prompt tdd       # Use TDD workflow
+```
+
+### Customizing Behavior
+
+Edit `.chant/prompts/standard.md` to change agent behavior:
 
 ```markdown
-# .chant/prompts/standard.md
 ---
 name: standard
 purpose: Default execution prompt
@@ -110,17 +150,17 @@ You are implementing a spec for {{project.name}}.
 4. Commit with message: `chant({{spec.id}}): <description>`
 ```
 
-Template variables like `{{spec.title}}` and `{{project.name}}` are replaced with actual values when the prompt runs. See [prompts.md](../concepts/prompts.md#template-variables) for all available variables.
+Template variables like `{{spec.title}}` are replaced at runtime. See [Prompts](../concepts/prompts.md) for all variables.
 
-That's it. No plugins, no framework code.
+## Working with Specs
 
-## Creating Specs
+### Creating Specs
 
 ```bash
 chant add "Add user authentication"
 ```
 
-Creates `.chant/specs/2026-01-22-001-x7m.md`:
+This creates `.chant/specs/2026-02-03-001-xyz.md`:
 
 ```markdown
 ---
@@ -130,7 +170,9 @@ status: pending
 # Add user authentication
 ```
 
-Edit to add detail:
+### Adding Detail
+
+Edit the spec to add context and acceptance criteria:
 
 ```markdown
 ---
@@ -141,7 +183,7 @@ prompt: standard
 # Add user authentication
 
 ## Context
-We need JWT-based auth for the API.
+JWT-based auth for the API.
 
 ## Acceptance Criteria
 - [ ] Login endpoint returns JWT
@@ -149,15 +191,26 @@ We need JWT-based auth for the API.
 - [ ] 401 on invalid token
 ```
 
-## Running Work
+### Executing Specs
 
 ```bash
-chant work 001                    # Run with default prompt
-chant work 001 --prompt tdd       # Run with TDD prompt
-chant work 001 --prompt security  # Run with security review prompt
+chant work 001                    # Default prompt
+chant work 001 --prompt tdd       # TDD workflow
+chant work 001 --prompt security  # Security review
 ```
 
-## The Mental Model
+### Checking Status
+
+```bash
+chant status    # Project summary
+chant list      # All specs
+chant show 001  # Spec details
+chant log 001   # Execution log
+```
+
+## Key Concepts
+
+### The Mental Model
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -172,27 +225,72 @@ chant work 001 --prompt security  # Run with security review prompt
 └─────────────────────────────────────────────────┘
 ```
 
-- **Prompt** = Behavior (how)
-- **Spec** = Goal (what)
-- **Agent** = Executor (who)
+- **Prompt** = Behavior (how to work)
+- **Spec** = Goal (what to build)
+- **Agent** = Executor (who does the work)
+
+### Parallel Execution
+
+Run multiple specs concurrently with isolated worktrees:
+
+```bash
+chant work --parallel      # Work all ready specs
+chant work 001 002 003     # Work specific specs in parallel
+```
+
+### Chain Execution
+
+Process specs sequentially:
+
+```bash
+chant work --chain         # Work ready specs one after another
+chant work 001 --chain     # Work 001, then continue to next ready
+```
+
+## Agent Integration
+
+### Using with Claude Code
+
+```bash
+chant init --agent claude
+```
+
+Creates:
+- `.claude/CLAUDE.md` - Instructions for Claude Code
+- `.claude/.mcp.json` - MCP server configuration
+
+The MCP server exposes spec operations as tools Claude can use.
+
+### Using with Cursor
+
+```bash
+chant init --agent cursor
+```
+
+Creates:
+- `.cursorrules` - AI instructions for Cursor
+- `.cursor/mcp.json` - MCP server configuration
+
+See the [Cursor Guide](../guides/cursor-quickstart.md) for detailed setup.
 
 ## What's Next
 
 | Want to... | Read... |
 |------------|---------|
-| **Go autonomous** | [autonomy.md](../concepts/autonomy.md) |
-| Write better prompts | [prompts.md](../concepts/prompts.md) |
-| Use different AI providers | [protocol.md](../architecture/protocol.md) |
-| Run specs in parallel | [deps.md](../concepts/deps.md) |
-| Set up for a team | [examples.md](../guides/examples.md) |
+| **Set up Cursor** | [Cursor Guide](../guides/cursor-quickstart.md) |
+| **Understand specs** | [Specs](../concepts/specs.md) |
+| **Customize prompts** | [Prompts](../concepts/prompts.md) |
+| **Go autonomous** | [Autonomy](../concepts/autonomy.md) |
+| **Run in parallel** | [Dependencies](../concepts/deps.md) |
+| **Use different providers** | [Protocol](../architecture/protocol.md) |
 
-## The Goal: Autonomy
+## The Path to Autonomy
 
 Chant starts in **supervised mode** — you review every change. The goal is **autonomous workflows**:
 
-- Start: Review everything
-- Progress: Trivial specs auto-merge
-- Later: Most specs auto-merge, review exceptions
-- Goal: Agents work overnight, review summaries
+1. **Start**: Review everything
+2. **Progress**: Trivial specs auto-merge
+3. **Later**: Most specs auto-merge, review exceptions
+4. **Goal**: Agents work overnight, review summaries
 
-See [autonomy.md](../concepts/autonomy.md) for the full journey.
+See [Autonomy](../concepts/autonomy.md) for the journey.
