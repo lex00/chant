@@ -185,6 +185,65 @@ config schema: 1
 rust: 1.75.0
 ```
 
+## Deprecation Policy
+
+### When Features Are Deprecated
+
+Features may be deprecated when:
+- Better alternatives exist
+- Security or stability concerns arise
+- Usage data shows minimal adoption
+- Maintenance burden outweighs value
+
+### Deprecation Process
+
+1. **Announcement**: Deprecation notice in release notes and docs
+2. **Warning period**: CLI shows warnings when deprecated features are used
+3. **Removal**: Feature removed in next major version
+
+### Minimum Support Period
+
+| Component | Support Period |
+|-----------|----------------|
+| Config fields | 2 major versions |
+| CLI commands | 2 major versions |
+| Spec schema fields | 2 major versions |
+
+Example timeline:
+```
+v2.0: Feature deprecated, warnings shown
+v3.0: Feature still works, warnings shown
+v4.0: Feature removed
+```
+
+### Deprecation Warnings
+
+When using deprecated features:
+
+```bash
+$ chant work 001
+Warning: 'state' field is deprecated, use 'status' instead
+Will be removed in v4.0
+```
+
+Config check on load:
+
+```bash
+$ chant status
+Warning: Deprecated config fields detected:
+  - 'workers' → use 'parallelism'
+
+Run 'chant migrate' to update.
+```
+
+### Migration Path
+
+All deprecations include:
+- Clear warning messages
+- Documentation of replacement
+- Automated migration via `chant migrate`
+- Version where removal occurs
+
 ## Lockfile (Future)
 
 For reproducible behavior:
