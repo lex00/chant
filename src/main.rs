@@ -1465,6 +1465,59 @@ fn update_config_field(config_path: &Path, field: &str, value: &str) -> Result<(
     Ok(())
 }
 
+/// Create a global CLAUDE.md next to the chant binary
+///
+/// This allows Claude Code to discover chant instructions system-wide,
+/// even in projects without their own CLAUDE.md.
+///
+/// The file is written to the directory containing the chant binary
+/// (typically ~/.cargo/bin/ for cargo installs).
+fn create_global_claude_md(has_mcp: bool) -> Result<()> {
+    // Get the path to the current executable
+    let exe_path = std::env::current_exe()
+        .map_err(|e| anyhow::anyhow!("Could not determine executable path: {}", e))?;
+
+    let exe_dir = exe_path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("Could not determine executable directory"))?;
+
+    let global_claude_path = exe_dir.join("CLAUDE.md");
+
+    // Use the same injection logic to preserve any existing content
+    let existing_content = if global_claude_path.exists() {
+        Some(std::fs::read_to_string(&global_claude_path)?)
+    } else {
+        None
+    };
+
+    let result = templates::inject_chant_section(existing_content.as_deref(), has_mcp);
+
+    match result {
+        templates::InjectionResult::Created(content) => {
+            std::fs::write(&global_claude_path, content)?;
+            println!(
+                "{} {} (global)",
+                "Created".green(),
+                global_claude_path.display()
+            );
+        }
+        templates::InjectionResult::Appended(content)
+        | templates::InjectionResult::Replaced(content) => {
+            std::fs::write(&global_claude_path, content)?;
+            println!(
+                "{} {} (global)",
+                "Updated".green(),
+                global_claude_path.display()
+            );
+        }
+        templates::InjectionResult::Unchanged => {
+            // Already up-to-date, no action needed
+        }
+    }
+
+    Ok(())
+}
+
 /// Result of updating the global Claude MCP config
 #[derive(Debug)]
 struct McpConfigResult {
@@ -2271,6 +2324,15 @@ Project initialized on {}.
                         "ℹ".cyan()
                     );
                 }
+
+                // Also create global CLAUDE.md next to binary for system-wide access
+                if *provider == templates::AgentProvider::Claude {
+                    if let Err(e) = create_global_claude_md(will_have_mcp) {
+                        // Non-critical error - log but don't fail
+                        eprintln!("{} Could not create global CLAUDE.md: {}", "•".yellow(), e);
+                    }
+                }
+
                 break; // Only create one MCP config file
             }
         }
