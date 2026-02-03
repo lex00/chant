@@ -6,6 +6,22 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+/// Macro to generate Display implementations for letter grade enums (A, B, C, D)
+macro_rules! impl_letter_grade_display {
+    ($type:ty) => {
+        impl fmt::Display for $type {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                match self {
+                    Self::A => write!(f, "A"),
+                    Self::B => write!(f, "B"),
+                    Self::C => write!(f, "C"),
+                    Self::D => write!(f, "D"),
+                }
+            }
+        }
+    };
+}
+
 /// Overall score for a spec across all dimensions
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpecScore {
@@ -49,16 +65,7 @@ pub enum ComplexityGrade {
     D,
 }
 
-impl fmt::Display for ComplexityGrade {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::A => write!(f, "A"),
-            Self::B => write!(f, "B"),
-            Self::C => write!(f, "C"),
-            Self::D => write!(f, "D"),
-        }
-    }
-}
+impl_letter_grade_display!(ComplexityGrade);
 
 /// Confidence grade based on structure and clarity
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -73,16 +80,7 @@ pub enum ConfidenceGrade {
     D,
 }
 
-impl fmt::Display for ConfidenceGrade {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::A => write!(f, "A"),
-            Self::B => write!(f, "B"),
-            Self::C => write!(f, "C"),
-            Self::D => write!(f, "D"),
-        }
-    }
-}
+impl_letter_grade_display!(ConfidenceGrade);
 
 /// Splittability grade - can this spec be effectively split
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -97,16 +95,7 @@ pub enum SplittabilityGrade {
     D,
 }
 
-impl fmt::Display for SplittabilityGrade {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::A => write!(f, "A"),
-            Self::B => write!(f, "B"),
-            Self::C => write!(f, "C"),
-            Self::D => write!(f, "D"),
-        }
-    }
-}
+impl_letter_grade_display!(SplittabilityGrade);
 
 /// Isolation grade - for groups with members, measures independence
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -121,16 +110,7 @@ pub enum IsolationGrade {
     D,
 }
 
-impl fmt::Display for IsolationGrade {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::A => write!(f, "A"),
-            Self::B => write!(f, "B"),
-            Self::C => write!(f, "C"),
-            Self::D => write!(f, "D"),
-        }
-    }
-}
+impl_letter_grade_display!(IsolationGrade);
 
 /// Acceptance criteria quality grade
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -145,16 +125,7 @@ pub enum ACQualityGrade {
     D,
 }
 
-impl fmt::Display for ACQualityGrade {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::A => write!(f, "A"),
-            Self::B => write!(f, "B"),
-            Self::C => write!(f, "C"),
-            Self::D => write!(f, "D"),
-        }
-    }
-}
+impl_letter_grade_display!(ACQualityGrade);
 
 /// Overall traffic light status combining all dimensions
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
