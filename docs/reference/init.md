@@ -12,7 +12,7 @@ The wizard guides you through all configuration options:
 - **Project name**: Auto-detected from package.json, Cargo.toml, go.mod, or directory name
 - **Prompt templates**: Include ready-to-use prompts (recommended) or skip for minimal setup
 - **Silent mode**: Keep .chant/ local only (gitignored) for enterprise environments
-- **Model provider**: Claude CLI (recommended), Ollama (local), or OpenAI API
+- **Model provider**: Choose your AI provider (see [Provider Configuration](providers.md))
 - **Default model**: opus, sonnet, haiku, or custom model name
 - **Agent configuration**: Claude Code (CLAUDE.md), Cursor, Amazon Q, Generic, or all
 
@@ -151,7 +151,7 @@ chant init --force         # Overwrite existing files
 chant init --minimal       # Only config.md, no prompts
 chant init --name foo      # Override detected name
 chant init --silent        # Local only, not committed
-chant init --provider claude  # Set model provider (claude, ollama, openai)
+chant init --provider claude  # Set model provider (see providers.md)
 chant init --model opus    # Set default model (opus, sonnet, haiku, or custom)
 chant init --agent claude  # Create agent configuration files
 ```
