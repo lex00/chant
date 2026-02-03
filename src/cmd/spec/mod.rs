@@ -9,6 +9,7 @@
 
 mod add;
 mod approve;
+mod dag;
 mod delete;
 mod edit;
 mod lint;
@@ -18,6 +19,7 @@ mod show;
 // Re-export public command functions
 pub use add::cmd_add;
 pub use approve::{cmd_approve, cmd_reject};
+pub use dag::cmd_dag;
 pub use delete::{cmd_cancel, cmd_delete, cmd_export};
 pub use edit::cmd_edit;
 pub use lint::{cmd_lint, lint_specific_specs, LintFormat};

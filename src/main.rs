@@ -603,6 +603,21 @@ enum Commands {
         #[arg(long)]
         poll_interval: Option<u64>,
     },
+    /// Show dependency graph for specs
+    Dag {
+        /// Level of detail (minimal, titles, full)
+        #[arg(long, default_value = "full")]
+        detail: String,
+        /// Filter by status (pending, in_progress, completed, failed, blocked, cancelled)
+        #[arg(long)]
+        status: Option<String>,
+        /// Filter by label (can be specified multiple times)
+        #[arg(long)]
+        label: Vec<String>,
+        /// Filter by type (code, task, driver, documentation, research)
+        #[arg(long)]
+        type_: Option<String>,
+    },
 }
 
 /// Subcommands for worktree management
@@ -1022,6 +1037,12 @@ fn run() -> Result<()> {
             dry_run,
             poll_interval,
         } => cmd::watch::run_watch(once, dry_run, poll_interval),
+        Commands::Dag {
+            detail,
+            status,
+            label,
+            type_,
+        } => cmd::spec::cmd_dag(&detail, status.as_deref(), &label, type_.as_deref()),
     }
 }
 
