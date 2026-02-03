@@ -91,7 +91,7 @@ MCP provides a standardized way to expose tools to AI agents.
 
 ## Tools
 
-The MCP server exposes 15 tools organized into query (read-only) and mutating categories.
+The MCP server exposes 16 tools organized into query (read-only) and mutating categories.
 
 ### Query Tools (read-only)
 
@@ -117,6 +117,7 @@ The MCP server exposes 15 tools organized into query (read-only) and mutating ca
 | `chant_cancel` | Cancel a spec | `id` (required) |
 | `chant_archive` | Move a completed spec to archive | `id` (required) |
 | `chant_work_start` | Start working on a spec asynchronously | `id` (required), `chain` (optional), `parallel` (optional) |
+| `chant_work_list` | List running work processes | `process_id` (optional), `include_completed` (optional) |
 
 ### chant_spec_list
 
