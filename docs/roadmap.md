@@ -2,7 +2,7 @@
 
 This document outlines planned features and improvements for Chant.
 
-## Current Version: 0.14.0
+## Current Version: 0.15.2
 
 Chant is under active development. We prioritize features that enhance spec-driven workflows, improve agent orchestration, and provide better visibility into AI-assisted development.
 
@@ -105,7 +105,8 @@ See [CHANGELOG.md](../CHANGELOG.md) for full release history.
 
 ## Version History
 
-- **0.14.0** (Current): Progress visualization, Docker, Windows support
+- **0.15.2** (Current): Latest improvements and bug fixes
+- **0.14.0**: Progress visualization, Docker, Windows support
 - **0.13.x**: Approval workflow, branch mode
 - **0.12.x**: Parallel execution, worktree isolation
 - **0.11.x**: MCP server integration
