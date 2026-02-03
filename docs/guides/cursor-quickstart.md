@@ -2,31 +2,13 @@
 
 A step-by-step guide for using Cursor with chant for spec-driven development.
 
-## What You'll Learn
-
-This guide walks you through:
-- Installing chant
-- Setting up Cursor to work with chant
-- Creating and working your first spec
-- Understanding the daily workflow
-
 ## Prerequisites
 
 - **Cursor IDE**: Download and install from [cursor.com](https://cursor.com)
+- **Chant installed**: See the [Quick Start Guide](../getting-started/quickstart.md) for installation instructions
 - **Git**: Required for chant's spec tracking
-- **Terminal access**: For running chant commands
 
-## Step 1: Install Chant
-
-See the [Installation Guide](../getting-started/installation.md) for complete installation instructions.
-
-Once installed, verify it's working:
-
-```bash
-chant --version
-```
-
-## Step 2: Initialize Your Project
+## Step 1: Initialize Cursor Integration
 
 Navigate to your project directory and run:
 
@@ -35,13 +17,12 @@ chant init --agent cursor
 ```
 
 This creates:
-- `.chant/` directory with configuration and prompts
 - `.cursorrules` file with AI instructions for Cursor
 - `.cursor/mcp.json` for MCP (Model Context Protocol) integration
 
 **What is MCP?** MCP lets Cursor's AI discover and use chant commands directly as tools, making spec management seamless and structured.
 
-## Step 3: Restart Cursor
+## Step 2: Restart Cursor
 
 **Important:** After running `chant init --agent cursor`, you must restart Cursor to load the MCP configuration.
 
@@ -49,7 +30,7 @@ This creates:
 2. Reopen Cursor
 3. Open your project folder
 
-## Step 4: Verify MCP is Working
+## Step 3: Verify MCP is Working
 
 Open Cursor's AI chat and check that chant tools are available:
 
@@ -65,105 +46,31 @@ Cursor should respond with a list of `chant_*` tools like:
 
 If you don't see these tools, see [Troubleshooting](#troubleshooting) below.
 
-## Step 5: Create Your First Spec
+## Using Cursor with Chant
 
-Create a simple spec to test the workflow:
+Cursor works with chant in two ways:
 
-```bash
-chant add "Add a welcome message to the homepage"
-```
+### Terminal Commands: Execute Specs
 
-This creates a spec file in `.chant/specs/` with a unique ID like `2026-01-30-001-abc.md`.
-
-**Check the spec:**
-
-```bash
-chant list
-```
-
-You should see your new spec listed as `pending`.
-
-## Step 6: Work the Spec
-
-Execute the spec using an AI agent:
+Run agents from the terminal:
 
 ```bash
 chant work 001
 ```
 
-This launches an AI agent that:
-1. Reads the spec and its acceptance criteria
-2. Explores your codebase
-3. Makes the necessary changes
-4. Commits the work with a proper message
+This is the recommended approach for spec execution. The agent runs autonomously and commits when done.
 
-**What happens:**
-- The agent spawns in a separate process
-- You'll see live output as it works
-- When complete, the spec status changes to `completed`
+### Cursor's AI: Manage Specs via MCP
 
-## Step 7: Review the Changes
+Use Cursor's chat with MCP tools to:
+- Browse specs: "Show me all pending specs"
+- Create specs: "Create a spec for adding pagination to the user list"
+- Check status: "What's the status of the project?"
+- Search specs: "Find specs related to authentication"
 
-After the agent completes:
+**Important:** `chant work` is not available via MCP (it spawns an agent process). Use the terminal for running work.
 
-```bash
-# View git changes
-git log -1
-
-# Check the spec status
-chant status
-
-# View the completed spec
-chant show 001
-```
-
-The agent creates a commit with the pattern `chant(SPEC-ID): description`.
-
-## Daily Workflow
-
-Once set up, your daily workflow looks like this:
-
-### 1. Create Specs
-
-```bash
-chant add "Fix login validation bug"
-chant add "Add dark mode toggle"
-chant add "Update API documentation"
-```
-
-### 2. Work Specs
-
-```bash
-# Work a single spec
-chant work 001
-
-# Or work multiple specs in parallel
-chant work --parallel
-```
-
-### 3. Review and Merge
-
-```bash
-# Check status
-chant status
-
-# View a spec's details
-chant show 002
-
-# List all specs
-chant list
-```
-
-### 4. Use Cursor's AI with MCP
-
-In Cursor's chat, you can ask:
-- "What specs are ready to work?"
-- "Create a new spec for adding user authentication"
-- "What's the status of spec 003?"
-
-Cursor will use the chant MCP tools automatically to answer these questions.
-
-## Understanding the Setup
+## Understanding the Cursor Integration
 
 ### `.cursorrules`
 
@@ -196,42 +103,6 @@ This file connects Cursor to the chant MCP server:
 - Chant exposes spec management tools
 - Cursor's AI can query specs, create specs, update status, etc.
 
-### `.chant/` Directory
-
-```
-.chant/
-├── config.md             # Project configuration
-├── prompts/              # Prompt templates for agents
-│   ├── bootstrap.md      # Minimal bootstrap prompt
-│   ├── standard.md       # Default implementation prompt
-│   └── split.md          # Prompt for breaking down large specs
-├── specs/                # Your spec files
-├── .locks/               # PID files (gitignored)
-└── .store/               # Index cache (gitignored)
-```
-
-## Using Cursor with Chant
-
-### Option 1: Let `chant work` Run the Agent
-
-Run agents from the terminal:
-
-```bash
-chant work 001
-```
-
-This is the recommended approach for spec execution. The agent runs autonomously and commits when done.
-
-### Option 2: Use Cursor's AI for Spec Management
-
-Use Cursor's chat with MCP tools to:
-- Browse specs: "Show me all pending specs"
-- Create specs: "Create a spec for adding pagination to the user list"
-- Check status: "What's the status of the project?"
-- Search specs: "Find specs related to authentication"
-
-**Important:** `chant work` is not available via MCP (it spawns an agent process). Use the terminal for running work.
-
 ## MCP Tools Reference
 
 When using Cursor's AI, these tools are available:
@@ -251,11 +122,11 @@ When using Cursor's AI, these tools are available:
 
 For full details, see [MCP Reference](../reference/mcp.md).
 
-## Next Steps
+## What's Next
 
-- **Learn the philosophy**: Read [Philosophy](../getting-started/philosophy.md) to understand chant's approach
-- **Explore prompts**: See [Prompts](../concepts/prompts.md) to customize agent behavior
-- **Advanced workflows**: Check out [Examples](examples.md) for real-world usage patterns
+- **Learn the basics**: See [Quick Start Guide](../getting-started/quickstart.md) for core concepts and workflows
+- **Explore prompts**: Read [Prompts](../concepts/prompts.md) to customize agent behavior
+- **Advanced workflows**: Check [Examples](examples.md) for real-world usage patterns
 - **Cursor rules reference**: See `.cursorrules` for the complete AI behavior guide
 
 ## Troubleshooting
