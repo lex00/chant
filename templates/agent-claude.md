@@ -120,8 +120,8 @@ When implementing a spec:
   - Non-TTY hint: When stdin is not a terminal, run with explicit query: `chant search "keyword"`
   - Supports filters: `--status`, `--type`, `--label`, `--since`, `--until`
 - `chant archive <spec-id>` - Archive completed specs
-- `chant cancel <spec-id>` - Cancel a spec
-- `chant delete <spec-id>` - Delete a spec and clean up artifacts
+- `chant cancel <spec-id>` - Cancel a spec (soft-delete)
+- `chant cancel <spec-id> --delete` - Permanently delete a spec and clean up artifacts
 
 ### Execution
 

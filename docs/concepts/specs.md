@@ -215,30 +215,41 @@ A driver with incomplete members cannot be marked complete. See [groups.md](grou
 
 ## Spec Cancellation
 
-Soft-delete a spec by marking it cancelled. The spec file is preserved but excluded from execution.
+Cancel a spec by marking it cancelled (soft-delete), or permanently delete it with `--delete`.
 
 ### Cancelling a Spec
 
 ```bash
-$ chant cancel 001                # Cancel with confirmation
-$ chant cancel 001 --yes          # Skip confirmation
-$ chant cancel 001 --dry-run      # Preview what would be cancelled
-$ chant cancel 001 --force        # Force cancellation (skip safety checks)
+$ chant cancel 001                       # Cancel with confirmation (soft-delete)
+$ chant cancel 001 --yes                 # Skip confirmation
+$ chant cancel 001 --dry-run             # Preview what would be cancelled
+$ chant cancel 001 --skip-checks         # Skip safety checks
+$ chant cancel 001 --delete              # Permanently delete (hard delete)
+$ chant cancel 001 --delete --cascade    # Delete driver and all members
+$ chant cancel 001 --delete --delete-branch  # Delete spec and associated branch
 ```
 
-**Safety Checks:**
-- Cannot cancel specs that are in-progress or failed (unless `--force`)
+**Safety Checks (default, skipped with `--skip-checks`):**
+- Cannot cancel specs that are in-progress or failed
 - Cannot cancel member specs (cancel the driver instead)
 - Cannot cancel already-cancelled specs
-- Warns if other specs depend on this spec (unless `--force`)
+- Warns if other specs depend on this spec
 
-### What Happens When Cancelled
+### What Happens When Cancelled (Soft-Delete)
 
 1. Spec status changed to `Cancelled` in frontmatter
 2. File is preserved in `.chant/specs/`
 3. Cancelled specs excluded from `chant list` and `chant work`
 4. Can still view with `chant show` or `chant list --status cancelled`
 5. All git history preserved
+
+### What Happens When Deleted (Hard Delete with `--delete`)
+
+1. Permanently removes spec file from `.chant/specs/`
+2. Removes associated log file from `.chant/logs/`
+3. Removes worktree artifacts
+4. With `--cascade`: deletes driver and all member specs
+5. With `--delete-branch`: removes associated git branch
 
 ### Cancelled State
 

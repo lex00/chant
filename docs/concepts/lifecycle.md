@@ -121,7 +121,7 @@ When a spec is created with `--needs-approval`, it must be approved before work 
 - Status changed to `Cancelled`, file preserved
 - Excluded from `chant list` and `chant work`
 - Can still be viewed with `chant show` or filtered with `chant list --status cancelled`
-- Use `chant delete` if you want to permanently remove the spec file
+- Use `chant cancel {spec-id} --delete` if you want to permanently remove the spec file
 
 ## Dependency Blocking
 
