@@ -123,10 +123,13 @@ log: |
 For scripting:
 
 ```bash
-chant work 2026-01-22-001-x7m --quiet
+chant --quiet work 2026-01-22-001-x7m
+chant -q work 2026-01-22-001-x7m
 # No terminal output, exit code only
 # Spec file still updated
 ```
+
+The `--quiet` / `-q` flag is a global flag that can be used with any command to suppress non-essential output.
 
 ## Verbosity
 

@@ -1,5 +1,19 @@
 # CLI Reference
 
+## Global Flags
+
+### Quiet Mode
+
+Suppress all non-essential output (applies to all commands):
+
+```bash
+chant --quiet list                      # Quiet list output
+chant --quiet work 2026-01-22-001-x7m    # No terminal output, exit code only
+chant -q status                         # Short form
+```
+
+The `--quiet` / `-q` flag is a global flag that can be used with any command to minimize output. When used with `chant work`, the spec file is still updated during execution.
+
 ## Initialization
 
 Initialize chant in a new project. For detailed setup instructions, see the [Initialization Guide](init.md).
