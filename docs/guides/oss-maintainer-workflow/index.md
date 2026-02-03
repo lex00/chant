@@ -117,6 +117,24 @@ manual locking) is sufficient for this use case.
 - After reproduction: cannot reproduce, likely user error
 - After root cause: fix would be harmful (security, breaking changes)
 
+## Getting Started: Setup for OSS Maintainers
+
+**Before diving into the workflow,** OSS maintainers should configure silent mode to keep specs personal and local:
+
+```bash
+# Initialize chant
+chant init
+
+# Enable silent mode (keeps .chant/ local, not tracked in git)
+chant silent
+```
+
+**Why this matters:** Silent mode keeps your research specs, investigation notes, and work-in-progress out of the shared repository's git history. You get the full workflow benefits while keeping the repo clean for collaborators.
+
+**Full setup guide:** See [Setup for OSS Maintainers](00-setup.md) for complete configuration details.
+
+---
+
 ## Quick Start
 
 Here's a minimal example of the full workflow:
@@ -168,6 +186,7 @@ The six phases work together:
 
 ## Guide Pages
 
+0. **[Setup for OSS Maintainers](00-setup.md)** — Configure silent mode and initial setup
 1. **[Comprehension Research](01-comprehension.md)** — Understand what the issue is about
 2. **[Reproducibility](02-reproduction.md)** — Create failing tests (auto/assisted)
 3. **[Root Cause Research](03-root-cause.md)** — Determine what needs to be fixed

@@ -1,25 +1,6 @@
 # Advanced Patterns
 
-## Configuration for OSS Maintainers
-
-### Silent Mode (Keep .chant/ Local)
-
-If you don't want `.chant/` tracked in git (useful for personal workflow on shared repos):
-
-```bash
-# Enable silent mode for this project
-chant silent
-
-# Or enable globally for all projects
-chant silent --global
-```
-
-Silent mode:
-- Keeps `.chant/` out of git via `.git/info/exclude`
-- Suppresses warnings about untracked spec files
-- Ideal for OSS maintainers who want personal spec workflow
-
-### Working on Fix Branches
+## Working on Fix Branches
 
 When working on a specific issue branch instead of main:
 
