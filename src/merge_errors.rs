@@ -480,72 +480,144 @@ mod tests {
             "main",
             "fatal: cannot fast-forward",
         );
-        assert!(msg.contains("001-abc"));
-        assert!(msg.contains("chant/001-abc"));
-        assert!(msg.contains("main"));
-        assert!(msg.contains("Next Steps"));
-        assert!(msg.contains("chant merge 001-abc --no-ff"));
-        assert!(msg.contains("chant merge 001-abc --rebase"));
+        assert!(msg.contains("001-abc"), "should include spec ID");
+        assert!(msg.contains("chant/001-abc"), "should include branch name");
+        assert!(msg.contains("main"), "should include target branch");
+        assert!(msg.contains("Next Steps"), "should provide next steps");
+        assert!(
+            msg.contains("chant merge 001-abc --no-ff"),
+            "should suggest --no-ff option"
+        );
+        assert!(
+            msg.contains("chant merge 001-abc --rebase"),
+            "should suggest --rebase option"
+        );
     }
 
     #[test]
     fn test_merge_conflict_contains_recovery_steps() {
         let msg = merge_conflict("001-abc", "chant/001-abc", "main");
-        assert!(msg.contains("Merge conflicts detected"));
-        assert!(msg.contains("chant merge 001-abc --rebase --auto"));
-        assert!(msg.contains("git merge --no-ff chant/001-abc"));
-        assert!(msg.contains("Documentation"));
+        assert!(
+            msg.contains("Merge conflicts detected"),
+            "should describe error type"
+        );
+        assert!(
+            msg.contains("chant merge 001-abc --rebase --auto"),
+            "should suggest auto-resolve"
+        );
+        assert!(
+            msg.contains("git merge --no-ff chant/001-abc"),
+            "should provide manual merge command"
+        );
+        assert!(
+            msg.contains("Documentation"),
+            "should reference documentation"
+        );
     }
 
     #[test]
     fn test_branch_not_found_contains_search_steps() {
         let msg = branch_not_found("001-abc", "chant/001-abc");
-        assert!(msg.contains("not found"));
-        assert!(msg.contains("git branch --list"));
-        assert!(msg.contains("chant work 001-abc"));
+        assert!(msg.contains("not found"), "should state branch is missing");
+        assert!(
+            msg.contains("git branch --list"),
+            "should suggest listing branches"
+        );
+        assert!(
+            msg.contains("chant work 001-abc"),
+            "should suggest re-execution"
+        );
     }
 
     #[test]
     fn test_main_branch_not_found() {
         let msg = main_branch_not_found("main");
-        assert!(msg.contains("'main' does not exist"));
-        assert!(msg.contains("git branch -a"));
-        assert!(msg.contains(".chant/config.md"));
+        assert!(
+            msg.contains("'main' does not exist"),
+            "should state main branch is missing"
+        );
+        assert!(
+            msg.contains("git branch -a"),
+            "should suggest listing all branches"
+        );
+        assert!(
+            msg.contains(".chant/config.md"),
+            "should reference config file"
+        );
     }
 
     #[test]
     fn test_spec_status_not_mergeable() {
         let msg = spec_status_not_mergeable("001-abc", "Failed");
-        assert!(msg.contains("Cannot merge spec 001-abc"));
-        assert!(msg.contains("Failed"));
-        assert!(msg.contains("chant show 001-abc"));
-        assert!(msg.contains("chant finalize 001-abc"));
+        assert!(
+            msg.contains("Cannot merge spec 001-abc"),
+            "should state spec cannot be merged"
+        );
+        assert!(msg.contains("Failed"), "should include current status");
+        assert!(
+            msg.contains("chant show 001-abc"),
+            "should suggest inspecting spec"
+        );
+        assert!(
+            msg.contains("chant finalize 001-abc"),
+            "should suggest finalizing spec"
+        );
     }
 
     #[test]
     fn test_no_branch_for_spec() {
         let msg = no_branch_for_spec("001-abc");
-        assert!(msg.contains("No branch found"));
-        assert!(msg.contains("001-abc"));
-        assert!(msg.contains("git log --oneline --grep"));
+        assert!(
+            msg.contains("No branch found"),
+            "should state no branch exists"
+        );
+        assert!(msg.contains("001-abc"), "should include spec ID");
+        assert!(
+            msg.contains("git log --oneline --grep"),
+            "should suggest searching commit history"
+        );
     }
 
     #[test]
     fn test_worktree_already_exists() {
         let msg = worktree_already_exists("001-abc", "/tmp/chant-001-abc", "chant/001-abc");
-        assert!(msg.contains("Worktree already exists"));
-        assert!(msg.contains("/tmp/chant-001-abc"));
-        assert!(msg.contains("git worktree remove"));
-        assert!(msg.contains("chant cleanup"));
+        assert!(
+            msg.contains("Worktree already exists"),
+            "should describe the conflict"
+        );
+        assert!(
+            msg.contains("/tmp/chant-001-abc"),
+            "should include worktree path"
+        );
+        assert!(
+            msg.contains("git worktree remove"),
+            "should suggest manual removal"
+        );
+        assert!(
+            msg.contains("chant cleanup"),
+            "should suggest cleanup command"
+        );
     }
 
     #[test]
     fn test_no_commits_found() {
         let msg = no_commits_found("001-abc", "chant/001-abc");
-        assert!(msg.contains("No commits found"));
-        assert!(msg.contains("chant(001-abc):"));
-        assert!(msg.contains("git log chant/001-abc"));
-        assert!(msg.contains("--allow-no-commits"));
+        assert!(
+            msg.contains("No commits found"),
+            "should state no matching commits"
+        );
+        assert!(
+            msg.contains("chant(001-abc):"),
+            "should show expected pattern"
+        );
+        assert!(
+            msg.contains("git log chant/001-abc"),
+            "should suggest inspecting branch"
+        );
+        assert!(
+            msg.contains("--allow-no-commits"),
+            "should mention fallback option"
+        );
     }
 
     #[test]
@@ -555,52 +627,106 @@ mod tests {
             "driver.2 (branch not found)".to_string(),
         ];
         let msg = driver_members_incomplete("driver", &incomplete);
-        assert!(msg.contains("Cannot merge driver spec"));
-        assert!(msg.contains("driver.1"));
-        assert!(msg.contains("driver.2"));
-        assert!(msg.contains("chant merge driver"));
+        assert!(
+            msg.contains("Cannot merge driver spec"),
+            "should state driver cannot be merged"
+        );
+        assert!(
+            msg.contains("driver.1"),
+            "should list first incomplete member"
+        );
+        assert!(
+            msg.contains("driver.2"),
+            "should list second incomplete member"
+        );
+        assert!(
+            msg.contains("chant merge driver"),
+            "should suggest merging driver after members complete"
+        );
     }
 
     #[test]
     fn test_member_merge_failed() {
         let msg = member_merge_failed("driver", "driver.1", "Merge conflicts detected");
-        assert!(msg.contains("Member spec merge failed"));
-        assert!(msg.contains("driver"));
-        assert!(msg.contains("driver.1"));
-        assert!(msg.contains("chant merge driver.1"));
-        assert!(msg.contains("chant merge driver"));
+        assert!(
+            msg.contains("Member spec merge failed"),
+            "should describe member failure"
+        );
+        assert!(msg.contains("driver"), "should include driver spec ID");
+        assert!(msg.contains("driver.1"), "should include failed member ID");
+        assert!(
+            msg.contains("chant merge driver.1"),
+            "should suggest merging member first"
+        );
+        assert!(
+            msg.contains("chant merge driver"),
+            "should suggest retrying driver after"
+        );
     }
 
     #[test]
     fn test_generic_merge_failed() {
         let msg = generic_merge_failed("001-abc", "chant/001-abc", "main", "some error");
-        assert!(msg.contains("Merge failed for spec 001-abc"));
-        assert!(msg.contains("chant merge 001-abc --rebase"));
-        assert!(msg.contains("git merge --no-ff chant/001-abc"));
+        assert!(
+            msg.contains("Merge failed for spec 001-abc"),
+            "should state merge failed"
+        );
+        assert!(
+            msg.contains("chant merge 001-abc --rebase"),
+            "should suggest rebase option"
+        );
+        assert!(
+            msg.contains("git merge --no-ff chant/001-abc"),
+            "should provide manual merge command"
+        );
     }
 
     #[test]
     fn test_rebase_conflict() {
         let files = vec!["src/main.rs".to_string(), "src/lib.rs".to_string()];
         let msg = rebase_conflict("001-abc", "chant/001-abc", &files);
-        assert!(msg.contains("Rebase conflict"));
-        assert!(msg.contains("src/main.rs"));
-        assert!(msg.contains("src/lib.rs"));
-        assert!(msg.contains("chant merge 001-abc --rebase --auto"));
+        assert!(
+            msg.contains("Rebase conflict"),
+            "should describe rebase conflict"
+        );
+        assert!(
+            msg.contains("src/main.rs"),
+            "should list first conflicting file"
+        );
+        assert!(
+            msg.contains("src/lib.rs"),
+            "should list second conflicting file"
+        );
+        assert!(
+            msg.contains("chant merge 001-abc --rebase --auto"),
+            "should suggest auto-resolve"
+        );
     }
 
     #[test]
     fn test_merge_stopped() {
         let msg = merge_stopped("001-abc");
-        assert!(msg.contains("Merge stopped at spec 001-abc"));
-        assert!(msg.contains("--continue-on-error"));
+        assert!(
+            msg.contains("Merge stopped at spec 001-abc"),
+            "should identify where merge stopped"
+        );
+        assert!(
+            msg.contains("--continue-on-error"),
+            "should suggest continue-on-error flag"
+        );
     }
 
     #[test]
     fn test_rebase_stopped() {
         let msg = rebase_stopped("001-abc");
-        assert!(msg.contains("rebase conflict"));
-        assert!(msg.contains("--rebase --auto"));
+        assert!(
+            msg.contains("rebase conflict"),
+            "should describe rebase conflict"
+        );
+        assert!(
+            msg.contains("--rebase --auto"),
+            "should suggest auto-resolve flags"
+        );
     }
 
     #[test]
@@ -662,19 +788,34 @@ mod tests {
     fn test_parse_conflicting_files() {
         let status = "UU src/main.rs\nUU src/lib.rs\nM  src/other.rs\n";
         let files = parse_conflicting_files(status);
-        assert_eq!(files.len(), 2);
-        assert!(files.contains(&"src/main.rs".to_string()));
-        assert!(files.contains(&"src/lib.rs".to_string()));
+        assert_eq!(files.len(), 2, "should find exactly 2 conflicting files");
+        assert!(
+            files.contains(&"src/main.rs".to_string()),
+            "should include src/main.rs"
+        );
+        assert!(
+            files.contains(&"src/lib.rs".to_string()),
+            "should include src/lib.rs"
+        );
     }
 
     #[test]
     fn test_parse_conflicting_files_tree_conflicts() {
         let status = "DD deleted.rs\nAU added_unmerged.rs\nUD unmerged_deleted.rs\n";
         let files = parse_conflicting_files(status);
-        assert_eq!(files.len(), 3);
-        assert!(files.contains(&"deleted.rs".to_string()));
-        assert!(files.contains(&"added_unmerged.rs".to_string()));
-        assert!(files.contains(&"unmerged_deleted.rs".to_string()));
+        assert_eq!(files.len(), 3, "should find exactly 3 tree conflicts");
+        assert!(
+            files.contains(&"deleted.rs".to_string()),
+            "should include deleted.rs"
+        );
+        assert!(
+            files.contains(&"added_unmerged.rs".to_string()),
+            "should include added_unmerged.rs"
+        );
+        assert!(
+            files.contains(&"unmerged_deleted.rs".to_string()),
+            "should include unmerged_deleted.rs"
+        );
     }
 
     #[test]
@@ -688,21 +829,42 @@ mod tests {
             &files,
         );
 
-        assert!(msg.contains("Content conflicts detected"));
-        assert!(msg.contains("001-abc"));
-        assert!(msg.contains("chant/001-abc"));
-        assert!(msg.contains("main"));
-        assert!(msg.contains("Conflict type: content"));
-        assert!(msg.contains("src/main.rs"));
-        assert!(msg.contains("src/lib.rs"));
-        assert!(msg.contains("Next steps:"));
-        assert!(msg.contains("1."));
-        assert!(msg.contains("2."));
-        assert!(msg.contains("3."));
-        assert!(msg.contains("git merge --continue"));
-        assert!(msg.contains("chant merge 001-abc --rebase --auto"));
-        assert!(msg.contains("git merge --abort"));
-        assert!(msg.contains("Example"));
+        assert!(
+            msg.contains("Content conflicts detected"),
+            "should describe conflict type"
+        );
+        assert!(msg.contains("001-abc"), "should include spec ID");
+        assert!(msg.contains("chant/001-abc"), "should include branch name");
+        assert!(msg.contains("main"), "should include target branch");
+        assert!(
+            msg.contains("Conflict type: content"),
+            "should label conflict type"
+        );
+        assert!(
+            msg.contains("src/main.rs"),
+            "should list first conflicting file"
+        );
+        assert!(
+            msg.contains("src/lib.rs"),
+            "should list second conflicting file"
+        );
+        assert!(
+            msg.contains("Next steps:"),
+            "should provide next steps section"
+        );
+        assert!(msg.contains("1."), "should have numbered step 1");
+        assert!(msg.contains("2."), "should have numbered step 2");
+        assert!(msg.contains("3."), "should have numbered step 3");
+        assert!(
+            msg.contains("git merge --continue"),
+            "should suggest continuing merge"
+        );
+        assert!(
+            msg.contains("chant merge 001-abc --rebase --auto"),
+            "should suggest auto-resolve"
+        );
+        assert!(msg.contains("git merge --abort"), "should suggest aborting");
+        assert!(msg.contains("Example"), "should provide example workflow");
     }
 
     #[test]
@@ -716,9 +878,18 @@ mod tests {
             &files,
         );
 
-        assert!(msg.contains("Tree conflicts detected"));
-        assert!(msg.contains("Conflict type: tree"));
-        assert!(msg.contains("src/renamed.rs"));
+        assert!(
+            msg.contains("Tree conflicts detected"),
+            "should describe tree conflict"
+        );
+        assert!(
+            msg.contains("Conflict type: tree"),
+            "should label conflict as tree type"
+        );
+        assert!(
+            msg.contains("src/renamed.rs"),
+            "should list conflicting file"
+        );
     }
 
     #[test]
@@ -732,10 +903,22 @@ mod tests {
             &files,
         );
 
-        assert!(msg.contains("Cannot fast-forward"));
-        assert!(msg.contains("Conflict type: fast-forward"));
-        assert!(msg.contains("chant merge 001-abc --no-ff"));
-        assert!(msg.contains("chant merge 001-abc --rebase"));
+        assert!(
+            msg.contains("Cannot fast-forward"),
+            "should describe fast-forward failure"
+        );
+        assert!(
+            msg.contains("Conflict type: fast-forward"),
+            "should label conflict as fast-forward"
+        );
+        assert!(
+            msg.contains("chant merge 001-abc --no-ff"),
+            "should suggest --no-ff option"
+        );
+        assert!(
+            msg.contains("chant merge 001-abc --rebase"),
+            "should suggest --rebase option"
+        );
     }
 
     #[test]
@@ -749,6 +932,9 @@ mod tests {
             &files,
         );
 
-        assert!(msg.contains("unable to determine conflicting files"));
+        assert!(
+            msg.contains("unable to determine conflicting files"),
+            "should indicate when files cannot be determined"
+        );
     }
 }
