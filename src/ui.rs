@@ -7,6 +7,13 @@ use colored::{ColoredString, Colorize};
 
 use crate::spec::SpecStatus;
 
+/// Check if quiet mode is enabled via environment variable or --quiet flag
+pub fn is_quiet() -> bool {
+    std::env::var("CHANT_QUIET")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
 /// Returns a colored status icon for the given spec status.
 ///
 /// Icons:

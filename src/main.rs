@@ -29,6 +29,10 @@ use cmd::dispatch::Execute;
     after_help = "GETTING STARTED:\n    chant init                 Interactive setup wizard (recommended)\n    chant init --help           Show all initialization options\n\n    The wizard guides you through project setup, model selection, and agent configuration."
 )]
 struct Cli {
+    /// Suppress all non-essential output
+    #[arg(short, long, global = true)]
+    quiet: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -705,6 +709,12 @@ fn main() -> Result<()> {
 
 fn run() -> Result<()> {
     let cli = Cli::parse();
+
+    // Set quiet mode globally if --quiet flag is present
+    if cli.quiet {
+        std::env::set_var("CHANT_QUIET", "1");
+    }
+
     cli.command.execute()
 }
 

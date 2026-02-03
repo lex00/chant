@@ -537,14 +537,16 @@ pub fn cmd_list(
     }
 
     if specs.is_empty() {
-        if ready_only && !labels.is_empty() {
-            println!("No ready specs with specified labels.");
-        } else if ready_only {
-            println!("No ready specs.");
-        } else if !labels.is_empty() {
-            println!("No specs with specified labels.");
-        } else {
-            println!("No specs. Create one with `chant add \"description\"`");
+        if !chant::ui::is_quiet() {
+            if ready_only && !labels.is_empty() {
+                println!("No ready specs with specified labels.");
+            } else if ready_only {
+                println!("No ready specs.");
+            } else if !labels.is_empty() {
+                println!("No specs with specified labels.");
+            } else {
+                println!("No specs. Create one with `chant add \"description\"`");
+            }
         }
         return Ok(());
     }
@@ -615,14 +617,16 @@ pub fn cmd_list(
             format!(" {}", indicators.join(" "))
         };
 
-        println!(
-            "{} {}{} {}{}",
-            icon,
-            spec.id.cyan(),
-            approval_marker,
-            spec.title.as_deref().unwrap_or("(no title)"),
-            indicators_str
-        );
+        if !chant::ui::is_quiet() {
+            println!(
+                "{} {}{} {}{}",
+                icon,
+                spec.id.cyan(),
+                approval_marker,
+                spec.title.as_deref().unwrap_or("(no title)"),
+                indicators_str
+            );
+        }
     }
 
     Ok(())
@@ -677,8 +681,10 @@ fn cmd_status_once(global: bool, repo_filter: Option<&str>, brief: bool, json: b
             }
         }
 
-        println!("{}", "Chant Status (Global)".bold());
-        println!("====================");
+        if !chant::ui::is_quiet() {
+            println!("{}", "Chant Status (Global)".bold());
+            println!("====================");
+        }
 
         // Sort repos by name for consistent output
         let mut repos: Vec<_> = per_repo_stats.into_iter().collect();
@@ -690,18 +696,20 @@ fn cmd_status_once(global: bool, repo_filter: Option<&str>, brief: bool, json: b
         let mut total_failed = 0;
 
         for (repo_name, (pending, in_progress, completed, failed)) in repos {
-            println!("\n{}: {}", "Repository".bold(), repo_name.cyan());
-            println!(
-                "  {:<18} {} | {:<18} {} | {:<18} {} | {:<18} {}",
-                "Pending",
-                pending,
-                "In Progress",
-                in_progress,
-                "Completed",
-                completed,
-                "Failed",
-                failed
-            );
+            if !chant::ui::is_quiet() {
+                println!("\n{}: {}", "Repository".bold(), repo_name.cyan());
+                println!(
+                    "  {:<18} {} | {:<18} {} | {:<18} {} | {:<18} {}",
+                    "Pending",
+                    pending,
+                    "In Progress",
+                    in_progress,
+                    "Completed",
+                    completed,
+                    "Failed",
+                    failed
+                );
+            }
 
             total_pending += pending;
             total_in_progress += in_progress;
@@ -710,41 +718,45 @@ fn cmd_status_once(global: bool, repo_filter: Option<&str>, brief: bool, json: b
         }
 
         let total = total_pending + total_in_progress + total_completed + total_failed;
-        println!("\n{}", "Total".bold());
-        println!("─────");
-        println!(
-            "  {:<18} {} | {:<18} {} | {:<18} {} | {:<18} {}",
-            "Pending",
-            total_pending,
-            "In Progress",
-            total_in_progress,
-            "Completed",
-            total_completed,
-            "Failed",
-            total_failed
-        );
-        println!("  {:<18} {}", "Overall Total:", total);
+        if !chant::ui::is_quiet() {
+            println!("\n{}", "Total".bold());
+            println!("─────");
+            println!(
+                "  {:<18} {} | {:<18} {} | {:<18} {} | {:<18} {}",
+                "Pending",
+                total_pending,
+                "In Progress",
+                total_in_progress,
+                "Completed",
+                total_completed,
+                "Failed",
+                total_failed
+            );
+            println!("  {:<18} {}", "Overall Total:", total);
+        }
     } else {
         // Single repo status output - use formatter based on flags
         let specs_dir = crate::cmd::ensure_initialized()?;
         let status_data = chant::status::aggregate_status(&specs_dir)?;
 
-        if json {
-            let output = chant::status::format_status_as_json(&status_data)?;
-            println!("{}", output);
-        } else if brief {
-            let output = status_data.format_brief();
-            println!("{}", output);
-        } else {
-            let output = chant::formatters::format_regular_status(&status_data);
-            println!("{}", output);
+        if !chant::ui::is_quiet() {
+            if json {
+                let output = chant::status::format_status_as_json(&status_data)?;
+                println!("{}", output);
+            } else if brief {
+                let output = status_data.format_brief();
+                println!("{}", output);
+            } else {
+                let output = chant::formatters::format_regular_status(&status_data);
+                println!("{}", output);
 
-            // Show silent mode indicator if enabled
-            if is_silent_mode() {
-                println!(
-                    "\n{} Silent mode enabled - specs are local-only",
-                    "ℹ".cyan()
-                );
+                // Show silent mode indicator if enabled
+                if is_silent_mode() {
+                    println!(
+                        "\n{} Silent mode enabled - specs are local-only",
+                        "ℹ".cyan()
+                    );
+                }
             }
         }
     }

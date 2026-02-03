@@ -99,16 +99,18 @@ status: pending
         }
     }
 
-    println!("{} {}", "Created".green(), id.cyan());
-    if needs_approval {
-        println!("{} Requires approval before work can begin", "ℹ".cyan());
-    }
-    println!("Edit: {}", filepath.display());
+    if !chant::ui::is_quiet() {
+        println!("{} {}", "Created".green(), id.cyan());
+        if needs_approval {
+            println!("{} Requires approval before work can begin", "ℹ".cyan());
+        }
+        println!("Edit: {}", filepath.display());
 
-    // Calculate and display quality score
-    let spec = spec::Spec::load(&filepath)?;
-    let score = calculate_spec_score(&spec, &config);
-    display_quality_feedback(&score, &spec);
+        // Calculate and display quality score
+        let spec = spec::Spec::load(&filepath)?;
+        let score = calculate_spec_score(&spec, &config);
+        display_quality_feedback(&score, &spec);
+    }
 
     Ok(())
 }
