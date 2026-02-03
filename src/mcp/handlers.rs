@@ -1,14 +1,7 @@
-//! Model Context Protocol (MCP) server implementation.
-//!
-//! # Doc Audit
-//! - audited: 2026-01-25
-//! - docs: reference/mcp.md
-//! - ignore: false
+//! MCP tool handlers and method implementations.
 
 use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
@@ -18,206 +11,18 @@ use chant::paths::{ARCHIVE_DIR, LOGS_DIR, SPECS_DIR};
 use chant::spec::{load_all_specs, resolve_spec, SpecStatus};
 use chant::spec_group;
 
-/// JSON-RPC 2.0 Request
-#[derive(Debug, Deserialize)]
-struct JsonRpcRequest {
-    jsonrpc: String,
-    method: String,
-    #[serde(default)]
-    params: Option<Value>,
-    id: Option<Value>,
-}
+use super::protocol::{PROTOCOL_VERSION, SERVER_NAME, SERVER_VERSION};
 
-/// JSON-RPC 2.0 Response
-///
-/// Represents a JSON-RPC 2.0 response message. Either `result` or `error` will be present,
-/// but not both.
-///
-/// # Success Response
-///
-/// When the request succeeds, `result` contains the response data and `error` is `None`.
-///
-/// # Error Response
-///
-/// When the request fails, `error` contains error details and `result` is `None`.
-///
-/// # Fields
-///
-/// - `jsonrpc`: Version string, always `"2.0"`
-/// - `result`: Success data (tool result or handler response)
-/// - `error`: Error details if request failed
-/// - `id`: Request ID from the original request (for correlation)
-#[derive(Debug, Serialize)]
-struct JsonRpcResponse {
-    jsonrpc: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    result: Option<Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    error: Option<JsonRpcError>,
-    id: Value,
-}
-
-/// JSON-RPC 2.0 Error
-///
-/// Represents an error in a JSON-RPC response.
-///
-/// # Error Codes
-///
-/// - `-32700`: Parse error (invalid JSON)
-/// - `-32600`: Invalid JSON-RPC version (jsonrpc != "2.0")
-/// - `-32603`: Server error (internal handler error)
-///
-/// # Fields
-///
-/// - `code`: JSON-RPC error code (negative integer)
-/// - `message`: Human-readable error description
-/// - `data`: Optional additional error context
-#[derive(Debug, Serialize)]
-struct JsonRpcError {
-    code: i32,
-    message: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    data: Option<Value>,
-}
-
-impl JsonRpcResponse {
-    /// Create a successful response.
-    ///
-    /// # Arguments
-    ///
-    /// - `id`: Request ID to echo back
-    /// - `result`: Response data (typically a JSON object)
-    ///
-    /// # Returns
-    ///
-    /// A response with `result` set and `error` as `None`.
-    fn success(id: Value, result: Value) -> Self {
-        Self {
-            jsonrpc: "2.0".to_string(),
-            result: Some(result),
-            error: None,
-            id,
-        }
-    }
-
-    /// Create an error response.
-    ///
-    /// # Arguments
-    ///
-    /// - `id`: Request ID to echo back
-    /// - `code`: JSON-RPC error code (negative integer)
-    ///   - `-32700`: Parse error
-    ///   - `-32600`: Invalid JSON-RPC version
-    ///   - `-32603`: Server error
-    /// - `message`: Human-readable error description
-    ///
-    /// # Returns
-    ///
-    /// A response with `error` set and `result` as `None`.
-    fn error(id: Value, code: i32, message: &str) -> Self {
-        Self {
-            jsonrpc: "2.0".to_string(),
-            result: None,
-            error: Some(JsonRpcError {
-                code,
-                message: message.to_string(),
-                data: None,
-            }),
-            id,
-        }
+pub fn handle_method(method: &str, params: Option<&Value>) -> Result<Value> {
+    match method {
+        "initialize" => handle_initialize(params),
+        "tools/list" => handle_tools_list(),
+        "tools/call" => handle_tools_call(params),
+        _ => anyhow::bail!("Method not found: {}", method),
     }
 }
 
-/// MCP Server info
-const SERVER_NAME: &str = "chant";
-const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
-const PROTOCOL_VERSION: &str = "2024-11-05";
-
-/// Run the MCP server, reading from stdin and writing to stdout.
-pub fn run_server() -> Result<()> {
-    let stdin = std::io::stdin();
-    let mut stdout = std::io::stdout();
-    let reader = BufReader::new(stdin.lock());
-
-    for line in reader.lines() {
-        let line = line.context("Failed to read from stdin")?;
-
-        if line.trim().is_empty() {
-            continue;
-        }
-
-        let response = handle_request(&line);
-
-        if let Some(resp) = response {
-            let output = serde_json::to_string(&resp)?;
-            writeln!(stdout, "{}", output)?;
-            stdout.flush()?;
-        }
-    }
-
-    Ok(())
-}
-
-/// Handle a single JSON-RPC request line.
-///
-/// # Request Processing
-///
-/// 1. Parse JSON-RPC 2.0 request from the line
-/// 2. Validate `jsonrpc` field is `"2.0"`
-/// 3. Dispatch to appropriate handler based on `method`
-/// 4. Return response or `None` for notifications
-///
-/// # Error Handling
-///
-/// - **Parse Error (-32700)**: JSON is invalid or malformed
-/// - **Invalid Version (-32600)**: `jsonrpc` field is not `"2.0"`
-/// - **Server Error (-32603)**: Handler function returns `Err`
-/// - **No Response**: Notifications (requests without `id`) are handled silently
-///
-/// # Returns
-///
-/// - `Some(response)`: For requests (with `id`)
-/// - `None`: For notifications (without `id`)
-fn handle_request(line: &str) -> Option<JsonRpcResponse> {
-    let request: JsonRpcRequest = match serde_json::from_str(line) {
-        Ok(req) => req,
-        Err(e) => {
-            return Some(JsonRpcResponse::error(
-                Value::Null,
-                -32700,
-                &format!("Parse error: {}", e),
-            ));
-        }
-    };
-
-    // Validate jsonrpc version
-    if request.jsonrpc != "2.0" {
-        return Some(JsonRpcResponse::error(
-            request.id.unwrap_or(Value::Null),
-            -32600,
-            "Invalid JSON-RPC version",
-        ));
-    }
-
-    // Notifications (no id) don't get responses
-    let id = match request.id {
-        Some(id) => id,
-        None => {
-            // Handle notification (no response needed)
-            handle_notification(&request.method, request.params.as_ref());
-            return None;
-        }
-    };
-
-    let result = handle_method(&request.method, request.params.as_ref());
-
-    match result {
-        Ok(value) => Some(JsonRpcResponse::success(id, value)),
-        Err(e) => Some(JsonRpcResponse::error(id, -32603, &e.to_string())),
-    }
-}
-
-fn handle_notification(method: &str, _params: Option<&Value>) {
+pub fn handle_notification(method: &str, _params: Option<&Value>) {
     // Handle notifications that don't require a response
     match method {
         "notifications/initialized" => {
@@ -226,15 +31,6 @@ fn handle_notification(method: &str, _params: Option<&Value>) {
         _ => {
             // Unknown notification, ignore
         }
-    }
-}
-
-fn handle_method(method: &str, params: Option<&Value>) -> Result<Value> {
-    match method {
-        "initialize" => handle_initialize(params),
-        "tools/list" => handle_tools_list(),
-        "tools/call" => handle_tools_call(params),
-        _ => anyhow::bail!("Method not found: {}", method),
     }
 }
 
@@ -891,10 +687,6 @@ fn tool_chant_spec_update(arguments: Option<&Value>) -> Result<Value> {
     }))
 }
 
-// ============================================================================
-// New Query Tools (read-only)
-// ============================================================================
-
 fn tool_chant_status(arguments: Option<&Value>) -> Result<Value> {
     let specs_dir = match mcp_ensure_initialized() {
         Ok(dir) => dir,
@@ -1317,10 +1109,6 @@ fn tool_chant_diagnose(arguments: Option<&Value>) -> Result<Value> {
         ]
     }))
 }
-
-// ============================================================================
-// New Mutating Tools
-// ============================================================================
 
 fn tool_chant_add(arguments: Option<&Value>) -> Result<Value> {
     let specs_dir = match mcp_ensure_initialized() {
@@ -2010,124 +1798,4 @@ fn tool_chant_work_list(arguments: Option<&Value>) -> Result<Value> {
             }
         ]
     }))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_handle_initialize() {
-        let result = handle_initialize(None).unwrap();
-        assert_eq!(result["protocolVersion"], PROTOCOL_VERSION);
-        assert_eq!(result["serverInfo"]["name"], SERVER_NAME);
-    }
-
-    #[test]
-    fn test_handle_tools_list() {
-        let result = handle_tools_list().unwrap();
-        let tools = result["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 16);
-        // Query tools (7)
-        assert_eq!(tools[0]["name"], "chant_spec_list");
-        assert_eq!(tools[1]["name"], "chant_spec_get");
-        assert_eq!(tools[2]["name"], "chant_ready");
-        assert_eq!(tools[3]["name"], "chant_status");
-        assert_eq!(tools[4]["name"], "chant_log");
-        assert_eq!(tools[5]["name"], "chant_search");
-        assert_eq!(tools[6]["name"], "chant_diagnose");
-        // Mutating tools (9)
-        assert_eq!(tools[7]["name"], "chant_spec_update");
-        assert_eq!(tools[8]["name"], "chant_add");
-        assert_eq!(tools[9]["name"], "chant_finalize");
-        assert_eq!(tools[10]["name"], "chant_resume");
-        assert_eq!(tools[11]["name"], "chant_cancel");
-        assert_eq!(tools[12]["name"], "chant_archive");
-        assert_eq!(tools[13]["name"], "chant_verify");
-        assert_eq!(tools[14]["name"], "chant_work_start");
-        assert_eq!(tools[15]["name"], "chant_work_list");
-    }
-
-    #[test]
-    fn test_json_rpc_response_success() {
-        let resp = JsonRpcResponse::success(json!(1), json!({"test": true}));
-        assert_eq!(resp.jsonrpc, "2.0");
-        assert!(resp.result.is_some());
-        assert!(resp.error.is_none());
-    }
-
-    #[test]
-    fn test_json_rpc_response_error() {
-        let resp = JsonRpcResponse::error(json!(1), -32600, "Invalid request");
-        assert_eq!(resp.jsonrpc, "2.0");
-        assert!(resp.result.is_none());
-        assert!(resp.error.is_some());
-        assert_eq!(resp.error.as_ref().unwrap().code, -32600);
-    }
-
-    #[test]
-    fn test_chant_status_schema_has_brief_and_activity() {
-        let result = handle_tools_list().unwrap();
-        let tools = result["tools"].as_array().unwrap();
-        let status_tool = tools.iter().find(|t| t["name"] == "chant_status").unwrap();
-
-        let props = &status_tool["inputSchema"]["properties"];
-        assert!(
-            props.get("brief").is_some(),
-            "chant_status should have 'brief' property"
-        );
-        assert!(
-            props.get("include_activity").is_some(),
-            "chant_status should have 'include_activity' property"
-        );
-
-        // Check descriptions
-        assert!(props["brief"]["description"]
-            .as_str()
-            .unwrap()
-            .contains("single-line"));
-        assert!(props["include_activity"]["description"]
-            .as_str()
-            .unwrap()
-            .contains("activity"));
-    }
-
-    #[test]
-    fn test_chant_ready_has_limit_param() {
-        let result = handle_tools_list().unwrap();
-        let tools = result["tools"].as_array().unwrap();
-        let ready_tool = tools.iter().find(|t| t["name"] == "chant_ready").unwrap();
-
-        let props = &ready_tool["inputSchema"]["properties"];
-        assert!(
-            props.get("limit").is_some(),
-            "chant_ready should have 'limit' property"
-        );
-        assert_eq!(props["limit"]["type"], "integer");
-        assert!(props["limit"]["description"]
-            .as_str()
-            .unwrap()
-            .contains("50"));
-    }
-
-    #[test]
-    fn test_chant_spec_list_has_limit_param() {
-        let result = handle_tools_list().unwrap();
-        let tools = result["tools"].as_array().unwrap();
-        let list_tool = tools
-            .iter()
-            .find(|t| t["name"] == "chant_spec_list")
-            .unwrap();
-
-        let props = &list_tool["inputSchema"]["properties"];
-        assert!(
-            props.get("limit").is_some(),
-            "chant_spec_list should have 'limit' property"
-        );
-        assert_eq!(props["limit"]["type"], "integer");
-        assert!(props["limit"]["description"]
-            .as_str()
-            .unwrap()
-            .contains("50"));
-    }
 }
