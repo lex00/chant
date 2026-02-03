@@ -213,6 +213,33 @@ pub fn find_spec_by_id(
     resolve_dependency(spec_id, current_repo_specs_dir, repos)
 }
 
+/// Check if a spec ID exists in the archive directory.
+fn is_spec_archived(spec_id: &str, specs_dir: &Path) -> bool {
+    let archive_dir = match specs_dir.parent() {
+        Some(parent) => parent.join("archive"),
+        None => return false,
+    };
+
+    if !archive_dir.exists() {
+        return false;
+    }
+
+    // Search for the spec in archived directories
+    if let Ok(entries) = std::fs::read_dir(&archive_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                let spec_path = path.join(format!("{}.md", spec_id));
+                if spec_path.exists() {
+                    return true;
+                }
+            }
+        }
+    }
+
+    false
+}
+
 /// Check if a spec is blocked by unmet dependencies, including cross-repo deps.
 pub fn is_blocked_by_dependencies(
     spec: &Spec,
@@ -223,8 +250,18 @@ pub fn is_blocked_by_dependencies(
     if let Some(deps) = &spec.frontmatter.depends_on {
         for dep_id in deps {
             match find_spec_by_id(dep_id, all_specs, current_repo_specs_dir, repos) {
-                Ok(dep_spec) if dep_spec.frontmatter.status == SpecStatus::Completed => continue,
-                _ => return true, // Unmet dependency (not found or not completed)
+                Ok(dep_spec) => {
+                    // Check if dependency is completed
+                    if dep_spec.frontmatter.status == SpecStatus::Completed {
+                        continue;
+                    }
+                    // Check if the spec is archived (archived specs are treated as completed)
+                    if is_spec_archived(dep_id, current_repo_specs_dir) {
+                        continue;
+                    }
+                    return true; // Unmet dependency (not completed and not archived)
+                }
+                _ => return true, // Unmet dependency (not found)
             }
         }
     }
@@ -375,6 +412,45 @@ mod tests {
         fs::create_dir_all(&specs_dir).unwrap();
 
         let is_blocked = is_blocked_by_dependencies(&spec_with_dep, &[dependency], &specs_dir, &[]);
+        assert!(!is_blocked);
+    }
+
+    #[test]
+    fn test_is_blocked_by_dependencies_archived() {
+        let spec_with_dep = Spec {
+            id: "2026-01-27-001-abc".to_string(),
+            frontmatter: crate::spec::SpecFrontmatter {
+                depends_on: Some(vec!["2026-01-27-002-def".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Test".to_string()),
+            body: "# Test\n\nBody.".to_string(),
+        };
+
+        // Create an archived dependency that is NOT marked as completed
+        let archived_dependency = Spec {
+            id: "2026-01-27-002-def".to_string(),
+            frontmatter: crate::spec::SpecFrontmatter {
+                status: SpecStatus::InProgress, // Not completed
+                ..Default::default()
+            },
+            title: Some("Archived Dep".to_string()),
+            body: "# Archived Dep\n\nBody.".to_string(),
+        };
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path().join("specs");
+        let archive_dir = temp_dir.path().join("archive").join("2026-01-27");
+        fs::create_dir_all(&specs_dir).unwrap();
+        fs::create_dir_all(&archive_dir).unwrap();
+
+        // Save the archived dependency to the archive directory
+        archived_dependency
+            .save(&archive_dir.join("2026-01-27-002-def.md"))
+            .unwrap();
+
+        // The spec should NOT be blocked because the dependency is in the archive
+        let is_blocked = is_blocked_by_dependencies(&spec_with_dep, &[], &specs_dir, &[]);
         assert!(!is_blocked);
     }
 }
