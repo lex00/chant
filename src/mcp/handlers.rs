@@ -319,6 +319,38 @@ fn handle_tools_list() -> Result<Value> {
                         }
                     }
                 }
+            },
+            {
+                "name": "chant_stop",
+                "description": "Stop a running work process for a spec",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "string",
+                            "description": "Spec ID (full or partial)"
+                        }
+                    },
+                    "required": ["id"]
+                }
+            },
+            {
+                "name": "chant_takeover",
+                "description": "Take over a running spec, stopping the agent and analyzing progress",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "string",
+                            "description": "Spec ID (full or partial)"
+                        },
+                        "force": {
+                            "type": "boolean",
+                            "description": "Force takeover even if spec is not running"
+                        }
+                    },
+                    "required": ["id"]
+                }
             }
         ]
     }))
@@ -353,6 +385,8 @@ fn handle_tools_call(params: Option<&Value>) -> Result<Value> {
         "chant_verify" => tool_chant_verify(arguments),
         "chant_work_start" => tool_chant_work_start(arguments),
         "chant_work_list" => tool_chant_work_list(arguments),
+        "chant_stop" => tool_chant_stop(arguments),
+        "chant_takeover" => tool_chant_takeover(arguments),
         _ => anyhow::bail!("Unknown tool: {}", name),
     }
 }
@@ -1852,4 +1886,117 @@ fn tool_chant_work_list(arguments: Option<&Value>) -> Result<Value> {
             }
         ]
     }))
+}
+
+fn tool_chant_stop(arguments: Option<&Value>) -> Result<Value> {
+    let specs_dir = match mcp_ensure_initialized() {
+        Ok(dir) => dir,
+        Err(err_response) => return Ok(err_response),
+    };
+
+    let args = arguments.ok_or_else(|| anyhow::anyhow!("Missing arguments"))?;
+
+    let id = args
+        .get("id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Missing required parameter: id"))?;
+
+    // Resolve spec to get full ID
+    let spec = match resolve_spec(&specs_dir, id) {
+        Ok(s) => s,
+        Err(e) => {
+            return Ok(json!({
+                "content": [
+                    {
+                        "type": "text",
+                        "text": e.to_string()
+                    }
+                ],
+                "isError": true
+            }));
+        }
+    };
+
+    // Try to stop the work process
+    match chant::pid::stop_spec_work(&spec.id) {
+        Ok(()) => Ok(json!({
+            "content": [
+                {
+                    "type": "text",
+                    "text": format!("Successfully stopped work process for spec '{}'", spec.id)
+                }
+            ]
+        })),
+        Err(e) => Ok(json!({
+            "content": [
+                {
+                    "type": "text",
+                    "text": format!("Failed to stop work process for spec '{}': {}", spec.id, e)
+                }
+            ],
+            "isError": true
+        })),
+    }
+}
+
+fn tool_chant_takeover(arguments: Option<&Value>) -> Result<Value> {
+    let specs_dir = match mcp_ensure_initialized() {
+        Ok(dir) => dir,
+        Err(err_response) => return Ok(err_response),
+    };
+
+    let args = arguments.ok_or_else(|| anyhow::anyhow!("Missing arguments"))?;
+
+    let id = args
+        .get("id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Missing required parameter: id"))?;
+
+    let force = args.get("force").and_then(|v| v.as_bool()).unwrap_or(false);
+
+    // Resolve spec to get full ID
+    let spec = match resolve_spec(&specs_dir, id) {
+        Ok(s) => s,
+        Err(e) => {
+            return Ok(json!({
+                "content": [
+                    {
+                        "type": "text",
+                        "text": e.to_string()
+                    }
+                ],
+                "isError": true
+            }));
+        }
+    };
+
+    // Execute takeover
+    match crate::cmd::takeover::cmd_takeover(&spec.id, force) {
+        Ok(result) => {
+            let response = json!({
+                "spec_id": result.spec_id,
+                "analysis": result.analysis,
+                "log_tail": result.log_tail,
+                "suggestion": result.suggestion
+            });
+
+            Ok(json!({
+                "content": [
+                    {
+                        "type": "text",
+                        "text": serde_json::to_string_pretty(&response)?
+                    }
+                ]
+            }))
+        }
+        Err(e) => Ok(json!({
+            "content": [
+                {
+                    "type": "text",
+                    "text": format!("Failed to take over spec '{}': {}", spec.id, e)
+                }
+            ],
+            "isError": true
+        })),
+    }
 }

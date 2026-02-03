@@ -25,6 +25,8 @@ pub mod search;
 pub mod silent;
 pub mod site;
 pub mod spec;
+pub mod stop;
+pub mod takeover;
 pub mod template;
 pub mod validate;
 pub mod verify;

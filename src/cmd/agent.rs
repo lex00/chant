@@ -76,6 +76,11 @@ pub fn invoke_agent_with_command_override(
         )
     })?;
 
+    // Write PID file for tracking
+    if let Err(e) = chant::pid::write_pid_file(&spec.id, child.id()) {
+        eprintln!("{} Failed to write PID file: {}", "⚠".yellow(), e);
+    }
+
     // Collect output while streaming to terminal and log
     let mut captured_output = String::new();
 
@@ -99,6 +104,11 @@ pub fn invoke_agent_with_command_override(
     }
 
     let status = child.wait()?;
+
+    // Clean up PID file
+    if let Err(e) = chant::pid::remove_pid_file(&spec.id) {
+        eprintln!("{} Failed to remove PID file: {}", "⚠".yellow(), e);
+    }
 
     if !status.success() {
         anyhow::bail!("Agent exited with status: {}", status);
@@ -173,6 +183,16 @@ pub fn invoke_agent_with_command(
         )
     })?;
 
+    // Write PID file for tracking
+    if let Err(e) = chant::pid::write_pid_file(spec_id, child.id()) {
+        eprintln!(
+            "{} [{}] Failed to write PID file: {}",
+            "⚠".yellow(),
+            spec_id,
+            e
+        );
+    }
+
     // Stream stdout with prefix to both terminal and log file
     if let Some(stdout) = child.stdout.take() {
         let reader = BufReader::new(stdout);
@@ -197,6 +217,16 @@ pub fn invoke_agent_with_command(
     }
 
     let status = child.wait()?;
+
+    // Clean up PID file
+    if let Err(e) = chant::pid::remove_pid_file(spec_id) {
+        eprintln!(
+            "{} [{}] Failed to remove PID file: {}",
+            "⚠".yellow(),
+            spec_id,
+            e
+        );
+    }
 
     if !status.success() {
         anyhow::bail!("Agent exited with status: {}", status);

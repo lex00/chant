@@ -448,6 +448,22 @@ enum Commands {
         #[arg(long, num_args = 0..=1, require_equals = true, value_name = "PREFIX")]
         branch: Option<String>,
     },
+    /// Stop a running work process for a spec
+    Stop {
+        /// Spec ID (full or partial)
+        id: String,
+        /// Force stop without confirmation
+        #[arg(long)]
+        force: bool,
+    },
+    /// Take over a running spec, stopping the agent and analyzing progress
+    Takeover {
+        /// Spec ID (full or partial)
+        id: String,
+        /// Force takeover even if spec is not running
+        #[arg(long)]
+        force: bool,
+    },
     /// Cancel a spec (soft-delete with status change, or hard-delete with --delete)
     Cancel {
         /// Spec ID (full or partial)
@@ -1014,6 +1030,15 @@ impl cmd::dispatch::Execute for Commands {
                 prompt,
                 branch,
             } => cmd::lifecycle::cmd_resume(&id, work, prompt.as_deref(), branch),
+            Commands::Stop { id, force } => cmd::stop::cmd_stop(&id, force),
+            Commands::Takeover { id, force } => {
+                let result = cmd::takeover::cmd_takeover(&id, force)?;
+                println!("\n{}", "Analysis:".bold());
+                println!("{}", result.analysis);
+                println!("\n{}", "Suggestion:".bold());
+                println!("{}", result.suggestion);
+                Ok(())
+            }
             Commands::Cancel {
                 id,
                 skip_checks,
