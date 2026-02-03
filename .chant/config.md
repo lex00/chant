@@ -8,7 +8,7 @@ defaults:
   rotation_strategy: round-robin
   provider: claude
   prompt_extensions:
-    - output-concise
+  - output-concise
 parallel:
   stagger_delay_ms: 3000
   agents:
@@ -24,5 +24,6 @@ parallel:
     enabled: true
     prompt: parallel-cleanup
     auto_run: false
+silent: false
 ---
 # Chant Configuration

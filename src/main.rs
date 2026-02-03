@@ -477,6 +477,18 @@ enum Commands {
         #[arg(long)]
         validate: bool,
     },
+    /// Manage silent mode for suppressing git tracking and output
+    Silent {
+        /// Apply to global config instead of project config
+        #[arg(long)]
+        global: bool,
+        /// Disable silent mode
+        #[arg(long)]
+        off: bool,
+        /// Show current silent mode status
+        #[arg(long)]
+        status: bool,
+    },
     /// Show version information
     Version {
         /// Show additional build information
@@ -1031,6 +1043,11 @@ impl cmd::dispatch::Execute for Commands {
                     Ok(())
                 }
             }
+            Commands::Silent {
+                global,
+                off,
+                status,
+            } => cmd::silent::cmd_silent(global, off, status),
             Commands::Version { verbose } => cmd_version(verbose),
             Commands::Export {
                 format,

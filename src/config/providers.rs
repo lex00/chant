@@ -13,4 +13,6 @@ pub struct RepoConfig {
 pub struct ProjectConfig {
     pub name: String,
     pub prefix: Option<String>,
+    #[serde(default)]
+    pub silent: bool,
 }

@@ -190,6 +190,7 @@ struct PartialConfig {
 struct PartialProjectConfig {
     pub name: Option<String>,
     pub prefix: Option<String>,
+    pub silent: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -233,6 +234,11 @@ impl PartialConfig {
                 name: project_project.name.unwrap_or_default(),
                 // Project prefix overrides global prefix
                 prefix: project_project.prefix.or(global_project.prefix),
+                // Project silent overrides global silent
+                silent: project_project
+                    .silent
+                    .or(global_project.silent)
+                    .unwrap_or(false),
             },
             defaults: DefaultsConfig {
                 // Project value > global value > default

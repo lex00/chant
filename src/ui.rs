@@ -7,10 +7,26 @@ use colored::{ColoredString, Colorize};
 
 use crate::spec::SpecStatus;
 
-/// Check if quiet mode is enabled via environment variable or --quiet flag
+/// Check if quiet mode is enabled via environment variable, --quiet flag, or silent mode
 pub fn is_quiet() -> bool {
-    std::env::var("CHANT_QUIET")
+    // Check CHANT_QUIET env var (deprecated, for backwards compatibility)
+    if std::env::var("CHANT_QUIET")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+    {
+        return true;
+    }
+
+    // Check if silent mode is enabled in config
+    is_silent_mode()
+}
+
+/// Check if silent mode is enabled in project or global config
+pub fn is_silent_mode() -> bool {
+    // Try to load config and check silent flag
+    crate::config::Config::load()
+        .ok()
+        .map(|config| config.project.silent)
         .unwrap_or(false)
 }
 

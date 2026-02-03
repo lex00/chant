@@ -421,6 +421,7 @@ mod tests {
             project: crate::config::ProjectConfig {
                 name: "test".to_string(),
                 prefix: None,
+                silent: false,
             },
             defaults,
             providers: crate::provider::ProviderConfig::default(),

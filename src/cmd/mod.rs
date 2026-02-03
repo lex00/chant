@@ -22,6 +22,7 @@ pub mod model;
 pub mod prep;
 pub mod refresh;
 pub mod search;
+pub mod silent;
 pub mod site;
 pub mod spec;
 pub mod template;
