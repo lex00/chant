@@ -17,6 +17,11 @@ COPY Cargo.toml Cargo.lock ./
 # Copy source code
 COPY src ./src
 
+# Copy templates and prompts
+COPY templates ./templates
+COPY prompts ./prompts
+COPY prompts-dev ./prompts-dev
+
 # Build the application with musl for static linking
 RUN cargo build --release --target x86_64-unknown-linux-musl
 
