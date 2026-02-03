@@ -9,6 +9,7 @@
 
 use anyhow::Result;
 use colored::Colorize;
+use indicatif::{ProgressBar, ProgressStyle};
 use std::path::Path;
 
 use chant::config::Config;
@@ -384,6 +385,15 @@ fn cmd_work_chain_specific_ids(
         total
     );
 
+    // Create progress bar
+    let pb = ProgressBar::new(total as u64);
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("{spinner:.green} [{bar:40.cyan/blue}] {pos}/{len} {msg}")
+            .unwrap()
+            .progress_chars("=>-"),
+    );
+
     // Note: --label filter is ignored when specific IDs are provided
     if !options.labels.is_empty() {
         println!(
@@ -398,7 +408,7 @@ fn cmd_work_chain_specific_ids(
     let mut failed_spec: Option<(String, String)> = None;
     let start_time = Instant::now();
 
-    for (index, spec) in resolved_specs.iter().enumerate() {
+    for spec in resolved_specs.iter() {
         // Check for interrupt
         if is_chain_interrupted() {
             println!("\n{} Chain interrupted by user", "→".yellow());
@@ -453,14 +463,11 @@ fn cmd_work_chain_specific_ids(
             continue;
         }
 
-        println!(
-            "[{}/{}] {} {}: {}",
-            index + 1,
-            total,
-            "Working".cyan(),
+        pb.set_message(format!(
+            "{}: {}",
             current_spec.id,
             current_spec.title.as_deref().unwrap_or("")
-        );
+        ));
 
         let spec_start = Instant::now();
         match execute_single_spec_in_chain(
@@ -477,23 +484,27 @@ fn cmd_work_chain_specific_ids(
         ) {
             Ok(()) => {
                 let elapsed = spec_start.elapsed();
-                println!(
-                    "{} Completed {} in {:.1}s\n",
+                pb.inc(1);
+                pb.println(format!(
+                    "{} Completed {} in {:.1}s",
                     "✓".green(),
                     spec.id,
                     elapsed.as_secs_f64()
-                );
+                ));
                 completed += 1;
                 // Reload all specs to get fresh dependency state for next iteration
                 all_specs = spec::load_all_specs(specs_dir)?;
             }
             Err(e) => {
-                println!("{} Failed {}: {}\n", "✗".red(), spec.id, e);
+                pb.println(format!("{} Failed {}: {}", "✗".red(), spec.id, e));
                 failed_spec = Some((spec.id.clone(), e.to_string()));
                 break; // Stop chain on first failure
             }
         }
     }
+
+    // Finish progress bar
+    pb.finish_and_clear();
 
     // Print summary
     let total_elapsed = start_time.elapsed();
@@ -554,6 +565,15 @@ fn cmd_work_chain_all_ready(
         initial_total
     );
 
+    // Create progress bar (indeterminate since total may change)
+    let pb = ProgressBar::new(initial_total as u64);
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("{spinner:.green} [{bar:40.cyan/blue}] {pos}/{len} {msg}")
+            .unwrap()
+            .progress_chars("=>-"),
+    );
+
     let mut completed = 0;
     let mut failed_spec: Option<(String, String)> = None;
     let start_time = Instant::now();
@@ -591,14 +611,13 @@ fn cmd_work_chain_all_ready(
         let current_total = count_ready_specs(specs_dir, options.labels)?;
         let display_total = initial_total.max(completed + current_total);
 
-        println!(
-            "[{}/{}] {} {}: {}",
-            completed + 1,
-            display_total,
-            "Working".cyan(),
+        // Update progress bar
+        pb.set_length(display_total as u64);
+        pb.set_message(format!(
+            "{}: {}",
             spec.id,
             spec.title.as_deref().unwrap_or("")
-        );
+        ));
 
         let spec_start = Instant::now();
         match execute_single_spec_in_chain(
@@ -615,20 +634,24 @@ fn cmd_work_chain_all_ready(
         ) {
             Ok(()) => {
                 let elapsed = spec_start.elapsed();
-                println!(
-                    "{} Completed {} in {:.1}s\n",
+                pb.inc(1);
+                pb.println(format!(
+                    "{} Completed {} in {:.1}s",
                     "✓".green(),
                     spec.id,
                     elapsed.as_secs_f64()
-                );
+                ));
                 completed += 1;
             }
             Err(e) => {
-                println!("{} Failed {}: {}\n", "✗".red(), spec.id, e);
+                pb.println(format!("{} Failed {}: {}", "✗".red(), spec.id, e));
                 failed_spec = Some((spec.id, e.to_string()));
             }
         }
     }
+
+    // Finish progress bar
+    pb.finish_and_clear();
 
     // Print summary
     let total_elapsed = start_time.elapsed();

@@ -5,6 +5,7 @@
 
 use anyhow::Result;
 use colored::Colorize;
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rand::Rng;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -424,6 +425,16 @@ pub fn cmd_work_parallel(
     }
     println!();
 
+    // Create multi-progress for parallel execution
+    let multi_progress = Arc::new(MultiProgress::new());
+    let main_pb = multi_progress.add(ProgressBar::new(assignments.len() as u64));
+    main_pb.set_style(
+        ProgressStyle::default_bar()
+            .template("{spinner:.green} [{bar:40.cyan/blue}] {pos}/{len} specs completed")
+            .unwrap()
+            .progress_chars("=>-"),
+    );
+
     // Resolve prompt name for all specs
     let default_prompt = &config.defaults.prompt;
 
@@ -776,21 +787,24 @@ pub fn cmd_work_parallel(
     let mut branch_mode_branches = Vec::new();
     let mut direct_mode_results = Vec::new();
 
-    println!();
-
     for result in rx {
+        main_pb.inc(1);
         if result.success {
             completed += 1;
             if let Some(ref commits) = result.commits {
                 let commits_str = commits.join(", ");
-                println!(
+                main_pb.println(format!(
                     "[{}] {} Completed (commits: {})",
                     result.spec_id.cyan(),
                     "✓".green(),
                     commits_str
-                );
+                ));
             } else {
-                println!("[{}] {} Completed", result.spec_id.cyan(), "✓".green());
+                main_pb.println(format!(
+                    "[{}] {} Completed",
+                    result.spec_id.cyan(),
+                    "✓".green()
+                ));
             }
 
             // Collect branch info
@@ -802,15 +816,18 @@ pub fn cmd_work_parallel(
         } else {
             failed += 1;
             let error_msg = result.error.as_deref().unwrap_or("Unknown error");
-            println!(
+            main_pb.println(format!(
                 "[{}] {} Failed: {}",
                 result.spec_id.cyan(),
                 "✗".red(),
                 error_msg
-            );
+            ));
         }
         all_results.push(result);
     }
+
+    // Finish progress bar
+    main_pb.finish_and_clear();
 
     // Wait for all threads to finish
     for handle in handles {
