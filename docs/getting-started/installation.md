@@ -23,6 +23,7 @@ curl -fsSL https://github.com/lex00/chant/releases/latest/download/chant-macos-a
 
 chmod +x chant
 sudo mv chant /usr/local/bin/
+codesign -f -s - /usr/local/bin/chant
 ```
 
 ## Homebrew (macOS/Linux)
@@ -55,6 +56,8 @@ After downloading, make it executable and move it to your PATH:
 ```bash
 chmod +x chant
 sudo mv chant /usr/local/bin/
+# On macOS, re-sign the binary to prevent SIGKILL
+codesign -f -s - /usr/local/bin/chant
 ```
 
 ## Build from Source
@@ -71,6 +74,8 @@ The binary will be available at `target/release/chant`. You can then move it to 
 
 ```bash
 sudo mv target/release/chant /usr/local/bin/
+# On macOS, re-sign the binary to prevent SIGKILL
+codesign -f -s - /usr/local/bin/chant
 ```
 
 ## Verify Installation
@@ -124,6 +129,16 @@ If you get a "Permission denied" error when running chant, ensure the binary is 
 ```bash
 chmod +x /usr/local/bin/chant
 ```
+
+### macOS process killed with SIGKILL (exit 137)
+
+On macOS, if chant is killed immediately after running (exit code 137), the binary needs to be code-signed. This happens when macOS strips the code signature after copying the binary. Re-sign with an ad-hoc signature:
+
+```bash
+codesign -f -s - /usr/local/bin/chant
+```
+
+This is automatically handled by Homebrew and should be done after any manual installation or binary copy operation on macOS.
 
 ### Cargo installation fails
 

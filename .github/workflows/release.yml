@@ -65,6 +65,11 @@ jobs:
         run: |
           cp target/${{ matrix.target }}/release/${{ matrix.bin_name }} ${{ matrix.asset_name }}
 
+      - name: Code sign (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          codesign -f -s - ${{ matrix.asset_name }}
+
       - name: Upload Release Asset
         shell: bash
         env:
@@ -137,6 +142,9 @@ jobs:
 
             def install
               bin.install Dir["chant-*"].first => "chant"
+              if OS.mac?
+                system "codesign", "-f", "-s", "-", "#{bin}/chant"
+              end
             end
 
             test do
