@@ -10,6 +10,7 @@ documentation = "https://lex00.github.io/chant"
 readme = "README.md"
 keywords = ["cli", "ai", "automation", "developer-tools", "agents"]
 categories = ["command-line-utilities", "development-tools"]
+exclude = [".chant/", ".github/", "docs/", "examples/", "scripts/", "*.log"]
 
 [lib]
 name = "chant"
