@@ -216,39 +216,14 @@ chant/
 
 ## Testing
 
-### Types of Tests
+Chant uses integration-first testing. See [docs/reference/testing.md](docs/reference/testing.md) for complete testing strategy, examples, and guidelines.
 
-- **Unit tests**: Test individual functions and modules
-- **Integration tests**: Test complete workflows in `tests/`
-- **Documentation tests**: Examples in doc comments
-
-### Writing Tests
-
-```rust
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_feature() {
-        // Arrange
-        let input = "test";
-
-        // Act
-        let result = your_function(input);
-
-        // Assert
-        assert_eq!(result, expected);
-    }
-}
+```bash
+# Quick start
+just test              # Run all tests
+cargo test --lib       # Fast unit/component tests
+cargo test --test integration  # Integration tests
 ```
-
-### Test Organization
-
-- Place unit tests in the same file as the code they test
-- Use `#[cfg(test)]` module for unit tests
-- Use `tests/` directory for integration tests
-- Use `serial_test` crate for tests that can't run in parallel
 
 ## Documentation
 
