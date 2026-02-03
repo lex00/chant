@@ -19,14 +19,13 @@ use chant::spec::{self, is_completed, is_failed, SpecStatus};
 use crate::cmd;
 
 /// Logger for watch command with structured output and file persistence
-#[allow(dead_code)]
 pub struct WatchLogger {
     log_file: Option<std::fs::File>,
     log_path: PathBuf,
+    #[allow(dead_code)]
     stdout_only: bool,
 }
 
-#[allow(dead_code)]
 impl WatchLogger {
     /// Initialize the watch logger with log file at `.chant/logs/watch.log`
     pub fn init() -> Result<Self> {
@@ -87,11 +86,13 @@ impl WatchLogger {
     }
 
     /// Get the path to the log file
+    #[allow(dead_code)]
     pub fn log_path(&self) -> &PathBuf {
         &self.log_path
     }
 
     /// Check if logger is in stdout-only mode (file logging failed)
+    #[allow(dead_code)]
     pub fn is_stdout_only(&self) -> bool {
         self.stdout_only
     }

@@ -95,7 +95,6 @@ pub enum Severity {
 #[derive(Debug, Clone, Serialize)]
 pub struct LintDiagnostic {
     /// The spec ID this diagnostic applies to
-    #[allow(dead_code)]
     pub spec_id: String,
     /// The lint rule that triggered this diagnostic
     pub rule: LintRule,
@@ -139,7 +138,6 @@ impl LintDiagnostic {
 
 /// Complete report from linting operation
 #[derive(Debug, Serialize)]
-#[allow(dead_code)]
 pub struct LintReport {
     /// All diagnostics found during linting
     pub diagnostics: Vec<LintDiagnostic>,

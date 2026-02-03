@@ -38,7 +38,7 @@ impl AgentProvider {
 
     /// Returns true if this provider supports MCP and should generate config.
     /// Used in tests to verify MCP support; production code uses mcp_config_filename() directly.
-    #[allow(dead_code)] // Used in tests
+    #[allow(dead_code)]
     pub fn supports_mcp(&self) -> bool {
         match self {
             Self::Claude => true,

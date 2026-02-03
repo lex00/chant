@@ -42,12 +42,12 @@ pub struct CriterionResult {
 /// Result of verifying a single spec
 #[derive(Debug, Clone)]
 pub struct SpecVerificationResult {
-    #[allow(dead_code)] // Kept for future detailed output display
+    #[allow(dead_code)]
     pub spec_id: String,
-    #[allow(dead_code)] // Kept for future detailed output display
+    #[allow(dead_code)]
     pub spec_title: Option<String>,
     pub passed: bool,
-    #[allow(dead_code)] // Kept for future detailed output display
+    #[allow(dead_code)]
     pub total_criteria: usize,
 }
 

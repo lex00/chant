@@ -631,7 +631,7 @@ fn test_spec_file_format() {
 // ============================================================================
 
 /// Helper to check if a conflict spec was created
-#[allow(dead_code)] // Reserved for future conflict resolution tests
+#[allow(dead_code)]
 fn conflict_spec_exists(specs_dir: &Path, pattern: &str) -> bool {
     if let Ok(entries) = fs::read_dir(specs_dir) {
         for entry in entries.flatten() {
@@ -646,13 +646,13 @@ fn conflict_spec_exists(specs_dir: &Path, pattern: &str) -> bool {
 }
 
 /// Helper to get the content of a spec file
-#[allow(dead_code)] // Reserved for future conflict resolution tests
+#[allow(dead_code)]
 fn read_spec_file(specs_dir: &Path, spec_id: &str) -> std::io::Result<String> {
     fs::read_to_string(specs_dir.join(format!("{}.md", spec_id)))
 }
 
 /// Helper to modify a file in a worktree
-#[allow(dead_code)] // Reserved for future conflict resolution tests
+#[allow(dead_code)]
 fn modify_file_in_worktree(wt_path: &Path, file: &str, content: &str) -> std::io::Result<()> {
     let file_path = wt_path.join(file);
     fs::create_dir_all(file_path.parent().unwrap())?;
@@ -661,7 +661,7 @@ fn modify_file_in_worktree(wt_path: &Path, file: &str, content: &str) -> std::io
 }
 
 /// Helper to commit a change in a worktree
-#[allow(dead_code)] // Reserved for future conflict resolution tests
+#[allow(dead_code)]
 fn commit_in_worktree(wt_path: &Path, message: &str) -> std::io::Result<()> {
     Command::new("git")
         .args(["add", "."])

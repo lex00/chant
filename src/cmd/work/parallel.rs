@@ -84,7 +84,7 @@ pub struct Pitfall {
     pub spec_id: Option<String>,
     pub message: String,
     pub severity: PitfallSeverity,
-    #[allow(dead_code)] // Used in tests for pitfall categorization
+    #[allow(dead_code)]
     pub pitfall_type: PitfallType,
 }
 
@@ -94,7 +94,7 @@ pub enum PitfallType {
     ApiConcurrencyError,
     MergeConflict,
     PartialFailure,
-    #[allow(dead_code)] // Reserved for future uncommitted changes detection
+    #[allow(dead_code)]
     UncommittedChanges,
     StaleWorktree,
     AgentError,

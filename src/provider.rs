@@ -82,7 +82,6 @@ pub trait ModelProvider {
     ) -> Result<String>;
 
     /// Returns the provider name. Part of the trait API, used in tests.
-    #[allow(dead_code)] // Trait method used in tests
     fn name(&self) -> &'static str;
 }
 
