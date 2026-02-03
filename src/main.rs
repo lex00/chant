@@ -253,9 +253,9 @@ enum Commands {
         /// Skip validation of unchecked acceptance criteria
         #[arg(long)]
         skip_criteria: bool,
-        /// Execute all ready specs in parallel (when no spec ID provided)
-        #[arg(long)]
-        parallel: bool,
+        /// Execute all ready specs in parallel (when no spec ID provided). Optionally specify number of parallel workers.
+        #[arg(long, value_name = "N", num_args = 0..=1, default_missing_value = "0", require_equals = true)]
+        parallel: Option<usize>,
         /// Filter by label (can be specified multiple times, used with --parallel)
         #[arg(long)]
         label: Vec<String>,
@@ -265,7 +265,7 @@ enum Commands {
         /// Allow spec to complete without matching commits (uses HEAD as fallback). Use only in special cases.
         #[arg(long)]
         allow_no_commits: bool,
-        /// Override maximum parallel agents (for --parallel)
+        /// Override maximum parallel agents (deprecated: use --parallel=N instead)
         #[arg(long = "max")]
         max_parallel: Option<usize>,
         /// Skip cleanup prompt after parallel execution
@@ -910,17 +910,32 @@ impl cmd::dispatch::Execute for Commands {
                         "⚠".yellow()
                     );
                 }
+                // Handle --parallel flag: if provided, convert to (true, max_workers)
+                // If --max is also provided, it takes precedence (for backwards compat)
+                let (parallel_flag, effective_max) = if let Some(n) = parallel {
+                    // --parallel was provided
+                    if n == 0 {
+                        // --parallel with no value, use max_parallel or default
+                        (true, max_parallel)
+                    } else {
+                        // --parallel=N was provided
+                        (true, Some(n))
+                    }
+                } else {
+                    // --parallel not provided
+                    (false, max_parallel)
+                };
                 cmd::work::cmd_work(
                     &ids,
                     prompt.as_deref(),
                     no_branch,
                     skip_deps,
                     skip_criteria,
-                    parallel,
+                    parallel_flag,
                     &label,
                     finalize,
                     allow_no_commits,
-                    max_parallel,
+                    effective_max,
                     no_cleanup,
                     cleanup,
                     skip_approval,
