@@ -112,7 +112,8 @@ parallel:
 
 # Optional - approval settings
 approval:
-  rejection_action: manual  # manual | dependency | group
+  rejection_action: manual              # manual | dependency | group
+  require_approval_for_agent_work: true # Auto-require approval for agent commits
 
 # Optional - schema validation
 schema:
@@ -733,16 +734,36 @@ environment:
 
 ## Approval Configuration
 
-Configure how the approval workflow behaves when specs are rejected.
+Configure how the approval workflow behaves when specs are rejected and how agent work is handled.
+
+### Configuration Fields
+
+```yaml
+approval:
+  rejection_action: manual              # manual | dependency | group
+  require_approval_for_agent_work: true # Auto-require approval for agent commits
+```
+
+### Agent Work Approval
+
+When enabled, `require_approval_for_agent_work` automatically sets `approval.required: true` for specs where agent co-authorship is detected in commits (via `Co-Authored-By` signatures).
+
+**auto_approve concept:**
+- Detection occurs during `chant finalize`
+- Triggers when commit messages contain AI assistant signatures (Claude, GPT, Copilot, Gemini)
+- Prevents merge until human approval via `chant approve`
+- Provides safety checkpoint for AI-generated code
+
+**on_ambiguity concept:**
+- When agent work is detected, approval becomes required regardless of initial spec settings
+- User must explicitly approve via `chant approve <spec-id> --by <name>` before merge
+- Emergency bypass available via `--skip-approval` flag for urgent situations
+
+See [Approval Workflow Guide](../guides/approval-workflow.md#agent-assisted-work-approval) for detailed examples.
 
 ### Rejection Action
 
 The `approval.rejection_action` setting controls what happens after a spec is rejected with `chant reject`:
-
-```yaml
-approval:
-  rejection_action: manual    # manual | dependency | group
-```
 
 **manual** (default):
 - Spec remains in `rejected` status
@@ -773,12 +794,15 @@ project:
 
 approval:
   rejection_action: dependency
+  require_approval_for_agent_work: true
 ---
 
 # Project Config
 
 When specs are rejected, automatically create a fix spec
 and block the original until the fix is complete.
+
+Agent-written code requires human approval before merge.
 ```
 
 ### Approval Frontmatter Schema
