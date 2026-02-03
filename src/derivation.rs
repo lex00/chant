@@ -283,86 +283,80 @@ mod tests {
     }
 
     // =========================================================================
+    // TEST HELPERS FOR SOURCE TYPE TESTS
+    // =========================================================================
+
+    /// Test helper for derivation source tests
+    fn assert_derive_from_source(
+        field_name: &str,
+        config: DerivedFieldConfig,
+        context: DerivationContext,
+        expected: Option<&str>,
+    ) {
+        let mut derived = HashMap::new();
+        derived.insert(field_name.to_string(), config);
+        let engine = create_test_engine(derived);
+        let result = engine.derive_fields(&context);
+
+        match expected {
+            Some(val) => assert_eq!(result.get(field_name), Some(&val.to_string())),
+            None => assert!(!result.contains_key(field_name)),
+        }
+    }
+
+    // =========================================================================
     // BRANCH NAME EXTRACTION TESTS
     // =========================================================================
 
     #[test]
     fn test_derive_from_branch_basic() {
-        let mut derived = HashMap::new();
-        derived.insert(
-            "env".to_string(),
-            DerivedFieldConfig {
-                from: DerivationSource::Branch,
-                pattern: r"^(dev|staging|prod)".to_string(),
-                validate: None,
-            },
-        );
-
-        let engine = create_test_engine(derived);
+        let config = DerivedFieldConfig {
+            from: DerivationSource::Branch,
+            pattern: r"^(dev|staging|prod)".to_string(),
+            validate: None,
+        };
         let mut context = DerivationContext::new();
         context.branch_name = Some("prod/feature-123".to_string());
 
-        let result = engine.derive_fields(&context);
-        assert_eq!(result.get("env"), Some(&"prod".to_string()));
+        assert_derive_from_source("env", config, context, Some("prod"));
     }
 
     #[test]
     fn test_derive_from_branch_with_capture_group() {
-        let mut derived = HashMap::new();
-        derived.insert(
-            "project".to_string(),
-            DerivedFieldConfig {
-                from: DerivationSource::Branch,
-                pattern: r"sprint/.*/(PROJ-\d+)".to_string(),
-                validate: None,
-            },
-        );
-
-        let engine = create_test_engine(derived);
+        let config = DerivedFieldConfig {
+            from: DerivationSource::Branch,
+            pattern: r"sprint/.*/(PROJ-\d+)".to_string(),
+            validate: None,
+        };
         let mut context = DerivationContext::new();
         context.branch_name = Some("sprint/2026-Q1-W4/PROJ-123".to_string());
 
-        let result = engine.derive_fields(&context);
-        assert_eq!(result.get("project"), Some(&"PROJ-123".to_string()));
+        assert_derive_from_source("project", config, context, Some("PROJ-123"));
     }
 
     #[test]
     fn test_derive_from_branch_no_match() {
-        let mut derived = HashMap::new();
-        derived.insert(
-            "env".to_string(),
-            DerivedFieldConfig {
-                from: DerivationSource::Branch,
-                pattern: r"^(dev|staging|prod)".to_string(),
-                validate: None,
-            },
-        );
-
-        let engine = create_test_engine(derived);
+        let config = DerivedFieldConfig {
+            from: DerivationSource::Branch,
+            pattern: r"^(dev|staging|prod)".to_string(),
+            validate: None,
+        };
         let mut context = DerivationContext::new();
         context.branch_name = Some("feature/my-branch".to_string());
 
-        let result = engine.derive_fields(&context);
-        assert!(!result.contains_key("env"));
+        assert_derive_from_source("env", config, context, None);
     }
 
     #[test]
     fn test_derive_from_branch_missing() {
-        let mut derived = HashMap::new();
-        derived.insert(
-            "env".to_string(),
-            DerivedFieldConfig {
-                from: DerivationSource::Branch,
-                pattern: r"^(dev|staging|prod)".to_string(),
-                validate: None,
-            },
-        );
-
-        let engine = create_test_engine(derived);
+        let config = DerivedFieldConfig {
+            from: DerivationSource::Branch,
+            pattern: r"^(dev|staging|prod)".to_string(),
+            validate: None,
+        };
         let context = DerivationContext::new(); // No branch_name
 
-        let result = engine.derive_fields(&context);
-        assert!(!result.contains_key("env"));
+        assert_derive_from_source("env", config, context, None);
     }
 
     // =========================================================================
@@ -371,82 +365,54 @@ mod tests {
 
     #[test]
     fn test_derive_from_path_basic() {
-        let mut derived = HashMap::new();
-        derived.insert(
-            "team".to_string(),
-            DerivedFieldConfig {
-                from: DerivationSource::Path,
-                pattern: r"specs/([a-z]+)/".to_string(),
-                validate: None,
-            },
-        );
-
-        let engine = create_test_engine(derived);
+        let config = DerivedFieldConfig {
+            from: DerivationSource::Path,
+            pattern: r"specs/([a-z]+)/".to_string(),
+            validate: None,
+        };
         let mut context = DerivationContext::new();
         context.spec_path = Some(PathBuf::from(".chant/specs/platform/feature.md"));
 
-        let result = engine.derive_fields(&context);
-        assert_eq!(result.get("team"), Some(&"platform".to_string()));
+        assert_derive_from_source("team", config, context, Some("platform"));
     }
 
     #[test]
     fn test_derive_from_path_with_multiple_captures() {
-        let mut derived = HashMap::new();
-        derived.insert(
-            "project".to_string(),
-            DerivedFieldConfig {
-                from: DerivationSource::Path,
-                pattern: r"specs/([a-z]+)/([A-Z0-9]+)-".to_string(),
-                validate: None,
-            },
-        );
-
-        let engine = create_test_engine(derived);
+        let config = DerivedFieldConfig {
+            from: DerivationSource::Path,
+            pattern: r"specs/([a-z]+)/([A-Z0-9]+)-".to_string(),
+            validate: None,
+        };
         let mut context = DerivationContext::new();
         context.spec_path = Some(PathBuf::from(".chant/specs/teams/PROJ-123-feature.md"));
 
-        let result = engine.derive_fields(&context);
         // Should extract first capture group only
-        assert_eq!(result.get("project"), Some(&"teams".to_string()));
+        assert_derive_from_source("project", config, context, Some("teams"));
     }
 
     #[test]
     fn test_derive_from_path_no_match() {
-        let mut derived = HashMap::new();
-        derived.insert(
-            "team".to_string(),
-            DerivedFieldConfig {
-                from: DerivationSource::Path,
-                pattern: r"specs/([a-z]+)/".to_string(),
-                validate: None,
-            },
-        );
-
-        let engine = create_test_engine(derived);
+        let config = DerivedFieldConfig {
+            from: DerivationSource::Path,
+            pattern: r"specs/([a-z]+)/".to_string(),
+            validate: None,
+        };
         let mut context = DerivationContext::new();
         context.spec_path = Some(PathBuf::from(".chant/specs/feature.md"));
 
-        let result = engine.derive_fields(&context);
-        assert!(!result.contains_key("team"));
+        assert_derive_from_source("team", config, context, None);
     }
 
     #[test]
     fn test_derive_from_path_missing() {
-        let mut derived = HashMap::new();
-        derived.insert(
-            "team".to_string(),
-            DerivedFieldConfig {
-                from: DerivationSource::Path,
-                pattern: r"specs/([a-z]+)/".to_string(),
-                validate: None,
-            },
-        );
-
-        let engine = create_test_engine(derived);
+        let config = DerivedFieldConfig {
+            from: DerivationSource::Path,
+            pattern: r"specs/([a-z]+)/".to_string(),
+            validate: None,
+        };
         let context = DerivationContext::new(); // No spec_path
 
-        let result = engine.derive_fields(&context);
-        assert!(!result.contains_key("team"));
+        assert_derive_from_source("team", config, context, None);
     }
 
     // =========================================================================
@@ -455,84 +421,56 @@ mod tests {
 
     #[test]
     fn test_derive_from_env_basic() {
-        let mut derived = HashMap::new();
-        derived.insert(
-            "team".to_string(),
-            DerivedFieldConfig {
-                from: DerivationSource::Env,
-                pattern: "TEAM_NAME".to_string(),
-                validate: None,
-            },
-        );
-
-        let engine = create_test_engine(derived);
+        let config = DerivedFieldConfig {
+            from: DerivationSource::Env,
+            pattern: "TEAM_NAME".to_string(),
+            validate: None,
+        };
         let mut env_vars = HashMap::new();
         env_vars.insert("TEAM_NAME".to_string(), "platform".to_string());
         let context = DerivationContext::with_env_vars(env_vars);
 
-        let result = engine.derive_fields(&context);
-        assert_eq!(result.get("team"), Some(&"platform".to_string()));
+        assert_derive_from_source("team", config, context, Some("platform"));
     }
 
     #[test]
     fn test_derive_from_env_with_pattern_match() {
-        let mut derived = HashMap::new();
-        derived.insert(
-            "env_name".to_string(),
-            DerivedFieldConfig {
-                from: DerivationSource::Env,
-                pattern: "ENVIRONMENT".to_string(),
-                validate: None,
-            },
-        );
-
-        let engine = create_test_engine(derived);
+        let config = DerivedFieldConfig {
+            from: DerivationSource::Env,
+            pattern: "ENVIRONMENT".to_string(),
+            validate: None,
+        };
         let mut env_vars = HashMap::new();
         env_vars.insert("ENVIRONMENT".to_string(), "production".to_string());
         let context = DerivationContext::with_env_vars(env_vars);
 
-        let result = engine.derive_fields(&context);
-        assert_eq!(result.get("env_name"), Some(&"production".to_string()));
+        assert_derive_from_source("env_name", config, context, Some("production"));
     }
 
     #[test]
     fn test_derive_from_env_missing_variable() {
-        let mut derived = HashMap::new();
-        derived.insert(
-            "team".to_string(),
-            DerivedFieldConfig {
-                from: DerivationSource::Env,
-                pattern: "TEAM_NAME".to_string(),
-                validate: None,
-            },
-        );
-
-        let engine = create_test_engine(derived);
+        let config = DerivedFieldConfig {
+            from: DerivationSource::Env,
+            pattern: "TEAM_NAME".to_string(),
+            validate: None,
+        };
         let context = DerivationContext::new(); // No env vars
 
-        let result = engine.derive_fields(&context);
-        assert!(!result.contains_key("team"));
+        assert_derive_from_source("team", config, context, None);
     }
 
     #[test]
     fn test_derive_from_env_undefined_variable() {
-        let mut derived = HashMap::new();
-        derived.insert(
-            "team".to_string(),
-            DerivedFieldConfig {
-                from: DerivationSource::Env,
-                pattern: "TEAM_NAME".to_string(),
-                validate: None,
-            },
-        );
-
-        let engine = create_test_engine(derived);
+        let config = DerivedFieldConfig {
+            from: DerivationSource::Env,
+            pattern: "TEAM_NAME".to_string(),
+            validate: None,
+        };
         let mut env_vars = HashMap::new();
         env_vars.insert("OTHER_VAR".to_string(), "value".to_string());
         let context = DerivationContext::with_env_vars(env_vars);
 
-        let result = engine.derive_fields(&context);
-        assert!(!result.contains_key("team"));
+        assert_derive_from_source("team", config, context, None);
     }
 
     // =========================================================================
@@ -541,84 +479,53 @@ mod tests {
 
     #[test]
     fn test_derive_from_git_user_name() {
-        let mut derived = HashMap::new();
-        derived.insert(
-            "author".to_string(),
-            DerivedFieldConfig {
-                from: DerivationSource::GitUser,
-                pattern: "name".to_string(),
-                validate: None,
-            },
-        );
-
-        let engine = create_test_engine(derived);
+        let config = DerivedFieldConfig {
+            from: DerivationSource::GitUser,
+            pattern: "name".to_string(),
+            validate: None,
+        };
         let mut context = DerivationContext::new();
         context.git_user_name = Some("John Doe".to_string());
 
-        let result = engine.derive_fields(&context);
-        assert_eq!(result.get("author"), Some(&"John Doe".to_string()));
+        assert_derive_from_source("author", config, context, Some("John Doe"));
     }
 
     #[test]
     fn test_derive_from_git_user_email() {
-        let mut derived = HashMap::new();
-        derived.insert(
-            "author_email".to_string(),
-            DerivedFieldConfig {
-                from: DerivationSource::GitUser,
-                pattern: "email".to_string(),
-                validate: None,
-            },
-        );
-
-        let engine = create_test_engine(derived);
+        let config = DerivedFieldConfig {
+            from: DerivationSource::GitUser,
+            pattern: "email".to_string(),
+            validate: None,
+        };
         let mut context = DerivationContext::new();
         context.git_user_email = Some("john@example.com".to_string());
 
-        let result = engine.derive_fields(&context);
-        assert_eq!(
-            result.get("author_email"),
-            Some(&"john@example.com".to_string())
-        );
+        assert_derive_from_source("author_email", config, context, Some("john@example.com"));
     }
 
     #[test]
     fn test_derive_from_git_user_invalid_field() {
-        let mut derived = HashMap::new();
-        derived.insert(
-            "author".to_string(),
-            DerivedFieldConfig {
-                from: DerivationSource::GitUser,
-                pattern: "invalid".to_string(),
-                validate: None,
-            },
-        );
-
-        let engine = create_test_engine(derived);
+        let config = DerivedFieldConfig {
+            from: DerivationSource::GitUser,
+            pattern: "invalid".to_string(),
+            validate: None,
+        };
         let mut context = DerivationContext::new();
         context.git_user_name = Some("John Doe".to_string());
 
-        let result = engine.derive_fields(&context);
-        assert!(!result.contains_key("author"));
+        assert_derive_from_source("author", config, context, None);
     }
 
     #[test]
     fn test_derive_from_git_user_missing_name() {
-        let mut derived = HashMap::new();
-        derived.insert(
-            "author".to_string(),
-            DerivedFieldConfig {
-                from: DerivationSource::GitUser,
-                pattern: "name".to_string(),
-                validate: None,
-            },
-        );
-
-        let engine = create_test_engine(derived);
+        let config = DerivedFieldConfig {
+            from: DerivationSource::GitUser,
+            pattern: "name".to_string(),
+            validate: None,
+        };
         let context = DerivationContext::new(); // No git_user_name
 
-        let result = engine.derive_fields(&context);
-        assert!(!result.contains_key("author"));
+        assert_derive_from_source("author", config, context, None);
     }
 
     // =========================================================================
