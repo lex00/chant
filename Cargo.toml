@@ -1,10 +1,15 @@
 [package]
-name = "chant"
+name = "chant-cli"
 version = "0.15.2"
 edition = "2021"
-description = "Intent Driven Development"
+description = "Spec execution platform for AI-assisted development"
 license = "Apache-2.0"
-repository = "https://github.com/chant-dev/chant"
+repository = "https://github.com/lex00/chant"
+homepage = "https://lex00.github.io/chant"
+documentation = "https://lex00.github.io/chant"
+readme = "README.md"
+keywords = ["cli", "ai", "automation", "developer-tools", "agents"]
+categories = ["command-line-utilities", "development-tools"]
 
 [lib]
 name = "chant"
