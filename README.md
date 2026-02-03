@@ -6,6 +6,7 @@
 
 [![CI](https://github.com/lex00/chant/actions/workflows/ci.yml/badge.svg)](https://github.com/lex00/chant/actions/workflows/ci.yml)
 [![Release](https://github.com/lex00/chant/actions/workflows/release.yml/badge.svg)](https://github.com/lex00/chant/actions/workflows/release.yml)
+[![codecov](https://codecov.io/gh/lex00/chant/branch/main/graph/badge.svg)](https://codecov.io/gh/lex00/chant)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Latest Release](https://img.shields.io/github/v/release/lex00/chant)](https://github.com/lex00/chant/releases/latest)
 [![API Docs](https://img.shields.io/badge/docs-rustdoc-blue.svg)](https://lex00.github.io/chant/api/chant/)
