@@ -43,6 +43,15 @@ decisions: autonomous   # autonomous | document | pause | fail
 | `pause` | Stop and request human input |
 | `fail` | Mark failed if any ambiguity |
 
+## Manual Intervention
+
+You can interrupt and take control of running work:
+
+- **`chant pause <spec-id>`** - Stop the agent, set status to `paused`. Resume later with `chant work` or `chant resume`.
+- **`chant takeover <spec-id>`** - Pause the agent, analyze progress, and update the spec for manual continuation.
+
+See the [Advanced Patterns](../guides/oss-maintainer-workflow/08-advanced.md#controlling-running-work) guide for detailed usage examples.
+
 ## Spec Design for Autonomy
 
 ### Good Specs
