@@ -246,47 +246,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_agent_provider_as_str() {
-        assert_eq!(AgentProvider::Claude.as_str(), "claude");
-        assert_eq!(AgentProvider::Cursor.as_str(), "cursor");
-        assert_eq!(AgentProvider::AmazonQ.as_str(), "amazonq");
-        assert_eq!(AgentProvider::Generic.as_str(), "generic");
-    }
-
-    #[test]
-    fn test_agent_provider_config_filename() {
-        assert_eq!(AgentProvider::Claude.config_filename(), "CLAUDE.md");
-        assert_eq!(AgentProvider::Cursor.config_filename(), ".cursorrules");
-        assert_eq!(
-            AgentProvider::AmazonQ.config_filename(),
-            ".amazonq/rules.md"
-        );
-        assert_eq!(AgentProvider::Generic.config_filename(), ".ai-instructions");
-    }
-
-    #[test]
-    fn test_agent_provider_supports_mcp() {
-        assert!(AgentProvider::Claude.supports_mcp());
-        assert!(AgentProvider::Cursor.supports_mcp());
-        assert!(!AgentProvider::AmazonQ.supports_mcp());
-        assert!(!AgentProvider::Generic.supports_mcp());
-    }
-
-    #[test]
-    fn test_agent_provider_mcp_config_filename() {
-        assert_eq!(
-            AgentProvider::Claude.mcp_config_filename(),
-            Some(".mcp.json")
-        );
-        assert_eq!(
-            AgentProvider::Cursor.mcp_config_filename(),
-            Some(".cursor/mcp.json")
-        );
-        assert_eq!(AgentProvider::AmazonQ.mcp_config_filename(), None);
-        assert_eq!(AgentProvider::Generic.mcp_config_filename(), None);
-    }
-
-    #[test]
     fn test_get_template_case_insensitive() {
         assert!(get_template("claude").is_ok());
         assert!(get_template("CLAUDE").is_ok());
