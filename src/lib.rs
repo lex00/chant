@@ -74,6 +74,7 @@ pub mod spec;
 pub mod spec_group;
 pub mod spec_template;
 pub mod status;
+pub mod takeover;
 pub mod tools;
 pub mod ui;
 pub mod validation;
