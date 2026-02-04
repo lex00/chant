@@ -314,6 +314,203 @@ pub fn is_watch_running() -> bool {
     }
 }
 
+/// Run startup recovery to handle crashed agents and stale worktrees
+///
+/// This function detects and recovers from:
+/// - Status "done" but branch not merged: Queue for merge
+/// - Status "working" with timestamp >1 hour old: Mark spec failed, cleanup
+/// - Orphaned worktrees (no status file, >1 day old): Cleanup
+///
+/// Returns the number of recovery actions taken
+fn run_startup_recovery(logger: &mut WatchLogger, dry_run: bool) -> Result<usize> {
+    let mut actions = 0;
+    let now = chrono::Utc::now();
+
+    // Find all active worktrees
+    let active_worktrees = find_active_worktrees()?;
+
+    for worktree in &active_worktrees {
+        let spec_id = &worktree.spec_id;
+        let status_file = worktree.path.join(".chant-status.json");
+
+        // Check if status file exists
+        if !status_file.exists() {
+            // Orphaned worktree - check age
+            let worktree_metadata = fs::metadata(&worktree.path)?;
+            let modified_time = worktree_metadata.modified()?;
+            let age = now
+                .signed_duration_since(chrono::DateTime::<chrono::Utc>::from(modified_time))
+                .num_hours();
+
+            if age > 24 {
+                logger.log_event(&format!(
+                    "Found orphaned worktree for spec {} (age: {}h)",
+                    spec_id.cyan(),
+                    age
+                ))?;
+
+                if dry_run {
+                    logger.log_event(&format!(
+                        "  {} would cleanup orphaned worktree",
+                        "→".dimmed()
+                    ))?;
+                } else {
+                    // Cleanup orphaned worktree
+                    match chant::worktree::remove_worktree(&worktree.path) {
+                        Ok(()) => {
+                            logger.log_event(&format!(
+                                "  {} cleaned up orphaned worktree",
+                                "✓".green()
+                            ))?;
+                            actions += 1;
+                        }
+                        Err(e) => {
+                            logger.log_event(&format!(
+                                "  {} failed to cleanup: {}",
+                                "✗".red(),
+                                e
+                            ))?;
+                        }
+                    }
+                }
+            }
+            continue;
+        }
+
+        // Read status file
+        match read_status(&status_file) {
+            Ok(status) => {
+                match status.status {
+                    AgentStatusState::Done => {
+                        // Status is done - check if branch has been merged
+                        logger.log_event(&format!(
+                            "Found completed worktree for spec {} that needs merge",
+                            spec_id.cyan()
+                        ))?;
+
+                        if dry_run {
+                            logger.log_event(&format!(
+                                "  {} would finalize and merge spec",
+                                "→".dimmed()
+                            ))?;
+                        } else {
+                            // Queue for merge via handle_completed
+                            match crate::cmd::lifecycle::handle_completed(spec_id) {
+                                Ok(()) => {
+                                    logger.log_event(&format!(
+                                        "  {} finalized and merged",
+                                        "✓".green()
+                                    ))?;
+                                    actions += 1;
+                                }
+                                Err(e) => {
+                                    logger.log_event(&format!(
+                                        "  {} failed to finalize: {}",
+                                        "✗".red(),
+                                        e
+                                    ))?;
+                                }
+                            }
+                        }
+                    }
+                    AgentStatusState::Working => {
+                        // Check if status is stale (>1 hour old)
+                        match chrono::DateTime::parse_from_rfc3339(&status.updated_at) {
+                            Ok(updated_at) => {
+                                let age_hours = now
+                                    .signed_duration_since(updated_at.with_timezone(&chrono::Utc))
+                                    .num_hours();
+
+                                if age_hours > 1 {
+                                    logger.log_event(&format!(
+                                        "Found stale working worktree for spec {} (age: {}h)",
+                                        spec_id.cyan(),
+                                        age_hours
+                                    ))?;
+
+                                    if dry_run {
+                                        logger.log_event(&format!(
+                                            "  {} would mark spec failed and cleanup",
+                                            "→".dimmed()
+                                        ))?;
+                                    } else {
+                                        // Mark spec as failed
+                                        let specs_dir = PathBuf::from(".chant/specs");
+                                        if let Ok(mut spec) =
+                                            spec::resolve_spec(&specs_dir, spec_id)
+                                        {
+                                            spec.frontmatter.status = SpecStatus::Failed;
+                                            let spec_path =
+                                                specs_dir.join(format!("{}.md", spec_id));
+                                            if let Err(e) = spec.save(&spec_path) {
+                                                logger.log_event(&format!(
+                                                    "  {} failed to mark spec failed: {}",
+                                                    "✗".red(),
+                                                    e
+                                                ))?;
+                                            } else {
+                                                logger.log_event(&format!(
+                                                    "  {} marked spec as failed",
+                                                    "✓".green()
+                                                ))?;
+
+                                                // Cleanup worktree
+                                                match chant::worktree::remove_worktree(
+                                                    &worktree.path,
+                                                ) {
+                                                    Ok(()) => {
+                                                        logger.log_event(&format!(
+                                                            "  {} cleaned up worktree",
+                                                            "✓".green()
+                                                        ))?;
+                                                        actions += 1;
+                                                    }
+                                                    Err(e) => {
+                                                        logger.log_event(&format!(
+                                                            "  {} failed to cleanup: {}",
+                                                            "✗".red(),
+                                                            e
+                                                        ))?;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                logger.log_event(&format!(
+                                    "{} Failed to parse timestamp for spec {}: {}",
+                                    "⚠".yellow(),
+                                    spec_id,
+                                    e
+                                ))?;
+                            }
+                        }
+                    }
+                    AgentStatusState::Failed => {
+                        // Already marked as failed, just log
+                        logger.log_event(&format!(
+                            "Found failed worktree for spec {} (no action needed)",
+                            spec_id.cyan()
+                        ))?;
+                    }
+                }
+            }
+            Err(e) => {
+                logger.log_event(&format!(
+                    "{} Failed to read status for worktree {}: {}",
+                    "⚠".yellow(),
+                    worktree.path.display(),
+                    e
+                ))?;
+            }
+        }
+    }
+
+    Ok(actions)
+}
+
 /// Main entry point for watch command
 pub fn run_watch(once: bool, dry_run: bool, poll_interval: Option<u64>) -> Result<()> {
     let _specs_dir = cmd::ensure_initialized()?;
@@ -340,6 +537,25 @@ pub fn run_watch(once: bool, dry_run: bool, poll_interval: Option<u64>) -> Resul
         "Watch started (poll_interval={}ms, once={}, dry_run={})",
         poll_interval_ms, once, dry_run
     ))?;
+
+    // Run startup recovery
+    logger.log_event("Running startup recovery...")?;
+    match run_startup_recovery(&mut logger, dry_run) {
+        Ok(actions) => {
+            if actions > 0 {
+                logger.log_event(&format!(
+                    "{} Recovered from {} stale worktree(s)",
+                    "✓".green(),
+                    actions
+                ))?;
+            } else {
+                logger.log_event("No recovery actions needed")?;
+            }
+        }
+        Err(e) => {
+            logger.log_event(&format!("{} Recovery failed: {}", "⚠".yellow(), e))?;
+        }
+    }
 
     // Set up signal handler for graceful shutdown
     let shutdown = Arc::new(AtomicBool::new(false));
