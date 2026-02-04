@@ -1907,7 +1907,9 @@ fn cmd_init(
         }
 
         // Non-TTY mode without specific flags
-        println!("{}", "Chant already initialized.".yellow());
+        if !silent {
+            println!("{}", "Chant already initialized.".yellow());
+        }
         return Ok(());
     }
 
