@@ -134,6 +134,7 @@ Testing takeover stops process.
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Process handling differs on Windows")]
 fn test_takeover_updates_spec_status_to_paused() {
     let repo_dir = PathBuf::from("/tmp/test-chant-takeover-status");
     let _ = common::cleanup_test_repo(&repo_dir);
@@ -199,6 +200,7 @@ Testing status change.
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Process handling differs on Windows")]
 fn test_takeover_appends_analysis_to_spec() {
     let repo_dir = PathBuf::from("/tmp/test-chant-takeover-analysis");
     let _ = common::cleanup_test_repo(&repo_dir);
@@ -283,6 +285,7 @@ status: in_progress
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Process handling differs on Windows")]
 fn test_takeover_force_flag_without_running_process() {
     let repo_dir = PathBuf::from("/tmp/test-chant-takeover-force");
     let _ = common::cleanup_test_repo(&repo_dir);
