@@ -22,7 +22,7 @@ pub use parse::{split_frontmatter, Spec};
 pub use crate::spec_group::{
     all_members_completed, all_prior_siblings_completed, auto_complete_driver_if_ready,
     extract_driver_id, extract_member_number, get_incomplete_members, get_members, is_member_of,
-    mark_driver_in_progress,
+    mark_driver_in_progress, mark_driver_in_progress_conditional,
 };
 
 #[cfg(test)]

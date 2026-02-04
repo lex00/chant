@@ -364,7 +364,25 @@ pub fn all_prior_siblings_completed(member_id: &str, all_specs: &[Spec]) -> bool
 /// ```ignore
 /// mark_driver_in_progress(&specs_dir, "2026-01-25-00y-abc.1")?;
 /// ```
-pub fn mark_driver_in_progress(specs_dir: &Path, member_id: &str) -> Result<()> {
+/// Mark a driver spec as in_progress when one of its members starts work.
+///
+/// This creates a "phantom" in_progress status for the driver that serves as a placeholder
+/// until all members complete. The driver will be auto-completed when the last member finishes.
+///
+/// Note: This means that during member execution, both the driver AND the active member
+/// will show as in_progress. This is by design but can be confusing in status displays.
+///
+/// Set `skip` to true to avoid marking the driver (useful in chain mode where we want
+/// only one spec to show as in_progress at a time).
+pub fn mark_driver_in_progress_conditional(
+    specs_dir: &Path,
+    member_id: &str,
+    skip: bool,
+) -> Result<()> {
+    if skip {
+        return Ok(());
+    }
+
     if let Some(driver_id) = extract_driver_id(member_id) {
         // Try to load the driver spec
         let driver_path = specs_dir.join(format!("{}.md", driver_id));
@@ -377,6 +395,14 @@ pub fn mark_driver_in_progress(specs_dir: &Path, member_id: &str) -> Result<()> 
         }
     }
     Ok(())
+}
+
+/// Mark a driver spec as in_progress when one of its members starts work.
+///
+/// Convenience wrapper that always marks the driver. For conditional marking,
+/// use `mark_driver_in_progress_conditional`.
+pub fn mark_driver_in_progress(specs_dir: &Path, member_id: &str) -> Result<()> {
+    mark_driver_in_progress_conditional(specs_dir, member_id, false)
 }
 
 /// Auto-complete a driver spec if all its members are now completed.
@@ -419,8 +445,11 @@ pub fn auto_complete_driver_if_ready(
         return Ok(false);
     };
 
-    // Only auto-complete if driver is in_progress
-    if driver_spec.frontmatter.status != SpecStatus::InProgress {
+    // Only auto-complete if driver is in_progress or pending
+    // (Pending is allowed for chain mode where drivers aren't marked InProgress)
+    if driver_spec.frontmatter.status != SpecStatus::InProgress
+        && driver_spec.frontmatter.status != SpecStatus::Pending
+    {
         return Ok(false);
     }
 
@@ -735,17 +764,17 @@ status: in_progress
     }
 
     #[test]
-    fn test_auto_complete_driver_driver_not_in_progress() {
+    fn test_auto_complete_driver_when_already_completed() {
         use tempfile::TempDir;
 
         let temp_dir = TempDir::new().unwrap();
         let specs_dir = temp_dir.path();
 
-        // Create a driver spec that is pending (not in_progress)
+        // Create a driver spec that is already completed
         let driver_spec = Spec::parse(
             "2026-01-24-007-stu",
             r#"---
-status: pending
+status: completed
 ---
 # Driver spec
 "#,
@@ -767,8 +796,52 @@ status: completed
             auto_complete_driver_if_ready("2026-01-24-007-stu.1", &all_specs, specs_dir).unwrap();
         assert!(
             !result,
-            "Driver not in progress should not be auto-completed"
+            "Driver already completed should not be re-completed"
         );
+    }
+
+    #[test]
+    fn test_auto_complete_driver_from_pending() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path();
+
+        // Create driver spec file (pending status)
+        let driver_content = r#"---
+status: pending
+---
+# Driver spec
+"#;
+        fs::write(specs_dir.join("2026-01-24-009-xyz.md"), driver_content).unwrap();
+
+        // Parse specs for all_specs
+        let driver_spec = Spec::parse("2026-01-24-009-xyz", driver_content).unwrap();
+
+        let member_spec = Spec::parse(
+            "2026-01-24-009-xyz.1",
+            r#"---
+status: completed
+---
+# Member 1
+"#,
+        )
+        .unwrap();
+
+        let all_specs = vec![driver_spec, member_spec];
+
+        // Auto-complete should succeed for pending driver (chain mode scenario)
+        let result =
+            auto_complete_driver_if_ready("2026-01-24-009-xyz.1", &all_specs, specs_dir).unwrap();
+        assert!(
+            result,
+            "Pending driver should be auto-completed when all members are done (chain mode)"
+        );
+
+        // Verify driver is now completed
+        let updated_driver = Spec::load(&specs_dir.join("2026-01-24-009-xyz.md")).unwrap();
+        assert_eq!(updated_driver.frontmatter.status, SpecStatus::Completed);
     }
 
     #[test]

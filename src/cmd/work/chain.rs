@@ -219,9 +219,11 @@ fn execute_single_spec_in_chain(
     // Update status to in_progress
     spec.frontmatter.status = SpecStatus::InProgress;
     spec.save(&spec_path)?;
+    eprintln!("{} [chain] Set {} to InProgress", "→".cyan(), spec.id);
 
-    // Mark driver as in_progress if this is a member spec
-    spec::mark_driver_in_progress(specs_dir, &spec.id)?;
+    // Don't mark driver as in_progress in chain mode to keep only 1 spec in_progress at a time
+    // The driver will be auto-completed when all members finish
+    spec::mark_driver_in_progress_conditional(specs_dir, &spec.id, true)?;
 
     // Assemble prompt
     let message = chant::prompt::assemble(&spec, &prompt_path, config)?;
@@ -594,6 +596,26 @@ fn cmd_work_chain_all_ready(
                 options.max_specs
             );
             break;
+        }
+
+        // Debug: Log current in_progress specs before selecting next
+        let all_specs_debug = spec::load_all_specs(specs_dir)?;
+        let in_progress_count = all_specs_debug
+            .iter()
+            .filter(|s| s.frontmatter.status == SpecStatus::InProgress)
+            .count();
+        if in_progress_count > 0 {
+            eprintln!(
+                "{} [chain] Currently {} spec(s) in_progress before selecting next",
+                "→".dimmed(),
+                in_progress_count
+            );
+            for s in all_specs_debug
+                .iter()
+                .filter(|s| s.frontmatter.status == SpecStatus::InProgress)
+            {
+                eprintln!("  - {}", s.id);
+            }
         }
 
         // Find next ready spec

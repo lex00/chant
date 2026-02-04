@@ -99,7 +99,7 @@ pub fn finalize_spec(
         .context("Failed to save finalized spec")?;
 
     eprintln!(
-        "{} [{}] Spec successfully saved to disk",
+        "{} [{}] Spec successfully saved to disk with status=Completed",
         "✓".green(),
         spec.id
     );
