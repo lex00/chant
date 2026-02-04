@@ -834,6 +834,170 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
+    fn test_create_worktree_success() -> Result<()> {
+        let repo_dir = PathBuf::from("/tmp/test-chant-repo-create-success");
+        cleanup_test_repo(&repo_dir)?;
+        setup_test_repo(&repo_dir)?;
+
+        let original_dir = std::env::current_dir()?;
+
+        let result = {
+            std::env::set_current_dir(&repo_dir).context("Failed to change to repo directory")?;
+
+            let spec_id = "test-spec-create-success";
+            let branch = "spec/test-spec-create-success";
+
+            create_worktree(spec_id, branch)
+        };
+
+        // Always restore original directory
+        std::env::set_current_dir(&original_dir).context("Failed to restore original directory")?;
+
+        // Verify worktree was created successfully
+        assert!(result.is_ok(), "create_worktree should succeed");
+        let worktree_path = result.unwrap();
+        assert!(worktree_path.exists(), "Worktree directory should exist");
+        assert_eq!(
+            worktree_path,
+            PathBuf::from("/tmp/chant-test-spec-create-success"),
+            "Worktree path should match expected format"
+        );
+
+        // Verify branch was created
+        let branch_check = StdCommand::new("git")
+            .args(["rev-parse", "--verify", "spec/test-spec-create-success"])
+            .current_dir(&repo_dir)
+            .output()?;
+        assert!(branch_check.status.success(), "Branch should exist");
+
+        // Cleanup
+        let _ = StdCommand::new("git")
+            .args(["worktree", "remove", worktree_path.to_str().unwrap()])
+            .current_dir(&repo_dir)
+            .output();
+        let _ = fs::remove_dir_all(&worktree_path);
+        cleanup_test_repo(&repo_dir)?;
+
+        Ok(())
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_copy_spec_to_worktree_success() -> Result<()> {
+        let repo_dir = PathBuf::from("/tmp/test-chant-repo-copy-spec");
+        cleanup_test_repo(&repo_dir)?;
+        setup_test_repo(&repo_dir)?;
+
+        let original_dir = std::env::current_dir()?;
+
+        let result: Result<PathBuf> = {
+            std::env::set_current_dir(&repo_dir).context("Failed to change to repo directory")?;
+
+            let spec_id = "test-spec-copy";
+            let branch = "spec/test-spec-copy";
+
+            // Create .chant/specs directory in main repo
+            let specs_dir = repo_dir.join(".chant/specs");
+            fs::create_dir_all(&specs_dir)?;
+
+            // Create a test spec file in main repo
+            let spec_path = specs_dir.join(format!("{}.md", spec_id));
+            fs::write(
+                &spec_path,
+                "---\ntype: code\nstatus: in_progress\n---\n# Test Spec\n",
+            )?;
+
+            // Create worktree
+            let worktree_path = create_worktree(spec_id, branch)?;
+
+            // Copy spec to worktree
+            copy_spec_to_worktree(spec_id, &worktree_path)?;
+
+            // Verify spec was copied to worktree
+            let worktree_spec_path = worktree_path
+                .join(".chant/specs")
+                .join(format!("{}.md", spec_id));
+            assert!(
+                worktree_spec_path.exists(),
+                "Spec file should exist in worktree"
+            );
+
+            let worktree_spec_content = fs::read_to_string(&worktree_spec_path)?;
+            assert!(
+                worktree_spec_content.contains("in_progress"),
+                "Spec should contain in_progress status"
+            );
+
+            // Verify the copy was committed
+            let log_output = StdCommand::new("git")
+                .args(["log", "--oneline", "-n", "1"])
+                .current_dir(&worktree_path)
+                .output()?;
+            let log = String::from_utf8_lossy(&log_output.stdout);
+            assert!(
+                log.contains("update spec status"),
+                "Commit message should mention spec update"
+            );
+
+            Ok(worktree_path)
+        };
+
+        // Always restore original directory
+        std::env::set_current_dir(&original_dir).context("Failed to restore original directory")?;
+
+        // Cleanup
+        if let Ok(worktree_path) = result {
+            let _ = StdCommand::new("git")
+                .args(["worktree", "remove", worktree_path.to_str().unwrap()])
+                .current_dir(&repo_dir)
+                .output();
+            let _ = fs::remove_dir_all(&worktree_path);
+        }
+        cleanup_test_repo(&repo_dir)?;
+
+        Ok(())
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_remove_worktree_success() -> Result<()> {
+        let repo_dir = PathBuf::from("/tmp/test-chant-repo-remove-success");
+        cleanup_test_repo(&repo_dir)?;
+        setup_test_repo(&repo_dir)?;
+
+        let original_dir = std::env::current_dir()?;
+
+        let worktree_path = {
+            std::env::set_current_dir(&repo_dir).context("Failed to change to repo directory")?;
+
+            let spec_id = "test-spec-remove";
+            let branch = "spec/test-spec-remove";
+
+            // Create worktree
+            let path = create_worktree(spec_id, branch)?;
+            assert!(path.exists(), "Worktree should exist after creation");
+            path
+        };
+
+        // Always restore original directory before cleanup
+        std::env::set_current_dir(&original_dir).context("Failed to restore original directory")?;
+
+        // Remove the worktree
+        let result = remove_worktree(&worktree_path);
+        assert!(result.is_ok(), "remove_worktree should succeed");
+
+        // Verify worktree directory no longer exists
+        assert!(
+            !worktree_path.exists(),
+            "Worktree directory should be removed"
+        );
+
+        cleanup_test_repo(&repo_dir)?;
+        Ok(())
+    }
+
+    #[test]
     fn test_remove_worktree_idempotent() -> Result<()> {
         let path = PathBuf::from("/tmp/nonexistent-worktree-12345");
 
