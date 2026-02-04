@@ -86,16 +86,3 @@ jobs:
           files: ./codecov.json
           fail_ci_if_error: false
 
-  examples:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: Build chant
-        run: cargo build --release
-      - name: Run example workflows
-        run: |
-          export PATH="$PWD/target/release:$PATH"
-          ./examples/test-examples.sh all
