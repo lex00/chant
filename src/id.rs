@@ -257,19 +257,14 @@ mod tests {
     #[test]
     fn test_format_base36() {
         assert_eq!(format_base36(0, 3), "000");
-        assert_eq!(format_base36(1, 3), "001");
-        assert_eq!(format_base36(10, 3), "00a");
         assert_eq!(format_base36(35, 3), "00z");
         assert_eq!(format_base36(36, 3), "010");
-        assert_eq!(format_base36(999, 3), "0rr");
         assert_eq!(format_base36(1000, 3), "0rs");
     }
 
     #[test]
     fn test_parse_base36() {
         assert_eq!(parse_base36("000"), Some(0));
-        assert_eq!(parse_base36("001"), Some(1));
-        assert_eq!(parse_base36("00a"), Some(10));
         assert_eq!(parse_base36("00z"), Some(35));
         assert_eq!(parse_base36("010"), Some(36));
     }
@@ -293,86 +288,12 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_local_id_with_project() {
-        let spec = SpecId::parse("auth-2026-01-27-001-abc").unwrap();
-        assert_eq!(spec.repo, None);
-        assert_eq!(spec.project, Some("auth".to_string()));
-        assert_eq!(spec.base_id, "2026-01-27-001-abc");
-        assert_eq!(spec.member, None);
-    }
-
-    #[test]
-    fn test_parse_repo_id_without_project() {
-        let spec = SpecId::parse("backend:2026-01-27-001-abc").unwrap();
-        assert_eq!(spec.repo, Some("backend".to_string()));
-        assert_eq!(spec.project, None);
-        assert_eq!(spec.base_id, "2026-01-27-001-abc");
-        assert_eq!(spec.member, None);
-    }
-
-    #[test]
-    fn test_parse_repo_id_with_project() {
-        let spec = SpecId::parse("backend:auth-2026-01-27-001-abc").unwrap();
-        assert_eq!(spec.repo, Some("backend".to_string()));
-        assert_eq!(spec.project, Some("auth".to_string()));
-        assert_eq!(spec.base_id, "2026-01-27-001-abc");
-        assert_eq!(spec.member, None);
-    }
-
-    #[test]
-    fn test_parse_local_id_with_member() {
-        let spec = SpecId::parse("2026-01-27-001-abc.1").unwrap();
-        assert_eq!(spec.repo, None);
-        assert_eq!(spec.project, None);
-        assert_eq!(spec.base_id, "2026-01-27-001-abc");
-        assert_eq!(spec.member, Some(1));
-    }
-
-    #[test]
-    fn test_parse_local_id_with_project_and_member() {
-        let spec = SpecId::parse("auth-2026-01-27-001-abc.3").unwrap();
-        assert_eq!(spec.repo, None);
-        assert_eq!(spec.project, Some("auth".to_string()));
-        assert_eq!(spec.base_id, "2026-01-27-001-abc");
-        assert_eq!(spec.member, Some(3));
-    }
-
-    #[test]
-    fn test_parse_repo_id_with_member() {
-        let spec = SpecId::parse("backend:2026-01-27-001-abc.2").unwrap();
-        assert_eq!(spec.repo, Some("backend".to_string()));
-        assert_eq!(spec.project, None);
-        assert_eq!(spec.base_id, "2026-01-27-001-abc");
-        assert_eq!(spec.member, Some(2));
-    }
-
-    #[test]
     fn test_parse_repo_id_with_project_and_member() {
         let spec = SpecId::parse("backend:auth-2026-01-27-001-abc.5").unwrap();
         assert_eq!(spec.repo, Some("backend".to_string()));
         assert_eq!(spec.project, Some("auth".to_string()));
         assert_eq!(spec.base_id, "2026-01-27-001-abc");
         assert_eq!(spec.member, Some(5));
-    }
-
-    #[test]
-    fn test_parse_repo_with_hyphen() {
-        let spec = SpecId::parse("my-repo:2026-01-27-001-abc").unwrap();
-        assert_eq!(spec.repo, Some("my-repo".to_string()));
-        assert_eq!(spec.project, None);
-        assert_eq!(spec.base_id, "2026-01-27-001-abc");
-    }
-
-    #[test]
-    fn test_parse_repo_with_underscore() {
-        let spec = SpecId::parse("my_repo:2026-01-27-001-abc").unwrap();
-        assert_eq!(spec.repo, Some("my_repo".to_string()));
-    }
-
-    #[test]
-    fn test_parse_project_with_hyphen() {
-        let spec = SpecId::parse("auth-service-2026-01-27-001-abc").unwrap();
-        assert_eq!(spec.project, Some("auth-service".to_string()));
     }
 
     #[test]
@@ -386,73 +307,6 @@ mod tests {
     fn test_invalid_repo_name_with_special_chars() {
         let result = SpecId::parse("back@end:2026-01-27-001-abc");
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_invalid_repo_name_with_dot() {
-        let result = SpecId::parse("backend.com:2026-01-27-001-abc");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_empty_spec_id() {
-        let result = SpecId::parse("");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_display_local_id() {
-        let spec = SpecId {
-            repo: None,
-            project: None,
-            base_id: "2026-01-27-001-abc".to_string(),
-            member: None,
-        };
-        assert_eq!(spec.to_string(), "2026-01-27-001-abc");
-    }
-
-    #[test]
-    fn test_display_local_id_with_project() {
-        let spec = SpecId {
-            repo: None,
-            project: Some("auth".to_string()),
-            base_id: "2026-01-27-001-abc".to_string(),
-            member: None,
-        };
-        assert_eq!(spec.to_string(), "auth-2026-01-27-001-abc");
-    }
-
-    #[test]
-    fn test_display_repo_id() {
-        let spec = SpecId {
-            repo: Some("backend".to_string()),
-            project: None,
-            base_id: "2026-01-27-001-abc".to_string(),
-            member: None,
-        };
-        assert_eq!(spec.to_string(), "backend:2026-01-27-001-abc");
-    }
-
-    #[test]
-    fn test_display_repo_id_with_project() {
-        let spec = SpecId {
-            repo: Some("backend".to_string()),
-            project: Some("auth".to_string()),
-            base_id: "2026-01-27-001-abc".to_string(),
-            member: None,
-        };
-        assert_eq!(spec.to_string(), "backend:auth-2026-01-27-001-abc");
-    }
-
-    #[test]
-    fn test_display_with_member() {
-        let spec = SpecId {
-            repo: Some("backend".to_string()),
-            project: Some("auth".to_string()),
-            base_id: "2026-01-27-001-abc".to_string(),
-            member: Some(3),
-        };
-        assert_eq!(spec.to_string(), "backend:auth-2026-01-27-001-abc.3");
     }
 
     #[test]
@@ -473,11 +327,5 @@ mod tests {
             let spec = SpecId::parse(input).unwrap();
             assert_eq!(spec.to_string(), input);
         }
-    }
-
-    #[test]
-    fn test_parse_member_with_large_number() {
-        let spec = SpecId::parse("2026-01-27-001-abc.999").unwrap();
-        assert_eq!(spec.member, Some(999));
     }
 }

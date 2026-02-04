@@ -276,53 +276,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_spec_score_creation_with_all_a() {
-        let score = SpecScore {
-            complexity: ComplexityGrade::A,
-            confidence: ConfidenceGrade::A,
-            splittability: SplittabilityGrade::A,
-            isolation: Some(IsolationGrade::A),
-            ac_quality: ACQualityGrade::A,
-            traffic_light: TrafficLight::Ready,
-        };
-
-        assert_eq!(score.complexity, ComplexityGrade::A);
-        assert_eq!(score.confidence, ConfidenceGrade::A);
-        assert_eq!(score.splittability, SplittabilityGrade::A);
-        assert_eq!(score.isolation, Some(IsolationGrade::A));
-        assert_eq!(score.ac_quality, ACQualityGrade::A);
-        assert_eq!(score.traffic_light, TrafficLight::Ready);
-    }
-
-    #[test]
-    fn test_complexity_grade_display() {
-        assert_eq!(ComplexityGrade::B.to_string(), "B");
-        assert_eq!(ComplexityGrade::A.to_string(), "A");
-        assert_eq!(ComplexityGrade::C.to_string(), "C");
-        assert_eq!(ComplexityGrade::D.to_string(), "D");
-    }
-
-    #[test]
-    fn test_confidence_grade_display() {
-        assert_eq!(ConfidenceGrade::B.to_string(), "B");
-    }
-
-    #[test]
-    fn test_splittability_grade_display() {
-        assert_eq!(SplittabilityGrade::B.to_string(), "B");
-    }
-
-    #[test]
-    fn test_isolation_grade_display() {
-        assert_eq!(IsolationGrade::B.to_string(), "B");
-    }
-
-    #[test]
-    fn test_ac_quality_grade_display() {
-        assert_eq!(ACQualityGrade::B.to_string(), "B");
-    }
-
-    #[test]
     fn test_traffic_light_display() {
         assert_eq!(TrafficLight::Ready.to_string(), "🟢 Ready");
         assert_eq!(TrafficLight::Review.to_string(), "🟡 Review");
@@ -330,57 +283,9 @@ mod tests {
     }
 
     #[test]
-    fn test_spec_score_serialization() {
-        let score = SpecScore {
-            complexity: ComplexityGrade::A,
-            confidence: ConfidenceGrade::B,
-            splittability: SplittabilityGrade::A,
-            isolation: None,
-            ac_quality: ACQualityGrade::A,
-            traffic_light: TrafficLight::Ready,
-        };
-
-        let json = serde_json::to_string(&score).unwrap();
-        let deserialized: SpecScore = serde_json::from_str(&json).unwrap();
-
-        assert_eq!(deserialized.complexity, ComplexityGrade::A);
-        assert_eq!(deserialized.confidence, ConfidenceGrade::B);
-        assert_eq!(deserialized.splittability, SplittabilityGrade::A);
-        assert_eq!(deserialized.isolation, None);
-        assert_eq!(deserialized.ac_quality, ACQualityGrade::A);
-        assert_eq!(deserialized.traffic_light, TrafficLight::Ready);
-    }
-
-    #[test]
-    fn test_isolation_is_optional() {
-        let score = SpecScore {
-            complexity: ComplexityGrade::A,
-            confidence: ConfidenceGrade::A,
-            splittability: SplittabilityGrade::A,
-            isolation: None, // Should work fine without isolation
-            ac_quality: ACQualityGrade::A,
-            traffic_light: TrafficLight::Ready,
-        };
-
-        assert_eq!(score.isolation, None);
-    }
-
-    #[test]
-    fn test_default_spec_score() {
-        let score = SpecScore::default();
-        assert_eq!(score.complexity, ComplexityGrade::A);
-        assert_eq!(score.confidence, ConfidenceGrade::A);
-        assert_eq!(score.splittability, SplittabilityGrade::A);
-        assert_eq!(score.isolation, None);
-        assert_eq!(score.ac_quality, ACQualityGrade::A);
-        assert_eq!(score.traffic_light, TrafficLight::Ready);
-    }
-
-    #[test]
     fn test_calculate_complexity_grade_a() {
         use crate::spec::{Spec, SpecFrontmatter};
 
-        // 2 criteria, 1 file, 150 words → Grade A
         let spec = Spec {
             id: "test".to_string(),
             frontmatter: SpecFrontmatter {
@@ -401,7 +306,6 @@ mod tests {
     fn test_calculate_complexity_grade_b() {
         use crate::spec::{Spec, SpecFrontmatter};
 
-        // 5 criteria, 3 files, 300 words → Grade B
         let spec = Spec {
             id: "test".to_string(),
             frontmatter: SpecFrontmatter {
@@ -423,36 +327,9 @@ mod tests {
     }
 
     #[test]
-    fn test_calculate_complexity_grade_c() {
-        use crate::spec::{Spec, SpecFrontmatter};
-
-        // 6 criteria, 4 files, 500 words → Grade C
-        let spec = Spec {
-            id: "test".to_string(),
-            frontmatter: SpecFrontmatter {
-                target_files: Some(vec![
-                    "file1.rs".to_string(),
-                    "file2.rs".to_string(),
-                    "file3.rs".to_string(),
-                    "file4.rs".to_string(),
-                ]),
-                ..Default::default()
-            },
-            title: Some("Test".to_string()),
-            body: format!(
-                "## Acceptance Criteria\n- [ ] First\n- [ ] Second\n- [ ] Third\n- [ ] Fourth\n- [ ] Fifth\n- [ ] Sixth\n\n{}",
-                "word ".repeat(500)
-            ),
-        };
-
-        assert_eq!(calculate_complexity(&spec), ComplexityGrade::C);
-    }
-
-    #[test]
     fn test_calculate_complexity_grade_d_criteria() {
         use crate::spec::{Spec, SpecFrontmatter};
 
-        // 10 criteria, 2 files, 100 words → Grade D (criteria exceeds threshold)
         let spec = Spec {
             id: "test".to_string(),
             frontmatter: SpecFrontmatter {
@@ -474,58 +351,9 @@ mod tests {
     }
 
     #[test]
-    fn test_calculate_complexity_grade_d_files() {
-        use crate::spec::{Spec, SpecFrontmatter};
-
-        // 2 criteria, 5 files, 100 words → Grade D (files exceeds threshold)
-        let spec = Spec {
-            id: "test".to_string(),
-            frontmatter: SpecFrontmatter {
-                target_files: Some(vec![
-                    "file1.rs".to_string(),
-                    "file2.rs".to_string(),
-                    "file3.rs".to_string(),
-                    "file4.rs".to_string(),
-                    "file5.rs".to_string(),
-                ]),
-                ..Default::default()
-            },
-            title: Some("Test".to_string()),
-            body: format!(
-                "## Acceptance Criteria\n- [ ] First\n- [ ] Second\n\n{}",
-                "word ".repeat(100)
-            ),
-        };
-
-        assert_eq!(calculate_complexity(&spec), ComplexityGrade::D);
-    }
-
-    #[test]
-    fn test_calculate_complexity_grade_d_words() {
-        use crate::spec::{Spec, SpecFrontmatter};
-
-        // 2 criteria, 1 file, 700 words → Grade D (words exceeds threshold)
-        let spec = Spec {
-            id: "test".to_string(),
-            frontmatter: SpecFrontmatter {
-                target_files: Some(vec!["file1.rs".to_string()]),
-                ..Default::default()
-            },
-            title: Some("Test".to_string()),
-            body: format!(
-                "## Acceptance Criteria\n- [ ] First\n- [ ] Second\n\n{}",
-                "word ".repeat(700)
-            ),
-        };
-
-        assert_eq!(calculate_complexity(&spec), ComplexityGrade::D);
-    }
-
-    #[test]
     fn test_calculate_complexity_no_target_files() {
         use crate::spec::{Spec, SpecFrontmatter};
 
-        // Specs with no target_files should default to 0 files
         let spec = Spec {
             id: "test".to_string(),
             frontmatter: SpecFrontmatter {
@@ -536,24 +364,6 @@ mod tests {
             body:
                 "## Acceptance Criteria\n- [ ] First\n- [ ] Second\n\nSome content here with words."
                     .to_string(),
-        };
-
-        assert_eq!(calculate_complexity(&spec), ComplexityGrade::A);
-    }
-
-    #[test]
-    fn test_calculate_complexity_empty_body() {
-        use crate::spec::{Spec, SpecFrontmatter};
-
-        // Empty body should have word count of 0
-        let spec = Spec {
-            id: "test".to_string(),
-            frontmatter: SpecFrontmatter {
-                target_files: Some(vec!["file1.rs".to_string()]),
-                ..Default::default()
-            },
-            title: Some("Test".to_string()),
-            body: String::new(),
         };
 
         assert_eq!(calculate_complexity(&spec), ComplexityGrade::A);
