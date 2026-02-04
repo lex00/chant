@@ -91,7 +91,7 @@ MCP provides a standardized way to expose tools to AI agents.
 
 ## Tools
 
-The MCP server exposes 18 tools organized into query (read-only) and mutating categories.
+The MCP server exposes 21 tools organized into query (read-only) and mutating categories.
 
 ### Query Tools (read-only)
 
@@ -120,6 +120,9 @@ The MCP server exposes 18 tools organized into query (read-only) and mutating ca
 | `chant_work_list` | List running work processes | `process_id` (optional), `include_completed` (optional) |
 | `chant_pause` | Pause a running work process for a spec | `id` (required) |
 | `chant_takeover` | Take over a running spec, stopping the agent and analyzing progress | `id` (required), `force` (optional) |
+| `chant_watch_status` | Get watch status and active worktrees | (none) |
+| `chant_watch_start` | Start watch in background if not running | (none) |
+| `chant_watch_stop` | Stop running watch process | (none) |
 
 ### chant_spec_list
 
@@ -935,6 +938,163 @@ Take over a running spec, stopping the agent and analyzing progress.
 }
 ```
 
+### chant_watch_status
+
+Get watch status and list active worktrees with their agent status.
+
+**Parameters:** None
+
+**Response format:**
+```json
+{
+  "watch_running": true,
+  "worktrees": [
+    {
+      "spec_id": "2026-02-02-001-xyz",
+      "path": "/tmp/chant-2026-02-02-001-xyz",
+      "status": "working",
+      "updated_at": "2026-02-02T10:30:00Z",
+      "error": null,
+      "commits": []
+    }
+  ],
+  "worktree_count": 1
+}
+```
+
+**Example Request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "chant_watch_status",
+    "arguments": {}
+  },
+  "id": 1
+}
+```
+
+**Worktree Status Values:**
+- `working` - Agent is actively working on the spec
+- `done` - Agent completed successfully, awaiting watch to merge and finalize
+- `failed` - Agent encountered an error
+- `unknown` - No status file found (agent may not have started yet)
+
+### chant_watch_start
+
+Start watch in background if not already running.
+
+**Parameters:** None
+
+**Behavior:**
+- Checks if watch is already running via PID file
+- If not running, spawns `chant watch` as a background process
+- Returns immediately with the new process PID
+
+**Example Request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "chant_watch_start",
+    "arguments": {}
+  },
+  "id": 1
+}
+```
+
+**Example Response (success):**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Started watch process (PID: 12345)"
+      }
+    ]
+  },
+  "id": 1
+}
+```
+
+**Example Response (already running):**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Watch is already running"
+      }
+    ],
+    "isError": true
+  },
+  "id": 1
+}
+```
+
+### chant_watch_stop
+
+Stop a running watch process.
+
+**Parameters:** None
+
+**Behavior:**
+- Reads PID from `.chant/watch.pid`
+- Sends SIGTERM to the watch process (Unix) or uses taskkill (Windows)
+- Watch process handles graceful shutdown (removes PID file, cleans up)
+
+**Example Request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "chant_watch_stop",
+    "arguments": {}
+  },
+  "id": 1
+}
+```
+
+**Example Response (success):**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Sent stop signal to watch process (PID: 12345)"
+      }
+    ]
+  },
+  "id": 1
+}
+```
+
+**Example Response (not running):**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Watch is not running"
+      }
+    ],
+    "isError": true
+  },
+  "id": 1
+}
+```
+
 ## Tool Schemas
 
 Full JSON schemas as returned by `tools/list`. Only showing key tools; run `echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | chant mcp` for the complete list.
@@ -1223,6 +1383,30 @@ Full JSON schemas as returned by `tools/list`. Only showing key tools; run `echo
           }
         },
         "required": ["id"]
+      }
+    },
+    {
+      "name": "chant_watch_status",
+      "description": "Get watch status and active worktrees",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "chant_watch_start",
+      "description": "Start watch in background if not running",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "chant_watch_stop",
+      "description": "Stop running watch process",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
       }
     }
   ]

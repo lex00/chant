@@ -103,6 +103,7 @@ When a spec is created with `--needs-approval`, it must be approved before work 
 ### In Progress
 - Spec is currently being executed by an agent
 - Lock file created in `.chant/.locks/{spec-id}.pid`
+- Agent writes status to `.chant-status.json` in worktree (parallel mode)
 
 ### Completed
 - Spec execution completed successfully
@@ -266,6 +267,84 @@ lifecycle:
 │  Branch: deleted after merge                                 │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+## Watch Coordinator
+
+Watch is the **unified lifecycle coordinator** for all work execution. It runs as an ephemeral daemon that handles state transitions, merging, and cleanup.
+
+### Architecture
+
+```
+Agent (worktree)                    Watch (main)
+────────────────                    ────────────
+create worktree + branch
+write status: "working"       →     see working → update spec: InProgress
+do work, commit to branch
+write status: "done"          →     see done → merge → finalize → cleanup
+  (or "failed" on error)            (or handle failure)
+exit
+```
+
+### Auto-Start Behavior
+
+`chant work` commands automatically start watch if not running:
+
+1. `chant work` checks if watch is running via PID file (`.chant/watch.pid`)
+2. If not running, spawns `chant watch` as a detached background process
+3. Watch writes its PID to `.chant/watch.pid` on startup
+4. Watch exits gracefully after idle timeout (default: 5 minutes)
+
+Use `--no-watch` flag to disable auto-start (useful for testing).
+
+### PID Management
+
+- Watch writes PID to `.chant/watch.pid` on startup
+- Watch removes PID file on graceful exit (SIGINT, idle timeout, `--once`)
+- `is_watch_running()` checks: PID file exists AND process alive AND is chant
+- Stale PID file (process dead or wrong process) is automatically cleaned up
+
+### Agent Status File
+
+Agents communicate with watch via `.chant-status.json` in the worktree root:
+
+```json
+{
+  "spec_id": "2026-02-03-02p-ydf",
+  "status": "working",
+  "updated_at": "2026-02-03T14:30:00Z",
+  "error": null,
+  "commits": ["abc123"]
+}
+```
+
+**Status values:**
+- `working` - Agent is actively working
+- `done` - Agent completed successfully
+- `failed` - Agent encountered an error
+
+### Startup Recovery
+
+On startup, watch recovers from previous crashes:
+
+1. Scans for existing worktrees with `.chant-status.json`
+2. `done` status but not merged → queued for merge
+3. `working` status but stale (>1 hour) → marked failed
+4. Orphaned worktrees (no status file, old) → cleaned up
+
+### Idle Timeout
+
+Watch automatically exits when idle (configurable):
+
+```yaml
+# config.md
+watch:
+  idle_timeout_minutes: 5  # Exit after 5 minutes of no activity
+```
+
+Activity is detected when:
+- In-progress specs exist
+- Active worktrees with agents are found
+- Status file changes are observed
 
 ## Git Branch Lifecycle
 

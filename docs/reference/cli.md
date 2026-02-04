@@ -263,6 +263,7 @@ chant work 2026-01-22-001-x7m              # Execute single spec
 chant work 2026-01-22-001-x7m --prompt tdd # Execute with specific prompt
 chant work 2026-01-22-001-x7m --skip-deps  # Override dependency checks
 chant work 2026-01-22-001-x7m --skip-approval  # Bypass approval check
+chant work 2026-01-22-001-x7m --no-watch   # Disable watch auto-start (for testing)
 chant work --parallel                      # Execute all ready specs in parallel
 chant work --parallel --label auth         # Execute ready specs with label
 chant work 001 002 003 --parallel          # Execute specific specs in parallel
@@ -321,6 +322,22 @@ The prep command is useful for:
 - Preparing specs for the bootstrap prompt workflow
 
 By default, `chant prep` outputs the spec body. With the `--clean` flag, it removes any "## Agent Conversation", "## Execution Result", or similar sections that may have been added during previous runs, ensuring a clean slate for re-execution.
+
+### No-Watch Flag
+
+The `--no-watch` flag disables automatic watch startup:
+
+```bash
+chant work 001 --no-watch    # Work without starting watch
+```
+
+**When to use:**
+- Testing agent behavior in isolation
+- Debugging lifecycle issues
+- CI/CD environments where watch is managed separately
+- When you want to manually control the lifecycle
+
+Without watch running, agents will complete and write their status file, but lifecycle operations (merge, finalize, cleanup) won't happen until watch is started.
 
 ### Skip Flags
 
@@ -1580,40 +1597,91 @@ fi
 
 ## Watch
 
-Automatically finalize specs when their acceptance criteria are met:
+The **unified lifecycle coordinator** for all work execution. Watch runs as an ephemeral daemon that handles state transitions, merging, and cleanup.
 
 ```bash
-chant watch                           # Watch and finalize specs
+chant watch                           # Start watch (normally auto-started)
 chant watch --once                    # Run one iteration then exit
 chant watch --dry-run                 # Preview actions without executing
 chant watch --poll-interval 10        # Set poll interval to 10ms (overrides config)
 ```
 
+### Ephemeral Daemon Behavior
+
+Watch behaves as an ephemeral daemon:
+
+1. **Auto-start**: `chant work` commands automatically start watch if not running
+2. **PID file**: Watch writes PID to `.chant/watch.pid` on startup
+3. **Idle timeout**: Exits automatically after configurable idle period (default: 5 min)
+4. **Graceful shutdown**: Removes PID file on exit (SIGINT, idle timeout, `--once`)
+
+You typically don't need to start watch manually - it's started automatically when you run `chant work`.
+
 ### How It Works
 
 The watch command:
-1. Polls for completed specs at regular intervals
-2. Checks if all acceptance criteria are marked as complete
-3. Automatically finalizes specs when ready
-4. Continues watching (unless `--once` is specified)
+1. Writes PID to `.chant/watch.pid`
+2. Monitors worktrees for agent status changes (`.chant-status.json`)
+3. When agent writes `status: done`, watch:
+   - Merges the worktree branch to main
+   - Finalizes the spec (records commits, timestamp)
+   - Cleans up the worktree and branch
+4. When agent writes `status: failed`, watch handles failure appropriately
+5. Exits after idle timeout when no work remains
 
 ### Flags
 
 | Flag | Description |
 |------|-------------|
 | `--once` | Run only one iteration then exit (useful for testing) |
-| `--dry-run` | Show what would be finalized without actually doing it |
+| `--dry-run` | Show what would be done without actually doing it |
 | `--poll-interval MS` | Set poll interval in milliseconds (overrides config setting) |
+
+### PID Management
+
+```
+.chant/watch.pid    # Contains watch process ID
+```
+
+- Watch writes PID on startup
+- PID file removed on graceful exit
+- `is_watch_running()` validates: file exists AND process alive AND is chant
+- Stale PID files (dead process) are automatically cleaned up
+
+### Configuration
+
+```yaml
+# config.md
+watch:
+  poll_interval: 1000        # Poll every 1000ms (1 second)
+  idle_timeout_minutes: 5    # Exit after 5 minutes idle
+```
 
 ### Examples
 
-**Basic usage:**
+**Normal operation (auto-started):**
 
 ```bash
-chant watch
+chant work --chain           # Watch is auto-started
 ```
 
-Watches continuously and finalizes specs when ready.
+Watch is started in the background automatically.
+
+**Manual start:**
+
+```bash
+chant watch                  # Start watch manually (runs in foreground)
+```
+
+Useful for debugging or when you want to see watch output directly.
+
+**Disable auto-start (for testing):**
+
+```bash
+chant work 001 --no-watch    # Work without starting watch
+```
+
+Agent will write status file, but lifecycle won't be processed until watch runs.
 
 **One-shot mode for testing:**
 
@@ -1621,7 +1689,7 @@ Watches continuously and finalizes specs when ready.
 chant watch --once
 ```
 
-Checks once and exits (useful for CI/CD integration or testing).
+Process one iteration of lifecycle operations and exit.
 
 **Preview mode:**
 
@@ -1629,21 +1697,23 @@ Checks once and exits (useful for CI/CD integration or testing).
 chant watch --dry-run --once
 ```
 
-Shows what would be finalized without making changes.
+Shows what would be done without making changes.
 
-**Custom poll interval:**
+### Startup Recovery
 
-```bash
-chant watch --poll-interval 1000
-```
+On startup, watch recovers from previous crashes:
 
-Poll every 1000ms (1 second) instead of using config default.
+1. Scans for existing worktrees with `.chant-status.json`
+2. `done` status but not merged → queued for merge
+3. `working` status but stale (>1 hour) → marked failed
+4. Orphaned worktrees → cleaned up
 
 ### Use Cases
 
-- **Continuous integration**: Monitor spec completion in CI pipelines
-- **Background automation**: Run in tmux/screen for automatic finalization
-- **Testing**: Use `--once` to verify watch behavior without blocking
+- **Ephemeral coordinator**: Auto-starts with work, exits when idle
+- **Crash recovery**: Resumes lifecycle operations after watch/agent crashes
+- **Parallel execution**: Handles merging from multiple concurrent agents
+- **Background automation**: Run explicitly for longer-running sessions
 
 ---
 
