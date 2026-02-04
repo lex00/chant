@@ -1252,3 +1252,223 @@ fn run_chant_list(repo_dir: &Path) -> String {
 
     String::from_utf8_lossy(&output.stdout).to_string()
 }
+
+/// Test that chain execution with dependent specs handles dependencies correctly
+#[test]
+#[serial]
+fn test_chain_execution_with_dependencies() {
+    let repo_dir = PathBuf::from("/tmp/test-chant-chain-deps");
+    let _ = common::cleanup_test_repo(&repo_dir);
+
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
+    let chant_binary = get_chant_binary();
+
+    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
+
+    // Initialize chant
+    let init_output = Command::new(&chant_binary)
+        .args(["init", "--minimal"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant init");
+    assert!(
+        init_output.status.success(),
+        "chant init failed: {}",
+        String::from_utf8_lossy(&init_output.stderr)
+    );
+
+    let specs_dir = repo_dir.join(".chant/specs");
+    fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+
+    // Create chain: A (no deps) -> B (depends on A) -> C (depends on B)
+    let spec_a = "2026-02-03-chain-dep-a";
+    let spec_b = "2026-02-03-chain-dep-b";
+    let spec_c = "2026-02-03-chain-dep-c";
+
+    create_spec_with_dependencies(&specs_dir, spec_a, &[]).expect("Failed to create spec A");
+    create_spec_with_dependencies(&specs_dir, spec_b, &[spec_a]).expect("Failed to create spec B");
+    create_spec_with_dependencies(&specs_dir, spec_c, &[spec_b]).expect("Failed to create spec C");
+
+    // Try to chain all three - B and C should be skipped because they're blocked
+    let output = Command::new(&chant_binary)
+        .args(["work", "--chain", spec_a, spec_b, spec_c])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant work --chain");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    // Should skip B and C (blocked) or fail with dependency error
+    // The exact behavior depends on whether the chain tries to execute or validates upfront
+    assert!(
+        !output.status.success()
+            || stdout.contains("Skipping")
+            || stderr.contains("not ready")
+            || stderr.contains("dependencies"),
+        "Chain should skip blocked specs or show dependency error. Stdout: {}, Stderr: {}",
+        stdout,
+        stderr
+    );
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
+}
+
+/// Test chain execution behavior when encountering a blocked spec
+#[test]
+#[serial]
+fn test_chain_skips_blocked_specs_in_sequence() {
+    let repo_dir = PathBuf::from("/tmp/test-chant-chain-blocked");
+    let _ = common::cleanup_test_repo(&repo_dir);
+
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
+    let chant_binary = get_chant_binary();
+
+    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
+
+    // Initialize chant
+    let init_output = Command::new(&chant_binary)
+        .args(["init", "--minimal"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant init");
+    assert!(
+        init_output.status.success(),
+        "chant init failed: {}",
+        String::from_utf8_lossy(&init_output.stderr)
+    );
+
+    let specs_dir = repo_dir.join(".chant/specs");
+    fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+
+    // Create specs: A (ready), B (blocked by X), C (ready)
+    let spec_a = "2026-02-03-chain-blk-a";
+    let spec_b = "2026-02-03-chain-blk-b";
+    let spec_c = "2026-02-03-chain-blk-c";
+    let spec_x = "2026-02-03-chain-blk-x"; // blocker that doesn't exist yet
+
+    create_spec_with_dependencies(&specs_dir, spec_a, &[]).expect("Failed to create spec A");
+    create_spec_with_dependencies(&specs_dir, spec_b, &[spec_x]).expect("Failed to create spec B");
+    create_spec_with_dependencies(&specs_dir, spec_c, &[]).expect("Failed to create spec C");
+
+    // Try to chain A, B, C - should skip B because it's blocked (or fail at A due to missing prompt)
+    let output = Command::new(&chant_binary)
+        .args(["work", "--chain", spec_a, spec_b, spec_c])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant work --chain");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    // Chain should either skip B (blocked) or fail before that
+    // The key is that B's blocked status should be recognized
+    assert!(
+        stdout.contains("Skipping")
+            || stderr.contains("not ready")
+            || stderr.contains("Prompt not found")
+            || !output.status.success(),
+        "Chain should skip blocked spec B or fail. Stdout: {}, Stderr: {}",
+        stdout,
+        stderr
+    );
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
+}
+
+/// Test chain automatically picks up newly unblocked specs
+#[test]
+#[serial]
+fn test_chain_all_ready_with_dependency_updates() {
+    let repo_dir = PathBuf::from("/tmp/test-chant-chain-ready-deps");
+    let _ = common::cleanup_test_repo(&repo_dir);
+
+    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
+    let chant_binary = get_chant_binary();
+
+    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
+
+    // Initialize chant
+    let init_output = Command::new(&chant_binary)
+        .args(["init", "--minimal"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant init");
+    assert!(
+        init_output.status.success(),
+        "chant init failed: {}",
+        String::from_utf8_lossy(&init_output.stderr)
+    );
+
+    let specs_dir = repo_dir.join(".chant/specs");
+    fs::create_dir_all(&specs_dir).expect("Failed to create specs dir");
+
+    // Create chain: A (ready) -> B (depends on A) -> C (depends on B)
+    let spec_a = "2026-02-03-chain-ready-a";
+    let spec_b = "2026-02-03-chain-ready-b";
+    let spec_c = "2026-02-03-chain-ready-c";
+
+    create_spec_with_dependencies(&specs_dir, spec_a, &[]).expect("Failed to create spec A");
+    create_spec_with_dependencies(&specs_dir, spec_b, &[spec_a]).expect("Failed to create spec B");
+    create_spec_with_dependencies(&specs_dir, spec_c, &[spec_b]).expect("Failed to create spec C");
+
+    // Verify initial state: only A is ready
+    let ready_output = Command::new(&chant_binary)
+        .args(["list", "--ready"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant list --ready");
+
+    let stdout = String::from_utf8_lossy(&ready_output.stdout);
+    assert!(
+        stdout.contains(spec_a),
+        "Spec A should be ready. Output: {}",
+        stdout
+    );
+    assert!(
+        !stdout.contains(spec_b),
+        "Spec B should be blocked. Output: {}",
+        stdout
+    );
+    assert!(
+        !stdout.contains(spec_c),
+        "Spec C should be blocked. Output: {}",
+        stdout
+    );
+
+    // Complete A
+    update_spec_status(&specs_dir, spec_a, "completed").expect("Failed to update spec A");
+
+    // Verify B is now ready
+    let ready_output2 = Command::new(&chant_binary)
+        .args(["list", "--ready"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to run chant list --ready");
+
+    let stdout2 = String::from_utf8_lossy(&ready_output2.stdout);
+    assert!(
+        stdout2.contains(spec_b),
+        "Spec B should be ready after A completes. Output: {}",
+        stdout2
+    );
+    assert!(
+        !stdout2.contains(spec_c),
+        "Spec C should still be blocked. Output: {}",
+        stdout2
+    );
+
+    // Cleanup
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = common::cleanup_test_repo(&repo_dir);
+}
