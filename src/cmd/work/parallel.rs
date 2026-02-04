@@ -482,6 +482,25 @@ pub fn cmd_work_parallel(
             continue;
         }
 
+        // Write agent status file: working
+        let status_path = specs_dir.join(format!(".chant-status-{}.json", spec.id));
+        let agent_status = chant::worktree::status::AgentStatus {
+            spec_id: spec.id.clone(),
+            status: chant::worktree::status::AgentStatusState::Working,
+            updated_at: chrono::Utc::now().to_rfc3339(),
+            error: None,
+            commits: vec![],
+        };
+        if let Err(e) = chant::worktree::status::write_status(&status_path, &agent_status) {
+            println!(
+                "{} [{}] Failed to write agent status: {}",
+                "✗".red(),
+                spec.id,
+                e
+            );
+            continue;
+        }
+
         println!(
             "[{}] Working with prompt '{}' via {}",
             spec.id.cyan(),
@@ -638,6 +657,27 @@ pub fn cmd_work_parallel(
                     // Agent work succeeded - get commits
                     let commits = get_commits_for_spec(&spec_id).ok();
 
+                    // Write agent status file: done
+                    let status_path =
+                        specs_dir_clone.join(format!(".chant-status-{}.json", spec_id));
+                    let agent_status = chant::worktree::status::AgentStatus {
+                        spec_id: spec_id.clone(),
+                        status: chant::worktree::status::AgentStatusState::Done,
+                        updated_at: chrono::Utc::now().to_rfc3339(),
+                        error: None,
+                        commits: commits.clone().unwrap_or_default(),
+                    };
+                    if let Err(e) =
+                        chant::worktree::status::write_status(&status_path, &agent_status)
+                    {
+                        eprintln!(
+                            "{} [{}] Failed to write agent status: {}",
+                            "⚠".yellow(),
+                            spec_id,
+                            e
+                        );
+                    }
+
                     // Mark spec as completed for cleanup tracking
                     execution_state_clone.mark_completed(&spec_id);
 
@@ -726,6 +766,27 @@ pub fn cmd_work_parallel(
                     }
                 }
                 Err(e) => {
+                    // Write agent status file: failed
+                    let status_path =
+                        specs_dir_clone.join(format!(".chant-status-{}.json", spec_id));
+                    let agent_status = chant::worktree::status::AgentStatus {
+                        spec_id: spec_id.clone(),
+                        status: chant::worktree::status::AgentStatusState::Failed,
+                        updated_at: chrono::Utc::now().to_rfc3339(),
+                        error: Some(e.to_string()),
+                        commits: vec![],
+                    };
+                    if let Err(status_err) =
+                        chant::worktree::status::write_status(&status_path, &agent_status)
+                    {
+                        eprintln!(
+                            "{} [{}] Failed to write agent status: {}",
+                            "⚠".yellow(),
+                            spec_id,
+                            status_err
+                        );
+                    }
+
                     // Agent failed - cleanup worktree
                     if let Some(ref path) = worktree_path_clone {
                         if !is_direct_mode_clone {

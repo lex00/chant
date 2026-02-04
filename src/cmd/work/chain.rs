@@ -221,6 +221,17 @@ fn execute_single_spec_in_chain(
     spec.save(&spec_path)?;
     eprintln!("{} [chain] Set {} to InProgress", "→".cyan(), spec.id);
 
+    // Write agent status file: working
+    let status_path = specs_dir.join(format!(".chant-status-{}.json", spec.id));
+    let agent_status = chant::worktree::status::AgentStatus {
+        spec_id: spec.id.clone(),
+        status: chant::worktree::status::AgentStatusState::Working,
+        updated_at: chrono::Utc::now().to_rfc3339(),
+        error: None,
+        commits: vec![],
+    };
+    chant::worktree::status::write_status(&status_path, &agent_status)?;
+
     // Don't mark driver as in_progress in chain mode to keep only 1 spec in_progress at a time
     // The driver will be auto-completed when all members finish
     spec::mark_driver_in_progress_conditional(specs_dir, &spec.id, true)?;
@@ -260,6 +271,25 @@ fn execute_single_spec_in_chain(
 
     match result {
         Ok(agent_output) => {
+            // Get commits before writing status
+            let found_commits_for_status = (if allow_no_commits {
+                cmd::commits::get_commits_for_spec_allow_no_commits(&spec.id)
+            } else {
+                cmd::commits::get_commits_for_spec(&spec.id)
+            })
+            .unwrap_or_default();
+
+            // Write agent status file: done
+            let status_path = specs_dir.join(format!(".chant-status-{}.json", spec.id));
+            let agent_status = chant::worktree::status::AgentStatus {
+                spec_id: spec.id.clone(),
+                status: chant::worktree::status::AgentStatusState::Done,
+                updated_at: chrono::Utc::now().to_rfc3339(),
+                error: None,
+                commits: found_commits_for_status.clone(),
+            };
+            chant::worktree::status::write_status(&status_path, &agent_status)?;
+
             // Reload spec (it may have been modified by the agent)
             let mut spec = spec::resolve_spec(specs_dir, &spec.id)?;
 
@@ -332,6 +362,25 @@ fn execute_single_spec_in_chain(
             Ok(())
         }
         Err(e) => {
+            // Write agent status file: failed
+            let status_path = specs_dir.join(format!(".chant-status-{}.json", spec.id));
+            let agent_status = chant::worktree::status::AgentStatus {
+                spec_id: spec.id.clone(),
+                status: chant::worktree::status::AgentStatusState::Failed,
+                updated_at: chrono::Utc::now().to_rfc3339(),
+                error: Some(e.to_string()),
+                commits: vec![],
+            };
+            if let Err(status_err) =
+                chant::worktree::status::write_status(&status_path, &agent_status)
+            {
+                eprintln!(
+                    "{} Failed to write agent status: {}",
+                    "⚠".yellow(),
+                    status_err
+                );
+            }
+
             // Update spec to failed
             let mut spec = spec::resolve_spec(specs_dir, &spec.id)?;
             spec.frontmatter.status = SpecStatus::Failed;

@@ -12,6 +12,7 @@ use chant::pid;
 use chant::spec::{self, SpecStatus};
 
 /// Result of a takeover operation
+#[allow(dead_code)]
 pub struct TakeoverResult {
     pub spec_id: String,
     pub analysis: String,
