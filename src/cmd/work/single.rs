@@ -132,10 +132,16 @@ pub fn cmd_work(
     chain_max: usize,
     no_merge: bool,
     no_rebase: bool,
+    no_watch: bool,
 ) -> Result<()> {
     let specs_dir = crate::cmd::ensure_initialized()?;
     let prompts_dir = PathBuf::from(PROMPTS_DIR);
     let config = Config::load()?;
+
+    // Auto-start watch if not disabled
+    if !no_watch {
+        super::ensure_watch_running()?;
+    }
 
     // Handle parallel execution mode (with specific IDs or all ready specs)
     if parallel {

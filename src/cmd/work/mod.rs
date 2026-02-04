@@ -9,7 +9,7 @@
 //! - Branch and PR creation
 //! - Worktree management
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::path::Path;
 
 use chant::spec::Spec;
@@ -29,6 +29,33 @@ pub use wizard::{auto_select_prompt_for_type, run_wizard, WizardSelection};
 // ============================================================================
 // SHARED HELPER FUNCTIONS
 // ============================================================================
+
+/// Start watch in background if not already running
+pub(crate) fn ensure_watch_running() -> Result<()> {
+    use crate::cmd::watch::is_watch_running;
+    use std::process::Command;
+
+    if is_watch_running() {
+        return Ok(());
+    }
+
+    // Get the current executable path to spawn watch
+    let current_exe = std::env::current_exe().context("Failed to get current executable path")?;
+
+    // Spawn watch in background
+    Command::new(current_exe)
+        .args(["watch"])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .context("Failed to spawn watch process")?;
+
+    // Give it a moment to start and write PID
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    Ok(())
+}
 
 /// Load all ready specs from the specs directory
 pub(crate) fn load_ready_specs(specs_dir: &Path) -> Result<Vec<Spec>> {

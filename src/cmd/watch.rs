@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use chant::config::Config;
 use chant::spec::{self, is_completed, is_failed, SpecStatus};
@@ -171,6 +172,148 @@ fn check_worktree_status(path: &Path) -> Result<AgentStatus> {
     read_status(&status_file)
 }
 
+/// Read PID from watch PID file
+fn read_watch_pid() -> Result<u32> {
+    let pid_path = PathBuf::from(".chant/watch.pid");
+    let content = fs::read_to_string(&pid_path)
+        .with_context(|| format!("Failed to read PID file: {}", pid_path.display()))?;
+    let pid: u32 = content
+        .trim()
+        .parse()
+        .with_context(|| format!("Invalid PID in file: {}", content))?;
+    Ok(pid)
+}
+
+/// Write PID to watch PID file
+fn write_watch_pid() -> Result<()> {
+    let pid_path = PathBuf::from(".chant/watch.pid");
+    let pid = std::process::id();
+    fs::write(&pid_path, pid.to_string())
+        .with_context(|| format!("Failed to write PID file: {}", pid_path.display()))?;
+    Ok(())
+}
+
+/// Remove watch PID file
+fn remove_watch_pid() -> Result<()> {
+    let pid_path = PathBuf::from(".chant/watch.pid");
+    if pid_path.exists() {
+        fs::remove_file(&pid_path)
+            .with_context(|| format!("Failed to remove PID file: {}", pid_path.display()))?;
+    }
+    Ok(())
+}
+
+/// Check if a process is alive
+fn is_process_alive(pid: u32) -> bool {
+    #[cfg(unix)]
+    {
+        use nix::sys::signal::kill;
+        use nix::unistd::Pid;
+
+        // Signal 0 doesn't send a signal but checks if process exists
+        kill(Pid::from_raw(pid as i32), None).is_ok()
+    }
+
+    #[cfg(windows)]
+    {
+        // Use tasklist command as a simple cross-platform approach
+        std::process::Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {}", pid)])
+            .output()
+            .ok()
+            .and_then(|output| {
+                if output.status.success() {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    Some(stdout.contains(&pid.to_string()))
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(false)
+    }
+}
+
+/// Check if a process is chant watch by examining its command line
+fn is_chant_watch_process(pid: u32) -> bool {
+    #[cfg(unix)]
+    {
+        // Read /proc/<pid>/cmdline on Linux or use ps on macOS
+        #[cfg(target_os = "linux")]
+        {
+            let cmdline_path = format!("/proc/{}/cmdline", pid);
+            if let Ok(cmdline) = fs::read_to_string(&cmdline_path) {
+                // cmdline is null-separated, check for "chant" and "watch"
+                return cmdline.contains("chant") && cmdline.contains("watch");
+            }
+            false
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            // Use ps command on macOS and other Unix systems
+            let output = Command::new("ps")
+                .args(["-p", &pid.to_string(), "-o", "command="])
+                .output();
+
+            if let Ok(output) = output {
+                if output.status.success() {
+                    let cmdline = String::from_utf8_lossy(&output.stdout);
+                    return cmdline.contains("chant") && cmdline.contains("watch");
+                }
+            }
+            false
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        // Use WMIC or PowerShell to get command line
+        let output = Command::new("wmic")
+            .args([
+                "process",
+                "where",
+                &format!("ProcessId={}", pid),
+                "get",
+                "CommandLine",
+                "/format:list",
+            ])
+            .output();
+
+        if let Ok(output) = output {
+            if output.status.success() {
+                let cmdline = String::from_utf8_lossy(&output.stdout);
+                return cmdline.contains("chant") && cmdline.contains("watch");
+            }
+        }
+        false
+    }
+}
+
+/// Check if watch is currently running
+///
+/// This checks if:
+/// 1. PID file exists
+/// 2. Process with that PID is alive
+/// 3. Process is actually chant watch (not a reused PID)
+///
+/// If the PID file exists but the process is dead or not chant watch,
+/// the stale PID file is automatically cleaned up.
+pub fn is_watch_running() -> bool {
+    match read_watch_pid() {
+        Ok(pid) => {
+            // Verify process exists AND is chant watch
+            if is_process_alive(pid) && is_chant_watch_process(pid) {
+                true
+            } else {
+                // Stale PID - clean up and report not running
+                let _ = remove_watch_pid();
+                false
+            }
+        }
+        Err(_) => false, // No file = not running
+    }
+}
+
 /// Main entry point for watch command
 pub fn run_watch(once: bool, dry_run: bool, poll_interval: Option<u64>) -> Result<()> {
     let _specs_dir = cmd::ensure_initialized()?;
@@ -188,6 +331,9 @@ pub fn run_watch(once: bool, dry_run: bool, poll_interval: Option<u64>) -> Resul
         );
     }
 
+    // Write PID file on startup
+    write_watch_pid().context("Failed to write watch PID file")?;
+
     // Initialize logger
     let mut logger = WatchLogger::init()?;
     logger.log_event(&format!(
@@ -204,11 +350,16 @@ pub fn run_watch(once: bool, dry_run: bool, poll_interval: Option<u64>) -> Resul
     })
     .context("Failed to set signal handler")?;
 
+    // Track last activity time for idle timeout
+    let mut last_activity = Instant::now();
+    let idle_timeout = Duration::from_secs(config.watch.idle_timeout_minutes * 60);
+
     // Main event loop
     loop {
         // Check for shutdown signal
         if shutdown.load(Ordering::SeqCst) {
             logger.log_event("Shutdown signal received, exiting gracefully")?;
+            remove_watch_pid()?;
             break;
         }
 
@@ -234,7 +385,20 @@ pub fn run_watch(once: bool, dry_run: bool, poll_interval: Option<u64>) -> Resul
 
         if in_progress_specs.is_empty() && active_worktrees.is_empty() {
             logger.log_event("No in-progress specs or active worktrees, waiting...")?;
+
+            // Check idle timeout
+            if last_activity.elapsed() >= idle_timeout && !once {
+                logger.log_event(&format!(
+                    "Idle for {} minutes, exiting",
+                    config.watch.idle_timeout_minutes
+                ))?;
+                remove_watch_pid()?;
+                break;
+            }
         } else {
+            // Reset activity timer when there's work
+            last_activity = Instant::now();
+
             if !in_progress_specs.is_empty() {
                 logger.log_event(&format!(
                     "Checking {} in-progress spec(s)",
@@ -451,6 +615,7 @@ pub fn run_watch(once: bool, dry_run: bool, poll_interval: Option<u64>) -> Resul
         // Exit after one iteration if --once flag is set
         if once {
             logger.log_event("Single pass complete, exiting")?;
+            remove_watch_pid()?;
             break;
         }
 

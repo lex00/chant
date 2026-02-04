@@ -288,6 +288,9 @@ enum Commands {
         /// Disable auto-rebase when merging branches in parallel execution
         #[arg(long)]
         no_rebase: bool,
+        /// Disable auto-start of watch process (for testing)
+        #[arg(long)]
+        no_watch: bool,
     },
     /// Start MCP server (Model Context Protocol)
     Mcp,
@@ -902,6 +905,7 @@ impl cmd::dispatch::Execute for Commands {
                 chain_max,
                 no_merge,
                 no_rebase,
+                no_watch,
             } => {
                 if no_branch {
                     eprintln!(
@@ -942,6 +946,7 @@ impl cmd::dispatch::Execute for Commands {
                     chain_max,
                     no_merge,
                     no_rebase,
+                    no_watch,
                 )
             }
             Commands::Mcp => chant::mcp::run_server(),

@@ -64,6 +64,7 @@ pub fn cmd_resume(
             0,     // chain_max
             false, // no_merge
             false, // no_rebase
+            false, // no_watch (allow auto-start)
         )?;
     }
 

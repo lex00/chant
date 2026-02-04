@@ -160,6 +160,13 @@ pub struct WatchConfig {
     /// Failure handling configuration
     #[serde(default)]
     pub failure: FailureConfig,
+    /// Idle timeout in minutes (default: 5)
+    #[serde(default = "default_idle_timeout_minutes")]
+    pub idle_timeout_minutes: u64,
+}
+
+fn default_idle_timeout_minutes() -> u64 {
+    5
 }
 
 impl Default for WatchConfig {
@@ -167,6 +174,7 @@ impl Default for WatchConfig {
         Self {
             poll_interval_ms: default_poll_interval_ms(),
             failure: FailureConfig::default(),
+            idle_timeout_minutes: default_idle_timeout_minutes(),
         }
     }
 }
