@@ -449,6 +449,124 @@ mod tests {
     }
 
     #[test]
+    fn test_count_criteria_no_criteria_section() {
+        let spec = make_spec("001", SpecStatus::Pending);
+        let (checked, total) = count_criteria(&spec);
+        assert_eq!(checked, 0);
+        assert_eq!(total, 0);
+    }
+
+    #[test]
+    fn test_count_criteria_all_unchecked() {
+        let spec = Spec {
+            id: "001".to_string(),
+            frontmatter: crate::spec::SpecFrontmatter {
+                status: SpecStatus::Pending,
+                ..Default::default()
+            },
+            title: Some("Test".to_string()),
+            body: r#"# Test
+
+## Acceptance Criteria
+
+- [ ] First criterion
+- [ ] Second criterion
+- [ ] Third criterion
+
+## Next Section
+"#
+            .to_string(),
+        };
+        let (checked, total) = count_criteria(&spec);
+        assert_eq!(checked, 0);
+        assert_eq!(total, 3);
+    }
+
+    #[test]
+    fn test_count_criteria_partially_checked() {
+        let spec = Spec {
+            id: "001".to_string(),
+            frontmatter: crate::spec::SpecFrontmatter::default(),
+            title: None,
+            body: r#"## Acceptance Criteria
+
+- [x] First criterion
+- [ ] Second criterion
+- [x] Third criterion
+"#
+            .to_string(),
+        };
+        let (checked, total) = count_criteria(&spec);
+        assert_eq!(checked, 2);
+        assert_eq!(total, 3);
+    }
+
+    #[test]
+    fn test_count_criteria_all_checked() {
+        let spec = Spec {
+            id: "001".to_string(),
+            frontmatter: crate::spec::SpecFrontmatter::default(),
+            title: None,
+            body: r#"## Acceptance Criteria
+
+- [x] First criterion
+- [x] Second criterion
+- [X] Third criterion (uppercase X)
+"#
+            .to_string(),
+        };
+        let (checked, total) = count_criteria(&spec);
+        assert_eq!(checked, 3);
+        assert_eq!(total, 3);
+    }
+
+    #[test]
+    fn test_count_criteria_ignores_code_fence() {
+        let spec = Spec {
+            id: "001".to_string(),
+            frontmatter: crate::spec::SpecFrontmatter::default(),
+            title: None,
+            body: r#"## Acceptance Criteria
+
+- [x] Real criterion
+
+```markdown
+- [ ] This should be ignored (in code fence)
+- [x] This too
+```
+
+- [ ] Another real criterion
+"#
+            .to_string(),
+        };
+        let (checked, total) = count_criteria(&spec);
+        assert_eq!(checked, 1);
+        assert_eq!(total, 2);
+    }
+
+    #[test]
+    fn test_count_criteria_stops_at_next_section() {
+        let spec = Spec {
+            id: "001".to_string(),
+            frontmatter: crate::spec::SpecFrontmatter::default(),
+            title: None,
+            body: r#"## Acceptance Criteria
+
+- [x] First criterion
+- [ ] Second criterion
+
+## Implementation Notes
+
+- [ ] This should not be counted (different section)
+"#
+            .to_string(),
+        };
+        let (checked, total) = count_criteria(&spec);
+        assert_eq!(checked, 1);
+        assert_eq!(total, 2);
+    }
+
+    #[test]
     fn test_load_main_branch_default() {
         let config = make_config(DefaultsConfig::default());
         let branch = load_main_branch(&config);

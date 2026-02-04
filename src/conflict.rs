@@ -240,11 +240,169 @@ mod tests {
     use crate::spec::SpecFrontmatter;
 
     #[test]
-    fn test_detect_conflicting_files_parses_status() {
-        // This test would require mocking git commands or running in a repo with conflicts
-        // For now, we test the parsing logic indirectly
-        let conflicting_files = ["src/config.rs".to_string(), "docs/guide.md".to_string()];
-        assert_eq!(conflicting_files.len(), 2);
+    fn test_create_conflict_spec_generates_valid_spec() {
+        use std::fs;
+        let temp_dir = tempfile::tempdir().unwrap();
+        let specs_dir = temp_dir.path();
+
+        let context = ConflictContext {
+            source_branch: "chant/2026-01-25-001-abc".to_string(),
+            target_branch: "main".to_string(),
+            conflicting_files: vec!["src/main.rs".to_string(), "src/lib.rs".to_string()],
+            source_spec_id: "2026-01-25-001-abc".to_string(),
+            source_spec_title: Some("Original spec title".to_string()),
+            diff_summary: "3 files changed, 10 insertions(+), 5 deletions(-)".to_string(),
+        };
+
+        let blocked_specs = vec!["2026-01-25-002-xyz".to_string()];
+
+        let spec_id = create_conflict_spec(specs_dir, &context, blocked_specs).unwrap();
+
+        // Read the created spec
+        let spec_path = specs_dir.join(format!("{}.md", spec_id));
+        assert!(spec_path.exists(), "Spec file should be created");
+
+        let content = fs::read_to_string(&spec_path).unwrap();
+
+        // Verify frontmatter
+        assert!(content.contains("type: conflict"));
+        assert!(content.contains("status: pending"));
+        assert!(content.contains("source_branch: chant/2026-01-25-001-abc"));
+        assert!(content.contains("target_branch: main"));
+        assert!(content.contains("- src/main.rs"));
+        assert!(content.contains("- src/lib.rs"));
+        assert!(content.contains("blocked_specs:"));
+        assert!(content.contains("- 2026-01-25-002-xyz"));
+        assert!(content.contains("original_spec: 2026-01-25-001-abc"));
+
+        // Verify body content
+        assert!(content.contains("# Resolve merge conflict"));
+        assert!(content.contains("## Conflict Summary"));
+        assert!(content.contains("## Context from Original Spec"));
+        assert!(content.contains("Original spec title"));
+        assert!(content.contains("## Resolution Instructions"));
+        assert!(content.contains("## Acceptance Criteria"));
+        assert!(content.contains("- [ ] Resolved conflicts in `src/main.rs`"));
+        assert!(content.contains("- [ ] Resolved conflicts in `src/lib.rs`"));
+        assert!(content.contains("- [ ] Merge completed successfully"));
+    }
+
+    #[test]
+    fn test_create_conflict_spec_no_blocked_specs() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let specs_dir = temp_dir.path();
+
+        let context = ConflictContext {
+            source_branch: "chant/spec-001".to_string(),
+            target_branch: "main".to_string(),
+            conflicting_files: vec!["README.md".to_string()],
+            source_spec_id: "spec-001".to_string(),
+            source_spec_title: None,
+            diff_summary: "1 file changed".to_string(),
+        };
+
+        let spec_id = create_conflict_spec(specs_dir, &context, vec![]).unwrap();
+
+        let spec_path = specs_dir.join(format!("{}.md", spec_id));
+        let content = std::fs::read_to_string(&spec_path).unwrap();
+
+        assert!(content.contains("blocked_specs: []"));
+    }
+
+    #[test]
+    fn test_extract_spec_context_existing_spec() {
+        use std::fs;
+        let temp_dir = tempfile::tempdir().unwrap();
+        let specs_dir = temp_dir.path();
+
+        // Create a test spec file
+        let spec_content = r#"---
+type: code
+status: completed
+---
+# Test Spec Title
+
+This is the spec body with some description.
+"#;
+        let spec_path = specs_dir.join("2026-01-25-001-abc.md");
+        fs::write(&spec_path, spec_content).unwrap();
+
+        let (title, body) = extract_spec_context(specs_dir, "2026-01-25-001-abc").unwrap();
+
+        assert_eq!(title, Some("Test Spec Title".to_string()));
+        assert!(body.contains("This is the spec body"));
+    }
+
+    #[test]
+    fn test_extract_spec_context_nonexistent_spec() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let specs_dir = temp_dir.path();
+
+        let (title, body) = extract_spec_context(specs_dir, "nonexistent").unwrap();
+
+        assert_eq!(title, None);
+        assert_eq!(body, "");
+    }
+
+    #[test]
+    fn test_get_blocked_specs_with_directory_overlap() {
+        let spec1 = Spec {
+            id: "2026-01-25-001-abc".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                target_files: Some(vec!["src".to_string()]),
+                ..Default::default()
+            },
+            title: None,
+            body: String::new(),
+        };
+
+        let conflicting_files = vec!["src/config.rs".to_string(), "src/lib.rs".to_string()];
+        let blocked = get_blocked_specs(&conflicting_files, &[spec1]);
+        assert_eq!(blocked.len(), 1);
+        assert_eq!(blocked[0], "2026-01-25-001-abc");
+    }
+
+    #[test]
+    fn test_get_blocked_specs_multiple_specs() {
+        let spec1 = Spec {
+            id: "spec1".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                target_files: Some(vec!["src/main.rs".to_string()]),
+                ..Default::default()
+            },
+            title: None,
+            body: String::new(),
+        };
+
+        let spec2 = Spec {
+            id: "spec2".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::InProgress,
+                target_files: Some(vec!["src/lib.rs".to_string()]),
+                ..Default::default()
+            },
+            title: None,
+            body: String::new(),
+        };
+
+        let spec3 = Spec {
+            id: "spec3".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                target_files: Some(vec!["docs/guide.md".to_string()]),
+                ..Default::default()
+            },
+            title: None,
+            body: String::new(),
+        };
+
+        let conflicting_files = vec!["src/main.rs".to_string(), "src/lib.rs".to_string()];
+        let blocked = get_blocked_specs(&conflicting_files, &[spec1, spec2, spec3]);
+        assert_eq!(blocked.len(), 2);
+        assert!(blocked.contains(&"spec1".to_string()));
+        assert!(blocked.contains(&"spec2".to_string()));
     }
 
     #[test]
