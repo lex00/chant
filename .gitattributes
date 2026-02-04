@@ -3,3 +3,7 @@
 #
 # Setup: Run `chant merge-driver-setup` for configuration instructions
 .chant/specs/*.md merge=chant-spec
+
+# Mark generated documentation as linguist-generated to exclude from language stats
+docs/book/** linguist-generated=true
+docs/book/**/*.html linguist-documentation=true
