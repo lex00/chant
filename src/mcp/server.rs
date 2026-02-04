@@ -52,7 +52,7 @@ pub fn run_server() -> Result<()> {
 ///
 /// - `Some(response)`: For requests (with `id`)
 /// - `None`: For notifications (without `id`)
-fn handle_request(line: &str) -> Option<JsonRpcResponse> {
+pub fn handle_request(line: &str) -> Option<JsonRpcResponse> {
     let request: JsonRpcRequest = match serde_json::from_str(line) {
         Ok(req) => req,
         Err(e) => {

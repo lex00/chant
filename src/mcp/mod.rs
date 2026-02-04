@@ -5,10 +5,11 @@
 //! - docs: reference/mcp.md
 //! - ignore: false
 
-mod handlers;
-mod protocol;
-mod server;
+pub mod handlers;
+pub mod protocol;
+pub mod server;
 
+pub use handlers::{handle_method, handle_notification};
 pub use server::run_server;
 
 #[cfg(test)]

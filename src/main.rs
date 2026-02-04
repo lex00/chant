@@ -6,7 +6,6 @@
 //! - ignore: false
 
 // Internal modules not exposed via library
-mod mcp;
 mod render;
 mod templates;
 
@@ -945,7 +944,7 @@ impl cmd::dispatch::Execute for Commands {
                     no_rebase,
                 )
             }
-            Commands::Mcp => mcp::run_server(),
+            Commands::Mcp => chant::mcp::run_server(),
             Commands::Status {
                 global,
                 repo,

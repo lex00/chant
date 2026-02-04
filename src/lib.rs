@@ -59,6 +59,7 @@ pub mod diagnose;
 pub mod formatters;
 pub mod git;
 pub mod id;
+pub mod mcp;
 pub mod merge;
 pub mod merge_driver;
 pub mod merge_errors;

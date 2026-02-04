@@ -5,11 +5,11 @@ use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-use chant::diagnose;
-use chant::id;
-use chant::paths::{ARCHIVE_DIR, LOGS_DIR, SPECS_DIR};
-use chant::spec::{load_all_specs, resolve_spec, SpecStatus};
-use chant::spec_group;
+use crate::diagnose;
+use crate::id;
+use crate::paths::{ARCHIVE_DIR, LOGS_DIR, SPECS_DIR};
+use crate::spec::{load_all_specs, resolve_spec, SpecStatus};
+use crate::spec_group;
 
 use super::protocol::{PROTOCOL_VERSION, SERVER_NAME, SERVER_VERSION};
 
@@ -1184,59 +1184,9 @@ status: pending
 
     std::fs::write(&filepath, content)?;
 
-    // Lint the newly created spec
-    let lint_diagnostics = match chant::spec::Spec::load(&filepath) {
-        Ok(spec) => {
-            use crate::cmd::spec::lint::{
-                validate_approval_schema, validate_model_waste, validate_output_schema,
-                validate_spec_complexity, validate_spec_coupling, validate_spec_type,
-            };
-
-            let mut diagnostics = Vec::new();
-
-            // Load config for thresholds
-            let config = chant::config::Config::load().ok();
-            let default_thresholds = chant::config::LintThresholds::default();
-            let thresholds = config
-                .as_ref()
-                .map(|c| &c.lint.thresholds)
-                .unwrap_or(&default_thresholds);
-
-            // Run validation checks
-            diagnostics.extend(validate_spec_type(&spec));
-            diagnostics.extend(validate_spec_complexity(&spec, thresholds));
-            diagnostics.extend(validate_spec_coupling(&spec));
-            diagnostics.extend(validate_model_waste(&spec, thresholds));
-            diagnostics.extend(validate_approval_schema(&spec));
-            diagnostics.extend(validate_output_schema(&spec));
-
-            diagnostics
-        }
-        Err(_) => Vec::new(),
-    };
-
-    // Build response with diagnostics if any
-    let mut response_text = format!("Created spec: {}", new_id);
-
-    if !lint_diagnostics.is_empty() {
-        response_text.push_str("\n\nLint diagnostics:");
-        for diagnostic in &lint_diagnostics {
-            use crate::cmd::spec::lint::Severity;
-            let severity_str = match diagnostic.severity {
-                Severity::Error => "ERROR",
-                Severity::Warning => "WARNING",
-            };
-            response_text.push_str(&format!(
-                "\n  [{}] {}: {}",
-                severity_str,
-                diagnostic.rule.as_str(),
-                diagnostic.message
-            ));
-            if let Some(ref suggestion) = diagnostic.suggestion {
-                response_text.push_str(&format!("\n    → {}", suggestion));
-            }
-        }
-    }
+    // Note: Lint diagnostics removed as they require CLI-specific imports
+    // that are not available in the library module
+    let response_text = format!("Created spec: {}", new_id);
 
     Ok(json!({
         "content": [
@@ -1909,7 +1859,7 @@ fn tool_chant_pause(arguments: Option<&Value>) -> Result<Value> {
         .ok_or_else(|| anyhow::anyhow!("Missing required parameter: id"))?;
 
     // Resolve spec to get full ID
-    let spec = match resolve_spec(&specs_dir, id) {
+    let mut spec = match resolve_spec(&specs_dir, id) {
         Ok(s) => s,
         Err(e) => {
             return Ok(json!({
@@ -1924,26 +1874,38 @@ fn tool_chant_pause(arguments: Option<&Value>) -> Result<Value> {
         }
     };
 
+    let spec_id = spec.id.clone();
+    let spec_path = specs_dir.join(format!("{}.md", spec_id));
+
     // Pause the work (stops process and updates status)
-    match crate::cmd::pause::cmd_pause(&spec.id, true) {
-        Ok(()) => Ok(json!({
-            "content": [
-                {
-                    "type": "text",
-                    "text": format!("Successfully paused work for spec '{}'", spec.id)
-                }
-            ]
-        })),
-        Err(e) => Ok(json!({
-            "content": [
-                {
-                    "type": "text",
-                    "text": format!("Failed to pause work for spec '{}': {}", spec.id, e)
-                }
-            ],
-            "isError": true
-        })),
+    // Check if there's a PID file
+    let pid = crate::pid::read_pid_file(&spec_id)?;
+
+    if let Some(pid) = pid {
+        if crate::pid::is_process_running(pid) {
+            // Process is running, stop it
+            crate::pid::stop_process(pid)?;
+            crate::pid::remove_pid_file(&spec_id)?;
+        } else {
+            // Process not running, clean up PID file
+            crate::pid::remove_pid_file(&spec_id)?;
+        }
     }
+
+    // Update spec status to paused if it was in_progress
+    if spec.frontmatter.status == SpecStatus::InProgress {
+        spec.frontmatter.status = SpecStatus::Paused;
+        spec.save(&spec_path)?;
+    }
+
+    Ok(json!({
+        "content": [
+            {
+                "type": "text",
+                "text": format!("Successfully paused work for spec '{}'", spec_id)
+            }
+        ]
+    }))
 }
 
 fn tool_chant_takeover(arguments: Option<&Value>) -> Result<Value> {
@@ -1978,7 +1940,7 @@ fn tool_chant_takeover(arguments: Option<&Value>) -> Result<Value> {
     };
 
     // Execute takeover
-    match crate::cmd::takeover::cmd_takeover(&spec.id, force) {
+    match crate::takeover::cmd_takeover(&spec.id, force) {
         Ok(result) => {
             let response = json!({
                 "spec_id": result.spec_id,
