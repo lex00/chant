@@ -22,6 +22,7 @@ fn run_chant(repo_dir: &Path, args: &[&str]) -> std::io::Result<std::process::Ou
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_full_spec_lifecycle() {
     let repo_dir = PathBuf::from("/tmp/test-chant-full-lifecycle");
     let _ = common::cleanup_test_repo(&repo_dir);

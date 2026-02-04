@@ -13,6 +13,7 @@ fn get_chant_binary() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_chant"))
 }
 
+#[allow(dead_code)]
 fn run_chant(repo_dir: &Path, args: &[&str]) -> std::io::Result<std::process::Output> {
     let chant_binary = get_chant_binary();
     Command::new(&chant_binary)
@@ -23,6 +24,7 @@ fn run_chant(repo_dir: &Path, args: &[&str]) -> std::io::Result<std::process::Ou
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_dependency_chain_updates() {
     let repo_dir = PathBuf::from("/tmp/test-chant-dep-chain");
     let _ = common::cleanup_test_repo(&repo_dir);
@@ -111,6 +113,7 @@ fn test_dependency_chain_updates() {
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_dependency_status_after_direct_file_edit() {
     let repo_dir = PathBuf::from("/tmp/test-chant-dep-file-edit");
     let _ = common::cleanup_test_repo(&repo_dir);
@@ -173,6 +176,7 @@ fn test_dependency_status_after_direct_file_edit() {
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_parallel_dependency_resolution() {
     let repo_dir = PathBuf::from("/tmp/test-chant-dep-parallel");
     let _ = common::cleanup_test_repo(&repo_dir);
@@ -237,6 +241,7 @@ fn test_parallel_dependency_resolution() {
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_force_flag_bypasses_dependency_check() {
     let repo_dir = PathBuf::from("/tmp/test-chant-dep-force");
     let _ = common::cleanup_test_repo(&repo_dir);
@@ -351,6 +356,7 @@ fn test_force_flag_bypasses_dependency_check() {
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_blocked_spec_shows_detailed_error() {
     let repo_dir = PathBuf::from("/tmp/test-chant-blocked-detail");
     let _ = common::cleanup_test_repo(&repo_dir);
@@ -463,6 +469,7 @@ This spec blocks spec B.
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_force_flag_shows_skipped_dependencies() {
     let repo_dir = PathBuf::from("/tmp/test-chant-dep-force-warn");
     let _ = common::cleanup_test_repo(&repo_dir);
@@ -543,6 +550,7 @@ fn test_force_flag_shows_skipped_dependencies() {
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_dependency_chain_updates_after_completion() {
     let chant_binary = get_chant_binary();
 
@@ -656,6 +664,7 @@ fn test_dependency_chain_updates_after_completion() {
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_chain_with_specific_ids_validates_all_ids() {
     let repo_dir = PathBuf::from("/tmp/test-chant-chain-specific");
     let _ = common::cleanup_test_repo(&repo_dir);
@@ -720,6 +729,7 @@ fn test_chain_with_specific_ids_validates_all_ids() {
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_chain_without_ids_checks_ready_specs() {
     let repo_dir = PathBuf::from("/tmp/test-chant-chain-no-ids");
     let _ = common::cleanup_test_repo(&repo_dir);
@@ -773,6 +783,7 @@ fn test_chain_without_ids_checks_ready_specs() {
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_chain_max_limit_applies() {
     let repo_dir = PathBuf::from("/tmp/test-chant-chain-max");
     let _ = common::cleanup_test_repo(&repo_dir);
@@ -828,6 +839,7 @@ fn test_chain_max_limit_applies() {
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_status_blocked_filter_with_dependencies() {
     use tempfile::TempDir;
 
@@ -924,6 +936,7 @@ fn test_status_blocked_filter_with_dependencies() {
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_status_blocked_filter_no_blocked_specs() {
     let chant_binary = get_chant_binary();
     let original_dir = std::env::current_dir().expect("Failed to get current dir");
@@ -978,6 +991,7 @@ fn test_status_blocked_filter_no_blocked_specs() {
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_status_blocked_filter_all_blocked() {
     let chant_binary = get_chant_binary();
     let original_dir = std::env::current_dir().expect("Failed to get current dir");
@@ -1051,6 +1065,7 @@ fn test_status_blocked_filter_all_blocked() {
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_status_blocked_filter_mixed_statuses() {
     let chant_binary = get_chant_binary();
     let original_dir = std::env::current_dir().expect("Failed to get current dir");
@@ -1137,6 +1152,7 @@ fn test_status_blocked_filter_mixed_statuses() {
 }
 
 /// Helper to create a spec that requires approval
+#[allow(dead_code)]
 fn create_spec_with_approval(
     specs_dir: &Path,
     spec_id: &str,
@@ -1256,6 +1272,7 @@ fn run_chant_list(repo_dir: &Path) -> String {
 /// Test that chain execution with dependent specs handles dependencies correctly
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_chain_execution_with_dependencies() {
     let repo_dir = PathBuf::from("/tmp/test-chant-chain-deps");
     let _ = common::cleanup_test_repo(&repo_dir);
@@ -1321,6 +1338,7 @@ fn test_chain_execution_with_dependencies() {
 /// Test chain execution behavior when encountering a blocked spec
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_chain_skips_blocked_specs_in_sequence() {
     let repo_dir = PathBuf::from("/tmp/test-chant-chain-blocked");
     let _ = common::cleanup_test_repo(&repo_dir);
@@ -1387,6 +1405,7 @@ fn test_chain_skips_blocked_specs_in_sequence() {
 /// Test chain automatically picks up newly unblocked specs
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_chain_all_ready_with_dependency_updates() {
     let repo_dir = PathBuf::from("/tmp/test-chant-chain-ready-deps");
     let _ = common::cleanup_test_repo(&repo_dir);

@@ -49,6 +49,7 @@ fn get_commit_count(repo_dir: &Path, branch: &str) -> usize {
         .unwrap_or(0)
 }
 
+#[allow(dead_code)]
 fn create_test_spec(spec_id: &str) -> String {
     format!(
         r#"---
@@ -72,6 +73,7 @@ fn get_chant_binary() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_chant"))
 }
 
+#[allow(dead_code)]
 fn run_chant(repo_dir: &Path, args: &[&str]) -> std::io::Result<std::process::Output> {
     let chant_binary = get_chant_binary();
     Command::new(&chant_binary)
@@ -82,6 +84,7 @@ fn run_chant(repo_dir: &Path, args: &[&str]) -> std::io::Result<std::process::Ou
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_worktree_creation_basic() {
     let repo_dir = PathBuf::from("/tmp/test-chant-wt-basic");
     let _ = common::cleanup_test_repo(&repo_dir);
@@ -123,6 +126,7 @@ fn test_worktree_creation_basic() {
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_multiple_worktrees_parallel() {
     let repo_dir = PathBuf::from("/tmp/test-chant-wt-multiple");
     let _ = common::cleanup_test_repo(&repo_dir);
@@ -202,6 +206,7 @@ fn test_multiple_worktrees_parallel() {
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_worktree_cleanup_on_failure() {
     let repo_dir = PathBuf::from("/tmp/test-chant-cleanup-failure");
     let _ = common::cleanup_test_repo(&repo_dir);
@@ -249,6 +254,7 @@ fn test_worktree_cleanup_on_failure() {
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_concurrent_worktree_isolation() {
     let repo_dir = PathBuf::from("/tmp/test-chant-isolation");
     let _ = common::cleanup_test_repo(&repo_dir);
@@ -372,6 +378,7 @@ fn test_concurrent_worktree_isolation() {
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_worktree_idempotent_cleanup() {
     let repo_dir = PathBuf::from("/tmp/test-chant-idempotent");
     let _ = common::cleanup_test_repo(&repo_dir);
@@ -433,6 +440,7 @@ fn test_worktree_idempotent_cleanup() {
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_worktree_path_format() {
     // Test that worktree paths follow the expected format
     let spec_id = "2026-01-24-001-abc";
@@ -452,6 +460,7 @@ fn test_worktree_path_format() {
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_worktree_status_with_active_worktree() {
     let repo_dir = PathBuf::from("/tmp/test-chant-wt-status-active");
     let _ = common::cleanup_test_repo(&repo_dir);
@@ -529,6 +538,7 @@ fn test_worktree_status_with_active_worktree() {
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_worktree_status_no_worktrees() {
     let repo_dir = PathBuf::from("/tmp/test-chant-wt-status-empty");
     let _ = common::cleanup_test_repo(&repo_dir);
@@ -572,6 +582,7 @@ fn test_worktree_status_no_worktrees() {
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_worktree_status_multiple_worktrees() {
     let repo_dir = PathBuf::from("/tmp/test-chant-wt-status-multi");
     let _ = common::cleanup_test_repo(&repo_dir);

@@ -5,6 +5,7 @@ use std::path::Path;
 use std::process::Command;
 
 /// Helper to initialize a temporary git repo for testing.
+#[allow(dead_code)]
 pub fn setup_test_repo(repo_dir: &Path) -> std::io::Result<()> {
     fs::create_dir_all(repo_dir)?;
 
@@ -40,6 +41,7 @@ pub fn setup_test_repo(repo_dir: &Path) -> std::io::Result<()> {
 }
 
 /// Helper to clean up test repos.
+#[allow(dead_code)]
 pub fn cleanup_test_repo(repo_dir: &Path) -> std::io::Result<()> {
     if repo_dir.exists() {
         fs::remove_dir_all(repo_dir)?;

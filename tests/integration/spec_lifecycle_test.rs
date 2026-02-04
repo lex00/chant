@@ -13,6 +13,7 @@ fn get_chant_binary() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_chant"))
 }
 
+#[allow(dead_code)]
 fn run_chant(repo_dir: &Path, args: &[&str]) -> std::io::Result<std::process::Output> {
     let chant_binary = get_chant_binary();
     Command::new(&chant_binary)
@@ -21,6 +22,7 @@ fn run_chant(repo_dir: &Path, args: &[&str]) -> std::io::Result<std::process::Ou
         .output()
 }
 
+#[allow(dead_code)]
 fn get_branches(repo_dir: &Path) -> Vec<String> {
     let output = Command::new("git")
         .args(["branch", "-a"])
@@ -48,6 +50,7 @@ fn worktree_exists(worktree_path: &Path) -> bool {
     worktree_path.exists()
 }
 
+#[allow(dead_code)]
 fn get_commit_count(repo_dir: &Path, branch: &str) -> usize {
     let output = Command::new("git")
         .args(["rev-list", "--count", branch])
@@ -61,6 +64,7 @@ fn get_commit_count(repo_dir: &Path, branch: &str) -> usize {
         .unwrap_or(0)
 }
 
+#[allow(dead_code)]
 fn create_test_spec(spec_id: &str) -> String {
     format!(
         r#"---
@@ -82,6 +86,7 @@ Test specification for integration testing.
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_direct_mode_merge_and_cleanup() {
     let repo_dir = PathBuf::from("/tmp/test-chant-direct-mode");
     let _ = common::cleanup_test_repo(&repo_dir);
@@ -125,6 +130,7 @@ fn test_direct_mode_merge_and_cleanup() {
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_branch_mode_preserves_branch() {
     let repo_dir = PathBuf::from("/tmp/test-chant-branch-mode");
     let _ = common::cleanup_test_repo(&repo_dir);
@@ -190,6 +196,7 @@ fn test_branch_mode_preserves_branch() {
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_merge_conflict_preserves_branch() {
     let repo_dir = PathBuf::from("/tmp/test-chant-conflict");
     let _ = common::cleanup_test_repo(&repo_dir);
@@ -229,6 +236,7 @@ fn test_merge_conflict_preserves_branch() {
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_spec_file_format() {
     // Test spec file creation and format
     let spec_id = "test-spec-format";
@@ -317,6 +325,7 @@ fn commit_in_worktree(wt_path: &Path, message: &str) -> std::io::Result<()> {
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_spec_status_updated_after_finalization() {
     use chant::spec::{Spec, SpecStatus};
 
@@ -444,6 +453,7 @@ This spec tests that finalization updates the status field.
 #[test]
 #[serial]
 #[cfg(unix)]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_merge_finalize_flag() {
     use chant::spec::{Spec, SpecStatus};
 
@@ -575,6 +585,7 @@ Test spec for merge --finalize flag.
 #[test]
 #[serial]
 #[cfg(unix)]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_merge_no_checkout_deleted_branch() {
     let repo_dir = PathBuf::from("/tmp/test-chant-merge-no-checkout-deleted");
     let _ = common::cleanup_test_repo(&repo_dir);
@@ -691,6 +702,7 @@ Test that merge doesn't checkout deleted branch.
 #[test]
 #[serial]
 #[cfg(unix)]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_finalization_checks_spec_branch_field() {
     use chant::spec::{Spec, SpecStatus};
 
@@ -818,6 +830,7 @@ Test that finalization checks branch field.
 // ============================================================================
 
 /// Helper to create a simple ready spec (no dependencies)
+#[allow(dead_code)]
 fn create_ready_spec(specs_dir: &Path, spec_id: &str) -> std::io::Result<()> {
     let content = format!(
         r#"---
@@ -846,6 +859,7 @@ Test specification for chain testing.
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_load_with_branch_resolution_non_in_progress() {
     let repo_dir = PathBuf::from("/tmp/test-chant-branch-resolution-non-in-progress");
     let _ = common::cleanup_test_repo(&repo_dir);
@@ -938,6 +952,7 @@ This is DIFFERENT content on the branch.
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_load_with_branch_resolution_in_progress_with_branch() {
     let repo_dir = PathBuf::from("/tmp/test-chant-branch-resolution-in-progress");
     let _ = common::cleanup_test_repo(&repo_dir);
@@ -1041,6 +1056,7 @@ This is the BRANCH version with progress.
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_load_with_branch_resolution_explicit_branch_field() {
     let repo_dir = PathBuf::from("/tmp/test-chant-branch-resolution-explicit");
     let _ = common::cleanup_test_repo(&repo_dir);
@@ -1143,6 +1159,7 @@ This is from the CUSTOM BRANCH.
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_load_with_branch_resolution_no_branch_exists() {
     let repo_dir = PathBuf::from("/tmp/test-chant-branch-resolution-no-branch");
     let _ = common::cleanup_test_repo(&repo_dir);
@@ -1197,6 +1214,7 @@ This is the main version, no branch exists.
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_load_with_branch_resolution_spec_not_on_branch() {
     let repo_dir = PathBuf::from("/tmp/test-chant-branch-resolution-spec-not-on-branch");
     let _ = common::cleanup_test_repo(&repo_dir);

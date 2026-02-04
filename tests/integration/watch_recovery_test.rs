@@ -62,6 +62,7 @@ fn create_test_worktree_with_status(
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_recovery_done_status_triggers_merge() -> Result<()> {
     let tmp = tempfile::tempdir()?;
     let tmp_path = tmp.path();
@@ -124,6 +125,7 @@ fn test_recovery_done_status_triggers_merge() -> Result<()> {
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_recovery_stale_working_marks_failed() -> Result<()> {
     let tmp = tempfile::tempdir()?;
     let tmp_path = tmp.path();
@@ -181,6 +183,7 @@ fn test_recovery_stale_working_marks_failed() -> Result<()> {
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_recovery_orphaned_worktree_cleanup() -> Result<()> {
     let tmp = tempfile::tempdir()?;
     let tmp_path = tmp.path();
@@ -263,6 +266,7 @@ fn test_recovery_orphaned_worktree_cleanup() -> Result<()> {
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_recovery_no_worktrees_no_action() -> Result<()> {
     let tmp = tempfile::tempdir()?;
     let tmp_path = tmp.path();

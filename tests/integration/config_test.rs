@@ -13,6 +13,7 @@ fn get_chant_binary() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_chant"))
 }
 
+#[allow(dead_code)]
 fn run_chant(repo_dir: &Path, args: &[&str]) -> std::io::Result<std::process::Output> {
     let chant_binary = get_chant_binary();
     Command::new(&chant_binary)
@@ -22,6 +23,7 @@ fn run_chant(repo_dir: &Path, args: &[&str]) -> std::io::Result<std::process::Ou
 }
 
 #[test]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_lint_required_fields_missing() {
     let original_dir = std::env::current_dir().expect("Failed to get current dir");
 
@@ -119,6 +121,7 @@ This spec is missing branch, model, and labels fields.
 }
 
 #[test]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_lint_required_fields_present() {
     let original_dir = std::env::current_dir().expect("Failed to get current dir");
 
@@ -204,6 +207,7 @@ This spec has branch and labels fields.
 }
 
 #[test]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_lint_no_required_fields_configured() {
     let original_dir = std::env::current_dir().expect("Failed to get current dir");
 
@@ -281,6 +285,7 @@ This spec should pass even without required fields since none are configured.
 }
 
 #[test]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_env_based_derivation_end_to_end() {
     let original_dir = std::env::current_dir().expect("Failed to get current dir");
 
@@ -393,6 +398,7 @@ enterprise:
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_no_derivation_when_config_empty() {
     let original_dir = std::env::current_dir().expect("Failed to get current dir");
 
@@ -481,6 +487,7 @@ project:
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_no_derivation_when_enterprise_derived_empty() {
     let original_dir = std::env::current_dir().expect("Failed to get current dir");
 
@@ -579,6 +586,7 @@ enterprise:
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_chant_derive_single_spec() {
     let original_dir = std::env::current_dir().expect("Failed to get current dir");
 
@@ -725,6 +733,7 @@ Enterprise config added after spec creation.
 /// This validates the fix for the issue where parallel execution didn't update spec status
 
 #[test]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_output_schema_validation_valid_output() {
     use chant::validation;
     use tempfile::TempDir;
@@ -763,6 +772,7 @@ End of report.
 }
 
 #[test]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_output_schema_validation_missing_required_field() {
     use chant::validation;
     use tempfile::TempDir;
@@ -799,6 +809,7 @@ fn test_output_schema_validation_missing_required_field() {
 }
 
 #[test]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_output_schema_validation_no_json_in_output() {
     use chant::validation;
     use tempfile::TempDir;
@@ -829,6 +840,7 @@ fn test_output_schema_validation_no_json_in_output() {
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_finalize_validates_output_schema() {
     use chant::spec::{Spec, SpecFrontmatter, SpecStatus};
 
@@ -957,6 +969,7 @@ Done.
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_config_loading_global_and_project_merge() {
     use chant::config::Config;
 
@@ -1026,6 +1039,7 @@ defaults:
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_config_loading_project_overrides_all_global_fields() {
     use chant::config::Config;
 
@@ -1111,6 +1125,7 @@ enterprise:
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_config_loading_no_global_uses_project_only() {
     use chant::config::Config;
 

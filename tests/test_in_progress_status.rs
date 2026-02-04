@@ -12,6 +12,7 @@ use std::process::Command;
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_spec_marked_in_progress_when_copied_to_worktree() {
     let repo_dir = PathBuf::from("/tmp/test-chant-in-progress-status");
     let _ = common::cleanup_test_repo(&repo_dir);

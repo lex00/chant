@@ -4,15 +4,16 @@ mod common {
     pub use crate::common::*;
 }
 
-use serial_test::serial;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+#[allow(dead_code)]
 fn get_chant_binary() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_chant"))
 }
 
+#[allow(dead_code)]
 fn run_chant(repo_dir: &Path, args: &[&str]) -> std::io::Result<std::process::Output> {
     let chant_binary = get_chant_binary();
     Command::new(&chant_binary)
@@ -22,6 +23,7 @@ fn run_chant(repo_dir: &Path, args: &[&str]) -> std::io::Result<std::process::Ou
 }
 
 #[test]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_missing_env_var_graceful_failure() {
     let original_dir = std::env::current_dir().expect("Failed to get current dir");
 
@@ -183,6 +185,7 @@ enterprise:
 }
 
 #[test]
+#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_partial_env_vars_available() {
     let original_dir = std::env::current_dir().expect("Failed to get current dir");
 
