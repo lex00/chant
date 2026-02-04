@@ -76,7 +76,7 @@ jobs:
 
       - name: Generate coverage
         continue-on-error: true
-        run: cargo tarpaulin --out xml --skip-clean
+        run: cargo tarpaulin --out xml --skip-clean --force
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
