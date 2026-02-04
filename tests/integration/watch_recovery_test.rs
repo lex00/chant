@@ -248,7 +248,10 @@ fn test_recovery_orphaned_worktree_cleanup() -> Result<()> {
 
     // Note: This test may not trigger cleanup if the worktree is too fresh
     // The important thing is that recovery runs without errors
-    assert!(output.status.success(), "Watch should complete successfully");
+    assert!(
+        output.status.success(),
+        "Watch should complete successfully"
+    );
     assert!(
         stdout.contains("startup recovery") || stdout.contains("Running"),
         "Recovery should run. stdout: {}",
@@ -296,7 +299,10 @@ fn test_recovery_no_worktrees_no_action() -> Result<()> {
     drop(tmp);
 
     // Verify recovery runs but takes no action
-    assert!(output.status.success(), "Watch should complete successfully");
+    assert!(
+        output.status.success(),
+        "Watch should complete successfully"
+    );
     assert!(
         stdout.contains("No recovery actions needed") || stdout.contains("startup recovery"),
         "Recovery should run with no actions. stdout: {}",

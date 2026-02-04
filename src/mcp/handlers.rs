@@ -12,6 +12,7 @@ use crate::spec::{load_all_specs, resolve_spec, SpecStatus};
 use crate::spec_group;
 
 use super::protocol::{PROTOCOL_VERSION, SERVER_NAME, SERVER_VERSION};
+use super::tools::{tool_chant_watch_start, tool_chant_watch_status, tool_chant_watch_stop};
 
 pub fn handle_method(method: &str, params: Option<&Value>) -> Result<Value> {
     match method {
@@ -351,6 +352,31 @@ fn handle_tools_list() -> Result<Value> {
                     },
                     "required": ["id"]
                 }
+            },
+            // Watch tools
+            {
+                "name": "chant_watch_status",
+                "description": "Get status of watch process and active worktrees",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {}
+                }
+            },
+            {
+                "name": "chant_watch_start",
+                "description": "Start the watch process",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {}
+                }
+            },
+            {
+                "name": "chant_watch_stop",
+                "description": "Stop the watch process",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {}
+                }
             }
         ]
     }))
@@ -387,6 +413,10 @@ fn handle_tools_call(params: Option<&Value>) -> Result<Value> {
         "chant_work_list" => tool_chant_work_list(arguments),
         "chant_pause" => tool_chant_pause(arguments),
         "chant_takeover" => tool_chant_takeover(arguments),
+        // Watch tools
+        "chant_watch_status" => tool_chant_watch_status(arguments),
+        "chant_watch_start" => tool_chant_watch_start(arguments),
+        "chant_watch_stop" => tool_chant_watch_stop(arguments),
         _ => anyhow::bail!("Unknown tool: {}", name),
     }
 }

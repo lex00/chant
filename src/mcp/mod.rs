@@ -8,6 +8,7 @@
 pub mod handlers;
 pub mod protocol;
 pub mod server;
+pub mod tools;
 
 pub use handlers::{handle_method, handle_notification};
 pub use server::run_server;
@@ -29,7 +30,7 @@ mod tests {
     fn test_handle_tools_list() {
         let result = handle_method("tools/list", None).unwrap();
         let tools = result["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 18);
+        assert_eq!(tools.len(), 21);
         // Query tools (7)
         assert_eq!(tools[0]["name"], "chant_spec_list");
         assert_eq!(tools[1]["name"], "chant_spec_get");
