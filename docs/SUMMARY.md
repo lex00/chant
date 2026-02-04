@@ -93,7 +93,3 @@
 # Enterprise
 
 - [Enterprise Features](enterprise/enterprise.md)
-
----
-
-- [Roadmap](roadmap.md)

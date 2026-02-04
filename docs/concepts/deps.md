@@ -46,7 +46,7 @@ C depends on A  ← cycle!
 Detected at:
 1. `chant lint` - Validates all specs
 2. `chant add --depends-on` - Checks before adding
-3. Spec file save - Editor integration (future)
+3. Spec file save - Editor integration
 
 ```rust
 fn detect_cycles(specs: &[Spec]) -> Vec<Cycle> {

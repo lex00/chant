@@ -174,7 +174,6 @@ fn save_spec(spec: &Spec) -> Result<()> {
 | Version | Changes |
 |---------|---------|
 | 1 | Initial schema |
-| 2 | (future) ... |
 
 ## CLI Version Check
 
@@ -243,20 +242,3 @@ All deprecations include:
 - Documentation of replacement
 - Automated migration via `chant migrate`
 - Version where removal occurs
-
-## Lockfile (Future)
-
-For reproducible behavior:
-
-```yaml
-# .chant/lock.md
----
-chant_version: 2.0.0
-schema_version: 1
-locked_at: 2026-01-22T15:30:00Z
----
-
-Dependency versions locked for reproducibility.
-```
-
-Not implemented in v2. Consider for enterprise use.

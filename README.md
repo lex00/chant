@@ -65,7 +65,7 @@ For detailed setup instructions, see the [Quick Start Guide](https://lex00.githu
 
 ## Examples
 
-See the [examples/](./examples/) folder for real-world workflows (coming soon).
+See the [examples/](./examples/) folder for real-world workflows.
 
 ## Development
 
