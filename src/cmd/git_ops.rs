@@ -5,6 +5,17 @@
 use anyhow::{Context, Result};
 use std::path::Path;
 
+/// Check if a path is gitignored.
+fn is_gitignored(path: &Path) -> bool {
+    use std::process::Command;
+
+    Command::new("git")
+        .args(["check-ignore", "-q", &path.to_string_lossy()])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
 /// Create a new branch or switch to an existing one.
 pub fn create_or_switch_branch(branch_name: &str) -> Result<()> {
     use std::process::Command;
@@ -44,6 +55,11 @@ pub fn create_or_switch_branch(branch_name: &str) -> Result<()> {
 pub fn commit_transcript(spec_id: &str, spec_path: &Path) -> Result<()> {
     use std::process::Command;
 
+    // Skip if the spec file is gitignored
+    if is_gitignored(spec_path) {
+        return Ok(());
+    }
+
     // Stage the spec file
     let output = Command::new("git")
         .args(["add", &spec_path.to_string_lossy()])
@@ -75,4 +91,23 @@ pub fn commit_transcript(spec_id: &str, spec_path: &Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_is_gitignored() {
+        // Test with a file that should not be ignored
+        let not_ignored = PathBuf::from("Cargo.toml");
+        assert!(!is_gitignored(&not_ignored));
+
+        // Test with a file that should be ignored (if .chant is in .gitignore)
+        let possibly_ignored = PathBuf::from(".chant/specs/test.md");
+        // This will be true if .chant is in .gitignore, false otherwise
+        // The test passes either way, just verifying the function executes
+        let _ = is_gitignored(&possibly_ignored);
+    }
 }
