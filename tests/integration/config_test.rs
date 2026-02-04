@@ -954,3 +954,196 @@ Done.
     let _ = std::env::set_current_dir(&original_dir);
     let _ = common::cleanup_test_repo(&repo_dir);
 }
+
+#[test]
+#[serial]
+fn test_config_loading_global_and_project_merge() {
+    use chant::config::Config;
+
+    let original_dir = std::env::current_dir().expect("Failed to get current dir");
+    let tmp_dir = PathBuf::from("/tmp/test-chant-config-merge");
+    let _ = common::cleanup_test_repo(&tmp_dir);
+    fs::create_dir_all(&tmp_dir).expect("Failed to create temp dir");
+
+    // Set up mock global config location
+    let global_config_dir = tmp_dir.join("global_config");
+    fs::create_dir_all(&global_config_dir).expect("Failed to create global config dir");
+    let global_config_path = global_config_dir.join("config.md");
+
+    // Write global config
+    let global_config_content = r#"---
+project:
+  prefix: global-prefix
+defaults:
+  prompt: global-prompt
+  branch_prefix: global/
+  model: claude-opus-4
+parallel:
+  agents:
+    - name: global-agent
+      command: global-claude
+      max_concurrent: 5
+---
+
+# Global Config
+"#;
+    fs::write(&global_config_path, global_config_content).expect("Failed to write global config");
+
+    // Set up project config
+    let project_dir = tmp_dir.join("project");
+    fs::create_dir_all(&project_dir).expect("Failed to create project dir");
+    let project_config_path = project_dir.join("config.md");
+
+    let project_config_content = r#"---
+project:
+  name: test-project
+defaults:
+  prompt: project-prompt
+---
+
+# Project Config
+"#;
+    fs::write(&project_config_path, project_config_content)
+        .expect("Failed to write project config");
+
+    // Load merged config
+    let config = Config::load_merged_from(Some(&global_config_path), &project_config_path, None)
+        .expect("Failed to load merged config");
+
+    // Verify merge behavior
+    assert_eq!(config.project.name, "test-project"); // From project
+    assert_eq!(config.project.prefix.as_deref(), Some("global-prefix")); // From global
+    assert_eq!(config.defaults.prompt, "project-prompt"); // Project overrides global
+    assert_eq!(config.defaults.branch_prefix, "global/"); // From global
+    assert_eq!(config.defaults.model, Some("claude-opus-4".to_string())); // From global
+    assert_eq!(config.parallel.agents.len(), 1);
+    assert_eq!(config.parallel.agents[0].name, "global-agent"); // From global
+
+    // Clean up
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = common::cleanup_test_repo(&tmp_dir);
+}
+
+#[test]
+#[serial]
+fn test_config_loading_project_overrides_all_global_fields() {
+    use chant::config::Config;
+
+    let original_dir = std::env::current_dir().expect("Failed to get current dir");
+    let tmp_dir = PathBuf::from("/tmp/test-chant-config-override-all");
+    let _ = common::cleanup_test_repo(&tmp_dir);
+    fs::create_dir_all(&tmp_dir).expect("Failed to create temp dir");
+
+    let global_config_dir = tmp_dir.join("global_config");
+    fs::create_dir_all(&global_config_dir).expect("Failed to create global config dir");
+    let global_config_path = global_config_dir.join("config.md");
+
+    let global_config_content = r#"---
+defaults:
+  prompt: global-prompt
+  branch_prefix: global/
+  model: claude-haiku-4
+  main_branch: global-main
+parallel:
+  agents:
+    - name: global-agent
+      command: global-claude
+enterprise:
+  derived:
+    team:
+      from: env
+      pattern: "GLOBAL_TEAM"
+  required:
+    - team
+---
+"#;
+    fs::write(&global_config_path, global_config_content).expect("Failed to write global config");
+
+    let project_dir = tmp_dir.join("project");
+    fs::create_dir_all(&project_dir).expect("Failed to create project dir");
+    let project_config_path = project_dir.join("config.md");
+
+    let project_config_content = r#"---
+project:
+  name: test-project
+defaults:
+  prompt: project-prompt
+  branch_prefix: project/
+  model: claude-sonnet-4
+  main_branch: main
+parallel:
+  agents:
+    - name: project-agent
+      command: project-claude
+enterprise:
+  derived:
+    component:
+      from: path
+      pattern: "([^/]+)\\.md$"
+  required:
+    - component
+---
+"#;
+    fs::write(&project_config_path, project_config_content)
+        .expect("Failed to write project config");
+
+    let config = Config::load_merged_from(Some(&global_config_path), &project_config_path, None)
+        .expect("Failed to load merged config");
+
+    // All fields should be from project config
+    assert_eq!(config.defaults.prompt, "project-prompt");
+    assert_eq!(config.defaults.branch_prefix, "project/");
+    assert_eq!(config.defaults.model, Some("claude-sonnet-4".to_string()));
+    assert_eq!(config.defaults.main_branch, "main");
+    assert_eq!(config.parallel.agents.len(), 1);
+    assert_eq!(config.parallel.agents[0].name, "project-agent");
+    assert!(config.enterprise.derived.contains_key("component"));
+    assert!(!config.enterprise.derived.contains_key("team"));
+    assert_eq!(config.enterprise.required.len(), 1);
+    assert!(config
+        .enterprise
+        .required
+        .contains(&"component".to_string()));
+
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = common::cleanup_test_repo(&tmp_dir);
+}
+
+#[test]
+#[serial]
+fn test_config_loading_no_global_uses_project_only() {
+    use chant::config::Config;
+
+    let original_dir = std::env::current_dir().expect("Failed to get current dir");
+    let tmp_dir = PathBuf::from("/tmp/test-chant-config-no-global");
+    let _ = common::cleanup_test_repo(&tmp_dir);
+    fs::create_dir_all(&tmp_dir).expect("Failed to create temp dir");
+
+    let project_dir = tmp_dir.join("project");
+    fs::create_dir_all(&project_dir).expect("Failed to create project dir");
+    let project_config_path = project_dir.join("config.md");
+
+    let project_config_content = r#"---
+project:
+  name: test-project
+  prefix: project-prefix
+defaults:
+  prompt: project-prompt
+  model: claude-sonnet-4
+---
+"#;
+    fs::write(&project_config_path, project_config_content)
+        .expect("Failed to write project config");
+
+    // Load without global config
+    let config =
+        Config::load_merged_from(None, &project_config_path, None).expect("Failed to load config");
+
+    assert_eq!(config.project.name, "test-project");
+    assert_eq!(config.project.prefix.as_deref(), Some("project-prefix"));
+    assert_eq!(config.defaults.prompt, "project-prompt");
+    assert_eq!(config.defaults.model, Some("claude-sonnet-4".to_string()));
+
+    let _ = std::env::set_current_dir(&original_dir);
+    let _ = common::cleanup_test_repo(&tmp_dir);
+}
