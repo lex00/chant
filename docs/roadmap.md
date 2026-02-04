@@ -2,7 +2,7 @@
 
 This document outlines planned features and improvements for Chant.
 
-## Current Version: 0.15.2
+## Current Version: 0.15.4
 
 Chant is under active development. We prioritize features that enhance spec-driven workflows, improve agent orchestration, and provide better visibility into AI-assisted development.
 
@@ -89,6 +89,7 @@ Priority is given to features that:
 
 These features were recently added to Chant:
 
+- **Test coverage improvements** (0.15.4): 62 new tests for MCP handlers, parallel work, commands, and archive operations
 - **Progress bars with indicatif** (0.14.0): Visual progress tracking during spec execution
 - **Codecov integration** (0.14.0): Automated code coverage reporting
 - **Docker support** (0.14.0): Container images published to GitHub Container Registry
@@ -104,7 +105,8 @@ See [CHANGELOG.md](../CHANGELOG.md) for full release history.
 
 ## Version History
 
-- **0.15.2** (Current): Latest improvements and bug fixes
+- **0.15.4** (Current): Test coverage improvements (62 new tests)
+- **0.15.3**: Release workflow fixes, scoop removal
 - **0.14.0**: Progress visualization, Docker, Windows support
 - **0.13.x**: Approval workflow, branch mode
 - **0.12.x**: Parallel execution, worktree isolation
