@@ -34,15 +34,6 @@ If you have Homebrew installed:
 brew install lex00/tap/chant
 ```
 
-## Scoop (Windows)
-
-If you have Scoop installed:
-
-```powershell
-scoop bucket add lex00 https://github.com/lex00/scoop-bucket
-scoop install chant
-```
-
 ## Cargo (from source)
 
 If you have Rust and Cargo installed:
@@ -113,7 +104,7 @@ Then proceed to the [Quickstart](quickstart.md) guide to learn how to create and
 |----------|--------|--------------|-----------------|
 | Linux | ✅ Supported | x86_64 | Homebrew, Cargo |
 | macOS | ✅ Supported | x86_64, aarch64 (Apple Silicon) | Homebrew, Cargo |
-| Windows | ✅ Supported | x86_64 | Scoop, Direct Download |
+| Windows | ✅ Supported | x86_64 | Direct Download |
 
 ## Troubleshooting
 

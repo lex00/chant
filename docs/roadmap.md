@@ -92,7 +92,6 @@ These features were recently added to Chant:
 - **Progress bars with indicatif** (0.14.0): Visual progress tracking during spec execution
 - **Codecov integration** (0.14.0): Automated code coverage reporting
 - **Docker support** (0.14.0): Container images published to GitHub Container Registry
-- **Scoop package manager** (0.14.0): Windows installation via Scoop
 - **MCP server integration**: Protocol support for agent communication
 - **Approval workflow**: Human-in-the-loop gates for spec execution
 - **Branch mode**: Isolated feature branch execution with auto-merge
