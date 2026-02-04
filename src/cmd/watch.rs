@@ -9,12 +9,14 @@ use chrono::Local;
 use colored::Colorize;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use chant::config::Config;
 use chant::spec::{self, is_completed, is_failed, SpecStatus};
+use chant::worktree::status::{read_status, AgentStatus, AgentStatusState};
 
 use crate::cmd;
 
@@ -98,6 +100,77 @@ impl WatchLogger {
     }
 }
 
+/// Information about an active worktree
+#[derive(Debug, Clone)]
+struct WorktreeInfo {
+    path: PathBuf,
+    spec_id: String,
+}
+
+/// Find all active worktrees with chant/* branches
+fn find_active_worktrees() -> Result<Vec<WorktreeInfo>> {
+    // Get worktree list from git
+    let output = Command::new("git")
+        .args(["worktree", "list", "--porcelain"])
+        .output()
+        .context("Failed to run git worktree list")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("git worktree list failed: {}", stderr);
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut worktrees = Vec::new();
+    let mut current_path: Option<PathBuf> = None;
+    let mut current_branch: Option<String> = None;
+
+    for line in stdout.lines() {
+        if line.starts_with("worktree ") {
+            // Save previous entry if it's a chant worktree
+            if let (Some(path), Some(branch)) = (current_path.take(), current_branch.take()) {
+                if branch.starts_with("chant/") {
+                    if let Some(spec_id) = branch.strip_prefix("chant/") {
+                        worktrees.push(WorktreeInfo {
+                            path,
+                            spec_id: spec_id.to_string(),
+                        });
+                    }
+                }
+            }
+            // Start new entry
+            let path = line.strip_prefix("worktree ").unwrap_or("");
+            current_path = Some(PathBuf::from(path));
+            current_branch = None;
+        } else if line.starts_with("branch ") {
+            let branch = line.strip_prefix("branch ").unwrap_or("");
+            // Strip refs/heads/ prefix if present
+            let branch = branch.strip_prefix("refs/heads/").unwrap_or(branch);
+            current_branch = Some(branch.to_string());
+        }
+    }
+
+    // Don't forget the last entry
+    if let (Some(path), Some(branch)) = (current_path, current_branch) {
+        if branch.starts_with("chant/") {
+            if let Some(spec_id) = branch.strip_prefix("chant/") {
+                worktrees.push(WorktreeInfo {
+                    path,
+                    spec_id: spec_id.to_string(),
+                });
+            }
+        }
+    }
+
+    Ok(worktrees)
+}
+
+/// Check worktree status by reading .chant-status.json
+fn check_worktree_status(path: &Path) -> Result<AgentStatus> {
+    let status_file = path.join(".chant-status.json");
+    read_status(&status_file)
+}
+
 /// Main entry point for watch command
 pub fn run_watch(once: bool, dry_run: bool, poll_interval: Option<u64>) -> Result<()> {
     let _specs_dir = cmd::ensure_initialized()?;
@@ -146,69 +219,226 @@ pub fn run_watch(once: bool, dry_run: bool, poll_interval: Option<u64>) -> Resul
             .filter(|s| matches!(s.frontmatter.status, SpecStatus::InProgress))
             .collect();
 
-        if in_progress_specs.is_empty() {
-            logger.log_event("No in-progress specs, waiting...")?;
+        // Discover active worktrees
+        let active_worktrees = match find_active_worktrees() {
+            Ok(worktrees) => worktrees,
+            Err(e) => {
+                logger.log_event(&format!(
+                    "{} Failed to discover worktrees: {}",
+                    "⚠".yellow(),
+                    e
+                ))?;
+                Vec::new()
+            }
+        };
+
+        if in_progress_specs.is_empty() && active_worktrees.is_empty() {
+            logger.log_event("No in-progress specs or active worktrees, waiting...")?;
         } else {
-            logger.log_event(&format!(
-                "Checking {} in-progress spec(s)",
-                in_progress_specs.len()
-            ))?;
+            if !in_progress_specs.is_empty() {
+                logger.log_event(&format!(
+                    "Checking {} in-progress spec(s)",
+                    in_progress_specs.len()
+                ))?;
 
-            // Check each spec for completion or failure
-            for spec in &in_progress_specs {
-                let spec_id = &spec.id;
+                // Check each spec for completion or failure
+                for spec in &in_progress_specs {
+                    let spec_id = &spec.id;
 
-                // Check if completed
-                if is_completed(spec_id)? {
-                    logger.log_event(&format!("Spec {} is completed", spec_id.cyan()))?;
+                    // Check if completed
+                    if is_completed(spec_id)? {
+                        logger.log_event(&format!("Spec {} is completed", spec_id.cyan()))?;
 
-                    if dry_run {
-                        logger.log_event(&format!(
-                            "  {} would finalize {}",
-                            "→".dimmed(),
-                            spec_id
-                        ))?;
-                    } else {
-                        // Handle completion (finalize + merge)
-                        match crate::cmd::lifecycle::handle_completed(spec_id) {
-                            Ok(()) => {
-                                logger.log_event(&format!(
-                                    "  {} finalized and merged",
-                                    "✓".green()
-                                ))?;
+                        if dry_run {
+                            logger.log_event(&format!(
+                                "  {} would finalize {}",
+                                "→".dimmed(),
+                                spec_id
+                            ))?;
+                        } else {
+                            // Handle completion (finalize + merge)
+                            match crate::cmd::lifecycle::handle_completed(spec_id) {
+                                Ok(()) => {
+                                    logger.log_event(&format!(
+                                        "  {} finalized and merged",
+                                        "✓".green()
+                                    ))?;
+                                }
+                                Err(e) => {
+                                    logger.log_event(&format!(
+                                        "  {} failed to finalize: {}",
+                                        "✗".red(),
+                                        e
+                                    ))?;
+                                }
                             }
-                            Err(e) => {
-                                logger.log_event(&format!(
-                                    "  {} failed to finalize: {}",
-                                    "✗".red(),
-                                    e
-                                ))?;
+                        }
+                        continue;
+                    }
+
+                    // Check if failed
+                    if is_failed(spec_id)? {
+                        logger.log_event(&format!("Spec {} has failed", spec_id.cyan()))?;
+
+                        if dry_run {
+                            logger.log_event(&format!(
+                                "  {} would handle failure for {}",
+                                "→".dimmed(),
+                                spec_id
+                            ))?;
+                        } else {
+                            // Handle failure (retry or permanent failure)
+                            match crate::cmd::lifecycle::handle_failed(
+                                spec_id,
+                                &config.watch.failure,
+                            ) {
+                                Ok(()) => {
+                                    logger
+                                        .log_event(&format!("  {} failure handled", "✓".green()))?;
+                                }
+                                Err(e) => {
+                                    logger.log_event(&format!(
+                                        "  {} failed to handle failure: {}",
+                                        "✗".red(),
+                                        e
+                                    ))?;
+                                }
                             }
                         }
                     }
-                    continue;
                 }
+            }
 
-                // Check if failed
-                if is_failed(spec_id)? {
-                    logger.log_event(&format!("Spec {} has failed", spec_id.cyan()))?;
+            // Check worktree status files
+            if !active_worktrees.is_empty() {
+                logger.log_event(&format!(
+                    "Checking {} active worktree(s)",
+                    active_worktrees.len()
+                ))?;
 
-                    if dry_run {
-                        logger.log_event(&format!(
-                            "  {} would handle failure for {}",
-                            "→".dimmed(),
-                            spec_id
-                        ))?;
-                    } else {
-                        // Handle failure (retry or permanent failure)
-                        match crate::cmd::lifecycle::handle_failed(spec_id, &config.watch.failure) {
-                            Ok(()) => {
-                                logger.log_event(&format!("  {} failure handled", "✓".green()))?;
+                for worktree in &active_worktrees {
+                    let spec_id = &worktree.spec_id;
+
+                    // Read status file
+                    match check_worktree_status(&worktree.path) {
+                        Ok(status) => {
+                            match status.status {
+                                AgentStatusState::Done => {
+                                    logger.log_event(&format!(
+                                        "Worktree for spec {} reports done",
+                                        spec_id.cyan()
+                                    ))?;
+
+                                    if dry_run {
+                                        logger.log_event(&format!(
+                                            "  {} would finalize, merge, and cleanup {}",
+                                            "→".dimmed(),
+                                            spec_id
+                                        ))?;
+                                    } else {
+                                        // Handle completion (finalize + merge + cleanup)
+                                        match crate::cmd::lifecycle::handle_completed(spec_id) {
+                                            Ok(()) => {
+                                                logger.log_event(&format!(
+                                                    "  {} finalized and merged",
+                                                    "✓".green()
+                                                ))?;
+                                            }
+                                            Err(e) => {
+                                                logger.log_event(&format!(
+                                                    "  {} failed to finalize: {}",
+                                                    "✗".red(),
+                                                    e
+                                                ))?;
+                                            }
+                                        }
+                                        // Note: cleanup happens via handle_completed -> merge -> worktree removal
+                                    }
+                                }
+                                AgentStatusState::Failed => {
+                                    logger.log_event(&format!(
+                                        "Worktree for spec {} reports failed",
+                                        spec_id.cyan()
+                                    ))?;
+
+                                    if dry_run {
+                                        logger.log_event(&format!(
+                                            "  {} would mark spec failed and cleanup {}",
+                                            "→".dimmed(),
+                                            spec_id
+                                        ))?;
+                                    } else {
+                                        // Mark spec as failed
+                                        let specs_dir = PathBuf::from(".chant/specs");
+                                        if let Ok(mut spec) =
+                                            spec::resolve_spec(&specs_dir, spec_id)
+                                        {
+                                            spec.frontmatter.status = SpecStatus::Failed;
+                                            let spec_path =
+                                                specs_dir.join(format!("{}.md", spec_id));
+                                            if let Err(e) = spec.save(&spec_path) {
+                                                logger.log_event(&format!(
+                                                    "  {} failed to mark spec failed: {}",
+                                                    "✗".red(),
+                                                    e
+                                                ))?;
+                                            } else {
+                                                logger.log_event(&format!(
+                                                    "  {} marked spec as failed",
+                                                    "✓".green()
+                                                ))?;
+
+                                                // Handle failure (retry or cleanup)
+                                                match crate::cmd::lifecycle::handle_failed(
+                                                    spec_id,
+                                                    &config.watch.failure,
+                                                ) {
+                                                    Ok(()) => {
+                                                        logger.log_event(&format!(
+                                                            "  {} failure handled",
+                                                            "✓".green()
+                                                        ))?;
+                                                    }
+                                                    Err(e) => {
+                                                        logger.log_event(&format!(
+                                                            "  {} failed to handle failure: {}",
+                                                            "✗".red(),
+                                                            e
+                                                        ))?;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                AgentStatusState::Working => {
+                                    // Agent is still working, nothing to do
+                                }
                             }
-                            Err(e) => {
+                        }
+                        Err(e) => {
+                            let err_msg = e.to_string();
+                            if err_msg.contains("not found") {
+                                // No status file yet - agent may not have started writing
                                 logger.log_event(&format!(
-                                    "  {} failed to handle failure: {}",
-                                    "✗".red(),
+                                    "{} Worktree {} has no status file yet",
+                                    "⚠".yellow(),
+                                    worktree.path.display()
+                                ))?;
+                            } else if err_msg.contains("parse") {
+                                // Status file is corrupt
+                                logger.log_event(&format!(
+                                    "{} Worktree {} has corrupt status file: {}",
+                                    "⚠".yellow(),
+                                    worktree.path.display(),
+                                    e
+                                ))?;
+                            } else {
+                                // Other I/O error (worktree deleted, permission denied, etc.)
+                                logger.log_event(&format!(
+                                    "{} Failed to read status for worktree {}: {}",
+                                    "⚠".yellow(),
+                                    worktree.path.display(),
                                     e
                                 ))?;
                             }
