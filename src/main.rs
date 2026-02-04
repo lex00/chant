@@ -1882,13 +1882,13 @@ fn cmd_init(
                         .interact()?;
 
                     let selected_model = match model_selection {
-                        0 => "claude-opus-4".to_string(),
-                        1 => "claude-sonnet-4".to_string(),
-                        2 => "claude-haiku-4".to_string(),
+                        0 => "opus".to_string(),
+                        1 => "sonnet".to_string(),
+                        2 => "haiku".to_string(),
                         3 => dialoguer::Input::new()
                             .with_prompt("Custom model name")
                             .interact_text()?,
-                        _ => "claude-sonnet-4".to_string(),
+                        _ => "sonnet".to_string(),
                     };
 
                     update_config_field(&config_path, "model", &selected_model)?;
@@ -1978,9 +1978,9 @@ fn cmd_init(
                 .interact()?;
 
             let selected_model = match model_selection {
-                0 => Some("claude-opus-4".to_string()),
-                1 => Some("claude-sonnet-4".to_string()),
-                2 => Some("claude-haiku-4".to_string()),
+                0 => Some("opus".to_string()),
+                1 => Some("sonnet".to_string()),
+                2 => Some("haiku".to_string()),
                 3 => {
                     let custom: String = dialoguer::Input::new()
                         .with_prompt("Custom model name")
