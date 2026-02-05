@@ -228,6 +228,25 @@ pub fn cmd_work(
     let mut spec = spec::resolve_spec(&specs_dir, id)?;
     let spec_path = specs_dir.join(format!("{}.md", spec.id));
 
+    // Run lint validation before worktree creation - fail fast if spec has issues
+    println!("{} Validating spec...", "→".cyan());
+    let lint_result = spec_cmd::lint_specific_specs(&specs_dir, &[spec.id.clone()])?;
+    if lint_result.failed > 0 {
+        anyhow::bail!(
+            "Spec validation failed with {} error(s). Fix the issues before running 'chant work'.\n\
+             Run 'chant lint {}' to see details.",
+            lint_result.failed,
+            spec.id
+        );
+    }
+    if lint_result.warned > 0 {
+        println!(
+            "{} Spec has {} warning(s) but is valid for execution",
+            "⚠".yellow(),
+            lint_result.warned
+        );
+    }
+
     // Validate work preconditions (unless bypassed with flags)
     if !(skip_deps || skip_criteria) {
         validate_work_preconditions(&spec)?;

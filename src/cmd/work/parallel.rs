@@ -396,6 +396,25 @@ pub fn cmd_work_parallel(
         return Ok(());
     }
 
+    // Run lint validation on all specs before starting parallel work - fail fast if any have issues
+    println!("{} Validating {} spec(s)...", "→".cyan(), ready_specs.len());
+    let spec_ids: Vec<String> = ready_specs.iter().map(|s| s.id.clone()).collect();
+    let lint_result = crate::cmd::spec::lint_specific_specs(specs_dir, &spec_ids)?;
+    if lint_result.failed > 0 {
+        anyhow::bail!(
+            "Spec validation failed: {} spec(s) have errors. Fix the issues before running 'chant work --parallel'.\n\
+             Run 'chant lint' to see details.",
+            lint_result.failed
+        );
+    }
+    if lint_result.warned > 0 {
+        println!(
+            "{} {} spec(s) have warnings but are valid for execution",
+            "⚠".yellow(),
+            lint_result.warned
+        );
+    }
+
     // Distribute specs across configured agents
     let assignments = distribute_specs_to_agents(&ready_specs, config, options.max_override);
 

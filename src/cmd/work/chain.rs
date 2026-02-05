@@ -138,6 +138,26 @@ fn execute_single_spec_in_chain(
     let mut spec = spec::resolve_spec(specs_dir, spec_id)?;
     let spec_path = specs_dir.join(format!("{}.md", spec.id));
 
+    // Run lint validation before starting work - fail fast if spec has issues
+    eprintln!("{} [chain] Validating spec {}...", "→".cyan(), spec.id);
+    let lint_result = crate::cmd::spec::lint_specific_specs(specs_dir, &[spec.id.clone()])?;
+    if lint_result.failed > 0 {
+        anyhow::bail!(
+            "Spec validation failed with {} error(s). Fix the issues before running 'chant work'.\n\
+             Run 'chant lint {}' to see details.",
+            lint_result.failed,
+            spec.id
+        );
+    }
+    if lint_result.warned > 0 {
+        eprintln!(
+            "{} [chain] Spec {} has {} warning(s) but is valid for execution",
+            "⚠".yellow(),
+            spec.id,
+            lint_result.warned
+        );
+    }
+
     // Reject cancelled specs
     if spec.frontmatter.status == SpecStatus::Cancelled {
         anyhow::bail!(
