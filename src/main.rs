@@ -1702,7 +1702,7 @@ fn cmd_init(
     agents: Vec<String>,
     provider: Option<String>,
     model: Option<String>,
-    merge_driver: bool,
+    _merge_driver: bool,
 ) -> Result<()> {
     // Handle 'prompts' subcommand for upgrading prompts on existing projects
     if let Some("prompts") = subcommand {
@@ -2195,17 +2195,12 @@ Project initialized on {}.
 
     // Set up the merge driver for spec files (handles .gitattributes and git config)
     // This ensures branch mode works correctly by auto-resolving frontmatter conflicts
-    // Only run if --merge-driver flag is set
-    let (merge_driver_warning, merge_driver_result_opt) = if merge_driver {
-        let merge_driver_result = chant::merge_driver::setup_merge_driver();
-        let warning = match &merge_driver_result {
-            Ok(result) => result.warning.clone(),
-            Err(e) => Some(format!("Failed to set up merge driver: {}", e)),
-        };
-        (warning, Some(merge_driver_result))
-    } else {
-        (None, None)
+    let merge_driver_result = chant::merge_driver::setup_merge_driver();
+    let merge_driver_warning = match &merge_driver_result {
+        Ok(result) => result.warning.clone(),
+        Err(e) => Some(format!("Failed to set up merge driver: {}", e)),
     };
+    let merge_driver_result_opt = Some(merge_driver_result);
 
     // Handle silent mode: add .chant/ to .git/info/exclude
     if final_silent {
