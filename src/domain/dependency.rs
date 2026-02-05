@@ -124,7 +124,10 @@ pub fn topological_sort(specs: &[Spec]) -> Result<Vec<String>> {
                 // Only count dependencies that exist in our spec set
                 if spec_ids.contains(dep) {
                     // dep -> spec.id (dep must come before spec)
-                    dependents_of.entry(dep.clone()).or_default().push(spec.id.clone());
+                    dependents_of
+                        .entry(dep.clone())
+                        .or_default()
+                        .push(spec.id.clone());
                     // spec has one more incoming edge (dependency)
                     *in_degree.entry(spec.id.clone()).or_insert(0) += 1;
                 }
