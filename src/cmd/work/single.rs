@@ -227,12 +227,9 @@ pub fn cmd_work(
     let mut spec = spec::resolve_spec(&specs_dir, id)?;
     let spec_path = specs_dir.join(format!("{}.md", spec.id));
 
-    // Reject cancelled specs
-    if spec.frontmatter.status == SpecStatus::Cancelled {
-        anyhow::bail!(
-            "Cannot work on cancelled spec '{}'. Cancelled specs are not eligible for execution.",
-            spec.id
-        );
+    // Validate work preconditions (unless bypassed with flags)
+    if !(skip_deps || skip_criteria) {
+        validate_work_preconditions(&spec)?;
     }
 
     // Check approval requirements
@@ -365,23 +362,6 @@ pub fn cmd_work(
             }
         }
 
-        return Ok(());
-    }
-
-    // Check if already completed
-    if spec.frontmatter.status == SpecStatus::Completed && !(skip_deps || skip_criteria) {
-        println!("{} Spec already completed.", "⚠".yellow());
-        println!(
-            "Use {} or {} to bypass.",
-            "--skip-deps".cyan(),
-            "--skip-criteria".cyan()
-        );
-        return Ok(());
-    }
-
-    // Check if in progress
-    if spec.frontmatter.status == SpecStatus::InProgress && !(skip_deps || skip_criteria) {
-        println!("{} Spec already in progress.", "⚠".yellow());
         return Ok(());
     }
 
@@ -871,6 +851,36 @@ pub fn cmd_work(
     let _ = chant::git::ensure_on_main_branch(&config.defaults.main_branch);
 
     Ok(())
+}
+
+/// Validate that the spec's status allows work to proceed.
+///
+/// Returns an error if the spec is Completed or Cancelled.
+/// Returns Ok(()) for Pending or InProgress specs.
+fn validate_work_preconditions(spec: &Spec) -> Result<()> {
+    match spec.frontmatter.status {
+        SpecStatus::Cancelled => {
+            anyhow::bail!(
+                "Cannot work on cancelled spec '{}'. Cancelled specs are not eligible for execution.",
+                spec.id
+            );
+        }
+        SpecStatus::Completed => {
+            anyhow::bail!(
+                "Cannot work on completed spec '{}'. Use --skip-deps or --skip-criteria to bypass.",
+                spec.id
+            );
+        }
+        SpecStatus::InProgress => {
+            anyhow::bail!("Spec '{}' is already in progress.", spec.id);
+        }
+        SpecStatus::Pending
+        | SpecStatus::Failed
+        | SpecStatus::Blocked
+        | SpecStatus::NeedsAttention
+        | SpecStatus::Paused
+        | SpecStatus::Ready => Ok(()),
+    }
 }
 
 /// Print usage hint for work command in non-TTY contexts
