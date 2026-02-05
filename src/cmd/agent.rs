@@ -303,6 +303,7 @@ fn get_model_provider(
 ) -> Result<Box<dyn provider::ModelProvider>> {
     match provider_type {
         provider::ProviderType::Claude => Ok(Box::new(provider::ClaudeCliProvider)),
+        provider::ProviderType::Kirocli => Ok(Box::new(provider::KiroCliProvider)),
         provider::ProviderType::Ollama => {
             let ollama_config = config.providers.ollama.as_ref();
             let endpoint = ollama_config

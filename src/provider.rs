@@ -21,6 +21,7 @@ pub enum ProviderType {
     Claude,
     Ollama,
     Openai,
+    Kirocli,
 }
 
 /// Provider configuration
@@ -83,6 +84,53 @@ pub trait ModelProvider {
 
     /// Returns the provider name. Part of the trait API, used in tests.
     fn name(&self) -> &'static str;
+}
+
+/// Kiro CLI provider (MCP-only)
+pub struct KiroCliProvider;
+
+impl ModelProvider for KiroCliProvider {
+    fn invoke(
+        &self,
+        message: &str,
+        model: &str,
+        callback: &mut dyn FnMut(&str) -> Result<()>,
+    ) -> Result<String> {
+        let mut cmd = Command::new("kiro-cli");
+        cmd.arg("chat")
+            .arg("--no-interactive")
+            .arg("--trust-all-tools")
+            .arg("--agent")
+            .arg(model)
+            .arg(message)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+
+        let mut child = cmd
+            .spawn()
+            .context("Failed to invoke kiro-cli. Is it installed and in PATH?")?;
+
+        let mut captured_output = String::new();
+        if let Some(stdout) = child.stdout.take() {
+            let reader = std::io::BufReader::new(stdout);
+            for line in reader.lines().map_while(Result::ok) {
+                callback(&line)?;
+                captured_output.push_str(&line);
+                captured_output.push('\n');
+            }
+        }
+
+        let status = child.wait()?;
+        if !status.success() {
+            anyhow::bail!("kiro-cli exited with status: {}", status);
+        }
+
+        Ok(captured_output)
+    }
+
+    fn name(&self) -> &'static str {
+        "kirocli"
+    }
 }
 
 /// Claude CLI provider (existing behavior)
@@ -423,5 +471,11 @@ mod tests {
     fn test_provider_type_default() {
         let provider_type: ProviderType = Default::default();
         assert_eq!(provider_type, ProviderType::Claude);
+    }
+
+    #[test]
+    fn test_kirocli_provider_name() {
+        let provider = KiroCliProvider;
+        assert_eq!(provider.name(), "kirocli");
     }
 }
