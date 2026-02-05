@@ -216,6 +216,77 @@ mod tests {
     }
 
     #[test]
+    fn test_detect_cycles_linear_chain() {
+        let specs = vec![
+            make_spec("A", Some(vec!["B".to_string()])),
+            make_spec("B", Some(vec!["C".to_string()])),
+            make_spec("C", None),
+        ];
+
+        let cycles = detect_cycles(&specs);
+        assert!(
+            cycles.is_empty(),
+            "Linear chain A->B->C should have no cycles"
+        );
+    }
+
+    #[test]
+    fn test_detect_cycles_simple_cycle_abc() {
+        let specs = vec![
+            make_spec("A", Some(vec!["B".to_string()])),
+            make_spec("B", Some(vec!["A".to_string()])),
+        ];
+
+        let cycles = detect_cycles(&specs);
+        assert_eq!(cycles.len(), 1, "Should detect one cycle");
+        assert!(
+            cycles[0].contains(&"A".to_string()),
+            "Cycle should contain A"
+        );
+        assert!(
+            cycles[0].contains(&"B".to_string()),
+            "Cycle should contain B"
+        );
+    }
+
+    #[test]
+    fn test_detect_cycles_three_node() {
+        let specs = vec![
+            make_spec("A", Some(vec!["B".to_string()])),
+            make_spec("B", Some(vec!["C".to_string()])),
+            make_spec("C", Some(vec!["A".to_string()])),
+        ];
+
+        let cycles = detect_cycles(&specs);
+        assert_eq!(cycles.len(), 1, "Should detect one cycle");
+        assert!(
+            cycles[0].contains(&"A".to_string()),
+            "Cycle should contain A"
+        );
+        assert!(
+            cycles[0].contains(&"B".to_string()),
+            "Cycle should contain B"
+        );
+        assert!(
+            cycles[0].contains(&"C".to_string()),
+            "Cycle should contain C"
+        );
+    }
+
+    #[test]
+    fn test_detect_cycles_self_reference() {
+        let specs = vec![make_spec("A", Some(vec!["A".to_string()]))];
+
+        let cycles = detect_cycles(&specs);
+        assert_eq!(cycles.len(), 1, "Should detect one cycle");
+        assert_eq!(
+            cycles[0],
+            vec!["A"],
+            "Cycle should be just A referencing itself"
+        );
+    }
+
+    #[test]
     fn test_topological_sort_linear() {
         let specs = vec![
             make_spec("001", None),
