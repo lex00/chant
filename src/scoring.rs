@@ -193,11 +193,12 @@ pub fn calculate_complexity(spec: &crate::spec::Spec) -> ComplexityGrade {
 }
 
 /// Extract acceptance criteria from a spec's body
+///
+/// Looks for checkboxes anywhere in the spec body, not just under
+/// a specific header. This matches the behavior of count_total_checkboxes().
 fn extract_acceptance_criteria(spec: &crate::spec::Spec) -> Vec<String> {
-    let acceptance_criteria_marker = "## Acceptance Criteria";
     let mut criteria = Vec::new();
     let mut in_code_fence = false;
-    let mut in_ac_section = false;
 
     for line in spec.body.lines() {
         let trimmed = line.trim_start();
@@ -207,28 +208,26 @@ fn extract_acceptance_criteria(spec: &crate::spec::Spec) -> Vec<String> {
             continue;
         }
 
-        if !in_code_fence && trimmed.starts_with(acceptance_criteria_marker) {
-            in_ac_section = true;
+        // Skip content in code fences
+        if in_code_fence {
             continue;
         }
 
-        // Stop if we hit another ## heading
-        if in_ac_section && !in_code_fence && trimmed.starts_with("## ") {
-            break;
-        }
-
-        // Extract checkbox items
-        if in_ac_section
-            && !in_code_fence
-            && (trimmed.starts_with("- [ ]") || trimmed.starts_with("- [x]"))
+        // Extract checkbox items (case insensitive for [x]/[X])
+        if trimmed.starts_with("- [ ]")
+            || trimmed.starts_with("- [x]")
+            || trimmed.starts_with("- [X]")
         {
             // Extract text after checkbox
             let text = trimmed
                 .trim_start_matches("- [ ]")
                 .trim_start_matches("- [x]")
+                .trim_start_matches("- [X]")
                 .trim()
                 .to_string();
-            criteria.push(text);
+            if !text.is_empty() {
+                criteria.push(text);
+            }
         }
     }
 
