@@ -1575,18 +1575,18 @@ struct McpConfigResult {
     warning: Option<String>,
 }
 
-/// Update the global Claude MCP config at ~/.claude/mcp.json
+/// Update the global Claude MCP config at ~/.claude/settings.json
 ///
 /// This function:
 /// - Creates ~/.claude/ directory if it doesn't exist
-/// - Creates a new mcp.json if it doesn't exist
-/// - Merges with existing mcp.json without overwriting other servers
+/// - Creates a new settings.json if it doesn't exist
+/// - Merges with existing settings.json without overwriting other servers
 /// - Creates a backup if the existing file has invalid JSON
 fn update_claude_mcp_config() -> Result<McpConfigResult> {
     let home_dir =
         dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
 
-    let global_mcp_path = home_dir.join(".claude").join("mcp.json");
+    let global_mcp_path = home_dir.join(".claude").join("settings.json");
 
     // Ensure ~/.claude/ directory exists
     if let Some(parent) = global_mcp_path.parent() {
@@ -1611,7 +1611,7 @@ fn update_claude_mcp_config() -> Result<McpConfigResult> {
             Ok(parsed) => (parsed, false, None),
             Err(_) => {
                 // Invalid JSON - create backup and show manual instructions
-                let backup_path = home_dir.join(".claude").join("mcp.json.backup");
+                let backup_path = home_dir.join(".claude").join("settings.json.backup");
                 std::fs::copy(&global_mcp_path, &backup_path)?;
 
                 // Print the manual instructions
