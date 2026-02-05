@@ -1265,7 +1265,7 @@ fn tool_chant_lint(arguments: Option<&Value>) -> Result<Value> {
 
     // Run quality assessment on each spec
     for spec in &specs_to_check {
-        let complexity = calculate_complexity(&spec);
+        let complexity = calculate_complexity(spec);
         let criteria_count = spec.count_total_checkboxes();
         let has_title = spec.title.is_some();
         let has_criteria = criteria_count > 0;
