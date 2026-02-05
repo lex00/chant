@@ -3,4 +3,5 @@
 //! This module provides pure, testable functions for spec validation
 //! and business logic.
 
+pub mod quality;
 pub mod spec_validation;
