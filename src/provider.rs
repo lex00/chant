@@ -110,6 +110,19 @@ impl ModelProvider for KiroCliProvider {
             .spawn()
             .context("Failed to invoke kiro-cli-chat. Is it installed and in PATH?")?;
 
+        // Capture stderr in a separate thread
+        let stderr_handle = child.stderr.take().map(|stderr| {
+            std::thread::spawn(move || {
+                let reader = std::io::BufReader::new(stderr);
+                let mut stderr_output = String::new();
+                for line in reader.lines().map_while(Result::ok) {
+                    stderr_output.push_str(&line);
+                    stderr_output.push('\n');
+                }
+                stderr_output
+            })
+        });
+
         let mut captured_output = String::new();
         if let Some(stdout) = child.stdout.take() {
             let reader = std::io::BufReader::new(stdout);
@@ -121,7 +134,20 @@ impl ModelProvider for KiroCliProvider {
         }
 
         let status = child.wait()?;
+
+        // Collect stderr
+        let stderr_output = stderr_handle
+            .and_then(|h| h.join().ok())
+            .unwrap_or_default();
+
         if !status.success() {
+            if !stderr_output.is_empty() {
+                anyhow::bail!(
+                    "kiro-cli-chat exited with status: {}\nStderr: {}",
+                    status,
+                    stderr_output.trim()
+                );
+            }
             anyhow::bail!("kiro-cli-chat exited with status: {}", status);
         }
 
