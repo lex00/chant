@@ -13,6 +13,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use std::path::Path;
 
 use chant::config::Config;
+use chant::repository::spec_repository::FileSpecRepository;
 use chant::spec::{self, Spec, SpecStatus};
 use chant::spec_group;
 
@@ -328,6 +329,7 @@ fn execute_single_spec_in_chain(
 
             // Auto-finalize the spec
             let all_specs = spec::load_all_specs(specs_dir)?;
+            let spec_repo = FileSpecRepository::new(specs_dir.to_path_buf());
             let commits_to_pass = if found_commits.is_empty() {
                 None
             } else {
@@ -335,7 +337,7 @@ fn execute_single_spec_in_chain(
             };
             finalize_spec(
                 &mut spec,
-                &spec_path,
+                &spec_repo,
                 config,
                 &all_specs,
                 allow_no_commits,

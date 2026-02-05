@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 use chant::config::Config;
 use chant::paths::PROMPTS_DIR;
 use chant::prompt;
+use chant::repository::spec_repository::FileSpecRepository;
 use chant::spec::{self, BlockingDependency, Spec, SpecStatus};
 use chant::validation;
 use chant::worktree;
@@ -307,13 +308,12 @@ pub fn cmd_work(
             let mut worktree_spec = spec::Spec::load(&worktree_spec_path)
                 .context("Failed to load spec from worktree")?;
 
+            // Create repository for worktree
+            let worktree_specs_dir = worktree_path.join(".chant/specs");
+            let spec_repo = FileSpecRepository::new(worktree_specs_dir);
+
             // Re-finalize in the worktree
-            re_finalize_spec(
-                &mut worktree_spec,
-                &worktree_spec_path,
-                &config,
-                allow_no_commits,
-            )?;
+            re_finalize_spec(&mut worktree_spec, &spec_repo, &config, allow_no_commits)?;
 
             // Commit the finalization changes in the worktree
             let commit_message = format!("chant({}): finalize spec", spec.id);
@@ -336,7 +336,8 @@ pub fn cmd_work(
         } else {
             // No active worktree - finalize on current branch
             println!("{} Re-finalizing spec {}...", "→".cyan(), spec.id);
-            re_finalize_spec(&mut spec, &spec_path, &config, allow_no_commits)?;
+            let spec_repo = FileSpecRepository::new(specs_dir.to_path_buf());
+            re_finalize_spec(&mut spec, &spec_repo, &config, allow_no_commits)?;
             println!("{} Spec re-finalized!", "✓".green());
 
             if let Some(commits) = &spec.frontmatter.commits {
@@ -773,6 +774,7 @@ pub fn cmd_work(
                 "→".cyan()
             );
             let all_specs = spec::load_all_specs(&specs_dir)?;
+            let spec_repo = FileSpecRepository::new(specs_dir.to_path_buf());
             // Pass the commits we already retrieved to avoid fetching twice
             let commits_to_pass = if found_commits.is_empty() {
                 None // Let finalize fetch with fallback
@@ -781,7 +783,7 @@ pub fn cmd_work(
             };
             finalize_spec(
                 &mut spec,
-                &spec_path,
+                &spec_repo,
                 &config,
                 &all_specs,
                 allow_no_commits,

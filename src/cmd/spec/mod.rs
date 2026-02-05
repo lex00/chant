@@ -39,6 +39,7 @@ mod tests {
     use crate::cmd::model::{get_model_name, get_model_name_with_default};
     use crate::{lookup_log_file, LogLookupResult};
     use chant::config::Config;
+    use chant::repository::spec_repository::FileSpecRepository;
     use chant::spec::{self, Spec, SpecFrontmatter, SpecStatus};
     use lint::validate_spec_type;
     use serial_test::serial;
@@ -945,14 +946,14 @@ git:
 
         // Load and finalize the spec
         let mut spec = spec::resolve_spec(&specs_dir, "2026-01-24-test-xyz").unwrap();
-        let spec_path = specs_dir.join("2026-01-24-test-xyz.md");
+        let spec_repo = FileSpecRepository::new(specs_dir.clone());
 
         // Before finalization, status should be in_progress
         assert_eq!(spec.frontmatter.status, SpecStatus::InProgress);
         assert!(spec.frontmatter.completed_at.is_none());
 
         // Finalize the spec (pass empty commits to avoid git dependency in tests)
-        finalize_spec(&mut spec, &spec_path, &config, &[], true, Some(vec![])).unwrap();
+        finalize_spec(&mut spec, &spec_repo, &config, &[], true, Some(vec![])).unwrap();
 
         // After finalization, status should be completed
         assert_eq!(spec.frontmatter.status, SpecStatus::Completed);

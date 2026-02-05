@@ -8,6 +8,7 @@ use colored::Colorize;
 use std::path::Path;
 
 use chant::config::Config;
+use chant::repository::spec_repository::{FileSpecRepository, SpecRepository};
 use chant::spec::{self, load_all_specs, Spec, SpecStatus};
 use chant::worktree;
 
@@ -28,7 +29,7 @@ pub const MAX_AGENT_OUTPUT_CHARS: usize = 5000;
 /// If `commits` is None, fetches commits using get_commits_for_spec.
 pub fn finalize_spec(
     spec: &mut Spec,
-    spec_path: &Path,
+    spec_repo: &FileSpecRepository,
     config: &Config,
     all_specs: &[Spec],
     allow_no_commits: bool,
@@ -106,7 +107,8 @@ pub fn finalize_spec(
     );
 
     // Save the spec - this must not fail silently
-    spec.save(spec_path)
+    spec_repo
+        .save(spec)
         .context("Failed to save finalized spec")?;
 
     eprintln!(
@@ -143,8 +145,9 @@ pub fn finalize_spec(
     }
 
     // Validation 3: Verify that spec was actually saved (reload and check)
-    let saved_spec =
-        Spec::load(spec_path).context("Failed to reload spec from disk to verify persistence")?;
+    let saved_spec = spec_repo
+        .load(&spec.id)
+        .context("Failed to reload spec from disk to verify persistence")?;
 
     anyhow::ensure!(
         saved_spec.frontmatter.status == SpecStatus::Completed,
@@ -173,9 +176,7 @@ pub fn finalize_spec(
     }
 
     // Check what this spec unblocked
-    let specs_dir = spec_path
-        .parent()
-        .ok_or_else(|| anyhow::anyhow!("Cannot determine specs directory"))?;
+    let specs_dir = spec_repo.specs_dir();
     let unblocked = find_dependent_specs(&spec.id, specs_dir)?;
     if !unblocked.is_empty() {
         println!(
@@ -201,7 +202,7 @@ pub fn finalize_spec(
 /// Idempotent: safe to call multiple times
 pub fn re_finalize_spec(
     spec: &mut Spec,
-    spec_path: &Path,
+    spec_repo: &FileSpecRepository,
     config: &Config,
     allow_no_commits: bool,
 ) -> Result<()> {
@@ -254,7 +255,8 @@ pub fn re_finalize_spec(
     spec.frontmatter.status = SpecStatus::Completed;
 
     // Save the spec
-    spec.save(spec_path)
+    spec_repo
+        .save(spec)
         .context("Failed to save re-finalized spec")?;
 
     // Validation 1: Verify that status is Completed
@@ -284,8 +286,9 @@ pub fn re_finalize_spec(
     }
 
     // Validation 3: Verify spec was saved (reload and check)
-    let saved_spec =
-        Spec::load(spec_path).context("Failed to reload spec from disk to verify persistence")?;
+    let saved_spec = spec_repo
+        .load(&spec.id)
+        .context("Failed to reload spec from disk to verify persistence")?;
 
     anyhow::ensure!(
         saved_spec.frontmatter.status == SpecStatus::Completed,

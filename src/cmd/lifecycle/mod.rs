@@ -17,6 +17,7 @@ use std::path::PathBuf;
 use chant::config::Config;
 use chant::diagnose;
 use chant::git;
+use chant::repository::spec_repository::FileSpecRepository;
 use chant::spec::{self, SpecStatus};
 
 // Submodules
@@ -533,10 +534,13 @@ pub fn cmd_finalize(id: &str, specs_dir: &std::path::Path) -> Result<()> {
         let worktree_specs_dir = worktree_path.join(".chant/specs");
         let all_specs = spec::load_all_specs(&worktree_specs_dir).unwrap_or_default();
 
+        // Create repository for worktree
+        let spec_repo = FileSpecRepository::new(worktree_specs_dir.clone());
+
         // Finalize in worktree
         finalize::finalize_spec(
             &mut worktree_spec,
-            &worktree_spec_path,
+            &spec_repo,
             &config,
             &all_specs,
             false,
@@ -569,11 +573,12 @@ pub fn cmd_finalize(id: &str, specs_dir: &std::path::Path) -> Result<()> {
         println!("  {} Worktree: {}", "•".cyan(), worktree_path.display());
     } else {
         // No active worktree - finalize on current branch (main)
-        let spec_path = specs_dir.join(format!("{}.md", spec_id));
+        // Create repository for main branch
+        let spec_repo = FileSpecRepository::new(specs_dir.to_path_buf());
 
         // Perform finalization
         let mut mut_spec = spec.clone();
-        finalize::re_finalize_spec(&mut mut_spec, &spec_path, &config, false)?;
+        finalize::re_finalize_spec(&mut mut_spec, &spec_repo, &config, false)?;
 
         println!("{} Spec {} finalized", "✓".green(), spec_id.green());
         if let Some(model) = &mut_spec.frontmatter.model {

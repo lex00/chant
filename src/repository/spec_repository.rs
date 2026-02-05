@@ -24,6 +24,11 @@ impl FileSpecRepository {
     pub fn new(specs_dir: std::path::PathBuf) -> Self {
         Self { specs_dir }
     }
+
+    /// Get the specs directory path.
+    pub fn specs_dir(&self) -> &std::path::Path {
+        &self.specs_dir
+    }
 }
 
 impl SpecRepository for FileSpecRepository {

@@ -16,6 +16,7 @@ use std::time::Duration;
 
 use chant::config::Config;
 use chant::conflict;
+use chant::repository::spec_repository::FileSpecRepository;
 use chant::spec::{self, Spec, SpecStatus};
 use chant::worktree;
 
@@ -719,7 +720,7 @@ pub fn cmd_work_parallel(
                             spec_id
                         );
 
-                        let spec_path = specs_dir_clone.join(format!("{}.md", spec_id));
+                        let spec_repo = FileSpecRepository::new(specs_dir_clone.clone());
                         let finalize_result =
                             if let Ok(mut spec) = spec::resolve_spec(&specs_dir_clone, &spec_id) {
                                 let all_specs =
@@ -727,7 +728,7 @@ pub fn cmd_work_parallel(
                                 let commits_to_finalize = commits.clone();
                                 finalize_spec(
                                     &mut spec,
-                                    &spec_path,
+                                    &spec_repo,
                                     &config_clone,
                                     &all_specs,
                                     false,
@@ -1010,12 +1011,12 @@ pub fn cmd_work_parallel(
                     spec_id.cyan()
                 );
 
-                let spec_path = specs_dir.join(format!("{}.md", spec_id));
+                let spec_repo = FileSpecRepository::new(specs_dir.to_path_buf());
                 let finalize_result = if let Ok(mut spec) = spec::resolve_spec(specs_dir, spec_id) {
                     let all_specs = spec::load_all_specs(specs_dir).unwrap_or_default();
                     // Get commits for the spec (now on main after merge)
                     let commits = get_commits_for_spec(spec_id).ok();
-                    finalize_spec(&mut spec, &spec_path, config, &all_specs, false, commits)
+                    finalize_spec(&mut spec, &spec_repo, config, &all_specs, false, commits)
                 } else {
                     Err(anyhow::anyhow!("Failed to load spec for finalization"))
                 };
