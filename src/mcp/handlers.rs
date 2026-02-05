@@ -394,6 +394,32 @@ fn handle_tools_list() -> Result<Value> {
                     "type": "object",
                     "properties": {}
                 }
+            },
+            {
+                "name": "chant_split",
+                "description": "Split a complex spec into smaller member specs using AI analysis",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "string",
+                            "description": "Spec ID (full or partial)"
+                        },
+                        "force": {
+                            "type": "boolean",
+                            "description": "Skip confirmation prompts"
+                        },
+                        "recursive": {
+                            "type": "boolean",
+                            "description": "Recursively split member specs that are still too complex"
+                        },
+                        "max_depth": {
+                            "type": "integer",
+                            "description": "Maximum recursion depth (default: 3)"
+                        }
+                    },
+                    "required": ["id"]
+                }
             }
         ]
     }))
@@ -435,6 +461,8 @@ fn handle_tools_call(params: Option<&Value>) -> Result<Value> {
         "chant_watch_status" => tool_chant_watch_status(arguments),
         "chant_watch_start" => tool_chant_watch_start(arguments),
         "chant_watch_stop" => tool_chant_watch_stop(arguments),
+        // AI-powered tools
+        "chant_split" => tool_chant_split(arguments),
         _ => anyhow::bail!("Unknown tool: {}", name),
     }
 }
@@ -1203,7 +1231,7 @@ fn tool_chant_lint(arguments: Option<&Value>) -> Result<Value> {
         .and_then(|args| args.get("id"))
         .and_then(|v| v.as_str());
 
-    use crate::scoring::{calculate_complexity, SpecScore};
+    use crate::scoring::calculate_complexity;
     use crate::spec::Spec;
 
     // Collect specs to check
@@ -2120,4 +2148,123 @@ fn tool_chant_takeover(arguments: Option<&Value>) -> Result<Value> {
             "isError": true
         })),
     }
+}
+
+fn tool_chant_split(arguments: Option<&Value>) -> Result<Value> {
+    let specs_dir = match mcp_ensure_initialized() {
+        Ok(dir) => dir,
+        Err(err_response) => return Ok(err_response),
+    };
+
+    let args = arguments.ok_or_else(|| anyhow::anyhow!("Missing arguments"))?;
+
+    let id = args
+        .get("id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Missing required parameter: id"))?;
+
+    let force = args.get("force").and_then(|v| v.as_bool()).unwrap_or(false);
+    let recursive = args
+        .get("recursive")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let max_depth = args.get("max_depth").and_then(|v| v.as_u64());
+
+    // Resolve spec to validate it exists
+    let spec = match resolve_spec(&specs_dir, id) {
+        Ok(s) => s,
+        Err(e) => {
+            return Ok(json!({
+                "content": [
+                    {
+                        "type": "text",
+                        "text": e.to_string()
+                    }
+                ],
+                "isError": true
+            }));
+        }
+    };
+
+    let spec_id = spec.id.clone();
+
+    // Check if spec is in valid state for splitting
+    match spec.frontmatter.status {
+        SpecStatus::Pending => {
+            // Valid for splitting
+        }
+        _ => {
+            return Ok(json!({
+                "content": [
+                    {
+                        "type": "text",
+                        "text": format!("Spec '{}' must be in pending status to split. Current status: {:?}", spec_id, spec.frontmatter.status)
+                    }
+                ],
+                "isError": true
+            }));
+        }
+    }
+
+    // Build command
+    let mut cmd = Command::new("chant");
+    cmd.arg("split");
+    cmd.arg(&spec_id);
+
+    if force {
+        cmd.arg("--force");
+    }
+    if recursive {
+        cmd.arg("--recursive");
+    }
+    if let Some(depth) = max_depth {
+        cmd.arg("--max-depth").arg(depth.to_string());
+    }
+
+    // Spawn as background process
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+
+    let mut child = cmd.spawn().context("Failed to spawn chant split process")?;
+
+    let pid = child.id();
+    let started_at = chrono::Local::now().to_rfc3339();
+    let process_id = format!("split-{}-{}", spec_id, pid);
+
+    // Spawn a thread to reap the process when it exits (prevents zombies)
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
+
+    // Store process info
+    let project_root =
+        find_project_root().ok_or_else(|| anyhow::anyhow!("Project root not found"))?;
+    let processes_dir = project_root.join(".chant/processes");
+    std::fs::create_dir_all(&processes_dir)?;
+
+    let process_info = json!({
+        "process_id": process_id,
+        "spec_id": spec_id,
+        "pid": pid,
+        "started_at": started_at,
+        "mode": "split",
+        "options": {
+            "force": force,
+            "recursive": recursive,
+            "max_depth": max_depth
+        }
+    });
+
+    let process_file = processes_dir.join(format!("{}.json", process_id));
+    std::fs::write(&process_file, serde_json::to_string_pretty(&process_info)?)?;
+
+    Ok(json!({
+        "content": [
+            {
+                "type": "text",
+                "text": serde_json::to_string_pretty(&process_info)?
+            }
+        ]
+    }))
 }

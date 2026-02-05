@@ -30,7 +30,7 @@ mod tests {
     fn test_handle_tools_list() {
         let result = handle_method("tools/list", None).unwrap();
         let tools = result["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 22);
+        assert_eq!(tools.len(), 23);
         // Query tools (8)
         assert_eq!(tools[0]["name"], "chant_spec_list");
         assert_eq!(tools[1]["name"], "chant_spec_get");
