@@ -19,7 +19,7 @@ macro_rules! default_fn {
 
 default_fn!(default_complexity_criteria, usize, 10);
 default_fn!(default_complexity_files, usize, 5);
-default_fn!(default_complexity_words, usize, 50);
+default_fn!(default_complexity_words, usize, 150);
 default_fn!(default_simple_criteria, usize, 1);
 default_fn!(default_simple_files, usize, 1);
 default_fn!(default_simple_words, usize, 3);
@@ -64,7 +64,7 @@ pub struct LintThresholds {
     /// Max target files for complex specs (default: 5)
     #[serde(default = "default_complexity_files")]
     pub complexity_files: usize,
-    /// Max words in title for complex specs (default: 50)
+    /// Max words in title for complex specs (default: 150)
     #[serde(default = "default_complexity_words")]
     pub complexity_words: usize,
     /// Min acceptance criteria for simple specs (default: 1)
