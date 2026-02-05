@@ -136,14 +136,14 @@ Kiro CLI (`kiro-cli-chat`) for MCP-based agent execution.
 ```yaml
 defaults:
   provider: kirocli
-  model: claude-sonnet-4-20250514  # or your preferred model
+  model: sonnet  # shorthand names: sonnet, opus, haiku
 ```
 
 **MCP Server Setup:**
 Kiro CLI requires MCP servers to be configured separately:
 ```bash
 # Add chant MCP server
-kiro-cli-chat mcp add chant "chant mcp"
+kiro-cli-chat mcp add --name chant --command "chant mcp"
 
 # Verify configuration
 kiro-cli-chat mcp list
