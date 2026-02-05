@@ -166,8 +166,10 @@ fn resolve_prompt_inheritance(
 
 /// Load a prompt extension from .chant/prompts/extensions/
 fn load_extension(extension_name: &str) -> Result<String> {
-    let extension_path =
-        Path::new(".chant/prompts/extensions").join(format!("{}.md", extension_name));
+    let extension_path = Path::new(".chant")
+        .join("prompts")
+        .join("extensions")
+        .join(format!("{}.md", extension_name));
 
     let content = fs::read_to_string(&extension_path)
         .with_context(|| format!("Failed to read extension from {}", extension_path.display()))?;
