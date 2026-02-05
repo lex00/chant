@@ -1,6 +1,6 @@
 [package]
 name = "chant-cli"
-version = "0.15.11"
+version = "0.15.12"
 edition = "2021"
 description = "Spec execution platform for AI-assisted development"
 license = "Apache-2.0"
