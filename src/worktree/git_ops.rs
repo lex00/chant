@@ -142,6 +142,24 @@ pub fn commit_in_worktree(worktree_path: &Path, message: &str) -> Result<String>
 pub fn create_worktree(spec_id: &str, branch: &str) -> Result<PathBuf> {
     let worktree_path = PathBuf::from(format!("/tmp/chant-{}", spec_id));
 
+    // Check if worktree already exists
+    if worktree_path.exists() {
+        // Clean up existing worktree
+        let _ = Command::new("git")
+            .args([
+                "worktree",
+                "remove",
+                "--force",
+                &worktree_path.to_string_lossy(),
+            ])
+            .output();
+
+        // Force remove directory if still present
+        if worktree_path.exists() {
+            let _ = std::fs::remove_dir_all(&worktree_path);
+        }
+    }
+
     // Check if branch already exists
     let output = Command::new("git")
         .args(["rev-parse", "--verify", branch])
@@ -149,7 +167,8 @@ pub fn create_worktree(spec_id: &str, branch: &str) -> Result<PathBuf> {
         .context("Failed to check if branch exists")?;
 
     if output.status.success() {
-        anyhow::bail!("Branch '{}' already exists", branch);
+        // Branch exists - delete it forcefully
+        let _ = Command::new("git").args(["branch", "-D", branch]).output();
     }
 
     // Create the worktree with the new branch
@@ -659,8 +678,11 @@ mod tests {
         std::env::set_current_dir(&original_dir).context("Failed to restore original directory")?;
         cleanup_test_repo(&repo_dir)?;
 
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("already exists"));
+        // Should now succeed - auto-clean existing branch and create fresh worktree
+        assert!(
+            result.is_ok(),
+            "create_worktree should auto-clean and succeed"
+        );
         Ok(())
     }
 
