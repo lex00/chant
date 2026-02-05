@@ -1919,7 +1919,7 @@ fn cmd_init(
                         "Claude CLI (recommended)",
                         "Ollama (local)",
                         "OpenAI API",
-                        "kiro-cli-chat (MCP setup)",
+                        "Kiro CLI",
                     ];
 
                     let provider_selection = dialoguer::Select::new()
@@ -1932,10 +1932,7 @@ fn cmd_init(
                         0 => "claude",
                         1 => "ollama",
                         2 => "openai",
-                        3 => {
-                            // Configure kiro-cli-chat MCP instead
-                            return configure_kirocli_mcp();
-                        }
+                        3 => "kirocli",
                         _ => "claude",
                     };
 
@@ -1945,6 +1942,13 @@ fn cmd_init(
                         "✓".green(),
                         selected_provider.cyan()
                     );
+
+                    // Configure MCP for kirocli
+                    if selected_provider == "kirocli" {
+                        if let Err(e) = configure_kirocli_mcp() {
+                            eprintln!("{} Failed to configure Kiro CLI MCP: {}", "✗".red(), e);
+                        }
+                    }
                     return Ok(());
                 }
                 2 => {
@@ -2035,7 +2039,12 @@ fn cmd_init(
             .interact()?;
 
         // Prompt for model provider
-        let provider_options = vec!["Claude CLI (recommended)", "Ollama (local)", "OpenAI API"];
+        let provider_options = vec![
+            "Claude CLI (recommended)",
+            "Ollama (local)",
+            "OpenAI API",
+            "Kiro CLI",
+        ];
 
         let provider_selection = dialoguer::Select::new()
             .with_prompt("Default model provider?")
@@ -2047,6 +2056,7 @@ fn cmd_init(
             0 => Some("claude".to_string()),
             1 => Some("ollama".to_string()),
             2 => Some("openai".to_string()),
+            3 => Some("kirocli".to_string()),
             _ => None,
         };
 
@@ -2104,15 +2114,19 @@ fn cmd_init(
             _ => vec![],
         };
 
-        // Prompt for kiro-cli-chat MCP setup (only if kiro-cli-chat is installed)
-        let setup_kirocli = if std::process::Command::new("which")
+        // Setup kiro MCP if kirocli provider selected, or prompt if kiro-cli-chat is installed
+        let setup_kirocli = if selected_provider.as_deref() == Some("kirocli") {
+            // Automatically setup MCP when kirocli provider is selected
+            true
+        } else if std::process::Command::new("which")
             .arg("kiro-cli-chat")
             .output()
             .map(|o| o.status.success())
             .unwrap_or(false)
         {
+            // Ask about MCP setup if kiro-cli-chat is installed but not selected as provider
             dialoguer::Confirm::new()
-                .with_prompt("Configure kiro-cli-chat MCP server for chant?")
+                .with_prompt("Configure Kiro CLI MCP server for chant?")
                 .default(true)
                 .interact()?
         } else {
