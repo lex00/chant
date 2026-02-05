@@ -619,11 +619,11 @@ pub fn cmd_list(
 
         if !chant::ui::is_quiet() {
             println!(
-                "{} {}{} {}{}",
-                icon,
+                "{} {} {}{}{}",
                 spec.id.cyan(),
-                approval_marker,
+                icon,
                 spec.title.as_deref().unwrap_or("(no title)"),
+                approval_marker,
                 indicators_str
             );
         }
