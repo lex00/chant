@@ -1205,6 +1205,7 @@ fn parse_provider_string(s: &str) -> Option<&'static str> {
         "claude" | "claude-cli" => Some("claude"),
         "ollama" | "local" => Some("ollama"),
         "openai" | "gpt" => Some("openai"),
+        "kirocli" | "kiro-cli-chat" | "kiro" => Some("kirocli"),
         _ => None,
     }
 }
@@ -1692,6 +1693,74 @@ fn update_claude_mcp_config() -> Result<McpConfigResult> {
     })
 }
 
+/// Configure kiro-cli-chat MCP server with chant
+fn configure_kirocli_mcp() -> Result<()> {
+    // Check if kiro-cli-chat is installed
+    let kiro_check = std::process::Command::new("which")
+        .arg("kiro-cli-chat")
+        .output();
+
+    if let Ok(output) = kiro_check {
+        if !output.status.success() {
+            anyhow::bail!("kiro-cli-chat not found. Please install it first.");
+        }
+    } else {
+        anyhow::bail!("Failed to check for kiro-cli-chat installation");
+    }
+
+    // Get chant binary path
+    let chant_path = std::env::current_exe()
+        .ok()
+        .or_else(|| {
+            std::process::Command::new("which")
+                .arg("chant")
+                .output()
+                .ok()
+                .and_then(|out| {
+                    if out.status.success() {
+                        String::from_utf8(out.stdout)
+                            .ok()
+                            .map(|s| PathBuf::from(s.trim()))
+                    } else {
+                        None
+                    }
+                })
+        })
+        .unwrap_or_else(|| PathBuf::from("chant"));
+
+    // Run kiro-cli-chat mcp add
+    let status = std::process::Command::new("kiro-cli-chat")
+        .args([
+            "mcp",
+            "add",
+            "--name",
+            "chant",
+            "--command",
+            chant_path.to_str().unwrap_or("chant"),
+            "--args",
+            "mcp",
+            "--scope",
+            "global",
+            "--force",
+        ])
+        .status()?;
+
+    if !status.success() {
+        anyhow::bail!("Failed to configure kiro-cli-chat MCP server");
+    }
+
+    println!(
+        "{} Configured kiro-cli-chat MCP server for chant",
+        "✓".green()
+    );
+    println!(
+        "{} Restart kiro-cli-chat to activate MCP integration",
+        "ℹ".cyan()
+    );
+
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 fn cmd_init(
     subcommand: Option<&str>,
@@ -1755,8 +1824,17 @@ fn cmd_init(
             // Surgical config update
             if let Some(ref prov) = provider {
                 let normalized = parse_provider_string(prov).ok_or_else(|| {
-                    anyhow::anyhow!("Invalid provider: {}. Use claude, ollama, or openai.", prov)
+                    anyhow::anyhow!(
+                        "Invalid provider: {}. Use claude, ollama, openai, or kirocli.",
+                        prov
+                    )
                 })?;
+
+                // Special handling for kirocli: configure MCP instead of updating config
+                if normalized == "kirocli" {
+                    return configure_kirocli_mcp();
+                }
+
                 update_config_field(&config_path, "provider", normalized)?;
                 println!("{} Updated provider to: {}", "✓".green(), normalized.cyan());
             }
@@ -1837,8 +1915,12 @@ fn cmd_init(
                 }
                 1 => {
                     // Change default model provider
-                    let provider_options =
-                        vec!["Claude CLI (recommended)", "Ollama (local)", "OpenAI API"];
+                    let provider_options = vec![
+                        "Claude CLI (recommended)",
+                        "Ollama (local)",
+                        "OpenAI API",
+                        "kiro-cli-chat (MCP setup)",
+                    ];
 
                     let provider_selection = dialoguer::Select::new()
                         .with_prompt("Default model provider?")
@@ -1850,6 +1932,10 @@ fn cmd_init(
                         0 => "claude",
                         1 => "ollama",
                         2 => "openai",
+                        3 => {
+                            // Configure kiro-cli-chat MCP instead
+                            return configure_kirocli_mcp();
+                        }
                         _ => "claude",
                     };
 
@@ -1918,132 +2004,161 @@ fn cmd_init(
         && model.is_none();
 
     // Gather parameters - either from wizard or from flags
-    let (final_name, final_silent, final_minimal, final_agents, final_provider, final_model) =
-        if is_wizard_mode && atty::is(atty::Stream::Stdin) {
-            // Detect default project name for wizard
-            let detected_name = detect_project_name().unwrap_or_else(|| "my-project".to_string());
+    let (
+        final_name,
+        final_silent,
+        final_minimal,
+        final_agents,
+        final_provider,
+        final_model,
+        final_setup_kirocli,
+    ) = if is_wizard_mode && atty::is(atty::Stream::Stdin) {
+        // Detect default project name for wizard
+        let detected_name = detect_project_name().unwrap_or_else(|| "my-project".to_string());
 
-            // Prompt for project name
-            let project_name = dialoguer::Input::new()
-                .with_prompt("Project name")
-                .default(detected_name.clone())
-                .interact_text()?;
+        // Prompt for project name
+        let project_name = dialoguer::Input::new()
+            .with_prompt("Project name")
+            .default(detected_name.clone())
+            .interact_text()?;
 
-            // Prompt for prompt templates
-            let include_templates = dialoguer::Confirm::new()
-                .with_prompt("Include prompt templates?")
-                .default(true)
-                .interact()?;
+        // Prompt for prompt templates
+        let include_templates = dialoguer::Confirm::new()
+            .with_prompt("Include prompt templates?")
+            .default(true)
+            .interact()?;
 
-            // Prompt for silent mode
-            let enable_silent = dialoguer::Confirm::new()
-                .with_prompt("Keep .chant/ local only (gitignored)?")
-                .default(false)
-                .interact()?;
+        // Prompt for silent mode
+        let enable_silent = dialoguer::Confirm::new()
+            .with_prompt("Keep .chant/ local only (gitignored)?")
+            .default(false)
+            .interact()?;
 
-            // Prompt for model provider
-            let provider_options = vec!["Claude CLI (recommended)", "Ollama (local)", "OpenAI API"];
+        // Prompt for model provider
+        let provider_options = vec!["Claude CLI (recommended)", "Ollama (local)", "OpenAI API"];
 
-            let provider_selection = dialoguer::Select::new()
-                .with_prompt("Default model provider?")
-                .items(&provider_options)
-                .default(0)
-                .interact()?;
+        let provider_selection = dialoguer::Select::new()
+            .with_prompt("Default model provider?")
+            .items(&provider_options)
+            .default(0)
+            .interact()?;
 
-            let selected_provider = match provider_selection {
-                0 => Some("claude".to_string()),
-                1 => Some("ollama".to_string()),
-                2 => Some("openai".to_string()),
-                _ => None,
-            };
-
-            // Prompt for default model
-            let model_options = vec![
-                "opus (most capable)",
-                "sonnet (balanced)",
-                "haiku (fastest)",
-                "Custom model name",
-                "None (use provider default)",
-            ];
-
-            let model_selection = dialoguer::Select::new()
-                .with_prompt("Default model?")
-                .items(&model_options)
-                .default(1)
-                .interact()?;
-
-            let selected_model = match model_selection {
-                0 => Some("opus".to_string()),
-                1 => Some("sonnet".to_string()),
-                2 => Some("haiku".to_string()),
-                3 => {
-                    let custom: String = dialoguer::Input::new()
-                        .with_prompt("Custom model name")
-                        .interact_text()?;
-                    Some(custom)
-                }
-                _ => None,
-            };
-
-            // Prompt for agent configuration
-            let agent_options = vec![
-                "None",
-                "Claude Code (CLAUDE.md)",
-                "Cursor (.cursorrules)",
-                "Amazon Q (.amazonq/rules.md)",
-                "Generic (.ai-instructions)",
-                "All of the above",
-            ];
-
-            let agent_selection = dialoguer::Select::new()
-                .with_prompt("Initialize agent configuration?")
-                .items(&agent_options)
-                .default(0)
-                .interact()?;
-
-            let selected_agents = match agent_selection {
-                0 => vec![], // None
-                1 => vec!["claude".to_string()],
-                2 => vec!["cursor".to_string()],
-                3 => vec!["amazonq".to_string()],
-                4 => vec!["generic".to_string()],
-                5 => vec!["all".to_string()],
-                _ => vec![],
-            };
-
-            (
-                project_name,
-                enable_silent,
-                !include_templates, // invert: minimal is "no templates"
-                selected_agents,
-                selected_provider,
-                selected_model,
-            )
-        } else {
-            // Direct mode: use provided values
-            let project_name = name.unwrap_or_else(|| {
-                detect_project_name().unwrap_or_else(|| "my-project".to_string())
-            });
-
-            // Validate provider if specified
-            let validated_provider = if let Some(ref p) = provider {
-                let normalized = parse_provider_string(p).ok_or_else(|| {
-                    anyhow::anyhow!("Invalid provider: {}. Use claude, ollama, or openai.", p)
-                })?;
-                Some(normalized.to_string())
-            } else {
-                None
-            };
-
-            (
-                project_name,
-                silent,
-                minimal,
-                agents,
-                validated_provider,
-                model,
-            )
+        let selected_provider = match provider_selection {
+            0 => Some("claude".to_string()),
+            1 => Some("ollama".to_string()),
+            2 => Some("openai".to_string()),
+            _ => None,
         };
+
+        // Prompt for default model
+        let model_options = vec![
+            "opus (most capable)",
+            "sonnet (balanced)",
+            "haiku (fastest)",
+            "Custom model name",
+            "None (use provider default)",
+        ];
+
+        let model_selection = dialoguer::Select::new()
+            .with_prompt("Default model?")
+            .items(&model_options)
+            .default(1)
+            .interact()?;
+
+        let selected_model = match model_selection {
+            0 => Some("opus".to_string()),
+            1 => Some("sonnet".to_string()),
+            2 => Some("haiku".to_string()),
+            3 => {
+                let custom: String = dialoguer::Input::new()
+                    .with_prompt("Custom model name")
+                    .interact_text()?;
+                Some(custom)
+            }
+            _ => None,
+        };
+
+        // Prompt for agent configuration
+        let agent_options = vec![
+            "None",
+            "Claude Code (CLAUDE.md)",
+            "Cursor (.cursorrules)",
+            "Amazon Q (.amazonq/rules.md)",
+            "Generic (.ai-instructions)",
+            "All of the above",
+        ];
+
+        let agent_selection = dialoguer::Select::new()
+            .with_prompt("Initialize agent configuration?")
+            .items(&agent_options)
+            .default(0)
+            .interact()?;
+
+        let selected_agents = match agent_selection {
+            0 => vec![], // None
+            1 => vec!["claude".to_string()],
+            2 => vec!["cursor".to_string()],
+            3 => vec!["amazonq".to_string()],
+            4 => vec!["generic".to_string()],
+            5 => vec!["all".to_string()],
+            _ => vec![],
+        };
+
+        // Prompt for kiro-cli-chat MCP setup (only if kiro-cli-chat is installed)
+        let setup_kirocli = if std::process::Command::new("which")
+            .arg("kiro-cli-chat")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+        {
+            dialoguer::Confirm::new()
+                .with_prompt("Configure kiro-cli-chat MCP server for chant?")
+                .default(true)
+                .interact()?
+        } else {
+            false
+        };
+
+        (
+            project_name,
+            enable_silent,
+            !include_templates, // invert: minimal is "no templates"
+            selected_agents,
+            selected_provider,
+            selected_model,
+            setup_kirocli,
+        )
+    } else {
+        // Direct mode: use provided values
+        let project_name = name
+            .unwrap_or_else(|| detect_project_name().unwrap_or_else(|| "my-project".to_string()));
+
+        // Validate provider if specified
+        let validated_provider = if let Some(ref p) = provider {
+            let normalized = parse_provider_string(p).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Invalid provider: {}. Use claude, ollama, openai, or kirocli.",
+                    p
+                )
+            })?;
+            Some(normalized.to_string())
+        } else {
+            None
+        };
+
+        // Check if we should configure kirocli in direct mode
+        let setup_kirocli = validated_provider.as_deref() == Some("kirocli");
+
+        (
+            project_name,
+            silent,
+            minimal,
+            agents,
+            validated_provider,
+            model,
+            setup_kirocli,
+        )
+    };
 
     // For silent mode: validate that .chant/ is not already tracked in git
     // Do this check BEFORE the exists check so we catch tracking issues even if dir exists
@@ -2452,6 +2567,18 @@ Project initialized on {}.
         if result.git_config_set {
             println!(
                 "{} Merge driver configured (auto-resolves spec file conflicts)",
+                "ℹ".cyan()
+            );
+        }
+    }
+
+    // Configure kiro-cli-chat MCP if requested
+    if final_setup_kirocli {
+        println!(); // Add spacing
+        if let Err(e) = configure_kirocli_mcp() {
+            eprintln!("{} Failed to configure kiro-cli-chat MCP: {}", "✗".red(), e);
+            eprintln!(
+                "{} You can manually configure it later with: chant init --provider kirocli",
                 "ℹ".cyan()
             );
         }
