@@ -117,43 +117,41 @@ providers:
 
 ### Kiro CLI
 
-AWS Kiro CLI for MCP-based agent execution.
+Kiro CLI (`kiro-cli-chat`) for MCP-based agent execution.
 
 **Best for:**
-- AWS-native environments
 - MCP server integration
 - Teams using Kiro ecosystem
 
 **Requirements:**
-- `kiro-cli` command installed and available in PATH
-- MCP servers configured via `kiro-cli mcp add`
+- `kiro-cli-chat` command installed and available in PATH
+- MCP servers configured via `kiro-cli-chat mcp add`
 
 **Installation:**
 ```bash
-# Install kiro-cli (see https://kiro.dev/docs/cli)
-npm install -g @anthropic/kiro-cli
+# See https://kiro.dev/docs/cli for installation
 ```
 
 **Configuration:**
 ```yaml
 defaults:
   provider: kirocli
-  model: default  # or your kiro-cli agent name
+  model: claude-sonnet-4-20250514  # or your preferred model
 ```
 
 **MCP Server Setup:**
 Kiro CLI requires MCP servers to be configured separately:
 ```bash
 # Add chant MCP server
-kiro-cli mcp add chant "chant mcp"
+kiro-cli-chat mcp add chant "chant mcp"
 
 # Verify configuration
-kiro-cli mcp list
+kiro-cli-chat mcp list
 ```
 
 See [Kiro CLI MCP documentation](https://kiro.dev/docs/cli/mcp) for detailed setup.
 
-**Note:** Kiro CLI is MCP-only and uses `--no-interactive` and `--trust-all-tools` flags for automated execution.
+**Note:** Uses `kiro-cli-chat chat --no-interactive --trust-all-tools --model <model>` for automated execution.
 
 ## Configuration Reference
 

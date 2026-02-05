@@ -96,11 +96,11 @@ impl ModelProvider for KiroCliProvider {
         model: &str,
         callback: &mut dyn FnMut(&str) -> Result<()>,
     ) -> Result<String> {
-        let mut cmd = Command::new("kiro-cli");
+        let mut cmd = Command::new("kiro-cli-chat");
         cmd.arg("chat")
             .arg("--no-interactive")
             .arg("--trust-all-tools")
-            .arg("--agent")
+            .arg("--model")
             .arg(model)
             .arg(message)
             .stdout(Stdio::piped())
@@ -108,7 +108,7 @@ impl ModelProvider for KiroCliProvider {
 
         let mut child = cmd
             .spawn()
-            .context("Failed to invoke kiro-cli. Is it installed and in PATH?")?;
+            .context("Failed to invoke kiro-cli-chat. Is it installed and in PATH?")?;
 
         let mut captured_output = String::new();
         if let Some(stdout) = child.stdout.take() {
@@ -122,7 +122,7 @@ impl ModelProvider for KiroCliProvider {
 
         let status = child.wait()?;
         if !status.success() {
-            anyhow::bail!("kiro-cli exited with status: {}", status);
+            anyhow::bail!("kiro-cli-chat exited with status: {}", status);
         }
 
         Ok(captured_output)
