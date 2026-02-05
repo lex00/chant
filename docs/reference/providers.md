@@ -115,6 +115,46 @@ providers:
     endpoint: https://your-instance.openai.azure.com/openai
 ```
 
+### Kiro CLI
+
+AWS Kiro CLI for MCP-based agent execution.
+
+**Best for:**
+- AWS-native environments
+- MCP server integration
+- Teams using Kiro ecosystem
+
+**Requirements:**
+- `kiro-cli` command installed and available in PATH
+- MCP servers configured via `kiro-cli mcp add`
+
+**Installation:**
+```bash
+# Install kiro-cli (see https://kiro.dev/docs/cli)
+npm install -g @anthropic/kiro-cli
+```
+
+**Configuration:**
+```yaml
+defaults:
+  provider: kirocli
+  model: default  # or your kiro-cli agent name
+```
+
+**MCP Server Setup:**
+Kiro CLI requires MCP servers to be configured separately:
+```bash
+# Add chant MCP server
+kiro-cli mcp add chant "chant mcp"
+
+# Verify configuration
+kiro-cli mcp list
+```
+
+See [Kiro CLI MCP documentation](https://kiro.dev/docs/cli/mcp) for detailed setup.
+
+**Note:** Kiro CLI is MCP-only and uses `--no-interactive` and `--trust-all-tools` flags for automated execution.
+
 ## Configuration Reference
 
 ### Basic Provider Setup
@@ -128,7 +168,7 @@ project:
   name: my-project
 
 defaults:
-  provider: claude    # claude | ollama | openai
+  provider: claude    # claude | ollama | openai | kirocli
   model: claude-opus-4-5
 ---
 ```
