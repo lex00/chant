@@ -1231,8 +1231,24 @@ fn tool_chant_lint(arguments: Option<&Value>) -> Result<Value> {
         .and_then(|args| args.get("id"))
         .and_then(|v| v.as_str());
 
-    use crate::scoring::calculate_complexity;
+    use crate::config::Config;
+    use crate::score::traffic_light;
+    use crate::scoring::{calculate_spec_score, TrafficLight};
     use crate::spec::Spec;
+
+    // Load config for scoring
+    let config = match Config::load() {
+        Ok(c) => c,
+        Err(e) => {
+            return Ok(json!({
+                "content": [{ "type": "text", "text": format!("Failed to load config: {}", e) }],
+                "isError": true
+            }));
+        }
+    };
+
+    // Load all specs (needed for isolation scoring)
+    let all_specs = load_all_specs(&specs_dir)?;
 
     // Collect specs to check
     let specs_to_check: Vec<Spec> = if let Some(id) = spec_id {
@@ -1246,58 +1262,52 @@ fn tool_chant_lint(arguments: Option<&Value>) -> Result<Value> {
             }
         }
     } else {
-        let mut specs = Vec::new();
-        if let Ok(entries) = std::fs::read_dir(&specs_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().map(|e| e == "md").unwrap_or(false) {
-                    if let Ok(spec) = Spec::load(&path) {
-                        specs.push(spec);
-                    }
-                }
-            }
-        }
-        specs
+        all_specs.clone()
     };
 
     let mut results: Vec<Value> = Vec::new();
-    let mut issues_found = 0;
+    let mut red_count = 0;
+    let mut yellow_count = 0;
+    let mut green_count = 0;
 
-    // Run quality assessment on each spec
+    // Run full quality assessment on each spec (same as chant work)
     for spec in &specs_to_check {
-        let complexity = calculate_complexity(spec);
-        let criteria_count = spec.count_total_checkboxes();
-        let has_title = spec.title.is_some();
-        let has_criteria = criteria_count > 0;
+        let score = calculate_spec_score(spec, &all_specs, &config);
+        let suggestions = traffic_light::generate_suggestions(&score);
 
-        let mut warnings: Vec<String> = Vec::new();
-
-        if !has_title {
-            warnings.push("Missing title".to_string());
-        }
-        if !has_criteria {
-            warnings.push("No acceptance criteria found".to_string());
-        }
-        if matches!(complexity, crate::scoring::ComplexityGrade::D) {
-            warnings.push("High complexity - consider splitting".to_string());
-        }
-
-        if !warnings.is_empty() {
-            issues_found += 1;
-        }
+        let traffic_light_str = match score.traffic_light {
+            TrafficLight::Ready => {
+                green_count += 1;
+                "green"
+            }
+            TrafficLight::Review => {
+                yellow_count += 1;
+                "yellow"
+            }
+            TrafficLight::Refine => {
+                red_count += 1;
+                "red"
+            }
+        };
 
         results.push(json!({
             "id": spec.id,
             "title": spec.title,
-            "complexity": complexity.to_string(),
-            "criteria_count": criteria_count,
-            "warnings": warnings
+            "traffic_light": traffic_light_str,
+            "complexity": score.complexity.to_string(),
+            "confidence": score.confidence.to_string(),
+            "splittability": score.splittability.to_string(),
+            "ac_quality": score.ac_quality.to_string(),
+            "isolation": score.isolation.map(|i| i.to_string()),
+            "suggestions": suggestions
         }));
     }
 
     let summary = json!({
         "specs_checked": specs_to_check.len(),
-        "issues_found": issues_found,
+        "red": red_count,
+        "yellow": yellow_count,
+        "green": green_count,
         "results": results
     });
 
