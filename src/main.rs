@@ -1729,7 +1729,7 @@ fn configure_kirocli_mcp() -> Result<()> {
         .unwrap_or_else(|| PathBuf::from("chant"));
 
     // Run kiro-cli-chat mcp add
-    let status = std::process::Command::new("kiro-cli-chat")
+    let output = std::process::Command::new("kiro-cli-chat")
         .args([
             "mcp",
             "add",
@@ -1743,10 +1743,17 @@ fn configure_kirocli_mcp() -> Result<()> {
             "global",
             "--force",
         ])
-        .status()?;
+        .output()?;
 
-    if !status.success() {
-        anyhow::bail!("Failed to configure kiro-cli-chat MCP server");
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("Invalid") || stderr.contains("Grant") || stderr.contains("auth") {
+            anyhow::bail!(
+                "Kiro CLI authentication error. Try running 'kiro-cli-chat auth login' first.\nError: {}",
+                stderr.trim()
+            );
+        }
+        anyhow::bail!("Failed to configure Kiro CLI MCP server: {}", stderr.trim());
     }
 
     println!(
