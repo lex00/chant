@@ -228,9 +228,9 @@ That should do it."#
 
         let assessment = assess_quality(&spec);
 
-        // Spec with "code works" type AC should score low ac_quality
-        // None of these criteria have imperative verbs, so they all fail
-        assert_eq!(assessment.ac_quality, ACQualityGrade::D);
+        // AC quality is now count-based only (3 criteria = Grade B)
+        // Content analysis was removed as it was too aggressive
+        assert_eq!(assessment.ac_quality, ACQualityGrade::B);
     }
 
     #[test]
