@@ -171,6 +171,19 @@ fn handle_tools_list() -> Result<Value> {
                     "required": ["id"]
                 }
             },
+            {
+                "name": "chant_lint",
+                "description": "Lint specs to check for quality issues (complexity, missing criteria, etc.)",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "string",
+                            "description": "Spec ID to lint (optional, lints all if not provided)"
+                        }
+                    }
+                }
+            },
             // Mutating tools
             {
                 "name": "chant_spec_update",
@@ -405,6 +418,7 @@ fn handle_tools_call(params: Option<&Value>) -> Result<Value> {
         "chant_log" => tool_chant_log(arguments),
         "chant_search" => tool_chant_search(arguments),
         "chant_diagnose" => tool_chant_diagnose(arguments),
+        "chant_lint" => tool_chant_lint(arguments),
         // Mutating tools
         "chant_spec_update" => tool_chant_spec_update(arguments),
         "chant_add" => tool_chant_add(arguments),
@@ -1174,6 +1188,96 @@ fn tool_chant_diagnose(arguments: Option<&Value>) -> Result<Value> {
             {
                 "type": "text",
                 "text": serde_json::to_string_pretty(&report_json)?
+            }
+        ]
+    }))
+}
+
+fn tool_chant_lint(arguments: Option<&Value>) -> Result<Value> {
+    let specs_dir = match mcp_ensure_initialized() {
+        Ok(dir) => dir,
+        Err(err_response) => return Ok(err_response),
+    };
+
+    let spec_id = arguments
+        .and_then(|args| args.get("id"))
+        .and_then(|v| v.as_str());
+
+    use crate::scoring::{calculate_complexity, SpecScore};
+    use crate::spec::Spec;
+
+    // Collect specs to check
+    let specs_to_check: Vec<Spec> = if let Some(id) = spec_id {
+        match resolve_spec(&specs_dir, id) {
+            Ok(spec) => vec![spec],
+            Err(e) => {
+                return Ok(json!({
+                    "content": [{ "type": "text", "text": e.to_string() }],
+                    "isError": true
+                }));
+            }
+        }
+    } else {
+        let mut specs = Vec::new();
+        if let Ok(entries) = std::fs::read_dir(&specs_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().map(|e| e == "md").unwrap_or(false) {
+                    if let Ok(spec) = Spec::load(&path) {
+                        specs.push(spec);
+                    }
+                }
+            }
+        }
+        specs
+    };
+
+    let mut results: Vec<Value> = Vec::new();
+    let mut issues_found = 0;
+
+    // Run quality assessment on each spec
+    for spec in &specs_to_check {
+        let complexity = calculate_complexity(&spec);
+        let criteria_count = spec.count_total_checkboxes();
+        let has_title = spec.title.is_some();
+        let has_criteria = criteria_count > 0;
+
+        let mut warnings: Vec<String> = Vec::new();
+
+        if !has_title {
+            warnings.push("Missing title".to_string());
+        }
+        if !has_criteria {
+            warnings.push("No acceptance criteria found".to_string());
+        }
+        if matches!(complexity, crate::scoring::ComplexityGrade::D) {
+            warnings.push("High complexity - consider splitting".to_string());
+        }
+
+        if !warnings.is_empty() {
+            issues_found += 1;
+        }
+
+        results.push(json!({
+            "id": spec.id,
+            "title": spec.title,
+            "complexity": complexity.to_string(),
+            "criteria_count": criteria_count,
+            "warnings": warnings
+        }));
+    }
+
+    let summary = json!({
+        "specs_checked": specs_to_check.len(),
+        "issues_found": issues_found,
+        "results": results
+    });
+
+    Ok(json!({
+        "content": [
+            {
+                "type": "text",
+                "text": serde_json::to_string_pretty(&summary)?
             }
         ]
     }))
