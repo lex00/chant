@@ -152,4 +152,119 @@ Simple implementation."#
             ACQualityGrade::A | ACQualityGrade::B | ACQualityGrade::C
         ));
     }
+
+    #[test]
+    fn test_assess_quality_empty_body() {
+        let spec = Spec {
+            id: "test".to_string(),
+            frontmatter: SpecFrontmatter::default(),
+            title: Some("Empty spec".to_string()),
+            body: String::new(),
+        };
+
+        let assessment = assess_quality(&spec);
+
+        // Empty body should score low confidence
+        assert_eq!(assessment.confidence, ConfidenceGrade::D);
+    }
+
+    #[test]
+    fn test_assess_quality_detailed_ac() {
+        let spec = Spec {
+            id: "test".to_string(),
+            frontmatter: SpecFrontmatter {
+                target_files: Some(vec!["file1.rs".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Detailed spec".to_string()),
+            body: r#"## Problem
+
+Need comprehensive acceptance criteria.
+
+## Acceptance Criteria
+
+- [ ] Implement function calculate_total with proper error handling
+- [ ] Add unit tests covering edge cases for empty inputs
+- [ ] Create integration test validating end-to-end workflow
+- [ ] Update API documentation with new endpoint details
+- [ ] Verify performance meets sub-100ms response time requirement
+- [ ] Validate input sanitization prevents SQL injection
+
+Well-structured requirements."#
+                .to_string(),
+        };
+
+        let assessment = assess_quality(&spec);
+
+        // Spec with 5+ specific AC should score high ac_quality
+        assert!(matches!(
+            assessment.ac_quality,
+            ACQualityGrade::A | ACQualityGrade::B
+        ));
+    }
+
+    #[test]
+    fn test_assess_quality_vague_ac() {
+        let spec = Spec {
+            id: "test".to_string(),
+            frontmatter: SpecFrontmatter {
+                target_files: Some(vec!["file1.rs".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Vague spec".to_string()),
+            body: r#"## Problem
+
+Poorly defined criteria.
+
+## Acceptance Criteria
+
+- [ ] The code works
+- [ ] Everything is good
+- [ ] Make sure it's okay
+
+That should do it."#
+                .to_string(),
+        };
+
+        let assessment = assess_quality(&spec);
+
+        // Spec with "code works" type AC should score low ac_quality
+        // None of these criteria have imperative verbs, so they all fail
+        assert_eq!(assessment.ac_quality, ACQualityGrade::D);
+    }
+
+    #[test]
+    fn test_assess_quality_long_body() {
+        // Create a spec with over 200 words to trigger complexity Grade B
+        let long_body = format!(
+            r#"## Problem
+
+{}
+
+## Acceptance Criteria
+
+- [ ] Implement feature
+- [ ] Add tests
+- [ ] Document changes"#,
+            "word ".repeat(210)
+        );
+
+        let spec = Spec {
+            id: "test".to_string(),
+            frontmatter: SpecFrontmatter {
+                target_files: Some(vec!["file1.rs".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Long spec".to_string()),
+            body: long_body,
+        };
+
+        let assessment = assess_quality(&spec);
+
+        // Spec over 200 words should flag complexity concern (Grade B or higher)
+        assert!(matches!(
+            assessment.complexity,
+            ComplexityGrade::B | ComplexityGrade::C | ComplexityGrade::D
+        ));
+    }
 }
