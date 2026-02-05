@@ -83,4 +83,114 @@ status: pending
 
         assert!(is_spec_ready(&spec, &[]));
     }
+
+    #[test]
+    fn test_is_spec_ready_with_completed_dep() {
+        let dep_spec = Spec::parse(
+            "001",
+            r#"---
+status: completed
+---
+# Dependency
+"#,
+        )
+        .unwrap();
+
+        let spec = Spec::parse(
+            "002",
+            r#"---
+status: pending
+depends_on:
+  - "001"
+---
+# Test
+"#,
+        )
+        .unwrap();
+
+        assert!(is_spec_ready(&spec, &[dep_spec]));
+    }
+
+    #[test]
+    fn test_is_spec_ready_with_pending_dep() {
+        let dep_spec = Spec::parse(
+            "001",
+            r#"---
+status: pending
+---
+# Dependency
+"#,
+        )
+        .unwrap();
+
+        let spec = Spec::parse(
+            "002",
+            r#"---
+status: pending
+depends_on:
+  - "001"
+---
+# Test
+"#,
+        )
+        .unwrap();
+
+        assert!(!is_spec_ready(&spec, &[dep_spec]));
+    }
+
+    #[test]
+    fn test_get_blockers_returns_pending_deps() {
+        let dep_spec = Spec::parse(
+            "001",
+            r#"---
+status: pending
+---
+# Dependency
+"#,
+        )
+        .unwrap();
+
+        let spec = Spec::parse(
+            "002",
+            r#"---
+status: pending
+depends_on:
+  - "001"
+---
+# Test
+"#,
+        )
+        .unwrap();
+
+        let blockers = get_blockers(&spec, &[dep_spec]);
+        assert_eq!(blockers, vec!["001"]);
+    }
+
+    #[test]
+    fn test_get_blockers_empty_when_all_complete() {
+        let dep_spec = Spec::parse(
+            "001",
+            r#"---
+status: completed
+---
+# Dependency
+"#,
+        )
+        .unwrap();
+
+        let spec = Spec::parse(
+            "002",
+            r#"---
+status: pending
+depends_on:
+  - "001"
+---
+# Test
+"#,
+        )
+        .unwrap();
+
+        let blockers = get_blockers(&spec, &[dep_spec]);
+        assert!(blockers.is_empty());
+    }
 }
