@@ -299,6 +299,10 @@ fn handle_tools_list() -> Result<Value> {
                         "parallel": {
                             "type": "integer",
                             "description": "Number of parallel workers (requires multiple ready specs)"
+                        },
+                        "skip_criteria": {
+                            "type": "boolean",
+                            "description": "Skip acceptance criteria validation"
                         }
                     },
                     "required": ["id"]
@@ -1644,6 +1648,10 @@ fn tool_chant_work_start(arguments: Option<&Value>) -> Result<Value> {
 
     let chain = args.get("chain").and_then(|v| v.as_bool()).unwrap_or(false);
     let parallel = args.get("parallel").and_then(|v| v.as_u64());
+    let skip_criteria = args
+        .get("skip_criteria")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
     // Resolve spec to get full ID
     let spec = match resolve_spec(&specs_dir, id) {
@@ -1672,6 +1680,10 @@ fn tool_chant_work_start(arguments: Option<&Value>) -> Result<Value> {
     // Build command based on mode
     let mut cmd = Command::new("chant");
     cmd.arg("work").arg(&spec_id);
+
+    if skip_criteria {
+        cmd.arg("--skip-criteria");
+    }
 
     let mode = if let Some(p) = parallel {
         cmd.arg("--parallel").arg(p.to_string());
