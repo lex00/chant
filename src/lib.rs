@@ -67,6 +67,7 @@ pub mod pid;
 pub mod prompt;
 pub mod prompts;
 pub mod provider;
+pub mod repository;
 pub mod retry;
 pub mod score;
 pub mod scoring;
