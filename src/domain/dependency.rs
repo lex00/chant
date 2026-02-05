@@ -297,7 +297,6 @@ mod tests {
         let result = topological_sort(&specs).unwrap();
         assert_eq!(result.len(), 3);
 
-        // 001 should come before 002, and 002 before 003
         let pos_001 = result.iter().position(|id| id == "001").unwrap();
         let pos_002 = result.iter().position(|id| id == "002").unwrap();
         let pos_003 = result.iter().position(|id| id == "003").unwrap();
@@ -307,7 +306,7 @@ mod tests {
     }
 
     #[test]
-    fn test_topological_sort_diamond() {
+    fn test_topological_sort_diamond_numeric() {
         let specs = vec![
             make_spec("001", None),
             make_spec("002", Some(vec!["001".to_string()])),
@@ -356,5 +355,77 @@ mod tests {
         let result = topological_sort(&specs).unwrap();
         assert_eq!(result.len(), 3);
         // All specs should be included, order doesn't matter when no dependencies
+    }
+
+    #[test]
+    fn test_topological_sort_empty() {
+        let specs: Vec<Spec> = vec![];
+        let result = topological_sort(&specs).unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_topological_sort_single() {
+        let specs = vec![make_spec("A", None)];
+        let result = topological_sort(&specs).unwrap();
+        assert_eq!(result, vec!["A"]);
+    }
+
+    #[test]
+    fn test_topological_sort_linear_chain() {
+        let specs = vec![
+            make_spec("A", Some(vec!["B".to_string()])),
+            make_spec("B", Some(vec!["C".to_string()])),
+            make_spec("C", None),
+        ];
+
+        let result = topological_sort(&specs).unwrap();
+        assert_eq!(result.len(), 3);
+
+        let pos_a = result.iter().position(|id| id == "A").unwrap();
+        let pos_b = result.iter().position(|id| id == "B").unwrap();
+        let pos_c = result.iter().position(|id| id == "C").unwrap();
+
+        assert!(pos_c < pos_b, "C should come before B (dependencies first)");
+        assert!(pos_b < pos_a, "B should come before A (dependencies first)");
+    }
+
+    #[test]
+    fn test_topological_sort_diamond() {
+        let specs = vec![
+            make_spec("A", Some(vec!["B".to_string(), "C".to_string()])),
+            make_spec("B", Some(vec!["D".to_string()])),
+            make_spec("C", Some(vec!["D".to_string()])),
+            make_spec("D", None),
+        ];
+
+        let result = topological_sort(&specs).unwrap();
+        assert_eq!(result.len(), 4);
+
+        let pos_a = result.iter().position(|id| id == "A").unwrap();
+        let pos_b = result.iter().position(|id| id == "B").unwrap();
+        let pos_c = result.iter().position(|id| id == "C").unwrap();
+        let pos_d = result.iter().position(|id| id == "D").unwrap();
+
+        assert!(pos_d < pos_b, "D should come before B");
+        assert!(pos_d < pos_c, "D should come before C");
+        assert!(pos_b < pos_a, "B should come before A");
+        assert!(pos_c < pos_a, "C should come before A");
+    }
+
+    #[test]
+    fn test_topological_sort_cycle_error() {
+        let specs = vec![
+            make_spec("A", Some(vec!["B".to_string()])),
+            make_spec("B", Some(vec!["A".to_string()])),
+        ];
+
+        let result = topological_sort(&specs);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("Circular dependency"),
+            "Error should mention circular dependency"
+        );
     }
 }
