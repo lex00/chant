@@ -374,12 +374,12 @@ status: pending
         let orig_chant = std::env::var("CHANT_MODEL").ok();
         let orig_anthropic = std::env::var("ANTHROPIC_MODEL").ok();
 
-        // Set CHANT_MODEL
+        // Set CHANT_MODEL - should be normalized to "opus"
         std::env::set_var("CHANT_MODEL", "claude-opus-4-5");
         std::env::remove_var("ANTHROPIC_MODEL");
 
         let result = get_model_name(None);
-        assert_eq!(result, Some("claude-opus-4-5".to_string()));
+        assert_eq!(result, Some("opus".to_string()));
 
         // Restore original env vars
         if let Some(val) = orig_chant {
@@ -399,12 +399,12 @@ status: pending
         let orig_chant = std::env::var("CHANT_MODEL").ok();
         let orig_anthropic = std::env::var("ANTHROPIC_MODEL").ok();
 
-        // Set only ANTHROPIC_MODEL
+        // Set only ANTHROPIC_MODEL - should be normalized to "sonnet"
         std::env::remove_var("CHANT_MODEL");
         std::env::set_var("ANTHROPIC_MODEL", "claude-sonnet-4");
 
         let result = get_model_name(None);
-        assert_eq!(result, Some("claude-sonnet-4".to_string()));
+        assert_eq!(result, Some("sonnet".to_string()));
 
         // Restore original env vars
         if let Some(val) = orig_chant {
@@ -429,8 +429,8 @@ status: pending
         std::env::set_var("ANTHROPIC_MODEL", "claude-sonnet-4");
 
         let result = get_model_name(None);
-        // CHANT_MODEL takes precedence
-        assert_eq!(result, Some("claude-opus-4-5".to_string()));
+        // CHANT_MODEL takes precedence and is normalized to "opus"
+        assert_eq!(result, Some("opus".to_string()));
 
         // Restore original env vars
         if let Some(val) = orig_chant {
@@ -452,12 +452,12 @@ status: pending
         let orig_chant = std::env::var("CHANT_MODEL").ok();
         let orig_anthropic = std::env::var("ANTHROPIC_MODEL").ok();
 
-        // Unset env vars so config default is used
+        // Unset env vars so config default is used - should be normalized to "sonnet"
         std::env::remove_var("CHANT_MODEL");
         std::env::remove_var("ANTHROPIC_MODEL");
 
         let result = get_model_name_with_default(Some("claude-sonnet-4"));
-        assert_eq!(result, Some("claude-sonnet-4".to_string()));
+        assert_eq!(result, Some("sonnet".to_string()));
 
         // Restore original env vars
         if let Some(val) = orig_chant {
@@ -479,9 +479,9 @@ status: pending
         std::env::set_var("ANTHROPIC_MODEL", "claude-opus-4-5");
         std::env::remove_var("CHANT_MODEL");
 
-        // Env var should take precedence over config
+        // Env var should take precedence over config and be normalized to "opus"
         let result = get_model_name_with_default(Some("claude-sonnet-4"));
-        assert_eq!(result, Some("claude-opus-4-5".to_string()));
+        assert_eq!(result, Some("opus".to_string()));
 
         // Restore original env vars
         if let Some(val) = orig_chant {

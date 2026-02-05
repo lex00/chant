@@ -5,44 +5,51 @@
 //! 2. ANTHROPIC_MODEL env var (Claude CLI default)
 //! 3. defaults.model in config
 //! 4. Parse from `claude --version` output (last resort)
+//!
+//! All model names are normalized to shorthand (e.g., "claude-sonnet-4-20250514" -> "sonnet").
 
 use chant::config::Config;
+use chant::spec::normalize_model_name;
 
 /// Get the model name using the following priority:
 /// 1. CHANT_MODEL env var (explicit override)
 /// 2. ANTHROPIC_MODEL env var (Claude CLI default)
 /// 3. defaults.model in config
 /// 4. Parse from `claude --version` output (last resort)
+///
+/// Model names are normalized to shorthand (e.g., "claude-sonnet-4-20250514" -> "sonnet").
 pub fn get_model_name(config: Option<&Config>) -> Option<String> {
     get_model_name_with_default(config.and_then(|c| c.defaults.model.as_deref()))
 }
 
 /// Get the model name with an optional default from config.
 /// Used by parallel execution where full Config isn't available.
+///
+/// Model names are normalized to shorthand (e.g., "claude-sonnet-4-20250514" -> "sonnet").
 pub fn get_model_name_with_default(config_model: Option<&str>) -> Option<String> {
     // 1. CHANT_MODEL env var
     if let Ok(model) = std::env::var("CHANT_MODEL") {
         if !model.is_empty() {
-            return Some(model);
+            return Some(normalize_model_name(&model));
         }
     }
 
     // 2. ANTHROPIC_MODEL env var
     if let Ok(model) = std::env::var("ANTHROPIC_MODEL") {
         if !model.is_empty() {
-            return Some(model);
+            return Some(normalize_model_name(&model));
         }
     }
 
     // 3. defaults.model from config
     if let Some(model) = config_model {
         if !model.is_empty() {
-            return Some(model.to_string());
+            return Some(normalize_model_name(model));
         }
     }
 
     // 4. Parse from claude --version output
-    parse_model_from_claude_version()
+    parse_model_from_claude_version().map(|m| normalize_model_name(&m))
 }
 
 /// Parse model name from `claude --version` output.

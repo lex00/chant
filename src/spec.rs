@@ -25,6 +25,24 @@ pub use crate::spec_group::{
     mark_driver_in_progress, mark_driver_in_progress_conditional,
 };
 
+/// Normalize model names from full Claude model IDs to short names.
+/// Examples: "claude-sonnet-4-20250514" -> "sonnet", "claude-opus-4-5" -> "opus"
+///
+/// This is used to ensure consistent model names across the system, whether they come
+/// from environment variables, config files, or are parsed from spec frontmatter.
+pub fn normalize_model_name(model: &str) -> String {
+    let lower = model.to_lowercase();
+    if lower.contains("opus") {
+        "opus".to_string()
+    } else if lower.contains("sonnet") {
+        "sonnet".to_string()
+    } else if lower.contains("haiku") {
+        "haiku".to_string()
+    } else {
+        model.to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -60,6 +78,44 @@ mod tests {
         assert_eq!(
             spec.frontmatter.original_completed_at,
             original_completed_at.map(String::from)
+        );
+    }
+
+    #[test]
+    fn test_normalize_model_name_opus() {
+        assert_eq!(normalize_model_name("claude-opus-4-5"), "opus");
+        assert_eq!(normalize_model_name("claude-opus-4-20250514"), "opus");
+        assert_eq!(normalize_model_name("CLAUDE-OPUS-4"), "opus");
+        assert_eq!(normalize_model_name("opus"), "opus");
+    }
+
+    #[test]
+    fn test_normalize_model_name_sonnet() {
+        assert_eq!(normalize_model_name("claude-sonnet-4-20250514"), "sonnet");
+        assert_eq!(normalize_model_name("claude-sonnet-4-5"), "sonnet");
+        assert_eq!(normalize_model_name("CLAUDE-SONNET-3"), "sonnet");
+        assert_eq!(normalize_model_name("sonnet"), "sonnet");
+    }
+
+    #[test]
+    fn test_normalize_model_name_haiku() {
+        assert_eq!(normalize_model_name("claude-haiku-4-5"), "haiku");
+        assert_eq!(normalize_model_name("claude-haiku-3-20240307"), "haiku");
+        assert_eq!(normalize_model_name("CLAUDE-HAIKU-4"), "haiku");
+        assert_eq!(normalize_model_name("haiku"), "haiku");
+    }
+
+    #[test]
+    fn test_normalize_model_name_passthrough() {
+        assert_eq!(
+            normalize_model_name("gpt-4"),
+            "gpt-4",
+            "Non-Claude models should pass through unchanged"
+        );
+        assert_eq!(
+            normalize_model_name("llama-3"),
+            "llama-3",
+            "Non-Claude models should pass through unchanged"
         );
     }
 

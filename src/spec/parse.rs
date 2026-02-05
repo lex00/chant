@@ -6,6 +6,7 @@ use std::path::Path;
 use std::process::Command;
 
 use super::frontmatter::{SpecFrontmatter, SpecStatus};
+use crate::spec::normalize_model_name;
 
 #[derive(Debug, Clone)]
 pub struct Spec {
@@ -13,21 +14,6 @@ pub struct Spec {
     pub frontmatter: SpecFrontmatter,
     pub title: Option<String>,
     pub body: String,
-}
-
-/// Normalize model names from full Claude model IDs to short names.
-/// Examples: "claude-sonnet-4-20250514" -> "sonnet", "claude-opus-4-5" -> "opus"
-fn normalize_model_name(model: &str) -> String {
-    let lower = model.to_lowercase();
-    if lower.contains("opus") {
-        "opus".to_string()
-    } else if lower.contains("sonnet") {
-        "sonnet".to_string()
-    } else if lower.contains("haiku") {
-        "haiku".to_string()
-    } else {
-        model.to_string()
-    }
 }
 
 /// Split content into frontmatter and body.
