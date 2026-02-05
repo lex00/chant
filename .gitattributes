@@ -7,3 +7,10 @@
 # Mark generated documentation as linguist-generated to exclude from language stats
 docs/book/** linguist-generated=true
 docs/book/**/*.html linguist-documentation=true
+
+# Coverage reports are generated
+coverage/** linguist-generated=true
+
+# Theme files are vendored (highlight.js, fonts)
+docs/theme/highlight.js linguist-vendored=true
+docs/theme/fonts/** linguist-vendored=true

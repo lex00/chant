@@ -26,3 +26,4 @@ Thumbs.db
 .chant/logs/
 .chant/locks/
 .chant/store/
+coverage/
