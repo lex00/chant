@@ -188,14 +188,8 @@ fn cmd_split_impl(
 
     println!("{} Analyzing spec {} for splitting...", "→".cyan(), spec.id);
 
-    // Load prompt from file
-    let split_prompt_path = prompts_dir.join("split.md");
-    if !split_prompt_path.exists() {
-        anyhow::bail!("Split prompt not found: split.md");
-    }
-
-    // Assemble prompt for split analysis
-    let split_prompt = prompt::assemble(&spec, &split_prompt_path, &config)?;
+    // Build the split prompt
+    let split_prompt = build_split_prompt(&spec, &config, &prompts_dir)?;
 
     // Get the model to use for split
     let model = get_model_for_split(
@@ -490,6 +484,18 @@ fn cmd_split_impl(
     }
 
     Ok(())
+}
+
+/// Build the split prompt by loading the template and assembling it with the spec
+fn build_split_prompt(spec: &Spec, config: &Config, prompts_dir: &std::path::Path) -> Result<String> {
+    // Load prompt from file
+    let split_prompt_path = prompts_dir.join("split.md");
+    if !split_prompt_path.exists() {
+        anyhow::bail!("Split prompt not found: split.md");
+    }
+
+    // Assemble prompt for split analysis
+    prompt::assemble(spec, &split_prompt_path, config)
 }
 
 /// Get the model to use for split operations.
