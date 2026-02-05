@@ -75,11 +75,7 @@ fn build_adjacency_map(specs: &[Spec]) -> HashMap<String, Vec<String>> {
     let mut adj_map = HashMap::new();
 
     for spec in specs {
-        let deps = spec
-            .frontmatter
-            .depends_on
-            .clone()
-            .unwrap_or_default();
+        let deps = spec.frontmatter.depends_on.clone().unwrap_or_default();
         adj_map.insert(spec.id.clone(), deps);
     }
 
