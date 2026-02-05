@@ -1,6 +1,25 @@
 //! Frontmatter types and defaults for specs.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+
+/// Deserialize depends_on as either a string or array of strings
+fn deserialize_depends_on<'de, D>(deserializer: D) -> Result<Option<Vec<String>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrVec {
+        String(String),
+        Vec(Vec<String>),
+    }
+
+    let value = Option::<StringOrVec>::deserialize(deserializer)?;
+    Ok(value.map(|v| match v {
+        StringOrVec::String(s) => vec![s],
+        StringOrVec::Vec(v) => v,
+    }))
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
@@ -65,7 +84,10 @@ pub struct SpecFrontmatter {
     pub r#type: String,
     #[serde(default)]
     pub status: SpecStatus,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_depends_on"
+    )]
     pub depends_on: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub labels: Option<Vec<String>>,
@@ -178,5 +200,32 @@ impl Default for SpecFrontmatter {
             public: None,
             retry_state: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_depends_on_string_format() {
+        let yaml = r#"
+type: code
+status: pending
+depends_on: "spec-id"
+"#;
+        let fm: SpecFrontmatter = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(fm.depends_on, Some(vec!["spec-id".to_string()]));
+    }
+
+    #[test]
+    fn test_depends_on_array_format() {
+        let yaml = r#"
+type: code
+status: pending
+depends_on: ["a", "b"]
+"#;
+        let fm: SpecFrontmatter = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(fm.depends_on, Some(vec!["a".to_string(), "b".to_string()]));
     }
 }
