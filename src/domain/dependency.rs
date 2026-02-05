@@ -104,22 +104,30 @@ pub fn topological_sort(specs: &[Spec]) -> Result<Vec<String>> {
         return Err(anyhow!("Circular dependency detected: {}", cycle_str));
     }
 
-    // Build adjacency map and in-degree map
-    let adj_map = build_adjacency_map(specs);
-    let mut in_degree: HashMap<String, usize> = HashMap::new();
     let spec_ids: HashSet<String> = specs.iter().map(|s| s.id.clone()).collect();
 
-    // Initialize in-degree for all specs
+    // Build reverse adjacency map: for each spec, who depends on it?
+    // If A depends_on B, then B -> A (B must come before A)
+    let mut dependents_of: HashMap<String, Vec<String>> = HashMap::new();
+    let mut in_degree: HashMap<String, usize> = HashMap::new();
+
+    // Initialize
     for spec in specs {
+        dependents_of.entry(spec.id.clone()).or_default();
         in_degree.entry(spec.id.clone()).or_insert(0);
     }
 
-    // Calculate in-degrees
-    for deps in adj_map.values() {
-        for dep in deps {
-            // Only count dependencies that exist in our spec set
-            if spec_ids.contains(dep) {
-                *in_degree.entry(dep.clone()).or_insert(0) += 1;
+    // Build the reverse adjacency and in-degree maps
+    for spec in specs {
+        if let Some(deps) = &spec.frontmatter.depends_on {
+            for dep in deps {
+                // Only count dependencies that exist in our spec set
+                if spec_ids.contains(dep) {
+                    // dep -> spec.id (dep must come before spec)
+                    dependents_of.entry(dep.clone()).or_default().push(spec.id.clone());
+                    // spec has one more incoming edge (dependency)
+                    *in_degree.entry(spec.id.clone()).or_insert(0) += 1;
+                }
             }
         }
     }
@@ -128,7 +136,7 @@ pub fn topological_sort(specs: &[Spec]) -> Result<Vec<String>> {
     let mut queue = VecDeque::new();
     let mut result = Vec::new();
 
-    // Start with nodes that have no dependencies
+    // Start with nodes that have no dependencies (in_degree = 0)
     for (id, &degree) in &in_degree {
         if degree == 0 {
             queue.push_back(id.clone());
@@ -138,15 +146,13 @@ pub fn topological_sort(specs: &[Spec]) -> Result<Vec<String>> {
     while let Some(node) = queue.pop_front() {
         result.push(node.clone());
 
-        // For each spec that depends on this node
-        if let Some(deps) = adj_map.get(&node) {
-            for dep in deps {
-                if spec_ids.contains(dep) {
-                    if let Some(degree) = in_degree.get_mut(dep) {
-                        *degree -= 1;
-                        if *degree == 0 {
-                            queue.push_back(dep.clone());
-                        }
+        // For each spec that depends on this node, decrement their in-degree
+        if let Some(dependents) = dependents_of.get(&node) {
+            for dependent in dependents {
+                if let Some(degree) = in_degree.get_mut(dependent) {
+                    *degree -= 1;
+                    if *degree == 0 {
+                        queue.push_back(dependent.clone());
                     }
                 }
             }

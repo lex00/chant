@@ -952,7 +952,7 @@ project:
     // Should have default threshold values
     assert_eq!(config.lint.thresholds.complexity_criteria, 10);
     assert_eq!(config.lint.thresholds.complexity_files, 5);
-    assert_eq!(config.lint.thresholds.complexity_words, 50);
+    assert_eq!(config.lint.thresholds.complexity_words, 150);
     assert_eq!(config.lint.thresholds.simple_criteria, 1);
     assert_eq!(config.lint.thresholds.simple_files, 1);
     assert_eq!(config.lint.thresholds.simple_words, 3);
@@ -974,7 +974,7 @@ lint:
     // Only complexity_criteria should be overridden, others use defaults
     assert_eq!(config.lint.thresholds.complexity_criteria, 20);
     assert_eq!(config.lint.thresholds.complexity_files, 5);
-    assert_eq!(config.lint.thresholds.complexity_words, 50);
+    assert_eq!(config.lint.thresholds.complexity_words, 150);
     assert_eq!(config.lint.thresholds.simple_criteria, 1);
     assert_eq!(config.lint.thresholds.simple_files, 1);
     assert_eq!(config.lint.thresholds.simple_words, 3);

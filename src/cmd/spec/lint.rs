@@ -1255,9 +1255,9 @@ mod tests {
 
     #[test]
     fn test_validate_spec_complexity_exceeds_words() {
-        // Default threshold: 50 words
-        // Create spec with 100 words, but within criteria and files limits
-        let spec = create_test_spec("2026-01-30-004-jkl", 5, 3, 100);
+        // Default threshold: 150 words
+        // Create spec with 200 words, but within criteria and files limits
+        let spec = create_test_spec("2026-01-30-004-jkl", 5, 3, 200);
         let thresholds = LintThresholds::default();
 
         let diagnostics = validate_spec_complexity(&spec, &thresholds);
@@ -1270,7 +1270,7 @@ mod tests {
             "Message should mention words"
         );
         assert!(
-            diagnostics[0].message.contains(">50"),
+            diagnostics[0].message.contains(">150"),
             "Message should mention the threshold"
         );
         assert!(

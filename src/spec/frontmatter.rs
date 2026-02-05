@@ -85,6 +85,7 @@ pub struct SpecFrontmatter {
     #[serde(default)]
     pub status: SpecStatus,
     #[serde(
+        default,
         skip_serializing_if = "Option::is_none",
         deserialize_with = "deserialize_depends_on"
     )]
