@@ -780,6 +780,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_validate_spec_rejects_completed() {
         // re_finalize_spec actually ACCEPTS completed specs, so this test verifies that behavior
         let temp_dir = TempDir::new().unwrap();
@@ -886,6 +887,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_validate_spec_accepts_in_progress() {
         let temp_dir = TempDir::new().unwrap();
         let specs_dir = temp_dir.path();
