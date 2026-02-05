@@ -48,7 +48,11 @@ Based on the dependency analysis:
 For each task identified in Phase 1-2:
 
 1. Create a member spec with:
-   - A clear, concise title
+   - A descriptive title (5-15 words) that describes the specific change, not just the category
+     - **Good:** "Add unit tests for user authentication flow"
+     - **Good:** "Implement error handling for invalid configuration files"
+     - **Bad:** "Add tests" (too terse, not specific)
+     - **Bad:** "Implement error handling" (missing context on what/where)
    - Description of what should be implemented
    - Explicit acceptance criteria with checkboxes for verification
    - Edge cases that should be considered
