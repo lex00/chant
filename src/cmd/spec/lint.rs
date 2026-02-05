@@ -281,6 +281,7 @@ prefix = ""
 pub fn validate_spec_complexity(
     spec: &Spec,
     thresholds: &chant::config::LintThresholds,
+    disabled_rules: &[String],
 ) -> Vec<LintDiagnostic> {
     let mut diagnostics = Vec::new();
 
@@ -318,20 +319,22 @@ pub fn validate_spec_complexity(
         }
     }
 
-    // Count words in body
-    let word_count = spec.body.split_whitespace().count();
-    if word_count > thresholds.complexity_words {
-        diagnostics.push(
-            LintDiagnostic::warning(
-                &spec.id,
-                LintRule::Complexity,
-                format!(
-                    "Spec description is {} words (>{}) - may be too complex for haiku",
-                    word_count, thresholds.complexity_words
-                ),
-            )
-            .with_suggestion(format!("Consider using 'chant split {}'", spec.id)),
-        );
+    // Count words in body (skip if complexity_words is disabled)
+    if !disabled_rules.contains(&"complexity_words".to_string()) {
+        let word_count = spec.body.split_whitespace().count();
+        if word_count > thresholds.complexity_words {
+            diagnostics.push(
+                LintDiagnostic::warning(
+                    &spec.id,
+                    LintRule::Complexity,
+                    format!(
+                        "Spec description is {} words (>{}) - may be too complex for haiku",
+                        word_count, thresholds.complexity_words
+                    ),
+                )
+                .with_suggestion(format!("Consider using 'chant split {}'", spec.id)),
+            );
+        }
     }
 
     diagnostics
@@ -684,13 +687,15 @@ pub fn lint_specific_specs(specs_dir: &std::path::Path, spec_ids: &[String]) -> 
     let mut all_specs: Vec<Spec> = Vec::new();
     let mut specs_to_check: Vec<Spec> = Vec::new();
 
-    // Load config to get lint thresholds
+    // Load config to get lint thresholds and disabled rules
     let config = Config::load().ok();
-    let default_thresholds = chant::config::LintThresholds::default();
-    let thresholds = config
+    let default_lint_config = chant::config::LintConfig::default();
+    let lint_config = config
         .as_ref()
-        .map(|c| &c.lint.thresholds)
-        .unwrap_or(&default_thresholds);
+        .map(|c| &c.lint)
+        .unwrap_or(&default_lint_config);
+    let thresholds = &lint_config.thresholds;
+    let disabled_rules = &lint_config.disable;
 
     // Load all specs to validate dependencies
     for entry in std::fs::read_dir(specs_dir)? {
@@ -762,7 +767,7 @@ pub fn lint_specific_specs(specs_dir: &std::path::Path, spec_ids: &[String]) -> 
         spec_diagnostics.extend(validate_spec_type(spec));
 
         // Complexity validation
-        spec_diagnostics.extend(validate_spec_complexity(spec, thresholds));
+        spec_diagnostics.extend(validate_spec_complexity(spec, thresholds, disabled_rules));
 
         // Coupling validation (spec references other spec IDs)
         spec_diagnostics.extend(validate_spec_coupling(spec));
@@ -835,13 +840,15 @@ pub fn cmd_lint(spec_id: Option<&str>, format: LintFormat, verbose: bool) -> Res
     let mut all_diagnostics: Vec<LintDiagnostic> = Vec::new();
     let mut total_specs = 0;
 
-    // Load config to get enterprise required fields and lint thresholds
+    // Load config to get enterprise required fields, lint thresholds, and disabled rules
     let config = Config::load().ok();
-    let default_thresholds = chant::config::LintThresholds::default();
-    let thresholds = config
+    let default_lint_config = chant::config::LintConfig::default();
+    let lint_config = config
         .as_ref()
-        .map(|c| &c.lint.thresholds)
-        .unwrap_or(&default_thresholds);
+        .map(|c| &c.lint)
+        .unwrap_or(&default_lint_config);
+    let thresholds = &lint_config.thresholds;
+    let disabled_rules = &lint_config.disable;
 
     // First pass: collect all specs and check for parse errors
     let mut specs_to_check: Vec<Spec> = Vec::new();
@@ -947,7 +954,7 @@ pub fn cmd_lint(spec_id: Option<&str>, format: LintFormat, verbose: bool) -> Res
         spec_diagnostics.extend(validate_spec_type(spec));
 
         // Complexity validation
-        spec_diagnostics.extend(validate_spec_complexity(spec, thresholds));
+        spec_diagnostics.extend(validate_spec_complexity(spec, thresholds, disabled_rules));
 
         // Coupling validation (spec references other spec IDs)
         spec_diagnostics.extend(validate_spec_coupling(spec));
@@ -1185,7 +1192,7 @@ mod tests {
         let spec = create_test_spec("2026-01-30-001-abc", 5, 3, 20);
         let thresholds = LintThresholds::default();
 
-        let diagnostics = validate_spec_complexity(&spec, &thresholds);
+        let diagnostics = validate_spec_complexity(&spec, &thresholds, &[]);
 
         assert_eq!(
             diagnostics.len(),
@@ -1203,7 +1210,7 @@ mod tests {
         let spec = create_test_spec("2026-01-30-002-def", 11, 3, 0);
         let thresholds = LintThresholds::default();
 
-        let diagnostics = validate_spec_complexity(&spec, &thresholds);
+        let diagnostics = validate_spec_complexity(&spec, &thresholds, &[]);
 
         // Find the criteria diagnostic
         let criteria_diag = diagnostics
@@ -1234,7 +1241,7 @@ mod tests {
         let spec = create_test_spec("2026-01-30-003-ghi", 5, 8, 20);
         let thresholds = LintThresholds::default();
 
-        let diagnostics = validate_spec_complexity(&spec, &thresholds);
+        let diagnostics = validate_spec_complexity(&spec, &thresholds, &[]);
 
         assert_eq!(diagnostics.len(), 1, "Should have exactly one diagnostic");
         assert_eq!(diagnostics[0].rule, LintRule::Complexity);
@@ -1260,7 +1267,7 @@ mod tests {
         let spec = create_test_spec("2026-01-30-004-jkl", 5, 3, 200);
         let thresholds = LintThresholds::default();
 
-        let diagnostics = validate_spec_complexity(&spec, &thresholds);
+        let diagnostics = validate_spec_complexity(&spec, &thresholds, &[]);
 
         assert_eq!(diagnostics.len(), 1, "Should have exactly one diagnostic");
         assert_eq!(diagnostics[0].rule, LintRule::Complexity);
@@ -1293,7 +1300,7 @@ mod tests {
             simple_words: 3,
         };
 
-        let diagnostics = validate_spec_complexity(&spec, &custom_thresholds);
+        let diagnostics = validate_spec_complexity(&spec, &custom_thresholds, &[]);
 
         // Should trigger all three warnings with custom thresholds
         assert_eq!(
@@ -1321,7 +1328,7 @@ mod tests {
         let spec = create_test_spec("2026-01-30-006-pqr", 15, 8, 100);
         let thresholds = LintThresholds::default();
 
-        let diagnostics = validate_spec_complexity(&spec, &thresholds);
+        let diagnostics = validate_spec_complexity(&spec, &thresholds, &[]);
 
         // Should trigger all three warnings
         assert_eq!(
@@ -1331,6 +1338,27 @@ mod tests {
         );
         assert!(diagnostics.iter().all(|d| d.rule == LintRule::Complexity));
         assert!(diagnostics.iter().all(|d| d.severity == Severity::Warning));
+    }
+
+    #[test]
+    fn test_validate_spec_complexity_words_disabled() {
+        // Create spec that exceeds word count threshold
+        let spec = create_test_spec("2026-02-05-001-xyz", 5, 3, 200);
+        let thresholds = LintThresholds::default();
+        let disabled_rules = vec!["complexity_words".to_string()];
+
+        let diagnostics = validate_spec_complexity(&spec, &thresholds, &disabled_rules);
+
+        // Should have no word count diagnostic since it's disabled
+        assert_eq!(
+            diagnostics.len(),
+            0,
+            "Should have no diagnostics when complexity_words is disabled"
+        );
+        assert!(
+            !diagnostics.iter().any(|d| d.message.contains("words")),
+            "Should not have word count warning"
+        );
     }
 
     #[test]

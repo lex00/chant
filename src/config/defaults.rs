@@ -91,15 +91,29 @@ impl Default for LintThresholds {
     }
 }
 
+/// Default disabled lint rules
+fn default_lint_disable() -> Vec<String> {
+    vec!["complexity_words".to_string()]
+}
+
 /// Linter configuration for spec validation
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct LintConfig {
     /// Thresholds for complexity heuristics
     #[serde(default)]
     pub thresholds: LintThresholds,
     /// List of rule names to disable (skip during linting)
-    #[serde(default)]
+    #[serde(default = "default_lint_disable")]
     pub disable: Vec<String>,
+}
+
+impl Default for LintConfig {
+    fn default() -> Self {
+        Self {
+            thresholds: LintThresholds::default(),
+            disable: default_lint_disable(),
+        }
+    }
 }
 
 /// Failure handling strategy for permanent failures

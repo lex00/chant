@@ -956,7 +956,11 @@ project:
     assert_eq!(config.lint.thresholds.simple_criteria, 1);
     assert_eq!(config.lint.thresholds.simple_files, 1);
     assert_eq!(config.lint.thresholds.simple_words, 3);
-    assert!(config.lint.disable.is_empty());
+    assert_eq!(config.lint.disable.len(), 1);
+    assert!(config
+        .lint
+        .disable
+        .contains(&"complexity_words".to_string()));
 }
 
 #[test]
@@ -1016,7 +1020,11 @@ lint: {}
 
     // Should use all defaults
     assert_eq!(config.lint.thresholds.complexity_criteria, 10);
-    assert!(config.lint.disable.is_empty());
+    assert_eq!(config.lint.disable.len(), 1);
+    assert!(config
+        .lint
+        .disable
+        .contains(&"complexity_words".to_string()));
 }
 
 #[test]
