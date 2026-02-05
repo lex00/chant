@@ -784,6 +784,24 @@ mod tests {
         // re_finalize_spec actually ACCEPTS completed specs, so this test verifies that behavior
         let temp_dir = TempDir::new().unwrap();
         let specs_dir = temp_dir.path();
+
+        // Initialize git repo (required for re_finalize_spec which calls git commands)
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(specs_dir)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(specs_dir)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(specs_dir)
+            .output()
+            .unwrap();
+
         let spec_repo = FileSpecRepository::new(specs_dir.to_path_buf());
         let config = Config::parse("---\nproject:\n  name: test\n---").unwrap();
 
@@ -802,8 +820,30 @@ mod tests {
         spec.save(&specs_dir.join("2026-02-05-001-test.md"))
             .unwrap();
 
+        // Create initial commit so git log works
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(specs_dir)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(specs_dir)
+            .output()
+            .unwrap();
+
+        // Change to the temp dir for git commands to work
+        let original_dir = std::env::current_dir().ok();
+        std::env::set_current_dir(specs_dir).unwrap();
+
         // re_finalize_spec accepts completed specs
         let result = re_finalize_spec(&mut spec, &spec_repo, &config, true);
+
+        // Restore original directory
+        if let Some(dir) = original_dir {
+            let _ = std::env::set_current_dir(&dir);
+        }
+
         assert!(
             result.is_ok(),
             "re_finalize_spec should accept completed specs"
@@ -849,6 +889,24 @@ mod tests {
     fn test_validate_spec_accepts_in_progress() {
         let temp_dir = TempDir::new().unwrap();
         let specs_dir = temp_dir.path();
+
+        // Initialize git repo (required for re_finalize_spec which calls git commands)
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(specs_dir)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(specs_dir)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(specs_dir)
+            .output()
+            .unwrap();
+
         let spec_repo = FileSpecRepository::new(specs_dir.to_path_buf());
         let config = Config::parse("---\nproject:\n  name: test\n---").unwrap();
 
@@ -866,8 +924,30 @@ mod tests {
         spec.save(&specs_dir.join("2026-02-05-003-test.md"))
             .unwrap();
 
+        // Create initial commit so git log works
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(specs_dir)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(specs_dir)
+            .output()
+            .unwrap();
+
+        // Change to the temp dir for git commands to work
+        let original_dir = std::env::current_dir().ok();
+        std::env::set_current_dir(specs_dir).unwrap();
+
         // re_finalize_spec should accept in_progress specs
         let result = re_finalize_spec(&mut spec, &spec_repo, &config, true);
+
+        // Restore original directory
+        if let Some(dir) = original_dir {
+            let _ = std::env::set_current_dir(&dir);
+        }
+
         assert!(
             result.is_ok(),
             "re_finalize_spec should accept in_progress specs"
