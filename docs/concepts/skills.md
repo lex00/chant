@@ -111,14 +111,6 @@ Skills are for human interaction with Claude Code. Prompts are for agent executi
 | `bootstrap` | Initial implementation | `/bootstrap` |
 | `chant-dev` | Developing chant | Context only |
 
-## Future Skills
-
-Planned skills for chant users:
-
-- **chant** - General chant usage (`/spec`, `/work`, `/status`)
-- **chant-research** - Research workflows (`/synthesis`, `/analysis`)
-- **chant-docs** - Documentation tracking (`/track`, `/verify`)
-
 ## Relationship to Chant
 
 Skills complement chant but don't replace it:

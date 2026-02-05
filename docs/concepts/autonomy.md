@@ -25,8 +25,6 @@ Chant:       Spec → Work → Done → Verify → Drift? → Re-work → ...
 | **Trusted** | Agent works, auto-merge low-risk | High-risk only |
 | **Autonomous** | Agent works, auto-merge, human notified | Exceptions only |
 
-> **Note:** Currently implemented features are `chant verify` and `chant drift`. Auto-merge and autonomy levels are planned for future releases.
-
 ## Decision Handling
 
 **The spec is the decision point.** Decisions happen when writing the spec, not during execution.
@@ -47,7 +45,6 @@ decisions: autonomous   # autonomous | document | pause | fail
 
 You can interrupt and take control of running work:
 
-- **`chant pause <spec-id>`** - Stop the agent, set status to `paused`. Resume later with `chant work` or `chant resume`.
 - **`chant takeover <spec-id>`** - Pause the agent, analyze progress, and update the spec for manual continuation.
 
 See the [Advanced Patterns](../guides/oss-maintainer-workflow/08-advanced.md#controlling-running-work) guide for detailed usage examples.
