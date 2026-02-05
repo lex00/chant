@@ -1679,7 +1679,7 @@ fn tool_chant_work_start(arguments: Option<&Value>) -> Result<Value> {
 
     // Build command based on mode
     let mut cmd = Command::new("chant");
-    cmd.arg("work").arg(&spec_id);
+    cmd.arg("work");
 
     if skip_criteria {
         cmd.arg("--skip-criteria");
@@ -1692,6 +1692,7 @@ fn tool_chant_work_start(arguments: Option<&Value>) -> Result<Value> {
         cmd.arg("--chain");
         "chain".to_string()
     } else {
+        cmd.arg(&spec_id);
         "single".to_string()
     };
 
