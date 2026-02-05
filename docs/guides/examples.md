@@ -6,7 +6,7 @@ Complete example configurations for different deployment scenarios.
 
 ## Solo Developer
 
-Single developer, branch mode disabled, simple workflow.
+Single developer, simple workflow.
 
 ### Directory Structure
 
@@ -31,12 +31,11 @@ project:
 
 defaults:
   prompt: standard
-  branch: false
 ---
 
 # My Project
 
-Branch mode disabled. Simple workflow.
+Simple workflow using worktrees for isolation.
 ```
 
 ### Sample Spec
@@ -78,7 +77,7 @@ chant work 2026-01-22-001-x7m
 
 ## Team Collaboration
 
-Multiple developers, branch-based workflow.
+Multiple developers with notifications.
 
 ### Directory Structure
 
@@ -108,7 +107,6 @@ project:
 
 defaults:
   prompt: standard
-  branch: true
 
 notifications:
   on_complete: .chant/notifications/on_complete.md
@@ -120,7 +118,7 @@ hooks:
 
 # Team Project
 
-All changes via branch. Slack notifications on completion.
+Slack notifications on completion. Worktrees for isolation.
 ```
 
 ### Post-Work Hook
@@ -200,8 +198,7 @@ project:
 
 defaults:
   prompt: standard
-  branch: true
-  branch_prefix: "alex/"      # Personal prefix
+  branch_prefix: "alex/"      # Personal prefix for worktrees
 
 enterprise:
   derived:
@@ -265,7 +262,6 @@ project:
 
 defaults:
   prompt: standard
-  branch: true
 
 scale:
   id_prefix:

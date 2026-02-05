@@ -5,20 +5,14 @@
 When working on a specific issue branch instead of main:
 
 ```yaml
-# .chant/config.yaml
+# .chant/config.md
 defaults:
-  branch: false        # Work directly on current branch
   main_branch: "fix/issue-123"  # Target for merges
-```
-
-Or initialize with branch mode disabled:
-```bash
-chant init --branch=false
 ```
 
 This lets you:
 - Create specs for your fix
-- Work directly on your fix branch
+- Work in isolated worktrees
 - Merge spec work into your fix branch (not main)
 
 ## Controlling Running Work

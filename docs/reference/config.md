@@ -20,7 +20,6 @@ project:
 
 defaults:
   prompt: bootstrap
-  branch: false
   branch_prefix: "chant/"
   model: claude-opus-4
   provider: claude
@@ -33,9 +32,6 @@ schema:
 ---
 
 # Project Configuration
-
-Branch mode disabled by default. Feature branches created when
-explicitly requested per-spec or when defaults.branch is true.
 
 ## Prompts
 
@@ -82,8 +78,7 @@ project:
 # Optional - defaults shown
 defaults:
   prompt: bootstrap         # Default prompt (bootstrap for minimal API concurrency)
-  branch: false             # Create branches?
-  branch_prefix: "chant/"   # Branch name prefix
+  branch_prefix: "chant/"   # Worktree branch name prefix
   provider: claude          # Model provider: claude, ollama, openai
   model: null               # Model name (e.g. "claude-opus-4", "llama2")
   split_model: null         # Model for split operations (defaults to sonnet)
@@ -153,7 +148,6 @@ The global config is the recommended place for agent definitions since they ofte
 # ~/.config/chant/config.md
 ---
 defaults:
-  branch: true
   model: claude-opus-4
   provider: claude
   rotation_strategy: round-robin
@@ -187,11 +181,11 @@ project:
   name: quick-prototype
 
 defaults:
-  branch: false   # Override: disable branch mode for this project
+  model: sonnet   # Override: use faster model for this project
 ---
 ```
 
-In this example, the global config sets `branch: true`, but the project config overrides it to `false`.
+Project config overrides global defaults.
 
 **Note**: Agent definitions should NOT be in project config since they often contain sensitive information. Use global config or `.chant/agents.md` instead.
 

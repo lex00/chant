@@ -60,13 +60,12 @@ Now when you use chant's workflow (comprehension → research → implementation
 
 ## Configuration Reference
 
-Your `.chant/config.yaml` might look like this:
+Your `.chant/config.md` might look like this:
 
 ```yaml
 defaults:
   silent: true          # Keep .chant/ local (not tracked in git)
-  branch: false         # Work directly on current branch
-  main_branch: "main"   # Target for merges (if branch: true)
+  main_branch: "main"   # Target branch for merges
 
 # Optional: GitHub configuration for fork workflow
 github:
@@ -77,7 +76,6 @@ github:
 **Key settings for OSS maintainers:**
 
 - **`silent: true`** — Essential for shared repos. Keeps your workflow private.
-- **`branch: false`** — Work directly on your fix/feature branch instead of creating worktree branches.
 - **`main_branch`** — Usually "main" or "master". Set to your fix branch if working on a specific issue branch.
 
 ## When to Use Silent Mode

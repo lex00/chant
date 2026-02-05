@@ -64,7 +64,6 @@ project:
 
 defaults:
   prompt: standard
-  branch: false
 ---
 
 # Chant Configuration

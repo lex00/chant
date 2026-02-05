@@ -2,31 +2,21 @@
 
 ## Configuration
 
-Git behavior is controlled by explicit boolean flags in `.chant/config.md`:
+Git worktree settings in `.chant/config.md`:
 
 ```yaml
 defaults:
-  branch: false      # Create a branch for each spec?
-  branch_prefix: "chant/"
+  branch_prefix: "chant/"   # Prefix for worktree branches
+  main_branch: "main"       # Target branch for merges
 ```
 
-### Spec Override
+## Worktree Mode
 
-Individual specs can override defaults:
+Chant uses git worktrees for isolation. Each spec executes in its own worktree with a dedicated branch:
 
-```yaml
-# Spec frontmatter
----
-branch: true         # This spec needs a branch
----
-```
-
-## Git Modes
-
-| branch | Behavior |
-|--------|----------|
-| `false` | Commit directly to current branch (default) |
-| `true` | Create branch, user merges manually |
+- Branch name: `{branch_prefix}{spec_id}` (e.g., `chant/2026-01-22-001-x7m`)
+- Worktree location: `.chant/worktrees/{spec_id}/`
+- Changes merged back to main branch after completion
 
 > **Note:** Specs serve as the review primitive in chant. Each spec has a title, acceptance criteria, branch, commits, and review workflow — fulfilling the same role as a pull request but working offline and without external dependencies.
 

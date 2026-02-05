@@ -311,7 +311,7 @@ enterprise:
 |--------|-------|
 | Mental tracking | `.chant/specs/` |
 | Copy-paste context | Spec file IS the context |
-| Manual branch management | `branch: true` in config |
+| Manual branch management | Worktrees + `chant merge` |
 | Hope for the best | Acceptance criteria + linting |
 | Lost work on crash | PID locks + recovery |
 
