@@ -487,7 +487,11 @@ fn cmd_split_impl(
 }
 
 /// Build the split prompt by loading the template and assembling it with the spec
-fn build_split_prompt(spec: &Spec, config: &Config, prompts_dir: &std::path::Path) -> Result<String> {
+fn build_split_prompt(
+    spec: &Spec,
+    config: &Config,
+    prompts_dir: &std::path::Path,
+) -> Result<String> {
     // Load prompt from file
     let split_prompt_path = prompts_dir.join("split.md");
     if !split_prompt_path.exists() {
