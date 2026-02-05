@@ -24,6 +24,6 @@ parallel:
     enabled: true
     prompt: parallel-cleanup
     auto_run: false
-silent: false
+silent: true
 ---
 # Chant Configuration

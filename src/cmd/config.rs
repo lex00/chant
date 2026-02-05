@@ -117,24 +117,6 @@ fn validate_prompts(config: &Config) -> usize {
         errors += 1;
     }
 
-    // Check cleanup prompt
-    let cleanup_prompt = &config.parallel.cleanup.prompt;
-    let cleanup_path = prompts_dir.join(format!("{}.md", cleanup_prompt));
-    if cleanup_path.exists() {
-        println!(
-            "  {} {}.md (parallel.cleanup.prompt)",
-            "✓".green(),
-            cleanup_prompt
-        );
-    } else if config.parallel.cleanup.enabled {
-        println!(
-            "  {} {}.md not found (parallel.cleanup.prompt)",
-            "✗".red(),
-            cleanup_prompt
-        );
-        errors += 1;
-    }
-
     errors
 }
 

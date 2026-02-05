@@ -1217,16 +1217,7 @@ pub fn cmd_work_parallel(
     // Detect parallel pitfalls
     let pitfalls = detect_parallel_pitfalls(&all_results, specs_dir);
 
-    // Offer cleanup if issues found (and cleanup is enabled)
-    let should_offer_cleanup = if options.force_cleanup {
-        true
-    } else if options.no_cleanup {
-        false
-    } else {
-        config.parallel.cleanup.enabled && !pitfalls.is_empty()
-    };
-
-    if should_offer_cleanup && !pitfalls.is_empty() {
+    if !pitfalls.is_empty() {
         println!("\n{} Issues detected:", "→".yellow());
         for pitfall in &pitfalls {
             let severity_icon = match pitfall.severity {
@@ -1239,17 +1230,6 @@ pub fn cmd_work_parallel(
             } else {
                 println!("  {} {}", severity_icon, pitfall.message);
             }
-        }
-
-        if config.parallel.cleanup.auto_run {
-            println!("\n{} Running cleanup agent...", "→".cyan());
-            // Auto-run cleanup would be implemented here
-        } else {
-            println!(
-                "\n{} Run {} to analyze and resolve issues.",
-                "→".cyan(),
-                "chant cleanup".bold()
-            );
         }
     }
 

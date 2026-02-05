@@ -159,7 +159,6 @@ mod tests {
                 make_agent("main", "claude", 2),
                 make_agent("alt1", "claude-alt1", 1),
             ],
-            cleanup: chant::config::CleanupConfig::default(),
             stagger_delay_ms: 1000,
             stagger_jitter_ms: 200,
         };
@@ -172,7 +171,6 @@ mod tests {
     fn test_select_agent_empty_agents_defaults_to_claude() {
         let config = ParallelConfig {
             agents: vec![],
-            cleanup: chant::config::CleanupConfig::default(),
             stagger_delay_ms: 1000,
             stagger_jitter_ms: 200,
         };
@@ -188,7 +186,6 @@ mod tests {
                 make_agent("main", "claude", 10),
                 make_agent("alt1", "claude-alt1", 1),
             ],
-            cleanup: chant::config::CleanupConfig::default(),
             stagger_delay_ms: 1000,
             stagger_jitter_ms: 200,
         };
@@ -219,7 +216,6 @@ mod tests {
                 make_agent("alt1", "claude-alt1", 1),
                 make_agent("alt2", "claude-alt2", 1),
             ],
-            cleanup: chant::config::CleanupConfig::default(),
             stagger_delay_ms: 1000,
             stagger_jitter_ms: 200,
         };
@@ -240,7 +236,6 @@ mod tests {
                 make_agent("main", "claude", 2),
                 make_agent("alt1", "claude-alt1", 1),
             ],
-            cleanup: chant::config::CleanupConfig::default(),
             stagger_delay_ms: 1000,
             stagger_jitter_ms: 200,
         };
@@ -260,7 +255,6 @@ mod tests {
                 make_agent("main", "claude", 1),
                 make_agent("alt1", "claude-alt1", 1),
             ],
-            cleanup: chant::config::CleanupConfig::default(),
             stagger_delay_ms: 1000,
             stagger_jitter_ms: 200,
         };
@@ -279,7 +273,6 @@ mod tests {
                 make_agent("main", "claude", 1),
                 make_agent("alt1", "claude-alt1", 1),
             ],
-            cleanup: chant::config::CleanupConfig::default(),
             stagger_delay_ms: 1000,
             stagger_jitter_ms: 200,
         };

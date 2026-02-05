@@ -245,10 +245,6 @@ parallel:
     - name: alt1
       command: claude-alt1
       max_concurrent: 3
-  cleanup:
-    enabled: true
-    prompt: custom-cleanup
-    auto_run: true
 ---
 "#;
     let config = Config::parse(content).unwrap();
@@ -261,9 +257,6 @@ parallel:
     assert_eq!(config.parallel.agents[1].command, "claude-alt1");
     assert_eq!(config.parallel.agents[1].max_concurrent, 3);
     assert_eq!(config.parallel.total_capacity(), 5); // 2 + 3
-    assert!(config.parallel.cleanup.enabled);
-    assert_eq!(config.parallel.cleanup.prompt, "custom-cleanup");
-    assert!(config.parallel.cleanup.auto_run);
 }
 
 #[test]
@@ -281,9 +274,6 @@ project:
     assert_eq!(config.parallel.agents[0].command, "claude");
     assert_eq!(config.parallel.agents[0].max_concurrent, 2);
     assert_eq!(config.parallel.total_capacity(), 2); // Single agent with default max_concurrent
-    assert!(config.parallel.cleanup.enabled);
-    assert_eq!(config.parallel.cleanup.prompt, "parallel-cleanup");
-    assert!(!config.parallel.cleanup.auto_run);
 }
 
 #[test]

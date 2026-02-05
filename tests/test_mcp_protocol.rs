@@ -197,7 +197,7 @@ fn test_handle_request_valid_tools_list() {
 
     let result = resp.result.unwrap();
     assert!(result["tools"].is_array());
-    assert!(result["tools"].as_array().unwrap().len() > 0);
+    assert!(!result["tools"].as_array().unwrap().is_empty());
 }
 
 #[test]

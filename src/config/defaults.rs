@@ -46,12 +46,6 @@ default_fn!(default_agent_command, String, "claude".to_string());
 default_fn!(default_max_concurrent, usize, 2);
 default_fn!(default_stagger_delay_ms, u64, 1000); // Default 1 second between agent spawns
 default_fn!(default_stagger_jitter_ms, u64, 200); // Default 20% of stagger_delay_ms (200ms is 20% of 1000ms)
-default_fn!(default_cleanup_enabled, bool, true);
-default_fn!(
-    default_cleanup_prompt,
-    String,
-    "parallel-cleanup".to_string()
-);
 default_fn!(default_rotation_strategy, String, "none".to_string());
 default_fn!(default_prompt, String, "bootstrap".to_string());
 default_fn!(default_branch_prefix, String, "chant/".to_string());
@@ -361,39 +355,12 @@ impl Default for AgentConfig {
     }
 }
 
-/// Configuration for post-parallel cleanup
-#[derive(Debug, Deserialize, Clone)]
-pub struct CleanupConfig {
-    /// Whether cleanup is enabled
-    #[serde(default = "default_cleanup_enabled")]
-    pub enabled: bool,
-    /// Prompt to use for cleanup agent
-    #[serde(default = "default_cleanup_prompt")]
-    pub prompt: String,
-    /// Whether to automatically run cleanup without confirmation
-    #[serde(default)]
-    pub auto_run: bool,
-}
-
-impl Default for CleanupConfig {
-    fn default() -> Self {
-        Self {
-            enabled: default_cleanup_enabled(),
-            prompt: default_cleanup_prompt(),
-            auto_run: false,
-        }
-    }
-}
-
 /// Configuration for parallel execution with multiple agents
 #[derive(Debug, Deserialize, Clone)]
 pub struct ParallelConfig {
     /// List of available agents (Claude accounts/commands)
     #[serde(default)]
     pub agents: Vec<AgentConfig>,
-    /// Cleanup configuration
-    #[serde(default)]
-    pub cleanup: CleanupConfig,
     /// Delay in milliseconds between spawning each agent to avoid API rate limiting
     #[serde(default = "default_stagger_delay_ms")]
     pub stagger_delay_ms: u64,
@@ -413,7 +380,6 @@ impl Default for ParallelConfig {
     fn default() -> Self {
         Self {
             agents: vec![AgentConfig::default()],
-            cleanup: CleanupConfig::default(),
             stagger_delay_ms: default_stagger_delay_ms(),
             stagger_jitter_ms: default_stagger_jitter_ms(),
         }

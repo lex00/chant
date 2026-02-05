@@ -16,9 +16,6 @@ pub const VERIFY: &str = include_str!("../prompts/verify.md");
 /// Merge conflict prompt - for resolving git merge conflicts
 pub const MERGE_CONFLICT: &str = include_str!("../prompts/merge-conflict.md");
 
-/// Parallel cleanup prompt - for analyzing parallel execution results
-pub const PARALLEL_CLEANUP: &str = include_str!("../prompts/parallel-cleanup.md");
-
 /// Ollama prompt - optimized prompt for local LLM execution
 pub const OLLAMA: &str = include_str!("../prompts/ollama.md");
 
@@ -74,11 +71,6 @@ pub fn all_bundled_prompts() -> Vec<PromptMetadata> {
             name: "merge-conflict",
             purpose: "Resolve git merge conflicts during rebase operations",
             content: MERGE_CONFLICT,
-        },
-        PromptMetadata {
-            name: "parallel-cleanup",
-            purpose: "Analyze parallel execution results and help resolve issues",
-            content: PARALLEL_CLEANUP,
         },
         PromptMetadata {
             name: "ollama",
