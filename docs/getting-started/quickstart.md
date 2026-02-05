@@ -1,260 +1,190 @@
 # Quick Start
 
-Get started with chant in 5 minutes.
+Get chant working in 5 minutes. By the end, you'll have an AI agent create a script for you.
 
-## Installation
+## Prerequisites
 
-See the [Installation Guide](installation.md) for complete installation instructions.
+- [chant installed](installation.md)
+- One of these AI coding CLIs:
+  - **Claude Code**: `claude` command ([install](https://claude.ai/code))
+  - **Kiro CLI**: `kiro-cli-chat` command ([install](https://kiro.dev/docs/cli))
 
-## Your First 5 Minutes
+## Step 1: Initialize a Project
 
-### 1. Initialize Your Project
+Create a test project:
+
+```bash
+mkdir chant-quickstart && cd chant-quickstart
+git init
+```
+
+Run the wizard:
 
 ```bash
 chant init
 ```
 
-The wizard guides you through:
-- Project name (auto-detected)
-- Model provider (Claude CLI, Ollama, OpenAI)
-- Default model (opus, sonnet, haiku, or custom)
-- Agent configuration (creates CLAUDE.md and .mcp.json)
+The wizard asks:
+1. **Project name** - accept the default
+2. **Provider** - choose `claude` or `kirocli`
+3. **Model** - choose `sonnet` (fast and capable)
+4. **Agent config** - choose your CLI (Claude Code or Kiro)
 
-> **Tip:** For CI/CD, use flags: `chant init --agent claude --provider claude --model opus`
+> **Quick setup**: Skip the wizard with flags:
+> ```bash
+> # For Claude Code
+> chant init --provider claude --model sonnet --agent claude
+>
+> # For Kiro CLI
+> chant init --provider kirocli --model sonnet --agent kiro
+> ```
 
-### 2. Create a Spec
+## Step 2: Create a Spec
+
+Add a simple task:
 
 ```bash
-chant add "Add welcome message to homepage"
+chant add "Create a hello.sh script that prints Hello World"
 ```
 
-Creates `.chant/specs/2026-02-03-001-xyz.md`:
+This creates a minimal spec. Check what lint thinks:
+
+```bash
+chant lint
+```
+
+You'll see warnings like:
+```
+⚠ No acceptance criteria found
+⚠ Description is too brief
+```
+
+## Step 3: Improve the Spec
+
+Open the spec file (shown in the `chant add` output) and add acceptance criteria:
+
+```bash
+chant show 001  # View the spec
+```
+
+Edit `.chant/specs/[your-spec-id].md` to look like this:
 
 ```markdown
 ---
 status: pending
 ---
 
-# Add welcome message to homepage
-```
+# Create a hello.sh script that prints Hello World
 
-### 3. Execute the Spec
-
-```bash
-chant work 001
-```
-
-The agent:
-1. Reads your spec and acceptance criteria
-2. Explores the codebase
-3. Makes the necessary changes
-4. Commits with: `chant(001): <description>`
-
-### 4. Review Changes
-
-```bash
-git log -1             # View the commit
-chant list --summary   # Check spec status
-chant show 001         # View spec details
-```
-
-## Understanding Prompts
-
-**Prompts define what agents do.**
-
-Chant uses markdown prompts to control agent behavior:
-
-```
-.chant/prompts/
-  bootstrap.md    ← Default (minimal, bootstraps full prompt)
-  standard.md     ← Full implementation instructions
-  split.md        ← Break down large specs
-```
-
-### Default Prompt
-
-```bash
-chant work 001  # Uses bootstrap.md
-```
-
-The bootstrap prompt tells the agent to run `chant prep 001` to load the full spec and instructions.
-
-### Custom Prompts
-
-```bash
-chant work 001 --prompt standard  # Use full prompt directly
-chant work 001 --prompt tdd       # Use TDD workflow
-```
-
-### Customizing Behavior
-
-Edit `.chant/prompts/standard.md` to change agent behavior:
-
-```markdown
----
-name: standard
-purpose: Default execution prompt
----
-
-# Execute Spec
-
-You are implementing a spec for {{project.name}}.
-
-## Your Spec
-
-**{{spec.title}}**
-
-{{spec.description}}
-
-## Instructions
-
-1. Read the relevant code first
-2. Make minimal changes
-3. Run tests before committing
-4. Commit with message: `chant({{spec.id}}): <description>`
-```
-
-Template variables like `{{spec.title}}` are replaced at runtime. See [Prompts](../concepts/prompts.md) for all variables.
-
-## Working with Specs
-
-### Creating Specs
-
-```bash
-chant add "Add user authentication"
-```
-
-This creates `.chant/specs/2026-02-03-001-xyz.md`:
-
-```markdown
----
-status: pending
----
-
-# Add user authentication
-```
-
-### Adding Detail
-
-Edit the spec to add context and acceptance criteria:
-
-```markdown
----
-status: pending
-prompt: standard
----
-
-# Add user authentication
-
-## Context
-JWT-based auth for the API.
+Create a bash script that outputs a greeting.
 
 ## Acceptance Criteria
-- [ ] Login endpoint returns JWT
-- [ ] Protected routes check token
-- [ ] 401 on invalid token
+
+- [ ] Creates `hello.sh` in the project root
+- [ ] Script is executable (`chmod +x`)
+- [ ] Running `./hello.sh` prints "Hello World"
+- [ ] Script includes a shebang line (`#!/bin/bash`)
 ```
 
-### Executing Specs
+Run lint again:
 
 ```bash
-chant work 001                    # Default prompt
-chant work 001 --prompt tdd       # TDD workflow
-chant work 001 --prompt security  # Security review
+chant lint
 ```
 
-### Checking Status
+Now it passes. The spec is ready for execution.
+
+## Step 4: Start Your Agent CLI
+
+Open a new terminal in the same directory and start your AI CLI:
+
+**Claude Code:**
+```bash
+claude
+```
+
+**Kiro CLI:**
+```bash
+kiro-cli-chat chat
+```
+
+## Step 5: Use MCP Tools to Execute
+
+Inside your agent CLI, the chant MCP tools are available. Try these commands:
+
+**Check project status:**
+```
+Use chant_status to show the project status
+```
+
+You'll see: `1 pending | 0 in_progress | 0 completed`
+
+**View the spec:**
+```
+Use chant_spec_get to show spec 001
+```
+
+This displays your spec with its acceptance criteria.
+
+**Start working on it:**
+```
+Use chant_work_start to begin working on spec 001
+```
+
+The agent will:
+1. Read the spec and acceptance criteria
+2. Create `hello.sh` with the required content
+3. Make it executable
+4. Commit with message: `chant(001): Create hello.sh script`
+
+**Monitor progress:**
+```
+Use chant_status to check progress
+```
+
+You'll see: `0 pending | 0 in_progress | 1 completed`
+
+## Step 6: Verify the Result
+
+Back in your original terminal:
 
 ```bash
-chant list --summary   # Project summary
-chant list             # All specs
-chant show 001         # Spec details
-chant log 001          # Execution log
+# Check the script exists
+ls -la hello.sh
+
+# Run it
+./hello.sh
+# Output: Hello World
+
+# View the commit
+git log -1 --oneline
+
+# Check spec status
+chant list
 ```
 
-## Key Concepts
+## What Just Happened?
 
-### The Mental Model
+1. **chant init** - Set up project config and MCP integration
+2. **chant add** - Created a spec (work intention)
+3. **chant lint** - Validated spec quality
+4. **MCP tools** - Let the agent discover and execute the spec
+5. **Agent** - Read the spec, wrote code, committed changes
 
-```
-┌─────────────────────────────────────────────────┐
-│                    PROMPT                        │
-│  "Read code, make changes, verify, commit"      │
-├─────────────────────────────────────────────────┤
-│                     SPEC                         │
-│  "Add authentication to the API"                │
-├─────────────────────────────────────────────────┤
-│                    AGENT                         │
-│  Any AI coding agent                            │
-└─────────────────────────────────────────────────┘
-```
+The key insight: **you defined the goal, the agent figured out how to achieve it**.
 
-- **Prompt** = Behavior (how to work)
-- **Spec** = Goal (what to build)
-- **Agent** = Executor (who does the work)
+## Next Steps
 
-### Parallel Execution
+| Want to... | Do this... |
+|------------|------------|
+| Add more specs | `chant add "your task"` |
+| Run from CLI | `chant work 001` |
+| Run multiple specs | `chant work --chain` |
+| See all commands | `chant --help` |
 
-Run multiple specs concurrently with isolated worktrees:
+## Learn More
 
-```bash
-chant work --parallel      # Work all ready specs
-chant work 001 002 003     # Work specific specs in parallel
-```
-
-### Chain Execution
-
-Process specs sequentially:
-
-```bash
-chant work --chain         # Work ready specs one after another
-chant work 001 --chain     # Work 001, then continue to next ready
-```
-
-## Agent Integration
-
-### Using with Claude Code
-
-```bash
-chant init --agent claude
-```
-
-Creates:
-- `.claude/CLAUDE.md` - Instructions for Claude Code
-- `.claude/.mcp.json` - MCP server configuration
-
-The MCP server exposes spec operations as tools Claude can use.
-
-### Using with Cursor
-
-```bash
-chant init --agent cursor
-```
-
-Creates:
-- `.cursorrules` - AI instructions for Cursor
-- `.cursor/mcp.json` - MCP server configuration
-
-See the [Cursor Guide](../guides/cursor-quickstart.md) for detailed setup.
-
-## What's Next
-
-| Want to... | Read... |
-|------------|---------|
-| **Set up Cursor** | [Cursor Guide](../guides/cursor-quickstart.md) |
-| **Understand specs** | [Specs](../concepts/specs.md) |
-| **Customize prompts** | [Prompts](../concepts/prompts.md) |
-| **Go autonomous** | [Autonomy](../concepts/autonomy.md) |
-| **Run in parallel** | [Dependencies](../concepts/deps.md) |
-| **Use different providers** | [Protocol](../architecture/protocol.md) |
-
-## The Path to Autonomy
-
-Chant starts in **supervised mode** — you review every change. The goal is **autonomous workflows**:
-
-1. **Start**: Review everything
-2. **Progress**: Trivial specs auto-merge
-3. **Later**: Most specs auto-merge, review exceptions
-4. **Goal**: Agents work overnight, review summaries
-
-See [Autonomy](../concepts/autonomy.md) for the journey.
+- [Specs](../concepts/specs.md) - How to write effective specs
+- [Prompts](../concepts/prompts.md) - Customize agent behavior
+- [Providers](../reference/providers.md) - Configure different AI providers
+- [MCP Tools](../reference/mcp.md) - All available MCP operations
