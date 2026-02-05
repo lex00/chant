@@ -142,15 +142,14 @@ defaults:
 **MCP Server Setup:**
 Kiro CLI requires MCP servers to be configured separately:
 ```bash
-# Add chant MCP server (use --scope global to make available everywhere)
-# Use full path if chant not in PATH when kiro-cli-chat spawns processes
-kiro-cli-chat mcp add --name chant --command "$(which chant) mcp" --scope global
+# Add chant MCP server (command and args must be separate)
+kiro-cli-chat mcp add --name chant --command "$(which chant)" --args mcp --scope global
 
 # Verify configuration
 kiro-cli-chat mcp list
 
 # Should show under global:
-#   • chant        chant mcp
+#   • chant        /path/to/chant
 ```
 
 **Verify tools are available:**
