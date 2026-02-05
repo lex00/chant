@@ -326,6 +326,8 @@ enum Commands {
     },
     /// Validate all specs for common issues
     Lint {
+        /// Spec ID (full or partial) to lint a single spec
+        spec_id: Option<String>,
         /// Output format (text or json)
         #[arg(short, long, default_value = "text")]
         format: String,
@@ -968,7 +970,11 @@ impl cmd::dispatch::Execute for Commands {
                 }
             }
             Commands::Refresh { verbose } => cmd::refresh::cmd_refresh(verbose),
-            Commands::Lint { format, verbose } => {
+            Commands::Lint {
+                spec_id,
+                format,
+                verbose,
+            } => {
                 let lint_format = match format.to_lowercase().as_str() {
                     "json" => cmd::spec::LintFormat::Json,
                     "text" => cmd::spec::LintFormat::Text,
@@ -977,7 +983,7 @@ impl cmd::dispatch::Execute for Commands {
                         std::process::exit(1);
                     }
                 };
-                cmd::spec::cmd_lint(lint_format, verbose)
+                cmd::spec::cmd_lint(spec_id.as_deref(), lint_format, verbose)
             }
             Commands::Log {
                 id,

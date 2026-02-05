@@ -821,11 +821,15 @@ pub fn lint_specific_specs(specs_dir: &std::path::Path, spec_ids: &[String]) -> 
     })
 }
 
-pub fn cmd_lint(format: LintFormat, verbose: bool) -> Result<()> {
+pub fn cmd_lint(spec_id: Option<&str>, format: LintFormat, verbose: bool) -> Result<()> {
     let specs_dir = crate::cmd::ensure_initialized()?;
 
     if format == LintFormat::Text {
-        println!("Linting specs...");
+        if let Some(id) = spec_id {
+            println!("Linting spec {}...", id);
+        } else {
+            println!("Linting specs...");
+        }
     }
 
     let mut all_diagnostics: Vec<LintDiagnostic> = Vec::new();
@@ -842,32 +846,40 @@ pub fn cmd_lint(format: LintFormat, verbose: bool) -> Result<()> {
     // First pass: collect all specs and check for parse errors
     let mut specs_to_check: Vec<Spec> = Vec::new();
 
-    for entry in std::fs::read_dir(&specs_dir)? {
-        let entry = entry?;
-        let path = entry.path();
+    // If spec_id is provided, resolve and lint only that spec
+    if let Some(id) = spec_id {
+        let spec = spec::resolve_spec(&specs_dir, id)?;
+        total_specs = 1;
+        specs_to_check.push(spec);
+    } else {
+        // Otherwise, lint all specs
+        for entry in std::fs::read_dir(&specs_dir)? {
+            let entry = entry?;
+            let path = entry.path();
 
-        if path.extension().map(|e| e == "md").unwrap_or(false) {
-            total_specs += 1;
-            let id = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("unknown")
-                .to_string();
+            if path.extension().map(|e| e == "md").unwrap_or(false) {
+                total_specs += 1;
+                let id = path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("unknown")
+                    .to_string();
 
-            match Spec::load(&path) {
-                Ok(spec) => {
-                    specs_to_check.push(spec);
-                }
-                Err(e) => {
-                    let diagnostic = LintDiagnostic::error(
-                        &id,
-                        LintRule::Parse,
-                        format!("Invalid YAML frontmatter: {}", e),
-                    );
-                    if format == LintFormat::Text {
-                        println!("{} {}: {}", "✗".red(), id, diagnostic.message);
+                match Spec::load(&path) {
+                    Ok(spec) => {
+                        specs_to_check.push(spec);
                     }
-                    all_diagnostics.push(diagnostic);
+                    Err(e) => {
+                        let diagnostic = LintDiagnostic::error(
+                            &id,
+                            LintRule::Parse,
+                            format!("Invalid YAML frontmatter: {}", e),
+                        );
+                        if format == LintFormat::Text {
+                            println!("{} {}: {}", "✗".red(), id, diagnostic.message);
+                        }
+                        all_diagnostics.push(diagnostic);
+                    }
                 }
             }
         }
