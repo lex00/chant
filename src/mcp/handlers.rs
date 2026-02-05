@@ -1701,11 +1701,16 @@ fn tool_chant_work_start(arguments: Option<&Value>) -> Result<Value> {
         .stdout(Stdio::null())
         .stderr(Stdio::null());
 
-    let child = cmd.spawn().context("Failed to spawn chant work process")?;
+    let mut child = cmd.spawn().context("Failed to spawn chant work process")?;
 
     let pid = child.id();
     let started_at = chrono::Local::now().to_rfc3339();
     let process_id = format!("{}-{}", spec_id, pid);
+
+    // Spawn a thread to reap the process when it exits (prevents zombies)
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
 
     // Store process info
     let project_root =
