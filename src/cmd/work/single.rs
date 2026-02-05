@@ -117,7 +117,6 @@ fn format_grade<T: std::fmt::Display>(grade: &T) -> colored::ColoredString {
 pub fn cmd_work(
     ids: &[String],
     prompt_name: Option<&str>,
-    no_branch: bool,
     skip_deps: bool,
     skip_criteria: bool,
     parallel: bool,
@@ -543,21 +542,13 @@ pub fn cmd_work(
         }
     }
 
-    // Worktree mode is now the default unless --no-branch is specified
-    let use_worktree = !no_branch;
-
-    // Handle worktree creation if enabled
-    let _worktree_path = if use_worktree {
-        // Create worktree for this spec
-        let branch_name = format!("chant/{}", spec.id);
-        let worktree_path = worktree::create_worktree(&spec.id, &branch_name)?;
-        worktree::copy_spec_to_worktree(&spec.id, &worktree_path)?;
-        spec.frontmatter.branch = Some(branch_name);
-        println!("{} Worktree: {}", "→".cyan(), worktree_path.display());
-        Some(worktree_path)
-    } else {
-        None
-    };
+    // Worktree mode is always enabled
+    // Create worktree for this spec
+    let branch_name = format!("chant/{}", spec.id);
+    let worktree_path = worktree::create_worktree(&spec.id, &branch_name)?;
+    worktree::copy_spec_to_worktree(&spec.id, &worktree_path)?;
+    spec.frontmatter.branch = Some(branch_name);
+    println!("{} Worktree: {}", "→".cyan(), worktree_path.display());
 
     // Resolve prompt: CLI > wizard > frontmatter > auto-select by type > default
     let resolved_prompt_name = prompt_name

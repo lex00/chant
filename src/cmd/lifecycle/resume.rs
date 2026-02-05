@@ -49,7 +49,6 @@ pub fn cmd_resume(
         cmd::work::cmd_work(
             std::slice::from_ref(&spec_id),
             prompt,
-            false, // no_branch (use worktree by default)
             false, // skip_deps
             false, // skip_criteria
             false, // parallel

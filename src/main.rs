@@ -243,9 +243,6 @@ enum Commands {
         /// Prompt to use
         #[arg(long)]
         prompt: Option<String>,
-        /// Disable worktree mode (deprecated - worktrees are now default)
-        #[arg(long)]
-        no_branch: bool,
         /// Override dependency checks (work on a blocked spec)
         #[arg(long)]
         skip_deps: bool,
@@ -892,7 +889,6 @@ impl cmd::dispatch::Execute for Commands {
             Commands::Work {
                 ids,
                 prompt,
-                no_branch,
                 skip_deps,
                 skip_criteria,
                 parallel,
@@ -909,12 +905,6 @@ impl cmd::dispatch::Execute for Commands {
                 no_rebase,
                 no_watch,
             } => {
-                if no_branch {
-                    eprintln!(
-                        "{} Warning: --no-branch is deprecated. Worktree mode is now the default.",
-                        "⚠".yellow()
-                    );
-                }
                 // Handle --parallel flag: if provided, convert to (true, max_workers)
                 // If --max is also provided, it takes precedence (for backwards compat)
                 let (parallel_flag, effective_max) = if let Some(n) = parallel {
@@ -933,7 +923,6 @@ impl cmd::dispatch::Execute for Commands {
                 cmd::work::cmd_work(
                     &ids,
                     prompt.as_deref(),
-                    no_branch,
                     skip_deps,
                     skip_criteria,
                     parallel_flag,
