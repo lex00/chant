@@ -1,8 +1,8 @@
-# Amazon Q Agent Rules for Chant
+# Kiro Agent Rules for Chant
 
 ## Overview
 
-Amazon Q is AWS's AI-powered coding assistant. This configuration provides Q with instructions for working within Chant's specification-driven development workflow.
+Kiro is an AI-powered coding assistant. This configuration provides Kiro with instructions for working within Chant's specification-driven development workflow.
 
 ## Essential Rules for Chant
 
@@ -50,12 +50,9 @@ Why? The `just` wrapper ensures:
 
 ### 3. Environment Variables
 
-Configure these for optimal Amazon Q integration:
+Configure these for optimal Kiro integration:
 
 ```bash
-# AWS credentials (if needed)
-export AWS_REGION=us-west-2
-
 # Rust tooling
 export RUST_LOG=info
 ```
@@ -70,7 +67,7 @@ Every implementation must:
 4. **Be minimal**: Only modify files in the spec
 5. **Have tests**: Write tests validating acceptance criteria
 
-## Workflow with Amazon Q
+## Workflow with Kiro
 
 ### Step 1: Understand the Spec
 
@@ -87,7 +84,7 @@ Review:
 ### Step 2: Plan and Implement
 
 1. Read relevant source files first
-2. Use Amazon Q to understand code patterns
+2. Use Kiro to understand code patterns
 3. Implement changes following spec requirements
 4. Write tests alongside implementation
 
@@ -142,15 +139,6 @@ Fix any issues before proceeding.
 - Commit without running `just check`
 - Add unnecessary dependencies or features
 
-## AWS Integration Notes
-
-Amazon Q may suggest AWS services or patterns. Remember:
-
-- Use only what the spec explicitly requires
-- AWS integrations should be minimal
-- Credentials should come from environment
-- Don't add AWS SDK unless the spec requires it
-
 ## Key Commands Reference
 
 | Purpose | Command |
@@ -203,7 +191,7 @@ target_files:
 
 ## Summary
 
-Work with Amazon Q by:
+Work with Kiro by:
 1. Following specs strictly
 2. Using `just` for all commands
 3. Writing tests and validating quality

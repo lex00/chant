@@ -62,7 +62,7 @@ enum Commands {
         /// Only create config.md, no prompt templates
         #[arg(long)]
         minimal: bool,
-        /// Initialize agent configuration files (claude, cursor, amazonq, generic, or all)
+        /// Initialize agent configuration files (claude, cursor, kiro, generic, or all)
         /// Can be specified multiple times
         #[arg(long, value_name = "PROVIDER")]
         agent: Vec<String>,
@@ -1327,9 +1327,9 @@ fn handle_agent_update(chant_dir: &Path, agents: &[String], force_overwrite: boo
 
         // Determine the target path based on provider
         let target_path = match provider.config_filename() {
-            ".amazonq/rules.md" => {
-                std::fs::create_dir_all(".amazonq")?;
-                PathBuf::from(".amazonq/rules.md")
+            ".kiro/rules.md" => {
+                std::fs::create_dir_all(".kiro")?;
+                PathBuf::from(".kiro/rules.md")
             }
             filename => PathBuf::from(filename),
         };
@@ -1891,7 +1891,7 @@ fn cmd_init(
                     let agent_options = vec![
                         "Claude Code (CLAUDE.md)",
                         "Cursor (.cursorrules)",
-                        "Amazon Q (.amazonq/rules.md)",
+                        "Kiro (.kiro/rules.md)",
                         "Generic (.ai-instructions)",
                         "All of the above",
                     ];
@@ -1905,7 +1905,7 @@ fn cmd_init(
                     let selected_agents = match agent_selection {
                         0 => vec!["claude".to_string()],
                         1 => vec!["cursor".to_string()],
-                        2 => vec!["amazonq".to_string()],
+                        2 => vec!["kiro".to_string()],
                         3 => vec!["generic".to_string()],
                         4 => vec!["all".to_string()],
                         _ => vec![],
@@ -2083,7 +2083,7 @@ fn cmd_init(
             "None",
             "Claude Code (CLAUDE.md)",
             "Cursor (.cursorrules)",
-            "Amazon Q (.amazonq/rules.md)",
+            "Kiro (.kiro/rules.md)",
             "Generic (.ai-instructions)",
             "All of the above",
         ];
@@ -2098,7 +2098,7 @@ fn cmd_init(
             0 => vec![], // None
             1 => vec!["claude".to_string()],
             2 => vec!["cursor".to_string()],
-            3 => vec!["amazonq".to_string()],
+            3 => vec!["kiro".to_string()],
             4 => vec!["generic".to_string()],
             5 => vec!["all".to_string()],
             _ => vec![],
@@ -2367,10 +2367,10 @@ Project initialized on {}.
 
             // Determine the target path based on provider
             let target_path = match provider.config_filename() {
-                ".amazonq/rules.md" => {
-                    // Create .amazonq directory in root
-                    std::fs::create_dir_all(".amazonq")?;
-                    PathBuf::from(".amazonq/rules.md")
+                ".kiro/rules.md" => {
+                    // Create .kiro directory in root
+                    std::fs::create_dir_all(".kiro")?;
+                    PathBuf::from(".kiro/rules.md")
                 }
                 filename => {
                     // Other providers: write to root

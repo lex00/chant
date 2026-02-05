@@ -11,7 +11,7 @@ use std::fmt;
 pub enum AgentProvider {
     Claude,
     Cursor,
-    AmazonQ,
+    Kiro,
     Generic,
 }
 
@@ -21,7 +21,7 @@ impl AgentProvider {
         match self {
             Self::Claude => "claude",
             Self::Cursor => "cursor",
-            Self::AmazonQ => "amazonq",
+            Self::Kiro => "kiro",
             Self::Generic => "generic",
         }
     }
@@ -31,7 +31,7 @@ impl AgentProvider {
         match self {
             Self::Claude => "CLAUDE.md",
             Self::Cursor => ".cursorrules",
-            Self::AmazonQ => ".amazonq/rules.md",
+            Self::Kiro => ".kiro/rules.md",
             Self::Generic => ".ai-instructions",
         }
     }
@@ -43,7 +43,7 @@ impl AgentProvider {
         match self {
             Self::Claude => true,
             Self::Cursor => true,
-            Self::AmazonQ => false,
+            Self::Kiro => false,
             Self::Generic => false,
         }
     }
@@ -73,7 +73,7 @@ pub struct AgentTemplate {
 /// Embedded templates for each provider
 const CLAUDE_TEMPLATE: &str = include_str!("../templates/agent-claude.md");
 const CURSOR_TEMPLATE: &str = include_str!("../templates/agent-cursor.md");
-const AMAZONQ_TEMPLATE: &str = include_str!("../templates/agent-amazonq.md");
+const KIRO_TEMPLATE: &str = include_str!("../templates/agent-kiro.md");
 const GENERIC_TEMPLATE: &str = include_str!("../templates/agent-generic.md");
 
 /// Compact chant section for injection into existing CLAUDE.md files
@@ -90,11 +90,11 @@ pub fn get_template(provider_str: &str) -> Result<AgentTemplate> {
     let provider = match provider_str.to_lowercase().as_str() {
         "claude" => AgentProvider::Claude,
         "cursor" => AgentProvider::Cursor,
-        "amazonq" => AgentProvider::AmazonQ,
+        "kiro" => AgentProvider::Kiro,
         "generic" => AgentProvider::Generic,
         _ => {
             return Err(anyhow!(
-                "Unknown agent provider '{}'. Valid providers: claude, cursor, amazonq, generic",
+                "Unknown agent provider '{}'. Valid providers: claude, cursor, kiro, generic",
                 provider_str
             ))
         }
@@ -107,7 +107,7 @@ fn get_template_for_provider(provider: AgentProvider) -> AgentTemplate {
     let content = match provider {
         AgentProvider::Claude => CLAUDE_TEMPLATE,
         AgentProvider::Cursor => CURSOR_TEMPLATE,
-        AgentProvider::AmazonQ => AMAZONQ_TEMPLATE,
+        AgentProvider::Kiro => KIRO_TEMPLATE,
         AgentProvider::Generic => GENERIC_TEMPLATE,
     };
     AgentTemplate { provider, content }
@@ -135,7 +135,7 @@ pub fn parse_agent_providers(agent_specs: &[String]) -> Result<Vec<AgentProvider
             // Add all providers
             providers.insert(AgentProvider::Claude);
             providers.insert(AgentProvider::Cursor);
-            providers.insert(AgentProvider::AmazonQ);
+            providers.insert(AgentProvider::Kiro);
             providers.insert(AgentProvider::Generic);
         } else {
             // Validate and add single provider
@@ -251,7 +251,7 @@ mod tests {
         assert!(get_template("CLAUDE").is_ok());
         assert!(get_template("Claude").is_ok());
         assert!(get_template("cursor").is_ok());
-        assert!(get_template("AMAZONQ").is_ok());
+        assert!(get_template("KIRO").is_ok());
         assert!(get_template("generic").is_ok());
     }
 
@@ -285,7 +285,7 @@ mod tests {
         assert_eq!(providers.len(), 4);
         assert!(providers.contains(&AgentProvider::Claude));
         assert!(providers.contains(&AgentProvider::Cursor));
-        assert!(providers.contains(&AgentProvider::AmazonQ));
+        assert!(providers.contains(&AgentProvider::Kiro));
         assert!(providers.contains(&AgentProvider::Generic));
     }
 

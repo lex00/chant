@@ -204,7 +204,7 @@ Different AI tools can be integrated with Chant:
 
 - **Claude Code**: Use the Claude-specific instructions (CLAUDE.md)
 - **Cursor IDE**: Use Cursor-specific configuration (.cursorrules)
-- **Amazon Q**: Use Amazon Q-specific guidance (.amazonq/rules.md)
+- **Kiro**: Use Kiro-specific guidance (.kiro/rules.md)
 - **Other Tools**: Use this generic configuration
 
 Adapt the core principles to your tool while maintaining the spec-driven workflow.
