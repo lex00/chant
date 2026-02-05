@@ -9,6 +9,7 @@ use std::path::Path;
 
 use chant::config::Config;
 use chant::spec::{self, load_all_specs, Spec, SpecStatus};
+use chant::worktree;
 
 use crate::cmd::commits::{
     detect_agent_in_commit, get_commits_for_spec, get_commits_for_spec_allow_no_commits,
@@ -33,6 +34,16 @@ pub fn finalize_spec(
     allow_no_commits: bool,
     commits: Option<Vec<String>>,
 ) -> Result<()> {
+    // Check for uncommitted changes in worktree before finalization
+    if let Some(worktree_path) = worktree::get_active_worktree(&spec.id) {
+        if worktree::has_uncommitted_changes(&worktree_path)? {
+            anyhow::bail!(
+                "Cannot finalize: uncommitted changes in worktree. Commit your changes first.\nWorktree: {}",
+                worktree_path.display()
+            );
+        }
+    }
+
     // Check if this is a driver spec with incomplete members
     let incomplete_members = spec::get_incomplete_members(&spec.id, all_specs);
     if !incomplete_members.is_empty() {

@@ -46,8 +46,10 @@ pub struct ParallelOptions<'a> {
     /// Override maximum total concurrent agents
     pub max_override: Option<usize>,
     /// Skip cleanup prompt after execution
+    #[allow(dead_code)]
     pub no_cleanup: bool,
     /// Force cleanup prompt even on success
+    #[allow(dead_code)]
     pub force_cleanup: bool,
     /// Labels to filter specs
     pub labels: &'a [String],

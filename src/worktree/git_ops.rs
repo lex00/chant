@@ -31,6 +31,31 @@ pub fn get_active_worktree(spec_id: &str) -> Option<PathBuf> {
     }
 }
 
+/// Checks if a worktree has uncommitted changes.
+///
+/// # Arguments
+///
+/// * `worktree_path` - Path to the worktree
+///
+/// # Returns
+///
+/// Ok(true) if there are uncommitted changes (staged or unstaged), Ok(false) if clean.
+pub fn has_uncommitted_changes(worktree_path: &Path) -> Result<bool> {
+    let output = Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(worktree_path)
+        .output()
+        .context("Failed to check git status in worktree")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Failed to run git status: {}", stderr);
+    }
+
+    let status_output = String::from_utf8_lossy(&output.stdout);
+    Ok(!status_output.trim().is_empty())
+}
+
 /// Commits changes in a worktree.
 ///
 /// # Arguments
@@ -1061,6 +1086,71 @@ mod tests {
         assert!(result.is_ok());
         let hash = result.unwrap();
         assert_eq!(hash.len(), 40);
+
+        Ok(())
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_has_uncommitted_changes_clean() -> Result<()> {
+        let repo_dir = PathBuf::from("/tmp/test-chant-uncommitted-clean");
+        cleanup_test_repo(&repo_dir)?;
+        setup_test_repo(&repo_dir)?;
+
+        // Check for uncommitted changes on a clean repo
+        let has_changes = has_uncommitted_changes(&repo_dir)?;
+
+        cleanup_test_repo(&repo_dir)?;
+
+        assert!(
+            !has_changes,
+            "Clean repo should have no uncommitted changes"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_has_uncommitted_changes_with_unstaged() -> Result<()> {
+        let repo_dir = PathBuf::from("/tmp/test-chant-uncommitted-unstaged");
+        cleanup_test_repo(&repo_dir)?;
+        setup_test_repo(&repo_dir)?;
+
+        // Create a new file (unstaged)
+        fs::write(repo_dir.join("newfile.txt"), "content")?;
+
+        // Check for uncommitted changes
+        let has_changes = has_uncommitted_changes(&repo_dir)?;
+
+        cleanup_test_repo(&repo_dir)?;
+
+        assert!(has_changes, "Repo with unstaged changes should return true");
+
+        Ok(())
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_has_uncommitted_changes_with_staged() -> Result<()> {
+        let repo_dir = PathBuf::from("/tmp/test-chant-uncommitted-staged");
+        cleanup_test_repo(&repo_dir)?;
+        setup_test_repo(&repo_dir)?;
+
+        // Create a new file and stage it
+        fs::write(repo_dir.join("newfile.txt"), "content")?;
+        let output = StdCommand::new("git")
+            .args(["add", "newfile.txt"])
+            .current_dir(&repo_dir)
+            .output()?;
+        assert!(output.status.success());
+
+        // Check for uncommitted changes
+        let has_changes = has_uncommitted_changes(&repo_dir)?;
+
+        cleanup_test_repo(&repo_dir)?;
+
+        assert!(has_changes, "Repo with staged changes should return true");
 
         Ok(())
     }
