@@ -742,6 +742,7 @@ fn cmd_work_chain_all_ready(
             Err(e) => {
                 pb.println(format!("{} Failed {}: {}", "✗".red(), spec.id, e));
                 failed_spec = Some((spec.id, e.to_string()));
+                break; // Stop chain on failure
             }
         }
     }
