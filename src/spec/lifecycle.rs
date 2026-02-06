@@ -173,7 +173,7 @@ pub fn resolve_spec(specs_dir: &Path, partial_id: &str) -> Result<Spec> {
 /// Returns an error if the spec file is unreadable from both locations.
 fn load_spec_from_worktree_or_main(spec_id: &str) -> Result<Spec> {
     // Check if a worktree exists for this spec
-    if let Some(worktree_path) = crate::worktree::get_active_worktree(spec_id) {
+    if let Some(worktree_path) = crate::worktree::get_active_worktree(spec_id, None) {
         let worktree_spec_path = worktree_path
             .join(".chant/specs")
             .join(format!("{}.md", spec_id));

@@ -154,7 +154,7 @@ fn show_branch_status(all_specs: &[Spec], branch_prefix: &str, main_branch: &str
             };
             println!(
                 "  {} {}  ({}, all criteria met)",
-                "chant/".dimmed(),
+                branch_prefix.dimmed(),
                 info.spec_id.cyan(),
                 commits_str.dimmed()
             );
@@ -180,7 +180,7 @@ fn show_branch_status(all_specs: &[Spec], branch_prefix: &str, main_branch: &str
             };
             println!(
                 "  {} {}  ({})",
-                "chant/".dimmed(),
+                branch_prefix.dimmed(),
                 info.spec_id.yellow(),
                 reason.dimmed()
             );

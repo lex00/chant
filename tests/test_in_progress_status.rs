@@ -81,7 +81,7 @@ This spec tests that status is updated to in_progress.
     // 4. Create worktree
     let branch_name = format!("chant/{}", spec_id);
     let worktree_path =
-        chant::worktree::create_worktree(spec_id, &branch_name).expect("Failed to create worktree");
+        chant::worktree::create_worktree(spec_id, &branch_name, None).expect("Failed to create worktree");
 
     // 5. Copy spec to worktree (this is where the bug was)
     chant::worktree::copy_spec_to_worktree(spec_id, &worktree_path)

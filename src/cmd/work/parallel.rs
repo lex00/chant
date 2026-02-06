@@ -249,13 +249,16 @@ struct ParallelExecutionState {
     active_worktrees: Arc<Mutex<HashMap<String, PathBuf>>>,
     /// Specs that completed agent work (preserve their branches)
     completed_specs: Arc<Mutex<HashSet<String>>>,
+    /// Branch prefix for cleanup (e.g. "chant/")
+    branch_prefix: String,
 }
 
 impl ParallelExecutionState {
-    fn new() -> Self {
+    fn new(branch_prefix: &str) -> Self {
         Self {
             active_worktrees: Arc::new(Mutex::new(HashMap::new())),
             completed_specs: Arc::new(Mutex::new(HashSet::new())),
+            branch_prefix: branch_prefix.to_string(),
         }
     }
 
@@ -296,7 +299,7 @@ impl ParallelExecutionState {
                 }
 
                 // Delete branch since work didn't complete
-                let branch = format!("chant/{}", spec_id);
+                let branch = format!("{}{}", self.branch_prefix, spec_id);
                 if let Err(e) = chant::git::delete_branch(&branch, false) {
                     eprintln!("{} Failed to delete branch {}: {}", "⚠".yellow(), branch, e);
                 }
@@ -346,7 +349,7 @@ pub fn cmd_work_parallel(
     options: ParallelOptions,
 ) -> Result<()> {
     // Initialize parallel execution state for cleanup on interrupt
-    let execution_state = Arc::new(ParallelExecutionState::new());
+    let execution_state = Arc::new(ParallelExecutionState::new(&config.defaults.branch_prefix));
     setup_parallel_cleanup_handlers(execution_state.clone());
 
     // Load specs: either specific IDs or all ready specs
@@ -565,7 +568,8 @@ pub fn cmd_work_parallel(
         };
 
         // Create worktree
-        let worktree_result = worktree::create_worktree(&spec.id, &branch_name);
+        let project_name = Some(config.project.name.as_str()).filter(|n| !n.is_empty());
+        let worktree_result = worktree::create_worktree(&spec.id, &branch_name, project_name);
         let (worktree_path, branch_for_cleanup) = match worktree_result {
             Ok(path) => {
                 // Register worktree for cleanup on interrupt

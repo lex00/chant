@@ -401,7 +401,7 @@ fn is_spec_on_branch(spec_id: &str, branch_name: &str) -> Result<bool> {
     use std::process::Command;
 
     // Get worktree path
-    let worktree_path = chant::worktree::worktree_path_for_spec(spec_id);
+    let worktree_path = chant::worktree::worktree_path_for_spec(spec_id, None);
 
     // Check if worktree exists
     if !worktree_path.exists() {
@@ -541,7 +541,7 @@ pub fn cmd_finalize(id: &str, specs_dir: &std::path::Path) -> Result<()> {
     }
 
     // Check if this spec has an active worktree - if so, finalize there
-    if let Some(worktree_path) = worktree::get_active_worktree(&spec_id) {
+    if let Some(worktree_path) = worktree::get_active_worktree(&spec_id, None) {
         println!(
             "{} Finalizing spec {} in worktree",
             "→".cyan(),

@@ -15,15 +15,18 @@ use std::process::Command;
 /// Returns the worktree path for a given spec ID.
 ///
 /// This does not check whether the worktree exists.
-pub fn worktree_path_for_spec(spec_id: &str) -> PathBuf {
-    PathBuf::from(format!("/tmp/chant-{}", spec_id))
+pub fn worktree_path_for_spec(spec_id: &str, project_name: Option<&str>) -> PathBuf {
+    match project_name.filter(|n| !n.is_empty()) {
+        Some(name) => PathBuf::from(format!("/tmp/chant-{}-{}", name, spec_id)),
+        None => PathBuf::from(format!("/tmp/chant-{}", spec_id)),
+    }
 }
 
 /// Returns the worktree path for a spec if an active worktree exists.
 ///
 /// Returns Some(path) if the worktree directory exists, None otherwise.
-pub fn get_active_worktree(spec_id: &str) -> Option<PathBuf> {
-    let path = worktree_path_for_spec(spec_id);
+pub fn get_active_worktree(spec_id: &str, project_name: Option<&str>) -> Option<PathBuf> {
+    let path = worktree_path_for_spec(spec_id, project_name);
     if path.exists() && path.is_dir() {
         Some(path)
     } else {
@@ -139,8 +142,12 @@ pub fn commit_in_worktree(worktree_path: &Path, message: &str) -> Result<String>
 /// - The branch already exists
 /// - Git worktree creation fails (e.g., corrupted repo)
 /// - Directory creation fails
-pub fn create_worktree(spec_id: &str, branch: &str) -> Result<PathBuf> {
-    let worktree_path = PathBuf::from(format!("/tmp/chant-{}", spec_id));
+pub fn create_worktree(
+    spec_id: &str,
+    branch: &str,
+    project_name: Option<&str>,
+) -> Result<PathBuf> {
+    let worktree_path = worktree_path_for_spec(spec_id, project_name);
 
     // Check if worktree already exists
     if worktree_path.exists() {
@@ -508,8 +515,8 @@ fn merge_and_cleanup_in_dir(
             let _ = cmd.output();
         }
 
-        // Extract spec_id from branch name (strip "chant/" prefix if present)
-        let spec_id = branch.trim_start_matches("chant/");
+        // Extract spec_id from branch name (strip prefix like "chant/" or "chant/frontend/")
+        let spec_id = branch.rsplit('/').next().unwrap_or(branch);
         let error_msg = if has_conflict {
             crate::merge_errors::merge_conflict(spec_id, branch, "main")
         } else {
@@ -671,7 +678,7 @@ mod tests {
                 String::from_utf8_lossy(&output.stderr)
             );
 
-            create_worktree(spec_id, branch)
+            create_worktree(spec_id, branch, None)
         };
 
         // Always restore original directory
@@ -895,7 +902,7 @@ mod tests {
             let spec_id = "test-spec-create-success";
             let branch = "spec/test-spec-create-success";
 
-            create_worktree(spec_id, branch)
+            create_worktree(spec_id, branch, None)
         };
 
         // Always restore original directory
@@ -956,7 +963,7 @@ mod tests {
             )?;
 
             // Create worktree
-            let worktree_path = create_worktree(spec_id, branch)?;
+            let worktree_path = create_worktree(spec_id, branch, None)?;
 
             // Copy spec to worktree
             copy_spec_to_worktree(spec_id, &worktree_path)?;
@@ -1022,7 +1029,7 @@ mod tests {
             let branch = "spec/test-spec-remove";
 
             // Create worktree
-            let path = create_worktree(spec_id, branch)?;
+            let path = create_worktree(spec_id, branch, None)?;
             assert!(path.exists(), "Worktree should exist after creation");
             path
         };
@@ -1057,14 +1064,20 @@ mod tests {
 
     #[test]
     fn test_worktree_path_for_spec() {
-        let path = worktree_path_for_spec("2026-01-27-001-abc");
+        let path = worktree_path_for_spec("2026-01-27-001-abc", None);
+        assert_eq!(path, PathBuf::from("/tmp/chant-2026-01-27-001-abc"));
+
+        let path = worktree_path_for_spec("2026-01-27-001-abc", Some("myproject"));
+        assert_eq!(path, PathBuf::from("/tmp/chant-myproject-2026-01-27-001-abc"));
+
+        let path = worktree_path_for_spec("2026-01-27-001-abc", Some(""));
         assert_eq!(path, PathBuf::from("/tmp/chant-2026-01-27-001-abc"));
     }
 
     #[test]
     fn test_get_active_worktree_nonexistent() {
         // Test with a spec ID that definitely doesn't have a worktree
-        let result = get_active_worktree("nonexistent-spec-12345");
+        let result = get_active_worktree("nonexistent-spec-12345", None);
         assert!(result.is_none());
     }
 

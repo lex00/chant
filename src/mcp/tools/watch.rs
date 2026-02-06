@@ -12,8 +12,8 @@ struct WorktreeInfo {
     spec_id: String,
 }
 
-/// Find all active worktrees with chant/* branches
-fn find_active_worktrees() -> Result<Vec<WorktreeInfo>> {
+/// Find all active worktrees with branches matching the given prefix
+fn find_active_worktrees(branch_prefix: &str) -> Result<Vec<WorktreeInfo>> {
     use std::path::PathBuf;
     use std::process::Command;
 
@@ -34,8 +34,8 @@ fn find_active_worktrees() -> Result<Vec<WorktreeInfo>> {
     for line in stdout.lines() {
         if line.starts_with("worktree ") {
             if let (Some(path), Some(branch)) = (current_path.take(), current_branch.take()) {
-                if branch.starts_with("chant/") {
-                    if let Some(spec_id) = branch.strip_prefix("chant/") {
+                if branch.starts_with(branch_prefix) {
+                    if let Some(spec_id) = branch.strip_prefix(branch_prefix) {
                         worktrees.push(WorktreeInfo {
                             path,
                             spec_id: spec_id.to_string(),
@@ -54,8 +54,8 @@ fn find_active_worktrees() -> Result<Vec<WorktreeInfo>> {
     }
 
     if let (Some(path), Some(branch)) = (current_path, current_branch) {
-        if branch.starts_with("chant/") {
-            if let Some(spec_id) = branch.strip_prefix("chant/") {
+        if branch.starts_with(branch_prefix) {
+            if let Some(spec_id) = branch.strip_prefix(branch_prefix) {
                 worktrees.push(WorktreeInfo {
                     path,
                     spec_id: spec_id.to_string(),
@@ -116,7 +116,10 @@ pub fn tool_chant_watch_status(_arguments: Option<&Value>) -> Result<Value> {
     let is_running = is_watch_running();
 
     // Find active worktrees
-    let worktrees = match find_active_worktrees() {
+    let branch_prefix = crate::config::Config::load()
+        .map(|c| c.defaults.branch_prefix.clone())
+        .unwrap_or_else(|_| "chant/".to_string());
+    let worktrees = match find_active_worktrees(&branch_prefix) {
         Ok(wts) => wts,
         Err(e) => {
             return Ok(json!({

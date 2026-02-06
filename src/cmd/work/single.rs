@@ -311,7 +311,7 @@ pub fn cmd_work(
         }
 
         // Check if this spec has an active worktree - if so, finalize there
-        if let Some(worktree_path) = worktree::get_active_worktree(&spec.id) {
+        if let Some(worktree_path) = worktree::get_active_worktree(&spec.id, None) {
             println!(
                 "{} Re-finalizing spec {} in worktree...",
                 "→".cyan(),
@@ -544,8 +544,9 @@ pub fn cmd_work(
 
     // Worktree mode is always enabled
     // Create worktree for this spec
-    let branch_name = format!("chant/{}", spec.id);
-    let worktree_path = worktree::create_worktree(&spec.id, &branch_name)?;
+    let branch_name = format!("{}{}", config.defaults.branch_prefix, spec.id);
+    let project_name = Some(config.project.name.as_str()).filter(|n| !n.is_empty());
+    let worktree_path = worktree::create_worktree(&spec.id, &branch_name, project_name)?;
     worktree::copy_spec_to_worktree(&spec.id, &worktree_path)?;
     spec.frontmatter.branch = Some(branch_name);
     println!("{} Worktree: {}", "→".cyan(), worktree_path.display());

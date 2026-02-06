@@ -279,7 +279,7 @@ fn check_status_consistency(spec: &Spec, commit_exists: bool, unchecked: usize) 
 /// Run all diagnostic checks on a spec.
 pub fn diagnose_spec(spec_id: &str) -> Result<DiagnosticReport> {
     // Check if spec has an active worktree
-    let (base_path, location) = if let Some(worktree) = get_active_worktree(spec_id) {
+    let (base_path, location) = if let Some(worktree) = get_active_worktree(spec_id, None) {
         (
             worktree.clone(),
             format!("worktree: {}", worktree.display()),

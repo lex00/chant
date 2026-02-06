@@ -36,7 +36,7 @@ pub fn finalize_spec(
     commits: Option<Vec<String>>,
 ) -> Result<()> {
     // Check for uncommitted changes in worktree before finalization
-    if let Some(worktree_path) = worktree::get_active_worktree(&spec.id) {
+    if let Some(worktree_path) = worktree::get_active_worktree(&spec.id, None) {
         if worktree::has_uncommitted_changes(&worktree_path)? {
             anyhow::bail!(
                 "Cannot finalize: uncommitted changes in worktree. Commit your changes first.\nWorktree: {}",

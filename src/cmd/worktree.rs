@@ -74,15 +74,15 @@ fn parse_worktree_list(output: &str) -> Vec<GitWorktreeEntry> {
 }
 
 /// Extract spec ID from a worktree path or branch name
-fn extract_spec_id(entry: &GitWorktreeEntry) -> Option<String> {
-    // Try to extract from branch name (chant/SPEC-ID)
+fn extract_spec_id(entry: &GitWorktreeEntry, branch_prefix: &str) -> Option<String> {
+    // Try to extract from branch name (e.g. chant/SPEC-ID or chant/frontend/SPEC-ID)
     if let Some(ref branch) = entry.branch {
-        if let Some(spec_id) = branch.strip_prefix("chant/") {
+        if let Some(spec_id) = branch.strip_prefix(branch_prefix) {
             return Some(spec_id.to_string());
         }
     }
 
-    // Try to extract from path (/tmp/chant-SPEC-ID)
+    // Try to extract from path (/tmp/chant-SPEC-ID or /tmp/chant-project-SPEC-ID)
     if let Some(dir_name) = entry.path.file_name() {
         let name = dir_name.to_string_lossy();
         if let Some(spec_id) = name.strip_prefix("chant-") {
@@ -198,11 +198,15 @@ pub fn cmd_worktree_status() -> Result<()> {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let all_worktrees = parse_worktree_list(&stdout);
 
+    let branch_prefix = chant::config::Config::load()
+        .map(|c| c.defaults.branch_prefix.clone())
+        .unwrap_or_else(|_| "chant/".to_string());
+
     // Filter to chant-related worktrees (skip main worktree)
     let chant_worktrees: Vec<_> = all_worktrees
         .into_iter()
         .filter(|wt| {
-            // Include if path contains "chant-" or branch starts with "chant/"
+            // Include if path contains "chant-" or branch starts with configured prefix
             let path_match = wt
                 .path
                 .file_name()
@@ -211,7 +215,7 @@ pub fn cmd_worktree_status() -> Result<()> {
             let branch_match = wt
                 .branch
                 .as_ref()
-                .map(|b| b.starts_with("chant/"))
+                .map(|b| b.starts_with(branch_prefix.as_str()))
                 .unwrap_or(false);
             path_match || branch_match
         })
@@ -230,7 +234,7 @@ pub fn cmd_worktree_status() -> Result<()> {
     );
 
     for wt in &chant_worktrees {
-        let spec_id = extract_spec_id(wt);
+        let spec_id = extract_spec_id(wt, &branch_prefix);
         let spec_info = spec_id.as_ref().and_then(|id| lookup_spec(id));
 
         // Print worktree path
@@ -363,7 +367,22 @@ prunable gitdir file points to non-existent location
             prunable_reason: None,
         };
         assert_eq!(
-            extract_spec_id(&entry),
+            extract_spec_id(&entry, "chant/"),
+            Some("2026-01-27-001-abc".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_spec_id_from_branch_custom_prefix() {
+        let entry = GitWorktreeEntry {
+            path: PathBuf::from("/tmp/chant-frontend-2026-01-27-001-abc"),
+            head: "abc123".to_string(),
+            branch: Some("chant/frontend/2026-01-27-001-abc".to_string()),
+            prunable: false,
+            prunable_reason: None,
+        };
+        assert_eq!(
+            extract_spec_id(&entry, "chant/frontend/"),
             Some("2026-01-27-001-abc".to_string())
         );
     }
@@ -378,7 +397,7 @@ prunable gitdir file points to non-existent location
             prunable_reason: None,
         };
         assert_eq!(
-            extract_spec_id(&entry),
+            extract_spec_id(&entry, "chant/"),
             Some("2026-01-27-001-abc".to_string())
         );
     }
@@ -392,6 +411,6 @@ prunable gitdir file points to non-existent location
             prunable: false,
             prunable_reason: None,
         };
-        assert_eq!(extract_spec_id(&entry), None);
+        assert_eq!(extract_spec_id(&entry, "chant/"), None);
     }
 }

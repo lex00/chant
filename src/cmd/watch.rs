@@ -108,8 +108,8 @@ struct WorktreeInfo {
     spec_id: String,
 }
 
-/// Find all active worktrees with chant/* branches
-fn find_active_worktrees() -> Result<Vec<WorktreeInfo>> {
+/// Find all active worktrees with branches matching the given prefix
+fn find_active_worktrees(branch_prefix: &str) -> Result<Vec<WorktreeInfo>> {
     // Get worktree list from git
     let output = Command::new("git")
         .args(["worktree", "list", "--porcelain"])
@@ -130,8 +130,8 @@ fn find_active_worktrees() -> Result<Vec<WorktreeInfo>> {
         if line.starts_with("worktree ") {
             // Save previous entry if it's a chant worktree
             if let (Some(path), Some(branch)) = (current_path.take(), current_branch.take()) {
-                if branch.starts_with("chant/") {
-                    if let Some(spec_id) = branch.strip_prefix("chant/") {
+                if branch.starts_with(branch_prefix) {
+                    if let Some(spec_id) = branch.strip_prefix(branch_prefix) {
                         worktrees.push(WorktreeInfo {
                             path,
                             spec_id: spec_id.to_string(),
@@ -153,8 +153,8 @@ fn find_active_worktrees() -> Result<Vec<WorktreeInfo>> {
 
     // Don't forget the last entry
     if let (Some(path), Some(branch)) = (current_path, current_branch) {
-        if branch.starts_with("chant/") {
-            if let Some(spec_id) = branch.strip_prefix("chant/") {
+        if branch.starts_with(branch_prefix) {
+            if let Some(spec_id) = branch.strip_prefix(branch_prefix) {
                 worktrees.push(WorktreeInfo {
                     path,
                     spec_id: spec_id.to_string(),
@@ -322,12 +322,12 @@ pub fn is_watch_running() -> bool {
 /// - Orphaned worktrees (no status file, >1 day old): Cleanup
 ///
 /// Returns the number of recovery actions taken
-fn run_startup_recovery(logger: &mut WatchLogger, dry_run: bool) -> Result<usize> {
+fn run_startup_recovery(logger: &mut WatchLogger, dry_run: bool, branch_prefix: &str) -> Result<usize> {
     let mut actions = 0;
     let now = chrono::Utc::now();
 
     // Find all active worktrees
-    let active_worktrees = find_active_worktrees()?;
+    let active_worktrees = find_active_worktrees(branch_prefix)?;
 
     for worktree in &active_worktrees {
         let spec_id = &worktree.spec_id;
@@ -540,7 +540,7 @@ pub fn run_watch(once: bool, dry_run: bool, poll_interval: Option<u64>) -> Resul
 
     // Run startup recovery
     logger.log_event("Running startup recovery...")?;
-    match run_startup_recovery(&mut logger, dry_run) {
+    match run_startup_recovery(&mut logger, dry_run, &config.defaults.branch_prefix) {
         Ok(actions) => {
             if actions > 0 {
                 logger.log_event(&format!(
@@ -587,7 +587,7 @@ pub fn run_watch(once: bool, dry_run: bool, poll_interval: Option<u64>) -> Resul
             .collect();
 
         // Discover active worktrees
-        let active_worktrees = match find_active_worktrees() {
+        let active_worktrees = match find_active_worktrees(&config.defaults.branch_prefix) {
             Ok(worktrees) => worktrees,
             Err(e) => {
                 logger.log_event(&format!(
