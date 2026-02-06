@@ -1231,6 +1231,16 @@ fn parse_provider_string(s: &str) -> Option<&'static str> {
     }
 }
 
+/// Infer provider from agent names if any agent name matches a known provider
+fn infer_provider_from_agents(agents: &[String]) -> Option<String> {
+    for agent in agents {
+        if let Some(provider) = parse_provider_string(agent) {
+            return Some(provider.to_string());
+        }
+    }
+    None
+}
+
 /// Result of writing an agent config file
 #[derive(Debug)]
 enum AgentFileResult {
@@ -2175,7 +2185,7 @@ fn cmd_init(
         let project_name = name
             .unwrap_or_else(|| detect_project_name().unwrap_or_else(|| "my-project".to_string()));
 
-        // Validate provider if specified
+        // Validate provider if specified, otherwise infer from agent
         let validated_provider = if let Some(ref p) = provider {
             let normalized = parse_provider_string(p).ok_or_else(|| {
                 anyhow::anyhow!(
@@ -2185,7 +2195,8 @@ fn cmd_init(
             })?;
             Some(normalized.to_string())
         } else {
-            None
+            // Infer provider from agent if no explicit provider given
+            infer_provider_from_agents(&agents)
         };
 
         // Check if we should configure kirocli in direct mode
