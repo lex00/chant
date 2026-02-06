@@ -94,9 +94,17 @@ deps:
     @echo "Install clippy: rustup component add clippy"
     @echo "Install llvm-cov: cargo install cargo-llvm-cov"
 
-# Install chant locally
+# Install chant locally (code signs on macOS)
 install:
+    #!/usr/bin/env bash
+    set -e
     ~/.cargo/bin/cargo install --path .
+    if [[ "$(uname)" == "Darwin" ]]; then
+        CHANT_BIN="${HOME}/.cargo/bin/chant"
+        if [[ -f "$CHANT_BIN" ]]; then
+            codesign -f -s - "$CHANT_BIN" && echo "✓ Code signed $CHANT_BIN"
+        fi
+    fi
 
 # Build and run chant with arguments
 chant *ARGS:
