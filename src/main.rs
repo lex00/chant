@@ -2466,11 +2466,7 @@ Project initialized on {}.
                 let claude_settings_path = claude_dir.join("settings.json");
                 if !claude_settings_path.exists() || force_overwrite {
                     if let Err(e) = std::fs::create_dir_all(&claude_dir) {
-                        eprintln!(
-                            "{} Could not create .claude directory: {}",
-                            "•".yellow(),
-                            e
-                        );
+                        eprintln!("{} Could not create .claude directory: {}", "•".yellow(), e);
                     } else {
                         // Get absolute path for cwd
                         let project_cwd = std::env::current_dir()
@@ -2511,8 +2507,8 @@ Project initialized on {}.
                                 .output();
                             if let Ok(output) = exclude_output {
                                 if output.status.success() {
-                                    if let Ok(git_dir) =
-                                        String::from_utf8(output.stdout).map(|s| s.trim().to_string())
+                                    if let Ok(git_dir) = String::from_utf8(output.stdout)
+                                        .map(|s| s.trim().to_string())
                                     {
                                         let exclude_path =
                                             PathBuf::from(&git_dir).join("info/exclude");
@@ -2533,7 +2529,8 @@ Project initialized on {}.
                                                     exclude_content.push('\n');
                                                 }
                                                 exclude_content.push_str(".claude/\n");
-                                                let _ = std::fs::write(&exclude_path, exclude_content);
+                                                let _ =
+                                                    std::fs::write(&exclude_path, exclude_content);
                                             }
                                         }
                                     }
