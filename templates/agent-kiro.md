@@ -21,58 +21,39 @@ All work in this project follows Chant specifications:
 3. Mark checkboxes when complete: `- [x]`
 4. Reference spec ID in commits: `chant(SPEC-ID): description`
 
-### 2. Use `just` for All Development
+### 2. Use Project Build Tools
 
-All development commands use the `just` wrapper:
+Use the project's build tools and commands as appropriate for the language and framework:
 
-```bash
-just build     # Build the project
-just test      # Run tests
-just lint      # Run linter (clippy)
-just fmt       # Format code
-just check     # Full check: format, lint, test
-just all       # Full check and build
-```
+- Run tests using the project's test runner
+- Use the project's linter or formatter if configured
+- Follow any build or development scripts defined in the project
 
-**Never run these directly:**
-```bash
-cargo build
-cargo test
-cargo run
-./target/debug/chant
-./target/release/chant
-```
+Common patterns:
+- Node.js: `npm test`, `npm run lint`, `npm run build`
+- Python: `pytest`, `pylint`, `black`
+- Ruby: `rake test`, `rubocop`
+- Go: `go test`, `go vet`, `gofmt`
+- Rust: `cargo test`, `cargo clippy`, `cargo fmt`
 
-Why? The `just` wrapper ensures:
-- Automatic rebuilds when source changes
-- Always running the latest binary
-- Consistent behavior across the team
-
-### 3. Environment Variables
-
-Configure these for optimal Kiro integration:
-
-```bash
-# Rust tooling
-export RUST_LOG=info
-```
-
-### 4. Code Quality Standards
+### 3. Code Quality Standards
 
 Every implementation must:
 
-1. **Pass all tests**: `just test` must succeed
-2. **Pass linting**: `just lint` must have zero errors
-3. **Be formatted**: `just fmt` applied to all changes
+1. **Pass all tests**: Run the project's test suite
+2. **Pass linting**: Use the project's linter if available
+3. **Be formatted**: Apply the project's formatter if available
 4. **Be minimal**: Only modify files in the spec
-5. **Have tests**: Write tests validating acceptance criteria
+5. **Have tests**: Write tests validating acceptance criteria where applicable
 
 ## Workflow with Kiro
 
 ### Step 1: Understand the Spec
 
+View the spec using the chant CLI:
+
 ```bash
-just chant show <spec-id>
+chant show <spec-id>
 ```
 
 Review:
@@ -88,25 +69,25 @@ Review:
 3. Implement changes following spec requirements
 4. Write tests alongside implementation
 
-### Step 2a: Parallel Execution (if working with multiple specs)
-
-For multiple related specs, execute them in parallel:
-```bash
-just chant work --parallel
-```
-
-Then merge with automatic conflict resolution:
-```bash
-just chant merge --all --rebase --auto
-```
-
 ### Step 3: Validate
 
+Run the project's quality checks:
+
 ```bash
-just test      # Run all tests
-just lint      # Check linting
-just fmt       # Format code
-just check     # All of above
+# Run tests (use your project's test command)
+npm test          # Node.js example
+pytest            # Python example
+cargo test        # Rust example
+
+# Run linter (if available)
+npm run lint      # Node.js example
+pylint .          # Python example
+cargo clippy      # Rust example
+
+# Format code (if available)
+npm run format    # Node.js example
+black .           # Python example
+cargo fmt         # Rust example
 ```
 
 Fix any issues before proceeding.
@@ -124,9 +105,9 @@ Fix any issues before proceeding.
 ### DO
 
 - Read code before suggesting changes
-- Follow existing Rust patterns
+- Follow existing patterns and conventions in the codebase
 - Write focused, minimal implementations
-- Use `just` commands exclusively
+- Use the project's build tools and commands
 - Validate with tests before committing
 - Add comments only where logic is unclear
 
@@ -135,27 +116,18 @@ Fix any issues before proceeding.
 - Edit files outside the spec system
 - Make unrelated improvements or refactoring
 - Skip tests or linting
-- Run cargo commands directly
-- Commit without running `just check`
+- Commit without validating your changes
 - Add unnecessary dependencies or features
 
-## Key Commands Reference
+## Key Chant Commands Reference
 
 | Purpose | Command |
 |---------|---------|
-| View spec | `just chant show <spec-id>` |
-| List all specs | `just chant list` |
-| Search specs | `just chant search` |
-| Execute spec | `just chant work <spec-id>` |
-| Execute parallel | `just chant work --parallel` |
-| Merge specs | `just chant merge --all --rebase --auto` |
-| Run tests | `just test` |
-| Check code quality | `just lint` |
-| Auto-format code | `just fmt` |
-| Full validation | `just check` |
-| Build binary | `just build` |
-| Show status | `just chant status` |
-| Export specs | `just chant export` |
+| View spec | `chant show <spec-id>` |
+| List all specs | `chant list` |
+| Search specs | `chant search` |
+| Show status | `chant status` |
+| Create new spec | `chant add "<description>"` |
 
 ## Common Patterns in Chant
 
@@ -193,7 +165,7 @@ target_files:
 
 Work with Kiro by:
 1. Following specs strictly
-2. Using `just` for all commands
+2. Using the project's build tools and commands
 3. Writing tests and validating quality
 4. Committing with spec references
 5. Keeping changes minimal and focused
