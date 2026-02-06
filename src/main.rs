@@ -3336,12 +3336,16 @@ mod tests {
                 .path()
                 .join(".claude/skills/chant/SKILL.md")
                 .exists());
-            assert!(temp_dir.path().join(".kiro/skills/chant/SKILL.md").exists());
+            assert!(temp_dir
+                .path()
+                .join(".kiro/skills/chant/SKILL.md")
+                .exists());
 
             // Verify skill content has proper frontmatter
-            let skill =
-                std::fs::read_to_string(temp_dir.path().join(".claude/skills/chant/SKILL.md"))
-                    .unwrap();
+            let skill = std::fs::read_to_string(
+                temp_dir.path().join(".claude/skills/chant/SKILL.md"),
+            )
+            .unwrap();
             assert!(skill.contains("name: chant"));
             assert!(skill.contains("description:"));
 
@@ -3384,7 +3388,10 @@ mod tests {
             );
             assert!(result2.is_ok());
             assert!(temp_dir.path().join(".kiro/rules.md").exists());
-            assert!(temp_dir.path().join(".kiro/skills/chant/SKILL.md").exists());
+            assert!(temp_dir
+                .path()
+                .join(".kiro/skills/chant/SKILL.md")
+                .exists());
 
             let _ = std::env::set_current_dir(orig_dir);
         }
