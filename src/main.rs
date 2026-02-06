@@ -2460,7 +2460,90 @@ Project initialized on {}.
                     }
                 }
 
-                // Also create project-local .mcp.json as reference
+                // Create project-local .claude/settings.json with cwd set
+                // This ensures the MCP server runs from the correct project directory
+                let claude_dir = PathBuf::from(".claude");
+                let claude_settings_path = claude_dir.join("settings.json");
+                if !claude_settings_path.exists() || force_overwrite {
+                    if let Err(e) = std::fs::create_dir_all(&claude_dir) {
+                        eprintln!(
+                            "{} Could not create .claude directory: {}",
+                            "•".yellow(),
+                            e
+                        );
+                    } else {
+                        // Get absolute path for cwd
+                        let project_cwd = std::env::current_dir()
+                            .map(|p| p.display().to_string())
+                            .unwrap_or_else(|_| ".".to_string());
+
+                        let claude_settings = format!(
+                            r#"{{
+  "mcpServers": {{
+    "chant": {{
+      "type": "stdio",
+      "command": "chant",
+      "args": ["mcp"],
+      "cwd": "{}"
+    }}
+  }}
+}}
+"#,
+                            project_cwd
+                        );
+                        if let Err(e) = std::fs::write(&claude_settings_path, claude_settings) {
+                            eprintln!(
+                                "{} Could not create {}: {}",
+                                "•".yellow(),
+                                claude_settings_path.display(),
+                                e
+                            );
+                        } else {
+                            println!(
+                                "{} {} (project-local MCP config)",
+                                "Created".green(),
+                                claude_settings_path.display()
+                            );
+
+                            // Add .claude/ to git exclude (contains machine-specific paths)
+                            let exclude_output = std::process::Command::new("git")
+                                .args(["rev-parse", "--git-common-dir"])
+                                .output();
+                            if let Ok(output) = exclude_output {
+                                if output.status.success() {
+                                    if let Ok(git_dir) =
+                                        String::from_utf8(output.stdout).map(|s| s.trim().to_string())
+                                    {
+                                        let exclude_path =
+                                            PathBuf::from(&git_dir).join("info/exclude");
+                                        if let Ok(mut exclude_content) =
+                                            std::fs::read_to_string(&exclude_path)
+                                                .or_else(|_| Ok::<_, std::io::Error>(String::new()))
+                                        {
+                                            if !exclude_content.contains(".claude/")
+                                                && !exclude_content.contains(".claude")
+                                            {
+                                                // Create info directory if needed
+                                                if let Some(parent) = exclude_path.parent() {
+                                                    let _ = std::fs::create_dir_all(parent);
+                                                }
+                                                if !exclude_content.ends_with('\n')
+                                                    && !exclude_content.is_empty()
+                                                {
+                                                    exclude_content.push('\n');
+                                                }
+                                                exclude_content.push_str(".claude/\n");
+                                                let _ = std::fs::write(&exclude_path, exclude_content);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Also create project-local .mcp.json as reference (legacy)
                 let mcp_path = PathBuf::from(".mcp.json");
                 if !mcp_path.exists() || force_overwrite {
                     let mcp_config = r#"{
@@ -2480,12 +2563,6 @@ Project initialized on {}.
                             "•".yellow(),
                             mcp_path.display(),
                             e
-                        );
-                    } else {
-                        println!(
-                            "{} {} (reference copy)",
-                            "Created".green(),
-                            mcp_path.display()
                         );
                     }
                 }
