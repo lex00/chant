@@ -1385,6 +1385,21 @@ fn handle_agent_update(chant_dir: &Path, agents: &[String], force_overwrite: boo
         }
     }
 
+    // Write chant skill to each provider's skills directory (Agent Skills open standard)
+    let skill_content = templates::get_chant_skill();
+    for provider in &parsed_agents {
+        if let Some(skills_dir) = provider.skills_dir() {
+            let skill_dir = PathBuf::from(skills_dir).join("chant");
+            let skill_path = skill_dir.join("SKILL.md");
+
+            if !skill_path.exists() || force_overwrite {
+                std::fs::create_dir_all(&skill_dir)?;
+                std::fs::write(&skill_path, skill_content)?;
+                created_agents.push((skill_path, "skill"));
+            }
+        }
+    }
+
     // Report results
     for (target_path, _) in &created_agents {
         println!("{} {}", "Created".green(), target_path.display());
@@ -3287,6 +3302,96 @@ mod tests {
             );
             assert!(result2.is_ok());
             assert!(temp_dir.path().join("CLAUDE.md").exists());
+            // Agent-only update should also create skill
+            assert!(temp_dir
+                .path()
+                .join(".claude/skills/chant/SKILL.md")
+                .exists());
+
+            let _ = std::env::set_current_dir(orig_dir);
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_init_creates_skill_for_each_provider() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let orig_dir = std::env::current_dir().unwrap();
+
+        if std::env::set_current_dir(&temp_dir).is_ok() {
+            let result = cmd_init(
+                None,
+                Some("skill-test".to_string()),
+                false,
+                false,
+                false,
+                vec!["claude".to_string(), "kiro".to_string()],
+                None,
+                None,
+                false,
+            );
+
+            assert!(result.is_ok());
+            assert!(temp_dir
+                .path()
+                .join(".claude/skills/chant/SKILL.md")
+                .exists());
+            assert!(temp_dir
+                .path()
+                .join(".kiro/skills/chant/SKILL.md")
+                .exists());
+
+            // Verify skill content has proper frontmatter
+            let skill = std::fs::read_to_string(
+                temp_dir.path().join(".claude/skills/chant/SKILL.md"),
+            )
+            .unwrap();
+            assert!(skill.contains("name: chant"));
+            assert!(skill.contains("description:"));
+
+            let _ = std::env::set_current_dir(orig_dir);
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_init_agent_only_update_creates_kiro_skill() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let orig_dir = std::env::current_dir().unwrap();
+
+        if std::env::set_current_dir(&temp_dir).is_ok() {
+            // First init without agent
+            let result1 = cmd_init(
+                None,
+                Some("test".to_string()),
+                false,
+                false,
+                false,
+                vec![],
+                None,
+                None,
+                false,
+            );
+            assert!(result1.is_ok());
+
+            // Second init with --agent kiro should create both rules and skill
+            let result2 = cmd_init(
+                None,
+                None,
+                false,
+                false,
+                false,
+                vec!["kiro".to_string()],
+                None,
+                None,
+                false,
+            );
+            assert!(result2.is_ok());
+            assert!(temp_dir.path().join(".kiro/rules.md").exists());
+            assert!(temp_dir
+                .path()
+                .join(".kiro/skills/chant/SKILL.md")
+                .exists());
 
             let _ = std::env::set_current_dir(orig_dir);
         }
