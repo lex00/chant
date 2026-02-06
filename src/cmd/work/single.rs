@@ -649,8 +649,15 @@ pub fn cmd_work(
             };
             chant::worktree::status::write_status(&status_path, &agent_status)?;
 
-            // Reload spec (it may have been modified by the agent)
-            let mut spec = spec::resolve_spec(&specs_dir, &spec.id)?;
+            // Reload spec from worktree (agent may have updated checkboxes there)
+            let worktree_spec_path = worktree_path
+                .join(".chant/specs")
+                .join(format!("{}.md", spec.id));
+            let mut spec = if worktree_spec_path.exists() {
+                spec::Spec::load(&worktree_spec_path)?
+            } else {
+                spec::resolve_spec(&specs_dir, &spec.id)?
+            };
 
             // Auto-finalize logic after agent exits:
             // 1. Check if agent made a commit (indicates work was done)
