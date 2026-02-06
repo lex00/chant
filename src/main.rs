@@ -2457,6 +2457,21 @@ Project initialized on {}.
             }
         }
 
+        // Write chant skill to each provider's skills directory (Agent Skills open standard)
+        let skill_content = templates::get_chant_skill();
+        for provider in &parsed_agents {
+            if let Some(skills_dir) = provider.skills_dir() {
+                let skill_dir = PathBuf::from(skills_dir).join("chant");
+                let skill_path = skill_dir.join("SKILL.md");
+
+                if !skill_path.exists() || force_overwrite {
+                    std::fs::create_dir_all(&skill_dir)?;
+                    std::fs::write(&skill_path, skill_content)?;
+                    println!("{} {}", "Created".green(), skill_path.display());
+                }
+            }
+        }
+
         // Create MCP config if any provider supports it
         let mut mcp_created = false;
         for provider in &parsed_agents {

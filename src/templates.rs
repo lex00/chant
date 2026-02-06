@@ -56,6 +56,17 @@ impl AgentProvider {
             _ => None,
         }
     }
+
+    /// Get the skills directory for this provider, following the Agent Skills open standard.
+    /// Returns None if the provider doesn't support skills yet.
+    pub fn skills_dir(&self) -> Option<&'static str> {
+        match self {
+            Self::Claude => Some(".claude/skills"),
+            Self::Kiro => Some(".kiro/skills"),
+            Self::Cursor => Some(".cursor/skills"),
+            Self::Generic => None,
+        }
+    }
 }
 
 impl fmt::Display for AgentProvider {
@@ -75,6 +86,9 @@ const CLAUDE_TEMPLATE: &str = include_str!("../templates/agent-claude.md");
 const CURSOR_TEMPLATE: &str = include_str!("../templates/agent-cursor.md");
 const KIRO_TEMPLATE: &str = include_str!("../templates/agent-kiro.md");
 const GENERIC_TEMPLATE: &str = include_str!("../templates/agent-generic.md");
+
+/// Chant skill template (Agent Skills open standard format)
+const CHANT_SKILL: &str = include_str!("../templates/skill-chant.md");
 
 /// Compact chant section for injection into existing CLAUDE.md files
 const CHANT_SECTION: &str = include_str!("../templates/chant-section.md");
@@ -148,6 +162,11 @@ pub fn parse_agent_providers(agent_specs: &[String]) -> Result<Vec<AgentProvider
     let mut result: Vec<_> = providers.into_iter().collect();
     result.sort_by_key(|p| p.as_str());
     Ok(result)
+}
+
+/// Get the chant skill template content (Agent Skills open standard format)
+pub fn get_chant_skill() -> &'static str {
+    CHANT_SKILL
 }
 
 /// Get the compact chant section for injection into existing files
@@ -259,6 +278,22 @@ mod tests {
     fn test_get_template_invalid() {
         assert!(get_template("invalid-provider").is_err());
         assert!(get_template("python").is_err());
+    }
+
+    #[test]
+    fn test_skills_dir() {
+        assert_eq!(AgentProvider::Claude.skills_dir(), Some(".claude/skills"));
+        assert_eq!(AgentProvider::Kiro.skills_dir(), Some(".kiro/skills"));
+        assert_eq!(AgentProvider::Cursor.skills_dir(), Some(".cursor/skills"));
+        assert_eq!(AgentProvider::Generic.skills_dir(), None);
+    }
+
+    #[test]
+    fn test_chant_skill_template() {
+        let skill = get_chant_skill();
+        assert!(skill.contains("name: chant"));
+        assert!(skill.contains("description:"));
+        assert!(skill.contains("## Chant Workflow"));
     }
 
     #[test]
