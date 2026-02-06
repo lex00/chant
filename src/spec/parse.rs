@@ -318,6 +318,68 @@ impl Spec {
         }
     }
 
+    /// Auto-check all acceptance criteria checkboxes in the spec body.
+    /// Replaces all `- [ ]` with `- [x]` in the Acceptance Criteria section.
+    /// Returns true if any checkboxes were checked, false otherwise.
+    pub fn auto_check_acceptance_criteria(&mut self) -> bool {
+        let acceptance_criteria_marker = "## Acceptance Criteria";
+        let mut in_code_fence = false;
+        let mut last_ac_line: Option<usize> = None;
+
+        // Find the last AC heading outside code fences
+        for (line_num, line) in self.body.lines().enumerate() {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("```") {
+                in_code_fence = !in_code_fence;
+                continue;
+            }
+            if !in_code_fence && trimmed.starts_with(acceptance_criteria_marker) {
+                last_ac_line = Some(line_num);
+            }
+        }
+
+        let Some(ac_start) = last_ac_line else {
+            return false;
+        };
+
+        // Replace unchecked boxes in the AC section
+        let mut in_code_fence = false;
+        let mut in_ac_section = false;
+        let mut modified = false;
+        let mut new_body = String::new();
+
+        for (line_num, line) in self.body.lines().enumerate() {
+            let trimmed = line.trim_start();
+
+            if trimmed.starts_with("```") {
+                in_code_fence = !in_code_fence;
+            }
+
+            if line_num == ac_start {
+                in_ac_section = true;
+            }
+
+            if in_ac_section && !in_code_fence && trimmed.starts_with("## ") && line_num != ac_start
+            {
+                in_ac_section = false;
+            }
+
+            if in_ac_section && !in_code_fence && line.contains("- [ ]") {
+                new_body.push_str(&line.replace("- [ ]", "- [x]"));
+                modified = true;
+            } else {
+                new_body.push_str(line);
+            }
+            new_body.push('\n');
+        }
+
+        if modified {
+            self.body = new_body.trim_end().to_string();
+        }
+
+        modified
+    }
+
     /// Check if this spec has acceptance criteria.
     /// Returns true if the spec body contains an "## Acceptance Criteria" section
     /// with at least one checkbox item.

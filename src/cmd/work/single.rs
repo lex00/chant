@@ -705,31 +705,37 @@ pub fn cmd_work(
             // Run lint on the spec to check acceptance criteria and get warnings
             let lint_result = spec_cmd::lint_specific_specs(&specs_dir, &[spec.id.clone()])?;
 
-            // Check if all acceptance criteria are checked
-            let unchecked_count = spec.count_unchecked_checkboxes();
-            if unchecked_count > 0 {
-                println!(
-                    "\n{} Found {} unchecked acceptance {}.",
-                    "⚠".yellow(),
-                    unchecked_count,
-                    if unchecked_count == 1 {
-                        "criterion"
-                    } else {
-                        "criteria"
+            // Auto-check acceptance criteria if not skipped
+            if !skip_criteria {
+                let unchecked_count_before = spec.count_unchecked_checkboxes();
+                if unchecked_count_before > 0 {
+                    println!(
+                        "\n{} Found {} unchecked acceptance {}. Auto-checking...",
+                        "→".cyan(),
+                        unchecked_count_before,
+                        if unchecked_count_before == 1 {
+                            "criterion"
+                        } else {
+                            "criteria"
+                        }
+                    );
+
+                    // Auto-check all unchecked criteria
+                    let modified = spec.auto_check_acceptance_criteria();
+                    if modified {
+                        spec.save(&spec_path)?;
+                        println!(
+                            "{} Auto-checked {} acceptance {}",
+                            "✓".green(),
+                            unchecked_count_before,
+                            if unchecked_count_before == 1 {
+                                "criterion"
+                            } else {
+                                "criteria"
+                            }
+                        );
                     }
-                );
-
-                // Show which criteria are unchecked
-                println!("Please check off all acceptance criteria before completing.");
-                println!("Use {} to skip this validation.", "--skip-criteria".cyan());
-
-                // Mark as failed since we can't complete with unchecked items
-                spec.frontmatter.status = SpecStatus::Failed;
-                spec.save(&spec_path)?;
-                anyhow::bail!(
-                    "Cannot auto-finalize spec with {} unchecked acceptance criteria",
-                    unchecked_count
-                );
+                }
             }
 
             // Show lint warnings if any (but allow finalization if criteria are checked)
