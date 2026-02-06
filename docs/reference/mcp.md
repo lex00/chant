@@ -91,7 +91,7 @@ MCP provides a standardized way to expose tools to AI agents.
 
 ## Tools
 
-The MCP server exposes 21 tools organized into query (read-only) and mutating categories.
+The MCP server exposes 23 tools organized into query (read-only) and mutating categories.
 
 ### Query Tools (read-only)
 
@@ -104,6 +104,7 @@ The MCP server exposes 21 tools organized into query (read-only) and mutating ca
 | `chant_log` | Read execution log for a spec | `id` (required), `lines` (optional, default: 100), `offset` (optional), `since` (optional, ISO timestamp) |
 | `chant_search` | Search specs by title and body content | `query` (required), `status` (optional) |
 | `chant_diagnose` | Diagnose issues with a spec | `id` (required) |
+| `chant_lint` | Lint specs for quality issues | `id` (optional, lints all if not provided) |
 | `chant_verify` | Verify a spec meets its acceptance criteria | `id` (required) |
 
 ### Mutating Tools
@@ -113,16 +114,18 @@ The MCP server exposes 21 tools organized into query (read-only) and mutating ca
 | `chant_spec_update` | Update spec status/output | `id` (required), `status`, `output` (optional) |
 | `chant_add` | Create a new spec | `description` (required), `prompt` (optional) |
 | `chant_finalize` | Mark a spec as completed | `id` (required) |
-| `chant_resume` | Reset a failed spec to pending | `id` (required) |
+| `chant_reset` | Reset a failed spec to pending | `id` (required) |
+| `chant_resume` | *(deprecated, use `chant_reset`)* Reset a failed spec to pending | `id` (required) |
 | `chant_cancel` | Cancel a spec | `id` (required) |
 | `chant_archive` | Move a completed spec to archive | `id` (required) |
-| `chant_work_start` | Start working on a spec asynchronously | `id` (required), `chain` (optional), `parallel` (optional) |
+| `chant_work_start` | Start working on a spec asynchronously | `id` (required), `chain`, `parallel`, `skip_criteria` (optional) |
 | `chant_work_list` | List running work processes | `process_id` (optional), `include_completed` (optional) |
 | `chant_pause` | Pause a running work process for a spec | `id` (required) |
 | `chant_takeover` | Take over a running spec, stopping the agent and analyzing progress | `id` (required), `force` (optional) |
 | `chant_watch_status` | Get watch status and active worktrees | (none) |
 | `chant_watch_start` | Start watch in background if not running | (none) |
 | `chant_watch_stop` | Stop running watch process | (none) |
+| `chant_split` | Split a complex spec into smaller member specs | `id` (required), `force`, `recursive`, `max_depth` (optional) |
 
 ### chant_spec_list
 
@@ -623,6 +626,67 @@ Verify a spec meets its acceptance criteria.
 }
 ```
 
+### chant_lint
+
+Lint specs to check for quality issues (complexity, missing criteria, etc.).
+
+**Parameters:**
+- `id` (optional): Spec ID to lint. If not provided, lints all specs.
+
+**Example Request (single spec):**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "chant_lint",
+    "arguments": {
+      "id": "001"
+    }
+  },
+  "id": 1
+}
+```
+
+**Example Request (all specs):**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "chant_lint",
+    "arguments": {}
+  },
+  "id": 1
+}
+```
+
+### chant_split
+
+Split a complex spec into smaller member specs using AI analysis.
+
+**Parameters:**
+- `id` (required): Spec ID (full or partial match)
+- `force` (optional, boolean): Skip confirmation prompts
+- `recursive` (optional, boolean): Recursively split member specs that are still too complex
+- `max_depth` (optional, integer): Maximum recursion depth (default: 3)
+
+**Example Request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "chant_split",
+    "arguments": {
+      "id": "001",
+      "force": true
+    }
+  },
+  "id": 1
+}
+```
+
 ### chant_work_list
 
 List running work processes.
@@ -706,6 +770,7 @@ Start working on a spec asynchronously (spawns background process and returns im
 - `id` (required): Spec ID (full or partial match)
 - `chain` (optional, boolean): Continue to next ready spec after completion
 - `parallel` (optional, integer): Number of parallel workers (requires multiple ready specs)
+- `skip_criteria` (optional, boolean): Skip acceptance criteria validation before starting work
 
 **Response format:**
 ```json
@@ -1276,7 +1341,7 @@ Full JSON schemas as returned by `tools/list`. Only showing key tools; run `echo
       }
     },
     {
-      "name": "chant_resume",
+      "name": "chant_reset",
       "description": "Reset a failed spec to pending status so it can be reworked",
       "inputSchema": {
         "type": "object",
@@ -1348,6 +1413,10 @@ Full JSON schemas as returned by `tools/list`. Only showing key tools; run `echo
           "parallel": {
             "type": "integer",
             "description": "Number of parallel workers (requires multiple ready specs)"
+          },
+          "skip_criteria": {
+            "type": "boolean",
+            "description": "Skip acceptance criteria validation"
           }
         },
         "required": ["id"]
@@ -1407,6 +1476,45 @@ Full JSON schemas as returned by `tools/list`. Only showing key tools; run `echo
       "inputSchema": {
         "type": "object",
         "properties": {}
+      }
+    },
+    {
+      "name": "chant_lint",
+      "description": "Lint specs to check for quality issues (complexity, missing criteria, etc.)",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Spec ID to lint (optional, lints all if not provided)"
+          }
+        }
+      }
+    },
+    {
+      "name": "chant_split",
+      "description": "Split a complex spec into smaller member specs using AI analysis",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Spec ID (full or partial)"
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Skip confirmation prompts"
+          },
+          "recursive": {
+            "type": "boolean",
+            "description": "Recursively split member specs that are still too complex"
+          },
+          "max_depth": {
+            "type": "integer",
+            "description": "Maximum recursion depth (default: 3)"
+          }
+        },
+        "required": ["id"]
       }
     }
   ]

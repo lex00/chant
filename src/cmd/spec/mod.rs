@@ -205,7 +205,7 @@ mod tests {
     }
 
     #[test]
-    fn test_streaming_log_writer_overwrites_on_new_run() {
+    fn test_streaming_log_writer_appends_on_new_run() {
         let temp_dir = TempDir::new().unwrap();
         let base_path = temp_dir.path().to_path_buf();
 
@@ -219,7 +219,7 @@ mod tests {
             writer.write_line("Content A").unwrap();
         }
 
-        // Second run (simulating replay)
+        // Second run (appends to existing log)
         {
             let mut writer =
                 cmd::agent::StreamingLogWriter::new_at(&base_path, spec_id, prompt_name).unwrap();
@@ -230,9 +230,9 @@ mod tests {
         let log_path = base_path.join("logs").join(format!("{}.log", spec_id));
         let content = std::fs::read_to_string(&log_path).unwrap();
 
-        // Should contain only Content B
+        // Should contain both runs (append mode)
+        assert!(content.contains("Content A"));
         assert!(content.contains("Content B"));
-        assert!(!content.contains("Content A"));
     }
 
     #[test]

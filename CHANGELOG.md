@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] - 2026-02-05
+
+### Added
+
+- **Kiro CLI provider**: Added `kirocli` as a provider option with `chant init --provider kirocli` for auto-configuration of kiro-cli-chat MCP server
+- **`chant_lint` MCP tool**: Lint specs for quality issues (complexity, missing criteria) directly from MCP
+- **`chant_split` MCP tool**: Split complex specs into smaller member specs using AI analysis, with `recursive` and `max_depth` options
+- **`--template` flag for `chant add`**: Use existing templates when creating specs (e.g., `chant add --template bug-fix "Fix the login timeout"`)
+- **Progress streaming for `chant work`**: Real-time agent output during execution instead of silent-until-completion
+- **`skip_criteria` parameter for `chant_work_start`**: Skip acceptance criteria validation when starting work via MCP
+- **Full model name support**: Accept full Anthropic model IDs like `claude-sonnet-4-20250514` in addition to shorthand like `sonnet`
+- **GitHub Actions crates.io publish**: Release workflow now automatically publishes to crates.io when a new release tag is pushed
+- **Domain module**: Extracted spec validation, quality scoring, dependency resolution, and prompt building into testable domain layer with `SpecRepository` and `GitRepository` traits
+- **`InMemorySpecRepository`**: Test double for spec repository, enabling fast unit tests without filesystem
+- **Comprehensive unit tests**: Added tests for finalize validation, topological sort, cycle detection, spec validation, and quality scoring edge cases
+
+### Changed
+
+- **`chant_resume` renamed to `chant_reset`**: Better reflects the behavior (resets status to pending). `chant_resume` remains as a deprecated alias
+- **Lint validation runs before worktree creation**: `chant work` fails fast with actionable feedback if spec has quality issues, before spawning agent or creating worktree
+- **`chant init` creates `logs/` and `processes/` directories**: Prevents missing directory errors during log and process tracking
+- **`chant init` sets up merge driver by default**: No longer requires `--merge-driver` flag
+- **Complexity words lint disabled by default**: Word count threshold was triggering on well-written specs with good examples
+- **AC quality scoring simplified**: Uses count-based grading instead of complex heuristics
+- **MCP `chant_work_start` pre-validates spec quality**: Returns quality errors to agent instead of silently failing
+
+### Fixed
+
+- **Process tracking**: Uses PID files instead of log heuristics for reliable process detection; `chant_work_list` now correctly shows running processes
+- **Watch false positives**: Watch reads specs from worktree instead of main branch, preventing false "completed" reports while workers are still running
+- **Merge `--delete-branch` cleans up worktrees**: Removes worktree directories before deleting branches, handles monorepo scenarios
+- **MCP zombie processes**: Work process properly cleaned up when lint fails during MCP `chant_work_start`
+- **`chant work --force` auto-cleans**: Automatically removes existing worktree/branch before starting fresh
+- **Observability consistency**: Spec file status is single source of truth; log files created immediately when work starts; MCP reads fresh from disk
+- **Kiro CLI error handling**: Captures and displays stderr when kiro-cli-chat fails
+- **Project-local `.claude/settings.json`**: Init creates settings with correct cwd
+
 ## [0.13.11] - 2026-02-02
 
 ### Changed
