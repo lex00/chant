@@ -27,7 +27,8 @@ The wizard is the best path for new users because it:
 
 When you select Claude agent configuration, the wizard creates:
 - `.chant/` directory with config, prompts, and specs
-- `CLAUDE.md` with agent instructions
+- `CLAUDE.md` with agent instructions (rules/steering)
+- `.claude/skills/chant/SKILL.md` with chant workflow skill ([Agent Skills standard](../concepts/skills.md))
 - `.mcp.json` for MCP server integration
 
 ## Direct Configuration (for scripts/automation)
@@ -152,8 +153,10 @@ chant init --name foo      # Override detected name
 chant init --silent        # Local only, not committed
 chant init --provider claude  # Set model provider (see providers.md)
 chant init --model opus    # Set default model (opus, sonnet, haiku, or custom)
-chant init --agent claude  # Create agent configuration files
+chant init --agent claude  # Create agent config + skill files
 ```
+
+The `--agent` flag creates both rules files (always-loaded) and skills (contextually activated) per the [Agent Skills open standard](../concepts/skills.md). Provider is automatically inferred from the agent name if `--provider` is not specified.
 
 ## Silent Mode
 

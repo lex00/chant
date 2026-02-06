@@ -186,5 +186,6 @@ The key insight: **you defined the goal, the agent figured out how to achieve it
 
 - [Specs](../concepts/specs.md) - How to write effective specs
 - [Prompts](../concepts/prompts.md) - Customize agent behavior
+- [Skills](../concepts/skills.md) - Agent Skills open standard and custom skills
 - [Providers](../reference/providers.md) - Configure different AI providers
 - [MCP Tools](../reference/mcp.md) - All available MCP operations
