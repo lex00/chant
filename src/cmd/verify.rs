@@ -58,18 +58,26 @@ fn parse_verification_response(
     let mut criteria_results = Vec::new();
     let mut overall_status = VerificationStatus::Pass;
     let mut in_verification_section = false;
+    let mut in_code_fence = false;
 
     for line in response.lines() {
         let trimmed = line.trim();
 
-        // Look for the Verification Summary section
+        // Track code fence boundaries
+        if trimmed.starts_with("```") {
+            in_code_fence = !in_code_fence;
+            continue;
+        }
+
+        // Look for the Verification Summary section (can be anywhere, including inside code fences)
         if trimmed.contains("Verification Summary") {
             in_verification_section = true;
             continue;
         }
 
-        // Stop at next section (marked by ## heading)
+        // Stop at next section (marked by ## heading), but only if we're not in a code fence
         if in_verification_section
+            && !in_code_fence
             && trimmed.starts_with("##")
             && !trimmed.contains("Verification Summary")
         {
@@ -885,6 +893,35 @@ Overall status: MIXED"#;
         let response = "Some random output without verification summary";
         let result = parse_verification_response(response);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_verification_response_in_code_fence() {
+        let response = r#"Here is the verification result:
+
+```
+## Verification Summary
+
+- [x] Criterion 1: PASS
+- [ ] Criterion 2: FAIL — Missing implementation
+- [x] Criterion 3: SKIP — Requires manual testing
+
+Overall status: FAIL
+```
+
+Done."#;
+
+        let (status, criteria) = parse_verification_response(response).unwrap();
+        assert_eq!(status, VerificationStatus::Fail);
+        assert_eq!(criteria.len(), 3);
+        assert_eq!(criteria[0].status, "PASS");
+        assert_eq!(criteria[1].status, "FAIL");
+        assert_eq!(criteria[1].note, Some("Missing implementation".to_string()));
+        assert_eq!(criteria[2].status, "SKIP");
+        assert_eq!(
+            criteria[2].note,
+            Some("Requires manual testing".to_string())
+        );
     }
 
     #[test]

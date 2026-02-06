@@ -2321,9 +2321,7 @@ fn cmd_init(
     let config_path = chant_dir.join("config.md");
     if !config_path.exists() {
         // Build defaults section with optional provider and model
-        let mut defaults_lines = vec![
-            "  prompt: standard".to_string(),
-        ];
+        let mut defaults_lines = vec!["  prompt: standard".to_string()];
         if let Some(ref prov) = final_provider {
             defaults_lines.push(format!("  provider: {}", prov));
         }
