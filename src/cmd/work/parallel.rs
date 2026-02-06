@@ -675,6 +675,8 @@ pub fn cmd_work_parallel(
         let execution_state_clone = execution_state.clone();
 
         let handle = thread::spawn(move || {
+            // Note: PID will be written by invoke_agent_with_command when child process spawns
+            // We cannot write it here because the PID is not yet available
             let result = cmd::agent::invoke_agent_with_command(
                 &message,
                 &spec_id,

@@ -6,7 +6,7 @@
 //! - Diagnostic information for spec execution issues
 //! - Log file retrieval and display
 //! - Drift detection for documentation specs
-//! - Resume functionality for failed specs
+//! - Reset functionality for failed specs
 //!
 //! Note: Core spec operations (add, list, show) are in cmd::spec module
 
@@ -24,14 +24,14 @@ use chant::spec::{self, SpecStatus};
 pub mod archive;
 pub mod drift;
 pub mod merge;
-pub mod resume;
+pub mod reset;
 pub mod split;
 
 // Re-export public command functions
 pub use archive::cmd_archive;
 pub use drift::cmd_drift;
 pub use merge::cmd_merge;
-pub use resume::cmd_resume;
+pub use reset::cmd_reset;
 pub use split::cmd_split;
 
 // ============================================================================

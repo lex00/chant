@@ -163,6 +163,38 @@ pub fn resolve_spec(specs_dir: &Path, partial_id: &str) -> Result<Spec> {
     anyhow::bail!("Spec not found: {}", partial_id)
 }
 
+/// Load a spec from its worktree if it exists, otherwise from the main repo.
+///
+/// This ensures that watch sees the current state of the spec including
+/// any changes made by the agent in the worktree.
+///
+/// # Errors
+///
+/// Returns an error if the spec file is unreadable from both locations.
+fn load_spec_from_worktree_or_main(spec_id: &str) -> Result<Spec> {
+    // Check if a worktree exists for this spec
+    if let Some(worktree_path) = crate::worktree::get_active_worktree(spec_id) {
+        let worktree_spec_path = worktree_path
+            .join(".chant/specs")
+            .join(format!("{}.md", spec_id));
+
+        // Try to load from worktree first
+        if worktree_spec_path.exists() {
+            return Spec::load(&worktree_spec_path).with_context(|| {
+                format!(
+                    "Failed to read spec file from worktree: {}",
+                    worktree_spec_path.display()
+                )
+            });
+        }
+    }
+
+    // Fall back to main repo
+    let spec_path = Path::new(".chant/specs").join(format!("{}.md", spec_id));
+    Spec::load(&spec_path)
+        .with_context(|| format!("Failed to read spec file: {}", spec_path.display()))
+}
+
 /// Check if a spec is completed (ready for finalization).
 ///
 /// A spec is considered completed if:
@@ -180,10 +212,8 @@ pub fn resolve_spec(specs_dir: &Path, partial_id: &str) -> Result<Spec> {
 /// - Spec file is unreadable
 /// - Worktree is inaccessible (git status fails)
 pub fn is_completed(spec_id: &str) -> Result<bool> {
-    // Load the spec
-    let spec_path = Path::new(".chant/specs").join(format!("{}.md", spec_id));
-    let spec = Spec::load(&spec_path)
-        .with_context(|| format!("Failed to read spec file: {}", spec_path.display()))?;
+    // Load the spec from worktree if it exists, otherwise from main repo
+    let spec = load_spec_from_worktree_or_main(spec_id)?;
 
     // Only in_progress specs can be completed
     if spec.frontmatter.status != SpecStatus::InProgress {
@@ -251,10 +281,8 @@ pub(crate) fn has_success_signals(spec_id: &str) -> Result<bool> {
 /// - Spec file is unreadable
 /// - Git commands fail
 pub fn is_failed(spec_id: &str) -> Result<bool> {
-    // Load the spec
-    let spec_path = Path::new(".chant/specs").join(format!("{}.md", spec_id));
-    let spec = Spec::load(&spec_path)
-        .with_context(|| format!("Failed to read spec file: {}", spec_path.display()))?;
+    // Load the spec from worktree if it exists, otherwise from main repo
+    let spec = load_spec_from_worktree_or_main(spec_id)?;
 
     // Only in_progress specs can fail
     if spec.frontmatter.status != SpecStatus::InProgress {

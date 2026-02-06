@@ -240,8 +240,22 @@ fn handle_tools_list() -> Result<Value> {
                 }
             },
             {
-                "name": "chant_resume",
+                "name": "chant_reset",
                 "description": "Reset a failed spec to pending status so it can be reworked",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "string",
+                            "description": "Spec ID (full or partial)"
+                        }
+                    },
+                    "required": ["id"]
+                }
+            },
+            {
+                "name": "chant_resume",
+                "description": "Reset a failed spec to pending status so it can be reworked (deprecated: use 'chant_reset' instead)",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -449,7 +463,8 @@ fn handle_tools_call(params: Option<&Value>) -> Result<Value> {
         "chant_spec_update" => tool_chant_spec_update(arguments),
         "chant_add" => tool_chant_add(arguments),
         "chant_finalize" => tool_chant_finalize(arguments),
-        "chant_resume" => tool_chant_resume(arguments),
+        "chant_reset" => tool_chant_reset(arguments),
+        "chant_resume" => tool_chant_reset(arguments), // deprecated alias
         "chant_cancel" => tool_chant_cancel(arguments),
         "chant_archive" => tool_chant_archive(arguments),
         "chant_verify" => tool_chant_verify(arguments),
@@ -1812,6 +1827,86 @@ fn tool_chant_work_start(arguments: Option<&Value>) -> Result<Value> {
     };
 
     let spec_id = spec.id.clone();
+
+    // Pre-validate spec quality unless skip_criteria is true
+    // This prevents silent failures in non-interactive mode
+    if !skip_criteria {
+        use crate::config::Config;
+        use crate::scoring::{calculate_spec_score, TrafficLight};
+
+        let config = match Config::load() {
+            Ok(c) => c,
+            Err(e) => {
+                return Ok(json!({
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": format!("Failed to load config: {}", e)
+                        }
+                    ],
+                    "isError": true
+                }));
+            }
+        };
+
+        let all_specs = match load_all_specs(&specs_dir) {
+            Ok(specs) => specs,
+            Err(e) => {
+                return Ok(json!({
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": format!("Failed to load specs: {}", e)
+                        }
+                    ],
+                    "isError": true
+                }));
+            }
+        };
+
+        let quality_score = calculate_spec_score(&spec, &all_specs, &config);
+
+        if quality_score.traffic_light == TrafficLight::Refine {
+            use crate::score::traffic_light;
+
+            let suggestions = traffic_light::generate_suggestions(&quality_score);
+            let mut error_message = format!(
+                "Spec '{}' has quality issues (status: Red/Refine) that may cause problems:\n\n",
+                spec_id
+            );
+
+            error_message.push_str("Quality Assessment:\n");
+            error_message.push_str(&format!("  Complexity:    {}\n", quality_score.complexity));
+            error_message.push_str(&format!("  Confidence:    {}\n", quality_score.confidence));
+            error_message.push_str(&format!(
+                "  Splittability: {}\n",
+                quality_score.splittability
+            ));
+            error_message.push_str(&format!("  AC Quality:    {}\n", quality_score.ac_quality));
+            if let Some(iso) = quality_score.isolation {
+                error_message.push_str(&format!("  Isolation:     {}\n", iso));
+            }
+
+            if !suggestions.is_empty() {
+                error_message.push_str("\nSuggestions:\n");
+                for suggestion in &suggestions {
+                    error_message.push_str(&format!("  • {}\n", suggestion));
+                }
+            }
+
+            error_message.push_str("\nTo bypass quality checks, use skip_criteria: true\n");
+
+            return Ok(json!({
+                "content": [
+                    {
+                        "type": "text",
+                        "text": error_message
+                    }
+                ],
+                "isError": true
+            }));
+        }
+    }
 
     // Update status to in_progress before spawning agent (matches CLI behavior)
     let mut spec = spec;

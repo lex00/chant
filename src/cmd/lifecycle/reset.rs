@@ -1,4 +1,4 @@
-//! Resume functionality - resets failed specs to pending for retry
+//! Reset functionality - resets failed specs to pending for retry
 
 use anyhow::Result;
 use colored::Colorize;
@@ -7,8 +7,8 @@ use chant::spec::{self, SpecStatus};
 
 use crate::cmd;
 
-/// Resume a failed spec by resetting it to pending status
-pub fn cmd_resume(
+/// Reset a failed spec by resetting it to pending status
+pub fn cmd_reset(
     id: &str,
     work: bool,
     prompt: Option<&str>,
@@ -27,13 +27,13 @@ pub fn cmd_resume(
     {
         anyhow::bail!(
             "Spec {} is not in failed or in_progress state (current status: {:?}). \
-             Only failed or in_progress specs can be resumed.",
+             Only failed or in_progress specs can be reset.",
             spec_id,
             spec.frontmatter.status
         );
     }
 
-    println!("{} Resuming spec {}", "→".cyan(), spec_id.cyan());
+    println!("{} Resetting spec {}", "→".cyan(), spec_id.cyan());
 
     // Reset to pending
     spec.frontmatter.status = SpecStatus::Pending;

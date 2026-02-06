@@ -435,7 +435,22 @@ enum Commands {
         /// Spec ID (full or partial). If omitted, check all completed specs.
         id: Option<String>,
     },
-    /// Resume a failed spec - resets it to pending and optionally re-runs it
+    /// Reset a failed spec - resets it to pending and optionally re-runs it
+    Reset {
+        /// Spec ID (full or partial)
+        id: String,
+        /// Automatically re-execute the spec after resetting
+        #[arg(long)]
+        work: bool,
+        /// Prompt to use if --work is specified
+        #[arg(long)]
+        prompt: Option<String>,
+        /// Create a feature branch before re-executing (only with --work)
+        #[arg(long, num_args = 0..=1, require_equals = true, value_name = "PREFIX")]
+        branch: Option<String>,
+    },
+    /// Resume a failed spec - resets it to pending and optionally re-runs it (deprecated: use 'reset' instead)
+    #[command(hide = true)]
     Resume {
         /// Spec ID (full or partial)
         id: String,
@@ -1038,12 +1053,18 @@ impl cmd::dispatch::Execute for Commands {
             ),
             Commands::Diagnose { id } => cmd::lifecycle::cmd_diagnose(&id),
             Commands::Drift { id } => cmd::lifecycle::cmd_drift(id.as_deref()),
+            Commands::Reset {
+                id,
+                work,
+                prompt,
+                branch,
+            } => cmd::lifecycle::cmd_reset(&id, work, prompt.as_deref(), branch),
             Commands::Resume {
                 id,
                 work,
                 prompt,
                 branch,
-            } => cmd::lifecycle::cmd_resume(&id, work, prompt.as_deref(), branch),
+            } => cmd::lifecycle::cmd_reset(&id, work, prompt.as_deref(), branch),
             Commands::Pause { id, force } => cmd::pause::cmd_pause(&id, force),
             Commands::Takeover { id, force } => {
                 let result = cmd::takeover::cmd_takeover(&id, force)?;
@@ -2245,6 +2266,8 @@ fn cmd_init(
         // Create fresh directory structure
         std::fs::create_dir_all(chant_dir.join("specs"))?;
         std::fs::create_dir_all(chant_dir.join("prompts"))?;
+        std::fs::create_dir_all(chant_dir.join("logs"))?;
+        std::fs::create_dir_all(chant_dir.join("processes"))?;
         std::fs::create_dir_all(chant_dir.join(".locks"))?;
         std::fs::create_dir_all(chant_dir.join(".store"))?;
 
@@ -2278,6 +2301,8 @@ fn cmd_init(
     // Create directory structure (only if not already created during force_overwrite/restore)
     std::fs::create_dir_all(chant_dir.join("specs"))?;
     std::fs::create_dir_all(chant_dir.join("prompts"))?;
+    std::fs::create_dir_all(chant_dir.join("logs"))?;
+    std::fs::create_dir_all(chant_dir.join("processes"))?;
     std::fs::create_dir_all(chant_dir.join(".locks"))?;
     std::fs::create_dir_all(chant_dir.join(".store"))?;
 
