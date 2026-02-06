@@ -1362,15 +1362,58 @@ fn tool_chant_add(arguments: Option<&Value>) -> Result<Value> {
         None => String::new(),
     };
 
+    // Split description if it's longer than ~80 chars
+    let (title, body) = if description.len() > 80 {
+        // Find first sentence boundary (period followed by space or end, or newline)
+        let mut split_pos = None;
+
+        // Check for newline first
+        if let Some(newline_pos) = description.find('\n') {
+            split_pos = Some(newline_pos);
+        } else {
+            // Look for period followed by space or end of string
+            for (i, c) in description.char_indices() {
+                if c == '.' {
+                    let next_pos = i + c.len_utf8();
+                    if next_pos >= description.len() {
+                        // Period at end
+                        split_pos = Some(next_pos);
+                        break;
+                    } else if description[next_pos..].starts_with(' ') {
+                        // Period followed by space
+                        split_pos = Some(next_pos);
+                        break;
+                    }
+                }
+            }
+        }
+
+        if let Some(pos) = split_pos {
+            let title_part = description[..pos].trim();
+            let body_part = description[pos..].trim();
+            if !body_part.is_empty() {
+                (title_part.to_string(), format!("\n{}", body_part))
+            } else {
+                (description.to_string(), String::new())
+            }
+        } else {
+            // No sentence boundary found, use whole description as title
+            (description.to_string(), String::new())
+        }
+    } else {
+        // Short description, use as-is
+        (description.to_string(), String::new())
+    };
+
     let content = format!(
         r#"---
 type: code
 status: pending
 {}---
 
-# {}
+# {}{}
 "#,
-        prompt_line, description
+        prompt_line, title, body
     );
 
     std::fs::write(&filepath, content)?;
