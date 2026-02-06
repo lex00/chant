@@ -64,6 +64,33 @@ pub fn cmd_diagnose(id: &str) -> Result<()> {
     println!("Status: {}", status_str);
     println!("Location: {}", report.location.bright_black());
 
+    // Show branch if in progress (fix C: show branch in diagnose)
+    if let Some(ref branch) = spec.frontmatter.branch {
+        println!("Branch: {}", branch.bright_black());
+    }
+
+    // Show log file mtime if it exists (fix C: show log mtime in diagnose)
+    let log_path = PathBuf::from(".chant/logs").join(format!("{}.log", spec.id));
+    if log_path.exists() {
+        if let Ok(metadata) = std::fs::metadata(&log_path) {
+            if let Ok(modified) = metadata.modified() {
+                if let Ok(elapsed) = modified.elapsed() {
+                    let secs = elapsed.as_secs();
+                    let age_str = if secs < 60 {
+                        "just now".to_string()
+                    } else if secs < 3600 {
+                        format!("{} minutes ago", secs / 60)
+                    } else if secs < 86400 {
+                        format!("{} hours ago", secs / 3600)
+                    } else {
+                        format!("{} days ago", secs / 86400)
+                    };
+                    println!("Log modified: {}", age_str.bright_black());
+                }
+            }
+        }
+    }
+
     println!("\n{}:", "Checks".bold());
     for check in &report.checks {
         let icon = if check.passed {

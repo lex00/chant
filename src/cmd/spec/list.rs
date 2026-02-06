@@ -428,10 +428,14 @@ pub fn cmd_list(
                 let all_specs_clone = specs.clone();
                 specs.retain(|s| s.is_ready(&all_specs_clone));
             }
+            "in_progress" | "inprogress" => {
+                // Fix E: show in_progress based on frontmatter status
+                // The status field is the single source of truth (fix A)
+                specs.retain(|s| s.frontmatter.status == SpecStatus::InProgress);
+            }
             _ => {
                 let target_status = match status_lower.as_str() {
                     "pending" => SpecStatus::Pending,
-                    "in_progress" | "inprogress" => SpecStatus::InProgress,
                     "completed" => SpecStatus::Completed,
                     "failed" => SpecStatus::Failed,
                     "needs_attention" | "needsattention" => SpecStatus::NeedsAttention,

@@ -405,23 +405,47 @@ impl StreamingLogWriter {
 
     /// Create a new streaming log writer at the given base path
     pub fn new_at(base_path: &Path, spec_id: &str, prompt_name: &str) -> Result<Self> {
+        use std::fs::OpenOptions;
         use std::io::Write;
 
         ensure_logs_dir_at(base_path)?;
 
         let log_path = base_path.join("logs").join(format!("{}.log", spec_id));
-        let timestamp = chrono::Local::now()
-            .format("%Y-%m-%dT%H:%M:%SZ")
-            .to_string();
+        let file_exists = log_path.exists();
 
-        let mut file = std::fs::File::create(&log_path)?;
+        // If file exists, append to it. Otherwise create it.
+        let mut file = if file_exists {
+            OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&log_path)?
+        } else {
+            let timestamp = chrono::Local::now()
+                .format("%Y-%m-%dT%H:%M:%SZ")
+                .to_string();
 
-        // Write header immediately
-        writeln!(file, "# Agent Log: {}", spec_id)?;
-        writeln!(file, "# Started: {}", timestamp)?;
-        writeln!(file, "# Prompt: {}", prompt_name)?;
-        writeln!(file)?;
-        file.flush()?;
+            let mut file = std::fs::File::create(&log_path)?;
+
+            // Write header immediately for new files
+            writeln!(file, "# Agent Log: {}", spec_id)?;
+            writeln!(file, "# Started: {}", timestamp)?;
+            writeln!(file, "# Prompt: {}", prompt_name)?;
+            writeln!(file)?;
+            file.flush()?;
+
+            file
+        };
+
+        // For existing files, add a continuation marker
+        if file_exists {
+            let timestamp = chrono::Local::now()
+                .format("%Y-%m-%dT%H:%M:%SZ")
+                .to_string();
+            writeln!(file, "\n# Continued: {}", timestamp)?;
+            writeln!(file, "# Prompt: {}", prompt_name)?;
+            writeln!(file)?;
+            file.flush()?;
+        }
 
         Ok(Self { file })
     }
@@ -434,6 +458,43 @@ impl StreamingLogWriter {
         self.file.flush()?;
         Ok(())
     }
+}
+
+/// Create log file for a spec if it doesn't already exist
+/// This is called when work starts to ensure log file exists immediately
+pub fn create_log_file_if_not_exists(spec_id: &str, prompt_name: &str) -> Result<()> {
+    create_log_file_if_not_exists_at(&PathBuf::from(".chant"), spec_id, prompt_name)
+}
+
+/// Create log file for a spec at the given base path if it doesn't already exist
+pub fn create_log_file_if_not_exists_at(
+    base_path: &Path,
+    spec_id: &str,
+    prompt_name: &str,
+) -> Result<()> {
+    use std::io::Write;
+
+    ensure_logs_dir_at(base_path)?;
+
+    let log_path = base_path.join("logs").join(format!("{}.log", spec_id));
+
+    // Only create if it doesn't exist
+    if !log_path.exists() {
+        let timestamp = chrono::Local::now()
+            .format("%Y-%m-%dT%H:%M:%SZ")
+            .to_string();
+
+        let mut file = std::fs::File::create(&log_path)?;
+
+        // Write header
+        writeln!(file, "# Agent Log: {}", spec_id)?;
+        writeln!(file, "# Started: {}", timestamp)?;
+        writeln!(file, "# Prompt: {}", prompt_name)?;
+        writeln!(file)?;
+        file.flush()?;
+    }
+
+    Ok(())
 }
 
 /// Ensure the logs directory exists and is in .gitignore at the given base path

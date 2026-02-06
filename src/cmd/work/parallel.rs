@@ -504,6 +504,16 @@ pub fn cmd_work_parallel(
             continue;
         }
 
+        // Create log file immediately (fix B: create log file when work starts)
+        if let Err(e) = crate::cmd::agent::create_log_file_if_not_exists(&spec.id, spec_prompt) {
+            println!(
+                "{} [{}] Failed to create log file: {}",
+                "✗".red(),
+                spec.id,
+                e
+            );
+        }
+
         // Write agent status file: working
         let status_path = specs_dir.join(format!(".chant-status-{}.json", spec.id));
         let agent_status = chant::worktree::status::AgentStatus {

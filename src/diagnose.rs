@@ -98,7 +98,7 @@ fn check_spec_file(spec_file: &Path) -> CheckResult {
 /// Check if a log file exists and get its age.
 fn check_log_file(spec_id: &str, base_path: &Path) -> CheckResult {
     let log_file = base_path
-        .join(".chant/.store")
+        .join(".chant/logs")
         .join(format!("{}.log", spec_id));
 
     let location_hint = if base_path.to_string_lossy().contains("/tmp/chant-") {

@@ -196,6 +196,12 @@ pub fn is_completed(spec_id: &str) -> Result<bool> {
         return Ok(false);
     }
 
+    // Fix G: verify commit exists before reporting completion
+    // This prevents watch from reporting false completions
+    if !has_success_signals(spec_id)? {
+        return Ok(false);
+    }
+
     // Check if worktree is clean
     is_worktree_clean(spec_id)
 }

@@ -242,6 +242,9 @@ fn execute_single_spec_in_chain(
     spec.save(&spec_path)?;
     eprintln!("{} [chain] Set {} to InProgress", "→".cyan(), spec.id);
 
+    // Create log file immediately (fix B: create log file when work starts)
+    crate::cmd::agent::create_log_file_if_not_exists(&spec.id, &resolved_prompt_name)?;
+
     // Write agent status file: working
     let status_path = specs_dir.join(format!(".chant-status-{}.json", spec.id));
     let agent_status = chant::worktree::status::AgentStatus {

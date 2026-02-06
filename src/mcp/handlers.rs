@@ -1882,142 +1882,93 @@ fn tool_chant_work_start(arguments: Option<&Value>) -> Result<Value> {
 }
 
 fn tool_chant_work_list(arguments: Option<&Value>) -> Result<Value> {
-    let project_root =
-        find_project_root().ok_or_else(|| anyhow::anyhow!("Project root not found"))?;
+    let specs_dir = match mcp_ensure_initialized() {
+        Ok(dir) => dir,
+        Err(err_response) => return Ok(err_response),
+    };
 
-    let processes_dir = project_root.join(".chant/processes");
-
-    // Create directory if it doesn't exist
-    if !processes_dir.exists() {
-        std::fs::create_dir_all(&processes_dir)?;
-    }
-
-    // Parse optional filters
-    let filter_process_id = arguments
-        .and_then(|a| a.get("process_id"))
-        .and_then(|v| v.as_str());
+    // Fix F: make work_list more reliable by checking spec status + log files
+    // instead of relying on stale process tracking files
     let include_completed = arguments
         .and_then(|a| a.get("include_completed"))
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
-    // Read all process files
-    let entries = std::fs::read_dir(&processes_dir)?;
+    // Load all specs
+    let mut specs = load_all_specs(&specs_dir)?;
+
+    // Filter to in_progress specs
+    specs.retain(|s| s.frontmatter.status == SpecStatus::InProgress);
+
     let mut processes: Vec<Value> = Vec::new();
     let mut running = 0;
     let mut completed_count = 0;
-    let mut failed_count = 0;
 
-    for entry in entries {
-        let entry = entry?;
-        let path = entry.path();
+    let logs_dir = PathBuf::from(LOGS_DIR);
 
-        if path.extension().and_then(|s| s.to_str()) != Some("json") {
-            continue;
-        }
+    for spec in &specs {
+        let log_path = logs_dir.join(format!("{}.log", spec.id));
 
-        // Read process info
-        let content = std::fs::read_to_string(&path)?;
-        let mut process_info: Value = serde_json::from_str(&content)?;
-
-        let process_id = process_info["process_id"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
-        let spec_id = process_info["spec_id"].as_str().unwrap_or("").to_string();
-        let pid = process_info["pid"].as_u64().unwrap_or(0) as u32;
-        let started_at = process_info["started_at"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
-        let mode = process_info["mode"]
-            .as_str()
-            .unwrap_or("single")
-            .to_string();
-
-        // Apply process_id filter
-        if let Some(filter_id) = filter_process_id {
-            if !process_id.contains(filter_id) {
-                continue;
+        // Check if log file exists and has recent activity (within 5 minutes)
+        let is_running = if log_path.exists() {
+            if let Ok(metadata) = std::fs::metadata(&log_path) {
+                if let Ok(modified) = metadata.modified() {
+                    if let Ok(elapsed) = modified.elapsed() {
+                        // Consider running if log was modified within 5 minutes
+                        elapsed.as_secs() < 300
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
             }
-        }
-
-        // Check if process is still running
-        let is_running = if cfg!(unix) {
-            // Use kill -0 to check if process exists
-            Command::new("kill")
-                .args(["-0", &pid.to_string()])
-                .output()
-                .map(|output| output.status.success())
-                .unwrap_or(false)
         } else {
-            // On non-Unix, we can't reliably check, so assume running
+            // No log file yet - spec may have just started
             true
         };
 
-        let status = if is_running {
+        let status_name = if is_running {
             running += 1;
             "running"
         } else {
-            // Check if spec is completed or failed
-            let specs_dir = match mcp_ensure_initialized() {
-                Ok(dir) => dir,
-                Err(_) => {
-                    completed_count += 1;
-                    process_info["status"] = json!("completed");
-                    process_info["completed_at"] = json!(chrono::Local::now().to_rfc3339());
-                    processes.push(process_info);
-                    continue;
-                }
-            };
-
-            if let Ok(spec) = resolve_spec(&specs_dir, &spec_id) {
-                match spec.frontmatter.status {
-                    SpecStatus::Completed => {
-                        completed_count += 1;
-                        "completed"
-                    }
-                    SpecStatus::Failed => {
-                        failed_count += 1;
-                        "failed"
-                    }
-                    _ => {
-                        completed_count += 1;
-                        "completed"
-                    }
-                }
-            } else {
-                completed_count += 1;
-                "completed"
-            }
+            // Stale log file - spec may be stuck or completed without finalization
+            completed_count += 1;
+            "stale"
         };
 
-        // Skip completed processes if not requested
-        if !include_completed && status != "running" {
+        // Skip non-running if not including completed
+        if !include_completed && status_name != "running" {
             continue;
         }
 
-        // Add status and completed_at to process_info
-        process_info["status"] = json!(status);
-        if status != "running" {
-            process_info["completed_at"] = json!(chrono::Local::now().to_rfc3339());
-        }
+        let log_mtime = if log_path.exists() {
+            std::fs::metadata(&log_path)
+                .and_then(|m| m.modified())
+                .ok()
+                .map(|t| {
+                    chrono::DateTime::<chrono::Local>::from(t)
+                        .format("%Y-%m-%d %H:%M:%S")
+                        .to_string()
+                })
+        } else {
+            None
+        };
 
         processes.push(json!({
-            "process_id": process_id,
-            "spec_id": spec_id,
-            "pid": pid,
-            "status": status,
-            "started_at": started_at,
-            "completed_at": process_info.get("completed_at"),
-            "mode": mode
+            "spec_id": spec.id,
+            "title": spec.title,
+            "status": status_name,
+            "log_modified": log_mtime,
+            "branch": spec.frontmatter.branch
         }));
     }
 
     let summary = json!({
         "running": running,
-        "completed": completed_count,
-        "failed": failed_count
+        "stale": completed_count
     });
 
     let response = json!({
