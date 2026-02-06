@@ -72,13 +72,13 @@ Using all defaults.
 ---
 # Required
 project:
-  name: string              # Project name for templates
+  name: string              # Project name (used for worktree namespacing)
   prefix: string            # Optional: ID prefix for scale deployments
 
 # Optional - defaults shown
 defaults:
   prompt: bootstrap         # Default prompt (bootstrap for minimal API concurrency)
-  branch_prefix: "chant/"   # Worktree branch name prefix
+  branch_prefix: "chant/"   # Worktree branch name prefix (use unique prefix in monorepos)
   provider: claude          # Model provider: claude, ollama, openai
   model: null               # Model name (e.g. "claude-opus-4", "llama2")
   split_model: null         # Model for split operations (defaults to sonnet)
@@ -829,6 +829,49 @@ members:
 ```
 
 This field is automatically populated when using `chant split` or the `group` rejection action. It tracks which specs belong to a driver for status tracking and merge ordering.
+
+## Monorepo Support
+
+Chant supports multiple `.chant/` directories in a monorepo. Each subdirectory with its own `.chant/` directory is treated as an independent project.
+
+### Project Name
+
+The `project.name` field is used to namespace worktree directories in `/tmp/`. This prevents collisions when running multiple projects:
+
+```markdown
+# frontend/.chant/config.md
+---
+project:
+  name: frontend
+---
+```
+
+Worktrees will be created at `/tmp/chant-frontend-{spec-id}` instead of `/tmp/chant-{spec-id}`.
+
+### Branch Prefix
+
+The `defaults.branch_prefix` field controls branch naming. Use unique prefixes to isolate branches between projects:
+
+```markdown
+# frontend/.chant/config.md
+---
+defaults:
+  branch_prefix: "chant/frontend/"
+---
+```
+
+This creates branches like `chant/frontend/2026-02-06-001-abc` instead of `chant/2026-02-06-001-abc`.
+
+### Complete Example
+
+```
+monorepo/
+├── frontend/.chant/config.md  (project.name: frontend, branch_prefix: chant/frontend/)
+├── backend/.chant/config.md   (project.name: backend, branch_prefix: chant/backend/)
+└── infra/.chant/config.md     (project.name: infra, branch_prefix: chant/infra/)
+```
+
+See the [Monorepo Guide](../guides/monorepo.md) for detailed setup instructions, MCP configuration, and cross-project workflows.
 
 ## Precedence
 
