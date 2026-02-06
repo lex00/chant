@@ -238,12 +238,15 @@ fn merge_branch_ff_only(spec_branch: &str, dry_run: bool) -> Result<MergeAttempt
     })
 }
 
-/// Delete a branch.
+/// Delete a branch, removing associated worktrees first.
 /// Returns Ok(()) on success, or an error if deletion fails.
 pub fn delete_branch(branch_name: &str, dry_run: bool) -> Result<()> {
     if dry_run {
         return Ok(());
     }
+
+    // Remove any worktrees associated with this branch before deleting it
+    remove_worktrees_for_branch(branch_name)?;
 
     let output = Command::new("git")
         .args(["branch", "-d", branch_name])
@@ -253,6 +256,54 @@ pub fn delete_branch(branch_name: &str, dry_run: bool) -> Result<()> {
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         anyhow::bail!("Failed to delete branch {}: {}", branch_name, stderr);
+    }
+
+    Ok(())
+}
+
+/// Remove all worktrees associated with a branch.
+/// This is idempotent and won't fail if no worktrees exist.
+fn remove_worktrees_for_branch(branch_name: &str) -> Result<()> {
+    // List all worktrees
+    let output = Command::new("git")
+        .args(["worktree", "list", "--porcelain"])
+        .output()
+        .context("Failed to list worktrees")?;
+
+    if !output.status.success() {
+        // If git worktree list fails, just continue (maybe not a worktree-enabled repo)
+        return Ok(());
+    }
+
+    let worktree_list = String::from_utf8_lossy(&output.stdout);
+    let mut current_path: Option<String> = None;
+    let mut worktrees_to_remove = Vec::new();
+
+    // Parse the porcelain output to find worktrees for this branch
+    for line in worktree_list.lines() {
+        if line.starts_with("worktree ") {
+            current_path = Some(line.trim_start_matches("worktree ").to_string());
+        } else if line.starts_with("branch ") {
+            let branch = line
+                .trim_start_matches("branch ")
+                .trim_start_matches("refs/heads/");
+            if branch == branch_name {
+                if let Some(path) = current_path.take() {
+                    worktrees_to_remove.push(path);
+                }
+            }
+        }
+    }
+
+    // Remove each worktree associated with this branch
+    for path in worktrees_to_remove {
+        // Try with --force to handle any uncommitted changes
+        let _ = Command::new("git")
+            .args(["worktree", "remove", &path, "--force"])
+            .output();
+
+        // Also try to remove the directory if it still exists (in case git worktree remove failed)
+        let _ = std::fs::remove_dir_all(&path);
     }
 
     Ok(())
