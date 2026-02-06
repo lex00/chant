@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`chant work --chain` stops on failure**: Chain execution no longer advances to the next ready spec when a spec fails; prevents cascading unwanted work
+- **MCP `chant_add` splits long descriptions**: Descriptions over 80 characters are split at the first sentence boundary — first sentence becomes the title, remainder goes into the body
 - **`chant_resume` renamed to `chant_reset`**: Better reflects the behavior (resets status to pending). `chant_resume` remains as a deprecated alias
 - **Lint validation runs before worktree creation**: `chant work` fails fast with actionable feedback if spec has quality issues, before spawning agent or creating worktree
 - **`chant init` creates `logs/` and `processes/` directories**: Prevents missing directory errors during log and process tracking
@@ -41,6 +43,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Observability consistency**: Spec file status is single source of truth; log files created immediately when work starts; MCP reads fresh from disk
 - **Kiro CLI error handling**: Captures and displays stderr when kiro-cli-chat fails
 - **Project-local `.claude/settings.json`**: Init creates settings with correct cwd
+- **Finalization reads spec from worktree**: After agent exits, spec is reloaded from the worktree where checkboxes were updated, not from main branch — prevents false "unchecked criteria" failures
+- **macOS code signing for `just install`**: Local installs now auto-sign the binary on macOS, preventing `zsh: killed`
 
 ## [0.13.11] - 2026-02-02
 
