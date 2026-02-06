@@ -21,9 +21,10 @@ docs/book/
 .DS_Store
 Thumbs.db
 
-# Chant local state (if testing locally)
+# Chant local state
 .chant/state/
 .chant/logs/
 .chant/locks/
 .chant/store/
+.chant/processes/
 coverage/
