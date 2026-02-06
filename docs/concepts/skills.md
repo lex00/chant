@@ -2,142 +2,230 @@
 
 ## Overview
 
-Skills extend Claude Code with chant-specific capabilities. They provide slash commands and contextual knowledge for working with chant.
+Skills are portable instruction packages that teach AI agents how to perform specific tasks. They follow the [Agent Skills open standard](https://agentskills.io/specification) — an industry-wide format adopted by Claude Code, Kiro, Cursor, GitHub Copilot, Codex, and others.
 
-## What are Skills?
+Chant uses skills to give your IDE's agent context about your project's chant workflow, spec structure, and conventions. When you run `chant init --agent <provider>`, chant deposits a skill into the provider's skills directory so the agent automatically knows how to work with specs.
 
-Skills are markdown files that teach Claude Code about specific domains or workflows. When loaded, they add:
+## The Agent Skills Standard
 
-- **Slash commands** - New commands like `/bootstrap`, `/spec`
-- **Context** - Background knowledge about the domain
-- **Workflows** - How to accomplish common tasks
+The Agent Skills format is an open standard published at [agentskills.io](https://agentskills.io). It defines a simple, portable structure for packaging agent instructions.
 
-## Chant Skills
+### Directory Structure
 
-### Bootstrap Skill
-
-The bootstrap skill (`/bootstrap`) executes specs without the chant binary:
+Every skill is a directory containing at minimum a `SKILL.md` file:
 
 ```
-/bootstrap           # Execute next pending spec
-/bootstrap 001       # Execute specific spec
-/bootstrap --list    # List pending specs
+skill-name/
+├── SKILL.md          # Required — instructions and metadata
+├── scripts/          # Optional — executable code (Python, Bash, etc.)
+├── references/       # Optional — additional documentation
+└── assets/           # Optional — templates, schemas, static files
 ```
 
-Used during initial development before `chant work` exists.
+### SKILL.md Format
 
-### Chant Dev Skill
+The `SKILL.md` file uses YAML frontmatter followed by markdown instructions:
 
-The chant-dev skill provides context for developing chant itself:
+```yaml
+---
+name: my-skill
+description: What this skill does and when to use it.
+---
 
-- Workflow discipline (all changes through specs)
-- Execution loop: Read → Plan → Change → Verify → Commit
-- Project structure and patterns
-- CLI command reference
+## Instructions
 
-## Installing Skills
-
-Skills are loaded via Claude Code's skill system:
-
-```bash
-# In Claude Code, load a skill
-/skill add chant
+Step-by-step guidance for the agent...
 ```
 
-Or add to Claude Code configuration:
+### Required Fields
 
-```json
-{
-  "skills": ["chant"]
-}
-```
+| Field | Constraints |
+|-------|------------|
+| `name` | Max 64 chars. Lowercase letters, numbers, hyphens. Must match directory name. |
+| `description` | Max 1024 chars. Describes what the skill does and when to activate it. |
 
-## Skill Location
+### Optional Fields
 
-Skills live in `.claude/skills/` within the chant repository:
+| Field | Purpose |
+|-------|---------|
+| `license` | License name or reference to bundled file |
+| `compatibility` | Environment requirements (tools, network, etc.) |
+| `metadata` | Arbitrary key-value pairs (author, version) |
+| `allowed-tools` | Pre-approved tools the skill may use (experimental) |
 
-```
-.claude/
-└── skills/
-    ├── bootstrap/
-    │   └── SKILL.md
-    └── chant-dev/
-        └── SKILL.md
-```
+### Progressive Disclosure
+
+Skills are designed for efficient context usage:
+
+1. **Discovery** (~100 tokens): Only `name` and `description` load at startup for all skills
+2. **Activation** (< 5000 tokens): Full `SKILL.md` body loads when the agent matches a request
+3. **Resources** (as needed): Files in `scripts/`, `references/`, `assets/` load on demand
+
+This means you can have many skills installed without overwhelming the agent's context window.
+
+## Skills in Chant
+
+### How Chant Uses Skills
+
+When you run `chant init --agent <provider>`, chant creates a skill in your provider's skills directory:
+
+| Provider | Skills Directory |
+|----------|-----------------|
+| Claude Code | `.claude/skills/chant/SKILL.md` |
+| Kiro | `.kiro/skills/chant/SKILL.md` |
+| Cursor | `.cursor/skills/chant/SKILL.md` |
+
+The chant skill teaches the agent about:
+- Spec structure and lifecycle
+- How to read and execute specs
+- Commit message conventions
+- Acceptance criteria workflow
+
+Because the format is identical across providers, chant uses a single skill template that works everywhere — only the destination directory differs.
+
+### Skills vs Prompts
+
+Chant has two distinct instruction systems:
+
+| Aspect | Skills | Prompts |
+|--------|--------|---------|
+| Standard | Agent Skills (open) | Chant-specific |
+| Location | Provider's skills dir | `.chant/prompts/` |
+| Loaded by | IDE/agent at startup | `chant work` at execution time |
+| Scope | Interactive sessions | Single spec execution |
+| Purpose | General chant awareness | Specific agent behavior |
+| Examples | `chant/SKILL.md` | `standard.md`, `bugfix.md` |
+
+**Skills** give the agent ambient knowledge about chant — activated when the user mentions specs, acceptance criteria, or chant workflows during interactive sessions.
+
+**Prompts** are injected by `chant work` to control agent behavior during spec execution — they define the execution loop, constraints, and output format.
+
+### Skills vs Rules
+
+Some providers have a separate "rules" or "steering" concept (e.g., `.kiro/rules.md`, `CLAUDE.md`, `.cursorrules`). These are always-loaded project instructions that apply to every interaction.
+
+Skills differ from rules:
+- **Rules** are always loaded — every token counts against context
+- **Skills** are selectively activated — only loaded when relevant
+- **Rules** are project-wide — apply to all tasks
+- **Skills** are task-specific — activated by matching description
+
+Chant may write both: rules for essential project conventions, and skills for chant-specific workflows that only activate when needed.
+
+## Provider Skills Directories
+
+### Workspace vs Global
+
+Most providers support two skill scopes:
+
+| Scope | Location | Purpose |
+|-------|----------|---------|
+| Workspace | `.{provider}/skills/` | Project-specific skills |
+| Global | `~/.{provider}/skills/` | Personal skills across all projects |
+
+Workspace skills override global skills when names conflict.
+
+`chant init` writes workspace skills so they're scoped to the project and version-controlled with the codebase.
+
+### Per-Provider Details
+
+**Claude Code**: Skills in `.claude/skills/`. Supports slash commands, MCP tools, and the full Agent Skills spec.
+
+**Kiro**: Skills in `.kiro/skills/`. Shipped in Kiro v0.9.0. Supports progressive disclosure and auto-activation.
+
+**Cursor**: Skills support in progress. Expected at `.cursor/skills/`.
+
+**GitHub Copilot / VS Code**: Supports Agent Skills via the VS Code extensions API.
 
 ## Creating Custom Skills
 
-Skills are markdown files with a specific structure:
-
-```markdown
-# My Skill
-
-## Commands
-
-### /mycommand
-
-Description of what the command does.
-
-**Usage:**
-- `/mycommand` - Basic usage
-- `/mycommand --flag` - With options
-
-## Context
-
-Background knowledge the agent needs...
-
-## Workflows
-
-### Common Task
-
-Steps to accomplish the task...
-```
-
-## Skill vs Prompt
-
-| Aspect | Skill | Prompt |
-|--------|-------|--------|
-| Scope | Claude Code session | Single spec execution |
-| Purpose | Interactive commands | Agent behavior |
-| Loaded by | User / config | `chant work` |
-| Examples | `/bootstrap`, `/spec` | `standard.md`, `bugfix.md` |
-
-Skills are for human interaction with Claude Code. Prompts are for agent execution of specs.
-
-## Built-in Skills
-
-| Skill | Purpose | Commands |
-|-------|---------|----------|
-| `bootstrap` | Initial implementation | `/bootstrap` |
-| `chant-dev` | Developing chant | Context only |
-
-## Relationship to Chant
-
-Skills complement chant but don't replace it:
+You can create project-specific skills alongside the chant skill:
 
 ```
-┌─────────────────────────────────────────────┐
-│              Claude Code                     │
-│                                             │
-│  Skills ──────────────────────────────────┐ │
-│  (Interactive, human-facing)              │ │
-│                                           │ │
-│  ┌─────────────────────────────────────┐  │ │
-│  │           Chant CLI                  │  │ │
-│  │                                      │  │ │
-│  │  Prompts ─────────────────────────┐ │  │ │
-│  │  (Agent execution)                │ │  │ │
-│  │                                   │ │  │ │
-│  │  ┌────────────────────────────┐  │ │  │ │
-│  │  │         Spec               │  │ │  │ │
-│  │  │    (Source of truth)       │  │ │  │ │
-│  │  └────────────────────────────┘  │ │  │ │
-│  │                                   │ │  │ │
-│  └───────────────────────────────────┘ │  │ │
-│                                        │  │ │
-└────────────────────────────────────────┘──┘ │
-│                                             │
-└─────────────────────────────────────────────┘
+.claude/skills/
+├── chant/
+│   └── SKILL.md          # Created by chant init
+├── deploy/
+│   ├── SKILL.md           # Your custom deployment skill
+│   └── scripts/
+│       └── deploy.sh
+└── code-review/
+    ├── SKILL.md           # Your code review standards
+    └── references/
+        └── style-guide.md
 ```
 
-Skills help humans interact with Claude Code around chant workflows. Chant prompts control agent behavior during spec execution.
+### Skill Authoring Tips
+
+1. **Keep SKILL.md under 500 lines** — move detailed docs to `references/`
+2. **Write a good description** — this determines when the skill activates
+3. **Include keywords** — the agent matches descriptions against user requests
+4. **Be specific** — "Review pull requests for security issues and test coverage" beats "Helps with PRs"
+5. **Use scripts for automation** — put executable logic in `scripts/`, not inline
+
+### Example: Custom Skill
+
+```yaml
+---
+name: api-conventions
+description: Enforce API design conventions including REST patterns,
+  error response formats, and pagination. Use when creating or
+  modifying API endpoints.
+metadata:
+  author: my-team
+  version: "1.0"
+---
+
+## API Design Rules
+
+All endpoints must follow these conventions:
+
+### URL Structure
+- Use plural nouns: `/users`, `/orders`
+- Nest for relationships: `/users/{id}/orders`
+...
+```
+
+## Advanced: The Open Standard
+
+### Specification
+
+The full Agent Skills specification is at [agentskills.io/specification](https://agentskills.io/specification). Key design principles:
+
+- **Portability**: Same format works across all supporting agents
+- **Progressive disclosure**: Metadata loads first, instructions on activation, resources on demand
+- **Composability**: Skills are independent units that can be mixed and matched
+- **Simplicity**: A directory with a SKILL.md is a valid skill
+
+### Validation
+
+Use the reference library to validate skills:
+
+```bash
+# Install the validator
+npm install -g @agentskills/skills-ref
+
+# Validate a skill
+skills-ref validate ./my-skill
+```
+
+### Ecosystem
+
+The Agent Skills standard is supported by:
+
+- **Anthropic**: Claude Code, Claude Desktop
+- **Amazon**: Kiro
+- **Microsoft**: GitHub Copilot, VS Code
+- **OpenAI**: Codex, ChatGPT
+- **Cursor**: Cursor IDE
+- **Community**: Antigravity, OpenCode, and others
+
+Skills can be shared via GitHub repositories and imported into any supporting agent.
+
+### Resources
+
+- [Agent Skills Specification](https://agentskills.io/specification)
+- [Anthropic Skills Repository](https://github.com/anthropics/skills)
+- [Agent Skills Community](https://github.com/agentskills/agentskills)
+- [Claude Code Skills Docs](https://code.claude.com/docs/en/skills)
+- [Kiro Skills Docs](https://kiro.dev/docs/skills/)

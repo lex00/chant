@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Auto-check acceptance criteria**: Agent work now programmatically checks AC checkboxes before finalization instead of failing when agents forget — `auto_check_acceptance_criteria()` in `Spec`
+- **Provider inference from `--agent`**: `chant init --agent kiro` now automatically sets `provider: kiro` in config without needing explicit `--provider` flag
+- **Comprehensive skills documentation**: New docs page covering the Agent Skills open standard, provider integration, and skill authoring
+
+### Changed
+
+- **Kiro template rewritten**: `templates/agent-kiro.md` no longer contains chant-dev-specific justfile references; now provides generic, project-agnostic instructions with multi-language examples
+- **Verify parser handles code fences**: `chant verify` can now parse Verification Summary sections output inside code fences (triple backticks), matching how agents commonly format responses
+
+### Fixed
+
+- **Stale `branch: false` removed from init**: New projects no longer get a dead `branch: false` config key — chant is always in branch/worktree mode
+
+### Research
+
+- **Silent mode gaps identified**: Documented provider configs, `.mcp.json`, and `.gitattributes` leaking in silent mode; recommended `.git/info/exclude` approach (spec 006-6rc)
+
 ## [0.16.0] - 2026-02-05
 
 ### Added
