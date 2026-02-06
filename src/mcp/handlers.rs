@@ -1469,7 +1469,7 @@ fn tool_chant_finalize(arguments: Option<&Value>) -> Result<Value> {
     }))
 }
 
-fn tool_chant_resume(arguments: Option<&Value>) -> Result<Value> {
+fn tool_chant_reset(arguments: Option<&Value>) -> Result<Value> {
     let specs_dir = match mcp_ensure_initialized() {
         Ok(dir) => dir,
         Err(err_response) => return Ok(err_response),
@@ -1507,7 +1507,7 @@ fn tool_chant_resume(arguments: Option<&Value>) -> Result<Value> {
             "content": [
                 {
                     "type": "text",
-                    "text": format!("Spec '{}' is not in failed or in_progress state (current: {:?}). Only failed or in_progress specs can be resumed.", spec_id, spec.frontmatter.status)
+                    "text": format!("Spec '{}' is not in failed or in_progress state (current: {:?}). Only failed or in_progress specs can be reset.", spec_id, spec.frontmatter.status)
                 }
             ],
             "isError": true
@@ -1525,7 +1525,7 @@ fn tool_chant_resume(arguments: Option<&Value>) -> Result<Value> {
         "content": [
             {
                 "type": "text",
-                "text": format!("Resumed spec '{}' - reset to pending", spec_id)
+                "text": format!("Reset spec '{}' to pending", spec_id)
             }
         ]
     }))
@@ -1982,63 +1982,41 @@ fn tool_chant_work_list(arguments: Option<&Value>) -> Result<Value> {
         Err(err_response) => return Ok(err_response),
     };
 
-    // Fix F: make work_list more reliable by checking spec status + log files
-    // instead of relying on stale process tracking files
     let include_completed = arguments
         .and_then(|a| a.get("include_completed"))
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
-    // Load all specs
-    let mut specs = load_all_specs(&specs_dir)?;
+    // Use PID files to determine running processes (reliable source of truth)
+    let active_pids = crate::pid::list_active_pids()?;
 
-    // Filter to in_progress specs
-    specs.retain(|s| s.frontmatter.status == SpecStatus::InProgress);
+    // Load all specs to get metadata
+    let all_specs = load_all_specs(&specs_dir)?;
+    let spec_map: std::collections::HashMap<String, &crate::spec::Spec> =
+        all_specs.iter().map(|s| (s.id.clone(), s)).collect();
 
     let mut processes: Vec<Value> = Vec::new();
     let mut running = 0;
-    let mut completed_count = 0;
+    let mut stale_count = 0;
 
     let logs_dir = PathBuf::from(LOGS_DIR);
 
-    for spec in &specs {
-        let log_path = logs_dir.join(format!("{}.log", spec.id));
-
-        // Check if log file exists and has recent activity (within 5 minutes)
-        let is_running = if log_path.exists() {
-            if let Ok(metadata) = std::fs::metadata(&log_path) {
-                if let Ok(modified) = metadata.modified() {
-                    if let Ok(elapsed) = modified.elapsed() {
-                        // Consider running if log was modified within 5 minutes
-                        elapsed.as_secs() < 300
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
-            } else {
-                false
+    // Report processes with active PIDs
+    for (spec_id, pid, is_running) in &active_pids {
+        if !is_running {
+            stale_count += 1;
+            if !include_completed {
+                continue;
             }
         } else {
-            // No log file yet - spec may have just started
-            true
-        };
-
-        let status_name = if is_running {
             running += 1;
-            "running"
-        } else {
-            // Stale log file - spec may be stuck or completed without finalization
-            completed_count += 1;
-            "stale"
-        };
-
-        // Skip non-running if not including completed
-        if !include_completed && status_name != "running" {
-            continue;
         }
 
+        let spec = spec_map.get(spec_id);
+        let title = spec.and_then(|s| s.title.as_deref());
+        let branch = spec.and_then(|s| s.frontmatter.branch.as_deref());
+
+        let log_path = logs_dir.join(format!("{}.log", spec_id));
         let log_mtime = if log_path.exists() {
             std::fs::metadata(&log_path)
                 .and_then(|m| m.modified())
@@ -2053,17 +2031,18 @@ fn tool_chant_work_list(arguments: Option<&Value>) -> Result<Value> {
         };
 
         processes.push(json!({
-            "spec_id": spec.id,
-            "title": spec.title,
-            "status": status_name,
+            "spec_id": spec_id,
+            "title": title,
+            "pid": pid,
+            "status": if *is_running { "running" } else { "stale" },
             "log_modified": log_mtime,
-            "branch": spec.frontmatter.branch
+            "branch": branch
         }));
     }
 
     let summary = json!({
         "running": running,
-        "stale": completed_count
+        "stale": stale_count
     });
 
     let response = json!({

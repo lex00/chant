@@ -30,8 +30,8 @@ mod tests {
     fn test_handle_tools_list() {
         let result = handle_method("tools/list", None).unwrap();
         let tools = result["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 23);
-        // Query tools (8)
+        assert_eq!(tools.len(), 24); // Added chant_resume as deprecated alias
+                                     // Query tools (8)
         assert_eq!(tools[0]["name"], "chant_spec_list");
         assert_eq!(tools[1]["name"], "chant_spec_get");
         assert_eq!(tools[2]["name"], "chant_ready");
@@ -40,18 +40,19 @@ mod tests {
         assert_eq!(tools[5]["name"], "chant_search");
         assert_eq!(tools[6]["name"], "chant_diagnose");
         assert_eq!(tools[7]["name"], "chant_lint");
-        // Mutating tools (11)
+        // Mutating tools (12)
         assert_eq!(tools[8]["name"], "chant_spec_update");
         assert_eq!(tools[9]["name"], "chant_add");
         assert_eq!(tools[10]["name"], "chant_finalize");
-        assert_eq!(tools[11]["name"], "chant_resume");
-        assert_eq!(tools[12]["name"], "chant_cancel");
-        assert_eq!(tools[13]["name"], "chant_archive");
-        assert_eq!(tools[14]["name"], "chant_verify");
-        assert_eq!(tools[15]["name"], "chant_work_start");
-        assert_eq!(tools[16]["name"], "chant_work_list");
-        assert_eq!(tools[17]["name"], "chant_pause");
-        assert_eq!(tools[18]["name"], "chant_takeover");
+        assert_eq!(tools[11]["name"], "chant_reset");
+        assert_eq!(tools[12]["name"], "chant_resume"); // deprecated alias
+        assert_eq!(tools[13]["name"], "chant_cancel");
+        assert_eq!(tools[14]["name"], "chant_archive");
+        assert_eq!(tools[15]["name"], "chant_verify");
+        assert_eq!(tools[16]["name"], "chant_work_start");
+        assert_eq!(tools[17]["name"], "chant_work_list");
+        assert_eq!(tools[18]["name"], "chant_pause");
+        assert_eq!(tools[19]["name"], "chant_takeover");
     }
 
     #[test]
