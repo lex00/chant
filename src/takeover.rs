@@ -7,9 +7,11 @@ use colored::Colorize;
 use std::fs;
 use std::path::PathBuf;
 
+use crate::config::Config;
 use crate::paths::LOGS_DIR;
 use crate::pid;
 use crate::spec::{self, SpecStatus};
+use crate::worktree;
 
 /// Result of a takeover operation
 pub struct TakeoverResult {
@@ -17,6 +19,7 @@ pub struct TakeoverResult {
     pub analysis: String,
     pub log_tail: String,
     pub suggestion: String,
+    pub worktree_path: Option<String>,
 }
 
 /// Takeover a spec that is currently being worked on
@@ -77,16 +80,35 @@ pub fn cmd_takeover(id: &str, force: bool) -> Result<TakeoverResult> {
     // Generate suggestion based on spec status and analysis
     let suggestion = generate_suggestion(&spec, &analysis);
 
+    // Check for worktree path
+    let config = Config::load().ok();
+    let project_name = config.as_ref().map(|c| c.project.name.as_str());
+    let worktree_path = worktree::get_active_worktree(&spec_id, project_name);
+    let worktree_exists = worktree_path.is_some();
+    let worktree_path_str = worktree_path
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string());
+
     // Update spec status to paused if it was in_progress
     if spec.frontmatter.status == SpecStatus::InProgress {
         spec.frontmatter.status = SpecStatus::Paused;
     }
 
     // Append takeover analysis to spec body
+    let worktree_info = if let Some(ref path) = worktree_path_str {
+        format!(
+            "\n\n### Worktree Location\n\nWork should be done in the isolated worktree:\n```\ncd {}\n```\n",
+            path
+        )
+    } else {
+        "\n\n### Worktree Location\n\nWorktree no longer exists (agent may have cleaned up). If you need to continue working, recreate the worktree with `chant work <spec-id>`.\n".to_string()
+    };
+
     let takeover_section = format!(
-        "\n\n## Takeover Analysis\n\n{}\n\n### Recent Log Activity\n\n```\n{}\n```\n\n### Recommendation\n\n{}\n",
+        "\n\n## Takeover Analysis\n\n{}\n\n### Recent Log Activity\n\n```\n{}\n```\n{}\n### Recommendation\n\n{}\n",
         analysis,
         log_tail,
+        worktree_info,
         suggestion
     );
 
@@ -98,12 +120,22 @@ pub fn cmd_takeover(id: &str, force: bool) -> Result<TakeoverResult> {
         println!("  {} Status set to: paused", "•".cyan());
     }
     println!("  {} Analysis appended to spec body", "•".cyan());
+    if worktree_exists {
+        println!(
+            "  {} Worktree at: {}",
+            "•".cyan(),
+            worktree_path_str.as_ref().unwrap()
+        );
+    } else {
+        println!("  {} Worktree no longer exists", "⚠".yellow());
+    }
 
     Ok(TakeoverResult {
         spec_id,
         analysis,
         log_tail,
         suggestion,
+        worktree_path: worktree_path_str,
     })
 }
 

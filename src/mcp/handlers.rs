@@ -2277,7 +2277,8 @@ fn tool_chant_takeover(arguments: Option<&Value>) -> Result<Value> {
                 "spec_id": result.spec_id,
                 "analysis": result.analysis,
                 "log_tail": result.log_tail,
-                "suggestion": result.suggestion
+                "suggestion": result.suggestion,
+                "worktree_path": result.worktree_path
             });
 
             Ok(json!({
