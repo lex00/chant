@@ -137,13 +137,8 @@ fn execute_single_spec_in_chain(
         &validation_opts,
     )?;
 
-    let result = executor::invoke_agent_for_spec(
-        &spec,
-        &resolved_prompt_name,
-        prompts_dir,
-        config,
-        None,
-    );
+    let result =
+        executor::invoke_agent_for_spec(&spec, &resolved_prompt_name, prompts_dir, config, None);
 
     match result {
         Ok(agent_output) => {

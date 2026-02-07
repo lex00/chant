@@ -21,6 +21,7 @@ use chant::repository::spec_repository::FileSpecRepository;
 use chant::spec::{self, Spec, SpecStatus};
 use chant::worktree;
 
+use super::executor;
 use crate::cmd;
 use crate::cmd::commits::get_commits_for_spec;
 use crate::cmd::finalize::finalize_spec;
@@ -187,6 +188,60 @@ fn warn_model_override_in_parallel(config: &Config, prompt_name: Option<&str>) {
 }
 
 // ============================================================================
+// SPEC PREPARATION
+// ============================================================================
+
+/// Prepare a spec for parallel execution: set status, create worktree, assemble prompt
+#[allow(clippy::too_many_arguments)]
+fn prepare_spec_for_parallel(
+    spec: &Spec,
+    spec_prompt: &str,
+    prompt_path: &Path,
+    specs_dir: &Path,
+    prompts_dir: &Path,
+    config: &Config,
+    execution_state: &Arc<ParallelExecutionState>,
+    branch_prefix: &str,
+) -> Result<(Spec, Option<PathBuf>, String, String)> {
+    // Update spec status
+    let spec_path = specs_dir.join(format!("{}.md", spec.id));
+    let mut spec_clone = spec.clone();
+    spec_clone.set_status(SpecStatus::InProgress)?;
+    spec_clone.save(&spec_path)?;
+
+    // Create log file and agent status
+    cmd::agent::create_log_file_if_not_exists(&spec.id, spec_prompt)?;
+    let status_path = specs_dir.join(format!(".chant-status-{}.json", spec.id));
+    let agent_status = chant::worktree::status::AgentStatus {
+        spec_id: spec.id.clone(),
+        status: chant::worktree::status::AgentStatusState::Working,
+        updated_at: chrono::Utc::now().to_rfc3339(),
+        error: None,
+        commits: vec![],
+    };
+    chant::worktree::status::write_status(&status_path, &agent_status)?;
+
+    // Determine branch name and create worktree
+    let branch_name = format!("{}{}", branch_prefix, spec.id);
+    let project_name = Some(config.project.name.as_str()).filter(|n| !n.is_empty());
+    let worktree_path = worktree::create_worktree(&spec.id, &branch_name, project_name)?;
+
+    execution_state.register_worktree(&spec.id, worktree_path.clone());
+    worktree::copy_spec_to_worktree(&spec.id, &worktree_path)?;
+
+    // Assemble prompt with worktree context
+    let worktree_ctx = chant::prompt::WorktreeContext {
+        worktree_path: Some(worktree_path.clone()),
+        branch_name: Some(branch_name.clone()),
+        is_isolated: true,
+    };
+    let message =
+        chant::prompt::assemble_with_context(&spec_clone, prompt_path, config, &worktree_ctx)?;
+
+    Ok((spec_clone, Some(worktree_path), branch_name, message))
+}
+
+// ============================================================================
 // AGENT DISTRIBUTION
 // ============================================================================
 
@@ -333,6 +388,336 @@ fn setup_parallel_cleanup_handlers(state: Arc<ParallelExecutionState>) {
 }
 
 // ============================================================================
+// MERGE PHASE HANDLERS
+// ============================================================================
+
+/// Handle direct mode merges
+fn handle_direct_mode_merges(
+    results: &[ParallelResult],
+    specs_dir: &Path,
+    config: &Config,
+    no_rebase: bool,
+) -> Result<(usize, Vec<(String, bool)>)> {
+    let mut merged_count = 0;
+    let mut merge_failed = Vec::new();
+
+    for result in results {
+        if let Some(ref branch) = result.branch_name {
+            println!("[{}] Merging to main...", result.spec_id.cyan());
+            let merge_result =
+                worktree::merge_and_cleanup(branch, &config.defaults.main_branch, no_rebase);
+
+            if merge_result.success {
+                merged_count += 1;
+                println!("[{}] {} Merged to main", result.spec_id.cyan(), "✓".green());
+                if let Some(ref path) = result.worktree_path {
+                    let _ = worktree::remove_worktree(path);
+                }
+            } else {
+                merge_failed.push((result.spec_id.clone(), merge_result.has_conflict));
+                let spec_path = specs_dir.join(format!("{}.md", result.spec_id));
+                if let Ok(mut spec) = spec::resolve_spec(specs_dir, &result.spec_id) {
+                    spec.force_status(SpecStatus::NeedsAttention);
+                    let _ = spec.save(&spec_path);
+                }
+
+                let error_msg = merge_result
+                    .error
+                    .as_deref()
+                    .unwrap_or("Unknown merge error");
+                println!(
+                    "[{}] {} Merge failed (branch preserved):\n  {}\n  Next Steps:\n    1. Auto-resolve: chant merge {} --rebase --auto\n    2. Merge manually: chant merge {}\n    3. Inspect: git log {} --oneline -3",
+                    result.spec_id.cyan(),
+                    "⚠".yellow(),
+                    error_msg,
+                    result.spec_id,
+                    result.spec_id,
+                    branch
+                );
+
+                if merge_result.has_conflict {
+                    handle_merge_conflict(specs_dir, &result.spec_id, branch)?;
+                }
+            }
+        }
+    }
+
+    Ok((merged_count, merge_failed))
+}
+
+/// Handle branch mode merges
+fn handle_branch_mode_merges(
+    branches: &[(String, String)],
+    specs_dir: &Path,
+    config: &Config,
+    no_merge: bool,
+    no_rebase: bool,
+) -> Result<(usize, Vec<(String, bool)>, Vec<(String, String)>)> {
+    let mut merged_count = 0;
+    let mut failed = Vec::new();
+    let mut skipped = Vec::new();
+
+    if no_merge {
+        return Ok((0, vec![], branches.to_vec()));
+    }
+
+    if branches.is_empty() {
+        return Ok((0, vec![], vec![]));
+    }
+
+    println!(
+        "\n{} Auto-merging {} branch mode branch(es)...",
+        "→".cyan(),
+        branches.len()
+    );
+
+    for (spec_id, branch) in branches {
+        println!("[{}] Merging to main...", spec_id.cyan());
+        let merge_result =
+            worktree::merge_and_cleanup(branch, &config.defaults.main_branch, no_rebase);
+
+        if merge_result.success {
+            println!(
+                "[{}] Merge succeeded, finalizing on main...",
+                spec_id.cyan()
+            );
+
+            let finalize_result = if let Ok(mut spec) = spec::resolve_spec(specs_dir, spec_id) {
+                let all_specs = spec::load_all_specs(specs_dir).unwrap_or_default();
+                let commits = get_commits_for_spec(spec_id).ok();
+                let spec_repo = FileSpecRepository::new(specs_dir.to_path_buf());
+                finalize_spec(&mut spec, &spec_repo, config, &all_specs, false, commits)
+            } else {
+                Err(anyhow::anyhow!("Failed to load spec for finalization"))
+            };
+
+            match finalize_result {
+                Ok(()) => {
+                    merged_count += 1;
+                    println!("[{}] {} Merged and finalized", spec_id.cyan(), "✓".green());
+                }
+                Err(e) => {
+                    eprintln!(
+                        "[{}] {} Merged but finalization failed: {}",
+                        spec_id.cyan(),
+                        "⚠".yellow(),
+                        e
+                    );
+                    let spec_path = specs_dir.join(format!("{}.md", spec_id));
+                    if let Ok(mut spec) = spec::resolve_spec(specs_dir, spec_id) {
+                        spec.force_status(SpecStatus::Failed);
+                        let _ = spec.save(&spec_path);
+                    }
+                    failed.push((spec_id.clone(), false));
+                }
+            }
+        } else {
+            failed.push((spec_id.clone(), merge_result.has_conflict));
+            let error_msg = merge_result
+                .error
+                .as_deref()
+                .unwrap_or("Unknown merge error");
+            println!(
+                "[{}] {} Merge failed (branch preserved):\n  {}\n  Next Steps:\n    1. Auto-resolve: chant merge {} --rebase --auto\n    2. Merge manually: chant merge {}\n    3. Inspect: git log {} --oneline -3",
+                spec_id.cyan(),
+                "⚠".yellow(),
+                error_msg,
+                spec_id,
+                spec_id,
+                branch
+            );
+
+            if merge_result.has_conflict {
+                handle_merge_conflict(specs_dir, spec_id, branch)?;
+            }
+        }
+    }
+
+    Ok((merged_count, failed, skipped))
+}
+
+/// Handle merge conflict by creating conflict resolution spec
+fn handle_merge_conflict(specs_dir: &Path, spec_id: &str, branch: &str) -> Result<()> {
+    if let Ok(conflicting_files) = conflict::detect_conflicting_files() {
+        let all_specs = spec::load_all_specs(specs_dir).unwrap_or_default();
+        let blocked_specs = conflict::get_blocked_specs(&conflicting_files, &all_specs);
+        let (spec_title, _) =
+            conflict::extract_spec_context(specs_dir, spec_id).unwrap_or((None, String::new()));
+        let diff_summary = conflict::get_diff_summary(branch, "main").unwrap_or_default();
+
+        let context = conflict::ConflictContext {
+            source_branch: branch.to_string(),
+            target_branch: "main".to_string(),
+            conflicting_files,
+            source_spec_id: spec_id.to_string(),
+            source_spec_title: spec_title,
+            diff_summary,
+        };
+
+        if let Ok(conflict_spec_id) =
+            conflict::create_conflict_spec(specs_dir, &context, blocked_specs)
+        {
+            println!(
+                "[{}] Created conflict resolution spec: {}",
+                spec_id.cyan(),
+                conflict_spec_id
+            );
+        }
+    }
+    Ok(())
+}
+
+// ============================================================================
+// WORKER THREAD SPAWNING
+// ============================================================================
+
+/// Spawn worker threads for all spec assignments
+#[allow(clippy::type_complexity)]
+fn spawn_worker_threads(
+    assignments: &[AgentAssignment],
+    ready_specs: &[Spec],
+    specs_dir: &Path,
+    prompts_dir: &Path,
+    config: &Config,
+    options: &ParallelOptions,
+    execution_state: &Arc<ParallelExecutionState>,
+) -> Result<(
+    mpsc::Sender<ParallelResult>,
+    mpsc::Receiver<ParallelResult>,
+    Vec<thread::JoinHandle<()>>,
+    ProgressBar,
+)> {
+    let multi_progress = Arc::new(MultiProgress::new());
+    let main_pb = multi_progress.add(ProgressBar::new(assignments.len() as u64));
+    main_pb.set_style(
+        ProgressStyle::default_bar()
+            .template("{spinner:.green} [{bar:40.cyan/blue}] {pos}/{len} specs completed")
+            .unwrap()
+            .progress_chars("=>-"),
+    );
+
+    let default_prompt = &config.defaults.prompt;
+    let (tx, rx) = mpsc::channel::<ParallelResult>();
+    let mut handles = Vec::new();
+    let spec_map: HashMap<&str, &Spec> = ready_specs.iter().map(|s| (s.id.as_str(), s)).collect();
+
+    for assignment in assignments.iter() {
+        let spec = match spec_map.get(assignment.spec_id.as_str()) {
+            Some(s) => *s,
+            None => continue,
+        };
+
+        let spec_prompt = options
+            .prompt_name
+            .map(|s| s.to_string())
+            .or_else(|| spec.frontmatter.prompt.clone())
+            .or_else(|| auto_select_prompt_for_type(spec, prompts_dir))
+            .unwrap_or_else(|| default_prompt.to_string());
+
+        let prompt_path = prompts_dir.join(format!("{}.md", spec_prompt));
+        if !prompt_path.exists() {
+            println!(
+                "{} [{}] Prompt not found: {}",
+                "✗".red(),
+                spec.id,
+                spec_prompt
+            );
+            continue;
+        }
+        let spec_prompt = spec_prompt.as_str();
+
+        let (is_direct_mode, branch_prefix) = if let Some(cli_prefix) = options.branch_prefix {
+            (false, cli_prefix.to_string())
+        } else if let Some(spec_branch) = &spec.frontmatter.branch {
+            (false, spec_branch.clone())
+        } else {
+            (false, config.defaults.branch_prefix.clone())
+        };
+
+        let (spec_clone, worktree_path, branch_name, message) = match prepare_spec_for_parallel(
+            spec,
+            spec_prompt,
+            &prompt_path,
+            specs_dir,
+            prompts_dir,
+            config,
+            execution_state,
+            &branch_prefix,
+        ) {
+            Ok(result) => result,
+            Err(e) => {
+                println!("{} [{}] Failed to prepare spec: {}", "✗".red(), spec.id, e);
+                let _ = tx.send(ParallelResult {
+                    spec_id: spec.id.clone(),
+                    success: false,
+                    commits: None,
+                    error: Some(e.to_string()),
+                    worktree_path: None,
+                    branch_name: None,
+                    is_direct_mode,
+                    agent_completed: false,
+                });
+                continue;
+            }
+        };
+
+        println!(
+            "[{}] Working with prompt '{}' via {}",
+            spec.id.cyan(),
+            spec_prompt,
+            assignment.agent_name.dimmed()
+        );
+
+        let handle = thread::spawn({
+            let tx = tx.clone();
+            let spec_id = spec.id.clone();
+            let specs_dir = specs_dir.to_path_buf();
+            let prompt_name = spec_prompt.to_string();
+            let config_model = config.defaults.model.clone();
+            let agent_command = assignment.agent_command.clone();
+            let config = config.clone();
+            let execution_state = execution_state.clone();
+
+            move || {
+                execute_spec_in_thread(
+                    spec_id,
+                    message,
+                    prompt_name,
+                    config_model,
+                    worktree_path,
+                    Some(branch_name),
+                    is_direct_mode,
+                    agent_command,
+                    specs_dir,
+                    config,
+                    execution_state,
+                    tx,
+                );
+            }
+        });
+
+        handles.push(handle);
+
+        // Stagger thread spawning
+        if config.parallel.stagger_delay_ms > 0 {
+            let mut rng = rand::thread_rng();
+            let jitter = if config.parallel.stagger_jitter_ms > 0 {
+                rng.gen_range(
+                    -(config.parallel.stagger_jitter_ms as i64)
+                        ..=(config.parallel.stagger_jitter_ms as i64),
+                )
+            } else {
+                0
+            };
+            let delay_ms = (config.parallel.stagger_delay_ms as i64 + jitter).max(0) as u64;
+            thread::sleep(Duration::from_millis(delay_ms));
+        }
+    }
+
+    Ok((tx, rx, handles, main_pb))
+}
+
+// ============================================================================
 // PUBLIC API - MAIN PARALLEL EXECUTION FUNCTION
 // ============================================================================
 
@@ -403,22 +788,24 @@ pub fn cmd_work_parallel(
         return Ok(());
     }
 
-    // Run lint validation on all specs before starting parallel work - fail fast if any have issues
+    // Run validation on all specs before starting parallel work - fail fast if any have issues
     out.step(&format!("Validating {} spec(s)...", ready_specs.len()));
-    let spec_ids: Vec<String> = ready_specs.iter().map(|s| s.id.clone()).collect();
-    let lint_result = crate::cmd::spec::lint_specific_specs(specs_dir, &spec_ids)?;
-    if lint_result.failed > 0 {
-        anyhow::bail!(
-            "Spec validation failed: {} spec(s) have errors. Fix the issues before running 'chant work --parallel'.\n\
-             Run 'chant lint' to see details.",
-            lint_result.failed
-        );
-    }
-    if lint_result.warned > 0 {
-        out.warn(&format!(
-            "{} spec(s) have warnings but are valid for execution",
-            lint_result.warned
-        ));
+
+    let validation_opts = executor::ValidationOptions {
+        skip_deps: false,
+        skip_criteria: false,
+        skip_approval: false,
+        skip_quality: true, // Skip quality checks in parallel mode
+    };
+
+    for spec in &ready_specs {
+        if let Err(e) = executor::validate_spec(spec, specs_dir, config, &validation_opts) {
+            anyhow::bail!(
+                "Spec {} validation failed: {}. Fix the issues before running 'chant work --parallel'.",
+                spec.id,
+                e
+            );
+        }
     }
 
     // Distribute specs across configured agents
@@ -451,437 +838,17 @@ pub fn cmd_work_parallel(
     }
     println!();
 
-    // Create multi-progress for parallel execution
-    let multi_progress = Arc::new(MultiProgress::new());
-    let main_pb = multi_progress.add(ProgressBar::new(assignments.len() as u64));
-    main_pb.set_style(
-        ProgressStyle::default_bar()
-            .template("{spinner:.green} [{bar:40.cyan/blue}] {pos}/{len} specs completed")
-            .unwrap()
-            .progress_chars("=>-"),
-    );
-
-    // Resolve prompt name for all specs
-    let default_prompt = &config.defaults.prompt;
-
-    // Create channels for collecting results
-    let (tx, rx) = mpsc::channel::<ParallelResult>();
-
-    // Spawn threads for each assignment
-    let mut handles = Vec::new();
-
-    // Create a map of spec_id to spec for quick lookup
-    let spec_map: HashMap<&str, &Spec> = ready_specs.iter().map(|s| (s.id.as_str(), s)).collect();
-
-    for assignment in assignments.iter() {
-        let spec = match spec_map.get(assignment.spec_id.as_str()) {
-            Some(s) => *s,
-            None => continue,
-        };
-
-        // Determine prompt for this spec: explicit > frontmatter > auto-select by type > default
-        let spec_prompt = options
-            .prompt_name
-            .map(|s| s.to_string())
-            .or_else(|| spec.frontmatter.prompt.clone())
-            .or_else(|| auto_select_prompt_for_type(spec, prompts_dir))
-            .unwrap_or_else(|| default_prompt.to_string());
-
-        let prompt_path = prompts_dir.join(format!("{}.md", spec_prompt));
-        if !prompt_path.exists() {
-            println!(
-                "{} [{}] Prompt not found: {}",
-                "✗".red(),
-                spec.id,
-                spec_prompt
-            );
-            continue;
-        }
-        let spec_prompt = spec_prompt.as_str();
-
-        // Update spec status to in_progress
-        let spec_path = specs_dir.join(format!("{}.md", spec.id));
-        let mut spec_clone = spec.clone();
-        spec_clone.set_status(SpecStatus::InProgress).map_err(|e| {
-            eprintln!("[{}] Failed to set status to InProgress: {}", spec.id, e);
-            e
-        })?;
-        if let Err(e) = spec_clone.save(&spec_path) {
-            println!("{} [{}] Failed to update status: {}", "✗".red(), spec.id, e);
-            continue;
-        }
-
-        // Create log file immediately (fix B: create log file when work starts)
-        if let Err(e) = crate::cmd::agent::create_log_file_if_not_exists(&spec.id, spec_prompt) {
-            println!(
-                "{} [{}] Failed to create log file: {}",
-                "✗".red(),
-                spec.id,
-                e
-            );
-        }
-
-        // Write agent status file: working
-        let status_path = specs_dir.join(format!(".chant-status-{}.json", spec.id));
-        let agent_status = chant::worktree::status::AgentStatus {
-            spec_id: spec.id.clone(),
-            status: chant::worktree::status::AgentStatusState::Working,
-            updated_at: chrono::Utc::now().to_rfc3339(),
-            error: None,
-            commits: vec![],
-        };
-        if let Err(e) = chant::worktree::status::write_status(&status_path, &agent_status) {
-            println!(
-                "{} [{}] Failed to write agent status: {}",
-                "✗".red(),
-                spec.id,
-                e
-            );
-            continue;
-        }
-
-        println!(
-            "[{}] Working with prompt '{}' via {}",
-            spec.id.cyan(),
-            spec_prompt,
-            assignment.agent_name.dimmed()
-        );
-
-        // Determine branch mode
-        // Priority: CLI --branch flag > spec frontmatter.branch
-        // IMPORTANT: Parallel execution forces branch mode internally for isolation
-        let (is_direct_mode, branch_prefix) = if let Some(cli_prefix) = options.branch_prefix {
-            // CLI --branch specified with explicit prefix
-            (false, cli_prefix.to_string())
-        } else if let Some(spec_branch) = &spec.frontmatter.branch {
-            // Spec has explicit branch prefix
-            (false, spec_branch.clone())
-        } else {
-            // Parallel execution forces branch mode
-            // This prevents merge race conditions during parallel work
-            // Use config's branch_prefix to stay consistent with merge command expectations
-            (false, config.defaults.branch_prefix.clone())
-        };
-
-        // Determine branch name based on mode
-        let branch_name = if is_direct_mode {
-            // Direct mode uses config prefix (this branch is currently unused)
-            format!("{}{}", config.defaults.branch_prefix, spec.id)
-        } else {
-            format!("{}{}", branch_prefix, spec.id)
-        };
-
-        // Create worktree
-        let project_name = Some(config.project.name.as_str()).filter(|n| !n.is_empty());
-        let worktree_result = worktree::create_worktree(&spec.id, &branch_name, project_name);
-        let (worktree_path, branch_for_cleanup) = match worktree_result {
-            Ok(path) => {
-                // Register worktree for cleanup on interrupt
-                execution_state.register_worktree(&spec.id, path.clone());
-
-                // Copy the updated spec file to the worktree
-                if let Err(e) = worktree::copy_spec_to_worktree(&spec.id, &path) {
-                    println!(
-                        "{} [{}] Failed to copy spec to worktree: {}",
-                        "✗".red(),
-                        spec.id,
-                        e
-                    );
-                    // Clean up worktree since we failed
-                    let _ = worktree::remove_worktree(&path);
-                    // Update spec to failed
-                    let spec_path = specs_dir.join(format!("{}.md", spec.id));
-                    if let Ok(mut failed_spec) = spec::resolve_spec(specs_dir, &spec.id) {
-                        failed_spec.force_status(SpecStatus::Failed);
-                        let _ = failed_spec.save(&spec_path);
-                    }
-                    // Send failed result without spawning thread
-                    let _ = tx.send(ParallelResult {
-                        spec_id: spec.id.clone(),
-                        success: false,
-                        commits: None,
-                        error: Some(e.to_string()),
-                        worktree_path: None,
-                        branch_name: None,
-                        is_direct_mode,
-                        agent_completed: false,
-                    });
-                    continue;
-                }
-
-                (Some(path), Some(branch_name.clone()))
-            }
-            Err(e) => {
-                println!(
-                    "{} [{}] Failed to create worktree: {}",
-                    "✗".red(),
-                    spec.id,
-                    e
-                );
-                // Update spec to failed
-                let spec_path = specs_dir.join(format!("{}.md", spec.id));
-                if let Ok(mut failed_spec) = spec::resolve_spec(specs_dir, &spec.id) {
-                    failed_spec.force_status(SpecStatus::Failed);
-                    let _ = failed_spec.save(&spec_path);
-                }
-                // Send failed result without spawning thread
-                let _ = tx.send(ParallelResult {
-                    spec_id: spec.id.clone(),
-                    success: false,
-                    commits: None,
-                    error: Some(e.to_string()),
-                    worktree_path: None,
-                    branch_name: None,
-                    is_direct_mode,
-                    agent_completed: false,
-                });
-                continue;
-            }
-        };
-
-        // Assemble the prompt message with worktree context
-        // Now that we know the worktree path and branch, we can provide this context to the agent
-        let worktree_ctx = chant::prompt::WorktreeContext {
-            worktree_path: worktree_path.clone(),
-            branch_name: Some(branch_name.clone()),
-            is_isolated: true, // Parallel execution always uses isolated worktrees
-        };
-        let message = match chant::prompt::assemble_with_context(
-            &spec_clone,
-            &prompt_path,
-            config,
-            &worktree_ctx,
-        ) {
-            Ok(m) => m,
-            Err(e) => {
-                println!(
-                    "{} [{}] Failed to assemble prompt: {}",
-                    "✗".red(),
-                    spec.id,
-                    e
-                );
-                // Clean up worktree since we failed
-                if let Some(ref path) = worktree_path {
-                    let _ = worktree::remove_worktree(path);
-                }
-                continue;
-            }
-        };
-
-        // Clone data for the thread
-        let tx_clone = tx.clone();
-        let spec_id = spec.id.clone();
-        let specs_dir_clone = specs_dir.to_path_buf();
-        let prompt_name_clone = spec_prompt.to_string();
-        let config_model = config.defaults.model.clone();
-        let worktree_path_clone = worktree_path.clone();
-        let branch_for_cleanup_clone = branch_for_cleanup.clone();
-        let is_direct_mode_clone = is_direct_mode;
-        let agent_command = assignment.agent_command.clone();
-        let config_clone = config.clone();
-        let branch_name_clone = branch_for_cleanup.clone();
-        let execution_state_clone = execution_state.clone();
-
-        let handle = thread::spawn(move || {
-            // Note: PID will be written by invoke_agent_with_command when child process spawns
-            // We cannot write it here because the PID is not yet available
-            let result = cmd::agent::invoke_agent_with_command(
-                &message,
-                &spec_id,
-                &prompt_name_clone,
-                config_model.as_deref(),
-                worktree_path_clone.as_deref(),
-                &agent_command,
-                branch_name_clone.as_deref(),
-            );
-            let (success, commits, error, agent_completed) = match result {
-                Ok(_) => {
-                    // Agent work succeeded - get commits
-                    let commits = get_commits_for_spec(&spec_id).ok();
-
-                    // Write agent status file: done
-                    let status_path =
-                        specs_dir_clone.join(format!(".chant-status-{}.json", spec_id));
-                    let agent_status = chant::worktree::status::AgentStatus {
-                        spec_id: spec_id.clone(),
-                        status: chant::worktree::status::AgentStatusState::Done,
-                        updated_at: chrono::Utc::now().to_rfc3339(),
-                        error: None,
-                        commits: commits.clone().unwrap_or_default(),
-                    };
-                    if let Err(e) =
-                        chant::worktree::status::write_status(&status_path, &agent_status)
-                    {
-                        eprintln!(
-                            "{} [{}] Failed to write agent status: {}",
-                            "⚠".yellow(),
-                            spec_id,
-                            e
-                        );
-                    }
-
-                    // Mark spec as completed for cleanup tracking
-                    execution_state_clone.mark_completed(&spec_id);
-
-                    // In branch mode: DON'T finalize in worktree - defer to post-merge phase
-                    // This prevents the race condition where feature branch shows Completed
-                    // but main doesn't have the finalization yet.
-                    //
-                    // In direct mode (no worktree): finalize on main branch directly
-                    if !is_direct_mode_clone {
-                        // Branch mode: skip finalization here, it will happen after merge
-                        eprintln!(
-                            "{} [{}] Agent work completed, deferring finalization to post-merge",
-                            "→".cyan(),
-                            spec_id
-                        );
-
-                        // Remove worktree - the branch is preserved for merging
-                        if let Some(ref path) = worktree_path_clone {
-                            if let Err(e) = worktree::remove_worktree(path) {
-                                eprintln!(
-                                    "{} [{}] Warning: Failed to remove worktree: {}",
-                                    "⚠".yellow(),
-                                    spec_id,
-                                    e
-                                );
-                            }
-                        }
-
-                        // Return success with agent_completed=true but the spec is NOT finalized yet
-                        // Finalization will happen in the merge phase on main branch
-                        (true, commits, None, true)
-                    } else {
-                        // Direct mode (no worktree) - finalize on main branch directly
-                        eprintln!(
-                            "{} [{}] Finalizing spec on main branch (direct mode)",
-                            "→".cyan(),
-                            spec_id
-                        );
-
-                        let spec_repo = FileSpecRepository::new(specs_dir_clone.clone());
-                        let finalize_result =
-                            if let Ok(mut spec) = spec::resolve_spec(&specs_dir_clone, &spec_id) {
-                                let all_specs =
-                                    spec::load_all_specs(&specs_dir_clone).unwrap_or_default();
-                                let commits_to_finalize = commits.clone();
-                                finalize_spec(
-                                    &mut spec,
-                                    &spec_repo,
-                                    &config_clone,
-                                    &all_specs,
-                                    false,
-                                    commits_to_finalize,
-                                )
-                            } else {
-                                Err(anyhow::anyhow!("Failed to load spec for finalization"))
-                            };
-
-                        match finalize_result {
-                            Ok(()) => {
-                                eprintln!("{} [{}] ✓ Finalization complete", "✓".green(), spec_id);
-                                (true, commits, None, true)
-                            }
-                            Err(e) => {
-                                eprintln!(
-                                    "{} [{}] ✗ Cannot finalize spec: {}",
-                                    "✗".red(),
-                                    spec_id,
-                                    e
-                                );
-                                // Mark as needs attention instead of completed
-                                let spec_path = specs_dir_clone.join(format!("{}.md", spec_id));
-                                if let Ok(mut failed_spec) =
-                                    spec::resolve_spec(&specs_dir_clone, &spec_id)
-                                {
-                                    eprintln!(
-                                        "{} [{}] Marking spec as NeedsAttention due to finalization error",
-                                        "→".yellow(),
-                                        spec_id
-                                    );
-                                    failed_spec.force_status(SpecStatus::NeedsAttention);
-                                    let _ = failed_spec.save(&spec_path);
-                                }
-                                (false, commits, Some(e.to_string()), false)
-                            }
-                        }
-                    }
-                }
-                Err(e) => {
-                    // Write agent status file: failed
-                    let status_path =
-                        specs_dir_clone.join(format!(".chant-status-{}.json", spec_id));
-                    let agent_status = chant::worktree::status::AgentStatus {
-                        spec_id: spec_id.clone(),
-                        status: chant::worktree::status::AgentStatusState::Failed,
-                        updated_at: chrono::Utc::now().to_rfc3339(),
-                        error: Some(e.to_string()),
-                        commits: vec![],
-                    };
-                    if let Err(status_err) =
-                        chant::worktree::status::write_status(&status_path, &agent_status)
-                    {
-                        eprintln!(
-                            "{} [{}] Failed to write agent status: {}",
-                            "⚠".yellow(),
-                            spec_id,
-                            status_err
-                        );
-                    }
-
-                    // Agent failed - cleanup worktree
-                    if let Some(ref path) = worktree_path_clone {
-                        if !is_direct_mode_clone {
-                            let _ = worktree::remove_worktree(path);
-                        }
-                    }
-
-                    // Update spec to failed
-                    let spec_path = specs_dir_clone.join(format!("{}.md", spec_id));
-                    if let Ok(mut spec) = spec::resolve_spec(&specs_dir_clone, &spec_id) {
-                        spec.force_status(SpecStatus::Failed);
-                        let _ = spec.save(&spec_path);
-                    }
-
-                    (false, None, Some(e.to_string()), false)
-                }
-            };
-
-            let _ = tx_clone.send(ParallelResult {
-                spec_id,
-                success,
-                commits,
-                error,
-                worktree_path: worktree_path_clone,
-                branch_name: branch_for_cleanup_clone,
-                is_direct_mode: is_direct_mode_clone,
-                agent_completed,
-            });
-        });
-
-        handles.push(handle);
-
-        // Apply stagger delay with jitter between spawning agents to avoid API rate limiting
-        if config.parallel.stagger_delay_ms > 0 {
-            let mut rng = rand::thread_rng();
-            let jitter = if config.parallel.stagger_jitter_ms > 0 {
-                // Generate random jitter from -jitter to +jitter
-                rng.gen_range(
-                    -(config.parallel.stagger_jitter_ms as i64)
-                        ..=(config.parallel.stagger_jitter_ms as i64),
-                )
-            } else {
-                0
-            };
-
-            // Calculate actual delay: base_delay + jitter, but ensure it's non-negative
-            let delay_ms = (config.parallel.stagger_delay_ms as i64 + jitter).max(0) as u64;
-            thread::sleep(Duration::from_millis(delay_ms));
-        }
-    }
-
-    // Drop the original sender so the receiver knows when all threads are done
-    drop(tx);
+    // Spawn worker threads for all assignments
+    let (tx, rx, handles, main_pb) = spawn_worker_threads(
+        &assignments,
+        &ready_specs,
+        specs_dir,
+        prompts_dir,
+        config,
+        &options,
+        &execution_state,
+    )?;
+    drop(tx); // Signal completion
 
     // Collect results from threads
     let mut completed = 0;
@@ -941,221 +908,20 @@ pub fn cmd_work_parallel(
     // SERIALIZED MERGE PHASE - Handle all direct mode merges sequentially
     // =========================================================================
 
-    let mut merged_count = 0;
-    let mut merge_failed = Vec::new();
-
-    for result in &direct_mode_results {
-        if let Some(ref branch) = result.branch_name {
-            println!("[{}] Merging to main...", result.spec_id.cyan());
-            let merge_result = worktree::merge_and_cleanup(
-                branch,
-                &config.defaults.main_branch,
-                options.no_rebase,
-            );
-
-            if merge_result.success {
-                merged_count += 1;
-                println!("[{}] {} Merged to main", result.spec_id.cyan(), "✓".green());
-
-                // Cleanup worktree after successful merge
-                if let Some(ref path) = result.worktree_path {
-                    let _ = worktree::remove_worktree(path);
-                }
-            } else {
-                // Merge failed - preserve branch and worktree
-                merge_failed.push((result.spec_id.clone(), merge_result.has_conflict));
-
-                // Update spec status to indicate merge pending
-                let spec_path = specs_dir.join(format!("{}.md", result.spec_id));
-                if let Ok(mut spec) = spec::resolve_spec(specs_dir, &result.spec_id) {
-                    spec.force_status(SpecStatus::NeedsAttention);
-                    let _ = spec.save(&spec_path);
-                }
-
-                // Don't cleanup worktree - needed for manual merge
-
-                let error_msg = merge_result
-                    .error
-                    .as_deref()
-                    .unwrap_or("Unknown merge error");
-                let branch_name = branch.as_str();
-                println!(
-                    "[{}] {} Merge failed (branch preserved):\n  {}\n  Next Steps:\n    1. Auto-resolve: chant merge {} --rebase --auto\n    2. Merge manually: chant merge {}\n    3. Inspect: git log {} --oneline -3",
-                    result.spec_id.cyan(),
-                    "⚠".yellow(),
-                    error_msg,
-                    result.spec_id,
-                    result.spec_id,
-                    branch_name
-                );
-
-                // Check for actual conflicts that need resolution spec
-                if merge_result.has_conflict {
-                    if let Ok(conflicting_files) = conflict::detect_conflicting_files() {
-                        let all_specs = spec::load_all_specs(specs_dir).unwrap_or_default();
-                        let blocked_specs =
-                            conflict::get_blocked_specs(&conflicting_files, &all_specs);
-
-                        let source_branch = branch.to_string();
-                        let (spec_title, _) =
-                            conflict::extract_spec_context(specs_dir, &result.spec_id)
-                                .unwrap_or((None, String::new()));
-                        let diff_summary =
-                            conflict::get_diff_summary(&source_branch, "main").unwrap_or_default();
-
-                        let context = conflict::ConflictContext {
-                            source_branch,
-                            target_branch: "main".to_string(),
-                            conflicting_files,
-                            source_spec_id: result.spec_id.clone(),
-                            source_spec_title: spec_title,
-                            diff_summary,
-                        };
-
-                        if let Ok(conflict_spec_id) =
-                            conflict::create_conflict_spec(specs_dir, &context, blocked_specs)
-                        {
-                            println!(
-                                "[{}] Created conflict resolution spec: {}",
-                                result.spec_id.cyan(),
-                                conflict_spec_id
-                            );
-                        }
-                    }
-                }
-            }
-        }
-    }
+    let (merged_count, merge_failed) =
+        handle_direct_mode_merges(&direct_mode_results, specs_dir, config, options.no_rebase)?;
 
     // =========================================================================
     // BRANCH MODE MERGE PHASE - Auto-merge branch mode branches unless --no-merge
     // =========================================================================
 
-    let mut branch_mode_merged = 0;
-    let mut branch_mode_failed: Vec<(String, bool)> = Vec::new();
-    let mut branch_mode_skipped: Vec<(String, String)> = Vec::new();
-
-    if !options.no_merge && !branch_mode_branches.is_empty() {
-        println!(
-            "\n{} Auto-merging {} branch mode branch(es)...",
-            "→".cyan(),
-            branch_mode_branches.len()
-        );
-
-        for (spec_id, branch) in &branch_mode_branches {
-            println!("[{}] Merging to main...", spec_id.cyan());
-            let merge_result = worktree::merge_and_cleanup(
-                branch,
-                &config.defaults.main_branch,
-                options.no_rebase,
-            );
-
-            if merge_result.success {
-                // Merge succeeded - NOW finalize on main branch
-                // This is the fix for the race condition: finalization happens AFTER merge
-                println!(
-                    "[{}] Merge succeeded, finalizing on main...",
-                    spec_id.cyan()
-                );
-
-                let spec_repo = FileSpecRepository::new(specs_dir.to_path_buf());
-                let finalize_result = if let Ok(mut spec) = spec::resolve_spec(specs_dir, spec_id) {
-                    let all_specs = spec::load_all_specs(specs_dir).unwrap_or_default();
-                    // Get commits for the spec (now on main after merge)
-                    let commits = get_commits_for_spec(spec_id).ok();
-                    finalize_spec(&mut spec, &spec_repo, config, &all_specs, false, commits)
-                } else {
-                    Err(anyhow::anyhow!("Failed to load spec for finalization"))
-                };
-
-                match finalize_result {
-                    Ok(()) => {
-                        branch_mode_merged += 1;
-                        println!("[{}] {} Merged and finalized", spec_id.cyan(), "✓".green());
-                    }
-                    Err(e) => {
-                        // Finalization failed AFTER successful merge
-                        // The work is merged but not marked complete
-                        eprintln!(
-                            "[{}] {} Merged but finalization failed: {}",
-                            spec_id.cyan(),
-                            "⚠".yellow(),
-                            e
-                        );
-
-                        // Mark as NeedsAttention with clear error context
-                        let spec_path = specs_dir.join(format!("{}.md", spec_id));
-                        if let Ok(mut spec) = spec::resolve_spec(specs_dir, spec_id) {
-                            spec.force_status(SpecStatus::NeedsAttention);
-                            let _ = spec.save(&spec_path);
-                        }
-
-                        // Track as failed for reporting
-                        branch_mode_failed.push((spec_id.clone(), false));
-                    }
-                }
-            } else {
-                // Merge failed - preserve branch, spec stays in_progress
-                branch_mode_failed.push((spec_id.clone(), merge_result.has_conflict));
-
-                // DON'T mark as NeedsAttention here - keep spec in_progress
-                // The spec status is still in_progress from when the agent started work
-                // This is intentional: the work completed but merge failed
-                // User needs to resolve merge conflict and then re-run finalization
-
-                let error_msg = merge_result
-                    .error
-                    .as_deref()
-                    .unwrap_or("Unknown merge error");
-                println!(
-                    "[{}] {} Merge failed (branch preserved):\n  {}\n  Next Steps:\n    1. Auto-resolve: chant merge {} --rebase --auto\n    2. Merge manually: chant merge {}\n    3. Inspect: git log {} --oneline -3",
-                    spec_id.cyan(),
-                    "⚠".yellow(),
-                    error_msg,
-                    spec_id,
-                    spec_id,
-                    branch
-                );
-
-                // Check for actual conflicts that need resolution spec
-                if merge_result.has_conflict {
-                    if let Ok(conflicting_files) = conflict::detect_conflicting_files() {
-                        let all_specs = spec::load_all_specs(specs_dir).unwrap_or_default();
-                        let blocked_specs =
-                            conflict::get_blocked_specs(&conflicting_files, &all_specs);
-
-                        let source_branch = branch.to_string();
-                        let (spec_title, _) = conflict::extract_spec_context(specs_dir, spec_id)
-                            .unwrap_or((None, String::new()));
-                        let diff_summary =
-                            conflict::get_diff_summary(&source_branch, "main").unwrap_or_default();
-
-                        let context = conflict::ConflictContext {
-                            source_branch,
-                            target_branch: "main".to_string(),
-                            conflicting_files,
-                            source_spec_id: spec_id.clone(),
-                            source_spec_title: spec_title,
-                            diff_summary,
-                        };
-
-                        if let Ok(conflict_spec_id) =
-                            conflict::create_conflict_spec(specs_dir, &context, blocked_specs)
-                        {
-                            println!(
-                                "[{}] Created conflict resolution spec: {}",
-                                spec_id.cyan(),
-                                conflict_spec_id
-                            );
-                        }
-                    }
-                }
-            }
-        }
-    } else if options.no_merge && !branch_mode_branches.is_empty() {
-        // --no-merge specified, skip auto-merge
-        branch_mode_skipped = branch_mode_branches.clone();
-    }
+    let (branch_mode_merged, branch_mode_failed, branch_mode_skipped) = handle_branch_mode_merges(
+        &branch_mode_branches,
+        specs_dir,
+        config,
+        options.no_merge,
+        options.no_rebase,
+    )?;
 
     // =========================================================================
     // CLEANUP PHASE - Remove worktrees for successful specs
@@ -1184,104 +950,19 @@ pub fn cmd_work_parallel(
         }
     }
 
-    // Print summary
-    println!("\n{}", "═".repeat(60).dimmed());
-    println!("{}", "Parallel execution complete:".bold());
-    println!("  {} {} specs completed work", "✓".green(), completed);
-
-    // Report direct mode merges (if any)
-    if !direct_mode_results.is_empty() {
-        println!("  {} {} branches merged to main", "✓".green(), merged_count);
-
-        if !merge_failed.is_empty() {
-            println!(
-                "  {} {} branches preserved (merge pending)",
-                "→".yellow(),
-                merge_failed.len()
-            );
-            for (spec_id, has_conflict) in &merge_failed {
-                let indicator = if *has_conflict { "⚡" } else { "→" };
-                println!("    {} {}", indicator.yellow(), spec_id);
-            }
-        }
-    }
-
-    // Report branch mode merges
-    if branch_mode_merged > 0 {
-        println!(
-            "  {} {} branch mode specs merged to main",
-            "✓".green(),
-            branch_mode_merged
-        );
-    }
-
-    if !branch_mode_failed.is_empty() {
-        println!(
-            "  {} {} branch mode specs need attention (merge failed)",
-            "⚠".yellow(),
-            branch_mode_failed.len()
-        );
-        for (spec_id, has_conflict) in &branch_mode_failed {
-            let indicator = if *has_conflict { "⚡" } else { "→" };
-            println!("    {} {}", indicator.yellow(), spec_id);
-        }
-    }
-
-    // Show branches that were skipped due to --no-merge
-    if !branch_mode_skipped.is_empty() {
-        println!(
-            "  {} {} branches preserved (--no-merge)",
-            "→".cyan(),
-            branch_mode_skipped.len()
-        );
-    }
-
-    if failed > 0 {
-        println!("  {} {} specs failed", "✗".red(), failed);
-    }
-    println!("{}", "═".repeat(60).dimmed());
-
-    // Show branch mode information (only if --no-merge was used)
-    if !branch_mode_skipped.is_empty() {
-        println!(
-            "\n{} Branch mode branches preserved for manual merging:",
-            "→".cyan()
-        );
-        for (_spec_id, branch) in &branch_mode_skipped {
-            println!("  {} {}", "•".yellow(), branch);
-        }
-        println!("\nUse {} to merge branches later.", "chant merge".bold());
-    }
-
-    // Show next steps for merge failures (direct mode or branch mode)
-    let all_merge_failed = !merge_failed.is_empty() || !branch_mode_failed.is_empty();
-    if all_merge_failed {
-        println!("\n{} Next steps for merge-pending branches:", "→".cyan());
-        println!("  1. Review each branch:  git log <branch> --oneline -5");
-        println!("  2. Auto-resolve conflicts:  chant merge --all --rebase --auto");
-        println!("  3. Or merge sequentially:  chant merge <spec-id>");
-        println!("  4. List worktrees:  git worktree list");
-        println!("\n  Documentation: See 'chant merge --help' for more options");
-    }
-
-    // Detect parallel pitfalls
+    // Detect issues and print summary
     let pitfalls = detect_parallel_pitfalls(&all_results, specs_dir);
-
-    if !pitfalls.is_empty() {
-        println!("\n{} Issues detected:", "→".yellow());
-        for pitfall in &pitfalls {
-            let severity_icon = match pitfall.severity {
-                PitfallSeverity::High => "✗".red(),
-                PitfallSeverity::Medium => "⚠".yellow(),
-                PitfallSeverity::Low => "→".dimmed(),
-            };
-            if let Some(ref spec_id) = pitfall.spec_id {
-                println!("  {} [{}] {}", severity_icon, spec_id, pitfall.message);
-            } else {
-                println!("  {} {}", severity_icon, pitfall.message);
-            }
-        }
-    }
+    print_parallel_summary(
+        completed,
+        failed,
+        &direct_mode_results,
+        merged_count,
+        &merge_failed,
+        branch_mode_merged,
+        &branch_mode_failed,
+        &branch_mode_skipped,
+        &pitfalls,
+    );
 
     if failed > 0 {
         std::process::exit(1);
@@ -1291,6 +972,134 @@ pub fn cmd_work_parallel(
     let _ = chant::git::ensure_on_main_branch(&config.defaults.main_branch);
 
     Ok(())
+}
+
+// ============================================================================
+// WORKER THREAD EXECUTION
+// ============================================================================
+
+/// Execute a single spec in a worker thread
+#[allow(clippy::too_many_arguments)]
+fn execute_spec_in_thread(
+    spec_id: String,
+    message: String,
+    prompt_name: String,
+    config_model: Option<String>,
+    worktree_path: Option<PathBuf>,
+    branch_name: Option<String>,
+    is_direct_mode: bool,
+    agent_command: String,
+    specs_dir: PathBuf,
+    config: Config,
+    execution_state: Arc<ParallelExecutionState>,
+    tx: mpsc::Sender<ParallelResult>,
+) {
+    let result = cmd::agent::invoke_agent_with_command(
+        &message,
+        &spec_id,
+        &prompt_name,
+        config_model.as_deref(),
+        worktree_path.as_deref(),
+        &agent_command,
+        branch_name.as_deref(),
+    );
+
+    let (success, commits, error, agent_completed) = match result {
+        Ok(_) => {
+            // Write status and get commits
+            if let Err(e) = executor::write_agent_status_done(&specs_dir, &spec_id, false) {
+                eprintln!(
+                    "{} [{}] Failed to write agent status: {}",
+                    "⚠".yellow(),
+                    spec_id,
+                    e
+                );
+            }
+
+            let commits = get_commits_for_spec(&spec_id).ok();
+            execution_state.mark_completed(&spec_id);
+
+            if !is_direct_mode {
+                // Branch mode: defer finalization to post-merge
+                eprintln!(
+                    "{} [{}] Agent work completed, deferring finalization to post-merge",
+                    "→".cyan(),
+                    spec_id
+                );
+
+                if let Some(ref path) = worktree_path {
+                    if let Err(e) = worktree::remove_worktree(path) {
+                        eprintln!(
+                            "{} [{}] Warning: Failed to remove worktree: {}",
+                            "⚠".yellow(),
+                            spec_id,
+                            e
+                        );
+                    }
+                }
+
+                (true, commits, None, true)
+            } else {
+                // Direct mode: finalize immediately
+                eprintln!(
+                    "{} [{}] Finalizing spec on main branch (direct mode)",
+                    "→".cyan(),
+                    spec_id
+                );
+
+                let finalize_result = if let Ok(mut spec) = spec::resolve_spec(&specs_dir, &spec_id)
+                {
+                    let all_specs = spec::load_all_specs(&specs_dir).unwrap_or_default();
+                    let spec_repo = FileSpecRepository::new(specs_dir.clone());
+                    finalize_spec(
+                        &mut spec,
+                        &spec_repo,
+                        &config,
+                        &all_specs,
+                        false,
+                        commits.clone(),
+                    )
+                } else {
+                    Err(anyhow::anyhow!("Failed to load spec for finalization"))
+                };
+
+                match finalize_result {
+                    Ok(()) => {
+                        eprintln!("{} [{}] ✓ Finalization complete", "✓".green(), spec_id);
+                        (true, commits, None, true)
+                    }
+                    Err(e) => {
+                        eprintln!("{} [{}] ✗ Cannot finalize spec: {}", "✗".red(), spec_id, e);
+                        if let Ok(mut spec) = spec::resolve_spec(&specs_dir, &spec_id) {
+                            spec.force_status(SpecStatus::Failed);
+                            let _ = spec.save(&specs_dir.join(format!("{}.md", spec_id)));
+                        }
+                        (false, commits, Some(e.to_string()), false)
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            let _ = executor::handle_spec_failure(&spec_id, &specs_dir, &e);
+            if let Some(ref path) = worktree_path {
+                if !is_direct_mode {
+                    let _ = worktree::remove_worktree(path);
+                }
+            }
+            (false, None, Some(e.to_string()), false)
+        }
+    };
+
+    let _ = tx.send(ParallelResult {
+        spec_id,
+        success,
+        commits,
+        error,
+        worktree_path,
+        branch_name,
+        is_direct_mode,
+        agent_completed,
+    });
 }
 
 // ============================================================================
@@ -1355,6 +1164,113 @@ fn cleanup_successful_worktrees(results: &[ParallelResult]) {
             "\nRun {} to manually cleanup orphan worktrees.",
             "chant cleanup --worktrees".bold()
         );
+    }
+}
+
+// ============================================================================
+// RESULT REPORTING
+// ============================================================================
+
+/// Print final summary of parallel execution
+#[allow(clippy::too_many_arguments)]
+fn print_parallel_summary(
+    completed: usize,
+    failed: usize,
+    direct_mode_results: &[ParallelResult],
+    merged_count: usize,
+    merge_failed: &[(String, bool)],
+    branch_mode_merged: usize,
+    branch_mode_failed: &[(String, bool)],
+    branch_mode_skipped: &[(String, String)],
+    pitfalls: &[Pitfall],
+) {
+    println!("\n{}", "═".repeat(60).dimmed());
+    println!("{}", "Parallel execution complete:".bold());
+    println!("  {} {} specs completed work", "✓".green(), completed);
+
+    if !direct_mode_results.is_empty() {
+        println!("  {} {} branches merged to main", "✓".green(), merged_count);
+        if !merge_failed.is_empty() {
+            println!(
+                "  {} {} branches preserved (merge pending)",
+                "→".yellow(),
+                merge_failed.len()
+            );
+            for (spec_id, has_conflict) in merge_failed {
+                let indicator = if *has_conflict { "⚡" } else { "→" };
+                println!("    {} {}", indicator.yellow(), spec_id);
+            }
+        }
+    }
+
+    if branch_mode_merged > 0 {
+        println!(
+            "  {} {} branch mode specs merged to main",
+            "✓".green(),
+            branch_mode_merged
+        );
+    }
+
+    if !branch_mode_failed.is_empty() {
+        println!(
+            "  {} {} branch mode specs need attention (merge failed)",
+            "⚠".yellow(),
+            branch_mode_failed.len()
+        );
+        for (spec_id, has_conflict) in branch_mode_failed {
+            let indicator = if *has_conflict { "⚡" } else { "→" };
+            println!("    {} {}", indicator.yellow(), spec_id);
+        }
+    }
+
+    if !branch_mode_skipped.is_empty() {
+        println!(
+            "  {} {} branches preserved (--no-merge)",
+            "→".cyan(),
+            branch_mode_skipped.len()
+        );
+    }
+
+    if failed > 0 {
+        println!("  {} {} specs failed", "✗".red(), failed);
+    }
+    println!("{}", "═".repeat(60).dimmed());
+
+    if !branch_mode_skipped.is_empty() {
+        println!(
+            "\n{} Branch mode branches preserved for manual merging:",
+            "→".cyan()
+        );
+        for (_spec_id, branch) in branch_mode_skipped {
+            println!("  {} {}", "•".yellow(), branch);
+        }
+        println!("\nUse {} to merge branches later.", "chant merge".bold());
+    }
+
+    let all_merge_failed = !merge_failed.is_empty() || !branch_mode_failed.is_empty();
+    if all_merge_failed {
+        println!("\n{} Next steps for merge-pending branches:", "→".cyan());
+        println!("  1. Review each branch:  git log <branch> --oneline -5");
+        println!("  2. Auto-resolve conflicts:  chant merge --all --rebase --auto");
+        println!("  3. Or merge sequentially:  chant merge <spec-id>");
+        println!("  4. List worktrees:  git worktree list");
+        println!("\n  Documentation: See 'chant merge --help' for more options");
+    }
+
+    if !pitfalls.is_empty() {
+        println!("\n{} Issues detected:", "→".yellow());
+        for pitfall in pitfalls {
+            let severity_icon = match pitfall.severity {
+                PitfallSeverity::High => "✗".red(),
+                PitfallSeverity::Medium => "⚠".yellow(),
+                PitfallSeverity::Low => "→".dimmed(),
+            };
+            if let Some(ref spec_id) = pitfall.spec_id {
+                println!("  {} [{}] {}", severity_icon, spec_id, pitfall.message);
+            } else {
+                println!("  {} {}", severity_icon, pitfall.message);
+            }
+        }
     }
 }
 
