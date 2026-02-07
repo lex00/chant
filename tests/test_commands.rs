@@ -4,7 +4,8 @@ use chant::spec::SpecStatus;
 use std::fs;
 
 mod support;
-use support::harness::TestHarness;
+use serial_test::serial;
+use support::{factory::SpecFactory, harness::TestHarness};
 
 // ============================================================================
 // APPROVE COMMAND TESTS
@@ -14,28 +15,11 @@ use support::harness::TestHarness;
 fn test_approve_already_approved_spec() {
     let harness = TestHarness::new();
 
-    let content = r#"---
-type: code
-status: pending
-approval:
-  required: true
-  status: approved
-  by: Initial User
-  at: 2026-01-01T00:00:00Z
----
-
-# Already approved spec
-
-## Acceptance Criteria
-
-- [ ] Test
-"#;
-
     let spec_id = "2026-01-01-002-def";
-    let spec_path = harness.specs_dir.join(format!("{}.md", spec_id));
-    fs::write(&spec_path, content).unwrap();
+    let content = SpecFactory::as_markdown_with_approval(spec_id, "pending", "approved");
+    harness.create_spec(spec_id, &content);
 
-    let spec = chant::spec::Spec::parse(spec_id, content).unwrap();
+    let spec = chant::spec::Spec::parse(spec_id, &content).unwrap();
     assert!(spec.frontmatter.approval.is_some());
     let approval = spec.frontmatter.approval.as_ref().unwrap();
     assert_eq!(approval.status, chant::spec::ApprovalStatus::Approved);
@@ -54,6 +38,7 @@ fn test_approve_nonexistent_spec() {
 // ============================================================================
 
 #[test]
+#[serial]
 fn test_silent_config_check() {
     let harness = TestHarness::new();
     std::env::set_current_dir(harness.path()).unwrap();
@@ -63,8 +48,10 @@ fn test_silent_config_check() {
 }
 
 #[test]
+#[serial]
 fn test_silent_config_persists() {
     let harness = TestHarness::new();
+    std::env::set_current_dir(harness.path()).unwrap();
 
     let config_path = harness.path().join(".chant/config.md");
     let content_before = fs::read_to_string(&config_path).unwrap();
@@ -82,24 +69,11 @@ fn test_silent_config_persists() {
 fn test_pause_status_transition() {
     let harness = TestHarness::new();
 
-    let content = r#"---
-type: code
-status: in_progress
----
-
-# Test spec
-
-## Acceptance Criteria
-
-- [ ] Test criterion
-"#;
-
     let spec_id = "2026-01-01-004-jkl";
-    let spec_path = harness.specs_dir.join(format!("{}.md", spec_id));
-    fs::write(&spec_path, content).unwrap();
+    harness.create_spec(spec_id, &SpecFactory::as_markdown(spec_id, "in_progress"));
 
-    let mut spec = chant::spec::Spec::parse(spec_id, content).unwrap();
-    spec.id = spec_id.to_string();
+    let spec_path = harness.specs_dir.join(format!("{}.md", spec_id));
+    let mut spec = harness.load_spec(spec_id);
 
     assert_eq!(spec.frontmatter.status, SpecStatus::InProgress);
 

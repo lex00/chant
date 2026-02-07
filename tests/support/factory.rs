@@ -120,4 +120,29 @@ Test specification for {}.
             status, id, id
         )
     }
+
+    /// Creates a spec with approval metadata as markdown.
+    pub fn as_markdown_with_approval(id: &str, status: &str, approval_status: &str) -> String {
+        format!(
+            r#"---
+type: code
+status: {}
+approval:
+  required: true
+  status: {}
+  by: Initial User
+  at: 2026-01-01T00:00:00Z
+---
+
+# Test Spec: {}
+
+Test specification with approval.
+
+## Acceptance Criteria
+
+- [ ] Test criterion
+"#,
+            status, approval_status, id
+        )
+    }
 }

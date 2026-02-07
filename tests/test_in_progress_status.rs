@@ -4,12 +4,13 @@
 //! when running `chant work` in parallel mode.
 
 mod support;
-use support::harness::TestHarness;
+use support::{factory::SpecFactory, harness::TestHarness};
 
-use std::fs;
+use serial_test::serial;
 use std::process::Command;
 
 #[test]
+#[serial]
 fn test_spec_marked_in_progress_when_copied_to_worktree() {
     let harness = TestHarness::new();
     let repo_dir = harness.path();
@@ -19,36 +20,16 @@ fn test_spec_marked_in_progress_when_copied_to_worktree() {
 
     // Create a pending spec
     let spec_id = "test-001";
-    let spec_content = r#"---
-type: code
-status: pending
----
-
-# Test Spec
-
-This spec tests that status is updated to in_progress.
-
-## Acceptance Criteria
-
-- [ ] Status is in_progress when spec is copied to worktree
-"#;
-    let spec_path = repo_dir.join(format!(".chant/specs/{}.md", spec_id));
-    fs::write(&spec_path, spec_content).expect("Failed to write spec");
+    harness.create_spec(spec_id, &SpecFactory::as_markdown(spec_id, "pending"));
 
     // Commit it
-    Command::new("git")
-        .args(["add", "."])
-        .current_dir(&repo_dir)
-        .output()
-        .expect("Failed to add");
-    Command::new("git")
-        .args(["commit", "-m", "Add pending spec"])
-        .current_dir(&repo_dir)
-        .output()
+    harness
+        .git_commit("Add pending spec")
         .expect("Failed to commit");
 
     // Simulate what parallel.rs does:
     // 1. Load spec
+    let spec_path = harness.specs_dir.join(format!("{}.md", spec_id));
     let mut spec = chant::spec::Spec::load(&spec_path).expect("Failed to load spec");
     assert_eq!(
         spec.frontmatter.status,
@@ -93,7 +74,7 @@ This spec tests that status is updated to in_progress.
     let _ = chant::worktree::remove_worktree(&worktree_path);
     let _ = Command::new("git")
         .args(["branch", "-D", &branch_name])
-        .current_dir(&repo_dir)
+        .current_dir(repo_dir)
         .output();
     let _ = std::env::set_current_dir(&original_dir);
     // TempDir auto-cleans
