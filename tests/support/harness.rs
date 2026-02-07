@@ -10,7 +10,9 @@ use tempfile::TempDir;
 pub struct TestHarness {
     pub dir: TempDir,
     pub specs_dir: PathBuf,
+    #[allow(dead_code)]
     pub config_path: PathBuf,
+    #[allow(dead_code)]
     pub chant_binary: PathBuf,
 }
 
@@ -57,6 +59,7 @@ silent: false
     }
 
     /// Creates a test harness with custom config content.
+    #[allow(dead_code)]
     pub fn with_config(config_content: &str) -> Self {
         let harness = Self::new();
         fs::write(&harness.config_path, config_content).expect("Failed to write custom config");
@@ -69,6 +72,7 @@ silent: false
     }
 
     /// Executes the chant binary with the given arguments in the harness directory.
+    #[allow(dead_code)]
     pub fn run(&self, args: &[&str]) -> std::io::Result<std::process::Output> {
         Command::new(&self.chant_binary)
             .args(args)
@@ -84,6 +88,7 @@ silent: false
     }
 
     /// Loads a spec from the specs directory by ID.
+    #[allow(dead_code)]
     pub fn load_spec(&self, id: &str) -> Spec {
         let spec_path = self.specs_dir.join(format!("{}.md", id));
         let content = fs::read_to_string(&spec_path).expect("Failed to read spec file");
@@ -93,6 +98,7 @@ silent: false
     }
 
     /// Creates a git commit with the given message.
+    #[allow(dead_code)]
     pub fn git_commit(&self, msg: &str) -> std::io::Result<()> {
         Command::new("git")
             .args(["add", "."])
@@ -105,6 +111,45 @@ silent: false
             .output()?;
 
         Ok(())
+    }
+
+    /// Checks if a git branch exists.
+    pub fn branch_exists(&self, branch_name: &str) -> bool {
+        let output = Command::new("git")
+            .args(["rev-parse", "--verify", branch_name])
+            .current_dir(self.path())
+            .output()
+            .expect("Failed to check branch");
+        output.status.success()
+    }
+
+    /// Gets all git branches in the repo.
+    pub fn get_branches(&self) -> Vec<String> {
+        let output = Command::new("git")
+            .args(["branch", "-a"])
+            .current_dir(self.path())
+            .output()
+            .expect("Failed to list branches");
+
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .map(|l| l.trim().to_string())
+            .filter(|l| !l.is_empty())
+            .collect()
+    }
+
+    /// Gets the commit count for a given branch.
+    pub fn get_commit_count(&self, branch: &str) -> usize {
+        let output = Command::new("git")
+            .args(["rev-list", "--count", branch])
+            .current_dir(self.path())
+            .output()
+            .expect("Failed to count commits");
+
+        String::from_utf8_lossy(&output.stdout)
+            .trim()
+            .parse()
+            .unwrap_or(0)
     }
 
     fn init_git_repo(repo_dir: &Path) {

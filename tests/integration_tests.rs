@@ -17,3 +17,6 @@ mod spec_lifecycle_test;
 
 #[path = "integration/worktree_test.rs"]
 mod worktree_test;
+
+#[path = "integration/watch_recovery_test.rs"]
+mod watch_recovery_test;
