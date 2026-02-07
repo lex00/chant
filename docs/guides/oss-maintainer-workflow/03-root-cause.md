@@ -21,12 +21,16 @@ Reproduction      Research Spec         RCA Document        Implementation
      │                 ▼                     ▼                    │
      ▼           ┌───────────┐        ┌───────────────┐           ▼
 ┌──────────┐     │ Run       │        │ • Root cause  │     ┌───────────┐
-│ Failing  │────▶│ research  │───────▶│ • Approaches  │────▶│ informed  │
-│ test     │     │ prompt    │        │ • Trade-offs  │     │ by: RCA   │
-└──────────┘     └───────────┘        │ • Recommend   │     └───────────┘
+│ Failing  │────▶│ research  │───────▶│ • Hypotheses  │────▶│ informed  │
+│ test     │     │ prompt    │        │ • Approaches  │     │ by: RCA   │
+└──────────┘     └───────────┘        │ • Trade-offs  │     └───────────┘
+     │                                │ • Recommend   │
      │                                └───────────────┘
-     │
      └── Also: relevant docs, source files
+
+Note: Most investigation time is spent in hypothesis elimination—testing and
+ruling out theories. This loop of forming, testing, and discarding hypotheses
+is where the real detective work happens.
 ```
 
 ## Creating a Root Cause Research Spec
@@ -87,16 +91,19 @@ Your goal is to:
 2. Trace code paths, identify affected components
 3. Read relevant local documentation and source files
 4. Consider historical context (git blame, related commits)
-5. Identify potential approaches and their trade-offs
+5. Test and eliminate hypotheses systematically
+6. Identify potential approaches and their trade-offs
 
 Instructions:
 - Read extensively before forming conclusions
 - Use informed_by to reference reproduction specs, docs, source files
 - Be thorough - this analysis will guide implementation
 - Document your reasoning clearly for future implementers
+- Track hypotheses you test and rule out—negative results are valuable
 
 Output:
 - Comprehensive root cause analysis
+- Ruled-out hypotheses (what you tested and eliminated)
 - Affected components and why
 - 2-3 potential approaches with trade-offs
 - Recommended approach with justification
@@ -156,6 +163,49 @@ informed_by:
 
 For broader investigation across a module.
 
+## Hypothesis Elimination
+
+During root cause analysis, most time is spent forming, testing, and eliminating hypotheses. This iterative process is where the real investigative work happens. Each eliminated hypothesis narrows the search and provides valuable documentation about what doesn't cause the issue.
+
+### Why Track Eliminated Hypotheses?
+
+- **Shows investigation depth:** Documents thoroughness of analysis
+- **Prevents redundant work:** Future investigators won't retrace dead ends
+- **Reveals complexity:** Makes clear why the fix took time to identify
+- **Informs similar issues:** Patterns in what didn't work guide future debugging
+
+### Hypothesis Elimination Table
+
+Use this format in your RCA document to capture tested and ruled-out theories:
+
+```markdown
+## Hypotheses Tested
+
+| Hypothesis | Evidence Tested | Result |
+|------------|----------------|--------|
+| Buffer overflow in write path | Added buffer size checks, reviewed memory allocation | Eliminated: buffer sizes correct, no overflow |
+| Race condition in lock acquisition | Instrumented lock timing, added trace logging | Confirmed: two threads acquired read lock simultaneously |
+| Filesystem cache coherency issue | Tested with direct I/O, disabled caching | Eliminated: issue persists with cache disabled |
+| Version counter overflow | Checked max version values, added assertions | Eliminated: versions well below overflow threshold |
+```
+
+**Result values:**
+- **Eliminated:** Evidence definitively rules out this hypothesis
+- **Confirmed:** Evidence supports this as root cause (or contributing factor)
+- **Partial:** Evidence is inconclusive, hypothesis neither confirmed nor eliminated
+
+### Tracking Your Investigation
+
+As you investigate, document each theory you test:
+
+1. **Form hypothesis:** Based on symptoms and code reading
+2. **Design test:** What evidence would confirm or eliminate it?
+3. **Execute test:** Add logging, modify code, run reproduction case
+4. **Record result:** Update hypothesis table with findings
+5. **Iterate:** Form next hypothesis based on what you learned
+
+This systematic approach ensures thorough investigation and creates documentation that explains why the root cause identification took time and effort.
+
 ## Research Output Structure
 
 A comprehensive RCA document includes:
@@ -172,6 +222,15 @@ A comprehensive RCA document includes:
 Data loss occurs because the `write()` method in `store.rs` uses
 optimistic locking that doesn't handle the case where two writes
 complete their read phase before either starts writing.
+
+## Hypotheses Tested
+
+| Hypothesis | Evidence Tested | Result |
+|------------|----------------|--------|
+| Filesystem cache issue | Disabled caching, tested with direct I/O | Eliminated: issue persists |
+| Version counter race | Added logging for version assignment | Confirmed: multiple threads get same version |
+| Lock timeout causing skip | Instrumented lock acquisition timing | Eliminated: no timeouts observed |
+| Buffer corruption | Memory sanitizer, buffer bounds checks | Eliminated: no corruption detected |
 
 ## Root Cause
 

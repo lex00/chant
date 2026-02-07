@@ -13,7 +13,35 @@ Before attempting to reproduce or fix an issue, you need to understand:
 
 A comprehension research spec produces a `target_files` list that identifies relevant code and documentation.
 
+## Exit Criteria
+
+Comprehension is complete when you can answer these questions:
+
+### What You Should Know
+
+- [ ] **Observable symptom** — What specific behavior is the user reporting? (e.g., "data loss during concurrent writes", not "writes don't work")
+- [ ] **Affected code areas** — Which components, modules, or files are likely involved?
+- [ ] **Prior work** — What related PRs, issues, or documentation exist? Have similar issues been reported or fixed before?
+- [ ] **Missing information** — What details are absent from the issue report that will be needed for reproduction?
+
+### What You Should NOT Know Yet
+
+At the end of Comprehension, you should **NOT** have:
+
+- A root cause hypothesis (save that for Root Cause stage)
+- A specific fix in mind
+- Line-level understanding of the bug
+
+**Comprehension is about mapping the territory, not diagnosing the problem.** You're identifying where to look, not what's broken.
+
 ## Comprehension Workflow
+
+Comprehension involves four sub-activities:
+
+1. **Read issue thread** — Understand the user's report, context, and any discussion
+2. **Review prior PRs/attempts** — Find related issues, PRs, or past fixes
+3. **Read affected code** — Skim the modules and files that appear relevant
+4. **Document observable symptoms** — Capture what is happening (not why)
 
 ```
 GitHub Issue    Comprehension Spec    Understanding      Target Files

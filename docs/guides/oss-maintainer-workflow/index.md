@@ -55,7 +55,7 @@ Specs serve as handoff documents. One maintainer can triage, another can researc
 
 | Stage | Spec Type | Output | Purpose |
 |-------|-----------|--------|---------|
-| [Comprehension](01-comprehension.md) | `research` | `target_files` | Understand what the issue is about |
+| [Comprehension](01-comprehension.md) | `research` | `target_files` | State observable symptom, affected areas, prior work—no hypothesis yet |
 | [Reproducibility](02-reproduction.md) | `task` | Failing test or instructions | Confirm and isolate the bug (auto/assisted) |
 | [Root Cause](03-root-cause.md) | `research` | `target_files` | Determine what needs to be fixed |
 | [Impact Map](04-impact-map.md) | `research` | `target_files` | Expand view based on root cause |
