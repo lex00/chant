@@ -73,7 +73,7 @@ prompt: standard
 informed_by:
   - .chant/research/issue-1234-comprehension.md
   - .chant/research/issue-1234-root-cause.md
-  - .chant/research/issue-1234-sprawl.md
+  - .chant/research/issue-1234-impact-map.md
 ---
 
 # Review staging PR for issue #1234
@@ -145,7 +145,7 @@ Added pessimistic locking to the write path using the existing Lock module.
 This fix was developed using research-driven workflow:
 - Comprehension: `.chant/research/issue-1234-comprehension.md`
 - Root cause: `.chant/research/issue-1234-root-cause.md`
-- Sprawl analysis: `.chant/research/issue-1234-sprawl.md`
+- Sprawl analysis: `.chant/research/issue-1234-impact-map.md`
 
 ## Checklist
 
@@ -195,7 +195,7 @@ After upstream PR is merged:
 chant archive <comprehension-spec-id>
 chant archive <repro-spec-id>
 chant archive <root-cause-spec-id>
-chant archive <sprawl-spec-id>
+chant archive <impact-map-spec-id>
 chant archive <implementation-spec-id>
 
 # Or use label to archive all

@@ -72,7 +72,7 @@ Now we need to identify the exact code causing the bug.
 
 - [ ] Root cause identified with code references
 - [ ] Affected code paths documented
-- [ ] Target files list produced for sprawl research phase
+- [ ] Target files list produced for impact map research phase
 ```
 
 ## The Research Prompt
@@ -427,4 +427,4 @@ chant add "Fix concurrent write bugs across storage layer" --type driver
 ## See Also
 
 - [Reproduction Case](02-reproduction.md) — Previous step: confirm the bug exists
-- [Codebase Sprawl Research](04-sprawl.md) — Next step: expand investigation scope
+- [Impact Map Research](04-impact-map.md) — Next step: expand investigation scope

@@ -21,9 +21,9 @@ Research        Implementation       Working Fix      Staging PR       Human Gat
    │                  │                   │                │               ▼
    ▼                  ▼                   ▼                ▼          ┌──────────┐
 ┌────────┐      ┌──────────┐       ┌──────────┐    ┌───────────┐    │ Review   │
-│Sprawl  │      │Fix in    │       │Code      │    │Fork-      │───▶│ staging  │
-│research│─────▶│fork      │──────▶│changes   │───▶│internal   │    │ PR then  │
-│        │      │          │       │+ tests   │    │PR         │    │ create   │
+│Impact  │      │Fix in    │       │Code      │    │Fork-      │───▶│ staging  │
+│map     │─────▶│fork      │──────▶│changes   │───▶│internal   │    │ PR then  │
+│research│      │          │       │+ tests   │    │PR         │    │ create   │
 └────────┘      └──────────┘       └──────────┘    └───────────┘    │upstream  │
                                                                      └──────────┘
 ```
@@ -41,14 +41,14 @@ Edit the spec to reference all research phases:
 type: code
 status: ready
 depends_on:
-  - 004-sprawl
+  - 004-impact-map
 target_files:
   - src/storage/store.rs
   - tests/storage/concurrent_test.rs
 prompt: standard
 informed_by:
   - .chant/research/issue-1234-root-cause.md
-  - .chant/research/issue-1234-sprawl.md
+  - .chant/research/issue-1234-impact-map.md
 ---
 
 # Phase 5: Fork Fix - Implement fix for Issue #1234
@@ -57,7 +57,7 @@ informed_by:
 
 We have completed our research:
 - Phase 3 identified the root cause: [brief summary]
-- Phase 4 assessed the scope: [found N similar patterns]
+- Phase 4 assessed the impact: [found N similar patterns]
 
 Now we implement the fix in our fork before creating an upstream PR.
 
@@ -143,10 +143,10 @@ The implementation is informed by all research phases:
 
 ```yaml
 depends_on:
-  - 004-sprawl
+  - 004-impact-map
 informed_by:
   - .chant/research/issue-1234-root-cause.md
-  - .chant/research/issue-1234-sprawl.md
+  - .chant/research/issue-1234-impact-map.md
 ```
 
 The agent reads the research outputs, which provide:
@@ -296,14 +296,14 @@ When implementation is complete:
 type: code
 status: completed
 depends_on:
-  - 004-sprawl
+  - 004-impact-map
 target_files:
   - src/storage/store.rs
   - tests/storage/concurrent_test.rs
 prompt: standard
 informed_by:
   - .chant/research/issue-1234-root-cause.md
-  - .chant/research/issue-1234-sprawl.md
+  - .chant/research/issue-1234-impact-map.md
 commits:
   - ghi789b
 completed_at: 2026-01-29T18:00:00Z
@@ -395,5 +395,5 @@ Once staging PR is approved, proceed to create the upstream PR (next phase).
 
 ## See Also
 
-- [Codebase Sprawl Research](04-sprawl.md) — Previous step: identify all affected files
+- [Impact Map Research](04-impact-map.md) — Previous step: identify all affected files
 - [Upstream PR](06-upstream-pr.md) — Next step: human creates upstream PR

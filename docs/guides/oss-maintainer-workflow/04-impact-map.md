@@ -1,8 +1,8 @@
-# Codebase Sprawl Research
+# Impact Map Research
 
 Expand the view beyond the immediate root cause to identify all affected areas.
 
-## Why Sprawl Research?
+## Why Impact Mapping?
 
 After identifying the root cause, you need to expand your understanding:
 
@@ -12,26 +12,26 @@ After identifying the root cause, you need to expand your understanding:
 - **Documentation** that needs changes
 - **Similar bugs** elsewhere in the codebase
 
-A sprawl research spec takes the root cause findings and expands the view to identify all files that need modification.
+An impact map research spec takes the root cause findings and expands the view to identify all files that need modification.
 
-## Sprawl Workflow
+## Impact Mapping Workflow
 
 ```
-Root Cause      Sprawl Research       Expanded View      Implementation
-  Output              │                     │                 Input
-    │                 ▼                     ▼                   │
-    ▼           ┌───────────┐         ┌──────────┐              ▼
-┌─────────┐     │ Expand    │         │ All      │        ┌───────────┐
-│ Primary │────▶│ from root │────────▶│ affected │───────▶│ informed  │
-│ bug     │     │ cause     │         │ files    │        │ by: all   │
-│ location│     └───────────┘         └──────────┘        │ research  │
-└─────────┘                                               └───────────┘
+Root Cause      Impact Map         Expanded View      Implementation
+  Output         Research               │                 Input
+    │                 │                 ▼                   │
+    ▼                 ▼           ┌──────────┐              ▼
+┌─────────┐     ┌───────────┐    │ All      │        ┌───────────┐
+│ Primary │────▶│ Expand    │───▶│ affected │───────▶│ informed  │
+│ bug     │     │ from root │    │ files    │        │ by: all   │
+│ location│     │ cause     │    └──────────┘        │ research  │
+└─────────┘     └───────────┘                        └───────────┘
 ```
 
-## Creating a Sprawl Research Spec
+## Creating an Impact Map Research Spec
 
 ```bash
-chant add "Sprawl: issue #1234" --type research
+chant add "Impact Map: issue #1234" --type research
 ```
 
 Edit the spec to reference root cause research:
@@ -43,13 +43,13 @@ status: ready
 depends_on:
   - 003-root-cause
 target_files:
-  - .chant/research/issue-1234-sprawl.md
+  - .chant/research/issue-1234-impact-map.md
 prompt: research
 informed_by:
   - .chant/research/issue-1234-root-cause.md
 ---
 
-# Phase 4: Sprawl - Assess impact of Issue #1234 bug pattern
+# Phase 4: Impact Map - Assess impact of Issue #1234 bug pattern
 
 ## Context
 
@@ -75,12 +75,12 @@ Phase 3 identified the root cause: [brief summary of the bug]. Before implementi
 - [ ] Edge cases and risks documented
 ```
 
-## Sprawl Output
+## Impact Map Output
 
-The spec produces a sprawl document with comprehensive target files:
+The spec produces an impact map document with comprehensive target files:
 
 ```markdown
-# Sprawl Research: Issue #1234
+# Impact Map Research: Issue #1234
 
 **Date:** 2026-02-02
 **Informed by:** Root cause research (2026-02-02-003-ghi)
@@ -90,7 +90,7 @@ The spec produces a sprawl document with comprehensive target files:
 Bug located in `src/storage/store.rs:145` where optimistic locking
 fails under concurrent writes.
 
-## Sprawl Analysis
+## Impact Analysis
 
 ### Similar Patterns Found
 
@@ -169,7 +169,7 @@ Alternative: Create separate specs for each phase if complex.
 
 ## Using informed_by Chain
 
-Sprawl research is informed by root cause research:
+Impact map research is informed by root cause research:
 
 ```yaml
 # Root cause research (003) finds the bug
@@ -181,30 +181,30 @@ informed_by:
 target_files:
   - .chant/research/issue-1234-root-cause.md
 
-# Sprawl research (004) expands the view
+# Impact map research (004) expands the view
 type: research
 depends_on:
   - 003-root-cause
 informed_by:
   - .chant/research/issue-1234-root-cause.md
 target_files:
-  - .chant/research/issue-1234-sprawl.md
+  - .chant/research/issue-1234-impact-map.md
 
 # Implementation (005) uses both research outputs
 type: code
 depends_on:
-  - 004-sprawl
+  - 004-impact-map
 informed_by:
   - .chant/research/issue-1234-root-cause.md
-  - .chant/research/issue-1234-sprawl.md
+  - .chant/research/issue-1234-impact-map.md
 ```
 
-## When Sprawl Reveals Complexity
+## When Impact Mapping Reveals Complexity
 
-Sometimes sprawl research reveals the fix is more complex than expected:
+Sometimes impact map research reveals the fix is more complex than expected:
 
 ```markdown
-## Sprawl Findings
+## Impact Findings
 
 Analysis revealed 15 locations with the same pattern across 8 files.
 Fixing all instances is too large for a single implementation spec.

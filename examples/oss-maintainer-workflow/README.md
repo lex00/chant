@@ -11,14 +11,14 @@ Six sequential specs forming a chain execution pattern:
 1. **001-comprehension.md** - Understand what the issue is about before jumping to conclusions
 2. **002-reproduction.md** - Create a failing test or reproduction instructions
 3. **003-root-cause.md** - Determine what needs to be fixed through RCA
-4. **004-sprawl.md** - Expand investigation to assess impact and scope
+4. **004-impact-map.md** - Expand investigation to assess impact and scope
 5. **005-fork-fix.md** - Implement the fix and create a staging PR in fork
 6. **006-upstream-pr.md** - Human gate before creating the real upstream PR
 
 Research outputs in `.chant/research/`:
 - `issue-42-comprehension.md` - Output from phase 1
 - `issue-42-root-cause.md` - Output from phase 3
-- `issue-42-sprawl.md` - Output from phase 4
+- `issue-42-impact-map.md` - Output from phase 4
 
 Each phase uses `informed_by:` to reference previous research, creating a chain of dependencies.
 
@@ -32,7 +32,7 @@ cd examples/oss-maintainer-workflow
 chant work 001  # Phase 1: Comprehension
 chant work 002  # Phase 2: Reproduction
 chant work 003  # Phase 3: Root Cause Analysis
-chant work 004  # Phase 4: Sprawl
+chant work 004  # Phase 4: Impact Map
 chant work 005  # Phase 5: Fork Fix
 # Phase 6: Read 006-upstream-pr.md for human review checklist
 ```

@@ -113,7 +113,7 @@ Now that you've set up chant for OSS maintenance, learn the complete workflow:
 1. **[Comprehension Research](01-comprehension.md)** — Understand what the issue is about
 2. **[Reproducibility](02-reproduction.md)** — Create failing tests (auto/assisted)
 3. **[Root Cause Research](03-root-cause.md)** — Determine what needs to be fixed
-4. **[Codebase Sprawl Research](04-sprawl.md)** — Expand view based on root cause
+4. **[Impact Map Research](04-impact-map.md)** — Expand view based on root cause
 5. **[Fork Fix + Staging PR](05-fork-fix.md)** — Fix in fork with fork-internal PR
 6. **[Upstream PR](06-upstream-pr.md)** — Human gate before creating real PR
 

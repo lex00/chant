@@ -16,7 +16,7 @@ Open source maintainers face a common problem: incoming issues require deep inve
 Chant enables a systematic workflow where understanding precedes action:
 
 ```
-Issue       Comprehension   Repro    Root Cause   Sprawl      Fork Fix    Upstream PR
+Issue       Comprehension   Repro    Root Cause   Impact Map  Fork Fix    Upstream PR
 Report         Research                Research    Research                (Human Gate)
   │               │            │          │           │            │             │
   ▼               ▼            ▼          ▼           ▼            ▼             ▼
@@ -58,7 +58,7 @@ Specs serve as handoff documents. One maintainer can triage, another can researc
 | [Comprehension](01-comprehension.md) | `research` | `target_files` | Understand what the issue is about |
 | [Reproducibility](02-reproduction.md) | `task` | Failing test or instructions | Confirm and isolate the bug (auto/assisted) |
 | [Root Cause](03-root-cause.md) | `research` | `target_files` | Determine what needs to be fixed |
-| [Codebase Sprawl](04-sprawl.md) | `research` | `target_files` | Expand view based on root cause |
+| [Impact Map](04-impact-map.md) | `research` | `target_files` | Expand view based on root cause |
 | [Fork Fix](05-fork-fix.md) | `code` | Working fix + staging PR | Fix in fork, create fork-internal PR |
 | [Upstream PR](06-upstream-pr.md) | `task` | Real PR | Human gate → create upstream PR |
 
@@ -156,15 +156,15 @@ chant add "Root cause: issue #1234" --type research
 #                   target_files: [.chant/research/issue-1234-root-cause.md]
 chant work <root-cause-spec-id>
 
-# 4. Sprawl research
-chant add "Sprawl: issue #1234" --type research
+# 4. Impact map research
+chant add "Impact Map: issue #1234" --type research
 # Edit spec to add: informed_by: [<root-cause-spec-id>]
-#                   target_files: [.chant/research/issue-1234-sprawl.md]
-chant work <sprawl-spec-id>
+#                   target_files: [.chant/research/issue-1234-impact-map.md]
+chant work <impact-map-spec-id>
 
 # 5. Fork fix with staging PR
 chant add "Fix issue #1234: Use locking for concurrent writes" --type code
-# Edit spec to add: informed_by: [<root-cause-spec-id>, <sprawl-spec-id>]
+# Edit spec to add: informed_by: [<root-cause-spec-id>, <impact-map-spec-id>]
 chant work <impl-spec-id>
 # Agent creates staging PR in fork (not upstream)
 
@@ -180,7 +180,7 @@ The six phases work together:
 1. **Comprehension** → Understand the issue, produce `target_files`
 2. **Reproducibility** → Confirm with test or instructions
 3. **Root Cause** → Find the bug, produce `target_files`
-4. **Sprawl** → Expand view, produce complete `target_files`
+4. **Impact Map** → Expand view, produce complete `target_files`
 5. **Fork Fix** → Implement + staging PR in fork
 6. **Upstream PR** → Human reviews staging PR → creates upstream PR
 
@@ -190,7 +190,7 @@ The six phases work together:
 1. **[Comprehension Research](01-comprehension.md)** — Understand what the issue is about
 2. **[Reproducibility](02-reproduction.md)** — Create failing tests (auto/assisted)
 3. **[Root Cause Research](03-root-cause.md)** — Determine what needs to be fixed
-4. **[Codebase Sprawl Research](04-sprawl.md)** — Expand view based on root cause
+4. **[Impact Map Research](04-impact-map.md)** — Expand view based on root cause
 5. **[Fork Fix + Staging PR](05-fork-fix.md)** — Fix in fork with fork-internal PR
 6. **[Upstream PR](06-upstream-pr.md)** — Human gate before creating real PR
 7. **[Advanced Patterns](08-advanced.md)** — Configuration and advanced workflows
@@ -215,7 +215,7 @@ target_files:
 # Implementation uses all research
 informed_by:
   - .chant/research/issue-1234-root-cause.md
-  - .chant/research/issue-1234-sprawl.md
+  - .chant/research/issue-1234-impact-map.md
 ```
 
 ### Fork-Staging Pattern
