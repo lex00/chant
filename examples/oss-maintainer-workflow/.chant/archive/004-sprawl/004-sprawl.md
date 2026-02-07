@@ -4,7 +4,7 @@ status: completed
 depends_on:
 - 003-root-cause
 target_files:
-- .chant/research/issue-42-sprawl.md
+- .chant/research/issue-42-impact-map.md
 prompt: research
 commits:
 - 9ce29be
@@ -13,7 +13,7 @@ model: sonnet
 informed_by:
 - .chant/research/issue-42-root-cause.md
 ---
-# Phase 4: Sprawl - Assess impact of Issue #42 bug pattern
+# Phase 4: Impact Map - Assess impact of Issue #42 bug pattern
 
 ## Context
 
@@ -24,7 +24,7 @@ Phase 3 identified the root cause: a read-modify-write race condition in the sto
 
 ## Task
 
-Create a research document at `.chant/research/issue-42-sprawl.md` that assesses:
+Create a research document at `.chant/research/issue-42-impact-map.md` that assesses:
 
 1. **Similar Patterns in Codebase**
    - Search for other instances of read-modify-write without locking
@@ -48,7 +48,7 @@ Create a research document at `.chant/research/issue-42-sprawl.md` that assesses
 
 ## Acceptance Criteria
 
-- [x] Research document created at `.chant/research/issue-42-sprawl.md`
+- [x] Research document created at `.chant/research/issue-42-impact-map.md`
 - [x] Codebase searched for similar patterns
 - [x] All instances documented with locations
 - [x] Impact assessment completed
@@ -60,7 +60,7 @@ Create a research document at `.chant/research/issue-42-sprawl.md` that assesses
 2026-02-02T14:32:32Z
 
 ```
-I'll investigate the sprawl of the Issue #42 bug pattern across the codebase. Let me start by understanding what we're looking for based on the previous phases.
+I'll investigate the impact map of the Issue #42 bug pattern across the codebase. Let me start by understanding what we're looking for based on the previous phases.
 Let me start by reading the root cause analysis from Phase 3 to understand the exact pattern we're looking for.
 Good. Now let me read the actual storage implementation to understand the full scope.
 Now let me search for any other files that might use the Store class or have similar patterns. Let me look for all Python files that might interact with storage.
@@ -72,7 +72,7 @@ Let me check if there's any documentation about the application architecture or 
 Let me read the comprehension document to understand the application context better.
 Now let me search more broadly for any other code that might use similar patterns. Let me check if there are any configuration files, package files, or other source directories.
 Let me check for any examples or additional files in the examples directory.
-Now I have enough information. Let me create the sprawl research document. Based on my investigation:
+Now I have enough information. Let me create the impact map research document. Based on my investigation:
 
 1. The codebase has THREE vulnerable methods in `store.py`: `set()`, `update()`, and `delete()`
 2. The Store class is only used in tests currently - there's no production API code in this minimal example
@@ -85,11 +85,11 @@ I see the file already exists with a complete analysis. However, looking at it m
 Now let me check off the acceptance criteria in the spec file.
 Now let me update the spec to check off all the acceptance criteria.
 Now let me commit the changes with the proper message format.
-Perfect! I've completed the Phase 4 sprawl analysis for Issue #42. Here's what was accomplished:
+Perfect! I've completed the Phase 4 impact map analysis for Issue #42. Here's what was accomplished:
 
 ## Summary
 
-I've successfully completed the sprawl analysis investigating the full impact of the Issue #42 bug pattern across the codebase.
+I've successfully completed the impact map analysis investigating the full impact of the Issue #42 bug pattern across the codebase.
 
 ### Key Findings
 
@@ -121,7 +121,7 @@ I've successfully completed the sprawl analysis investigating the full impact of
 
 ### Deliverables
 
-✅ Research document created at `.chant/research/issue-42-sprawl.md`
+✅ Research document created at `.chant/research/issue-42-impact-map.md`
 ✅ Codebase thoroughly searched for similar patterns
 ✅ All vulnerable instances documented with file:line references
 ✅ Complete impact assessment

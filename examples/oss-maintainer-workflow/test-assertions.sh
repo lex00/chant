@@ -14,7 +14,7 @@ echo -n "✓ Checking all 6 phase specs exist... "
 if [[ -f ".chant/specs/001-comprehension.md" ]] && \
    [[ -f ".chant/specs/002-reproduction.md" ]] && \
    [[ -f ".chant/specs/003-root-cause.md" ]] && \
-   [[ -f ".chant/specs/004-sprawl.md" ]] && \
+   [[ -f ".chant/specs/004-impact-map.md" ]] && \
    [[ -f ".chant/specs/005-fork-fix.md" ]] && \
    [[ -f ".chant/specs/006-upstream-pr.md" ]]; then
     echo "PASS"
@@ -45,9 +45,9 @@ else
     ((FAILED++))
 fi
 
-# Test 4: Verify sprawl spec is type: research
+# Test 4: Verify impact-map spec is type: research
 echo -n "✓ Checking phase 4 is research spec... "
-if grep -q "type: research" ".chant/specs/004-sprawl.md"; then
+if grep -q "type: research" ".chant/specs/004-impact-map.md"; then
     echo "PASS"
     ((PASSED++))
 else
@@ -79,7 +79,7 @@ fi
 echo -n "✓ Checking research specs have target_files... "
 if grep -q "target_files:" ".chant/specs/001-comprehension.md" && \
    grep -q "target_files:" ".chant/specs/003-root-cause.md" && \
-   grep -q "target_files:" ".chant/specs/004-sprawl.md"; then
+   grep -q "target_files:" ".chant/specs/004-impact-map.md"; then
     echo "PASS"
     ((PASSED++))
 else
