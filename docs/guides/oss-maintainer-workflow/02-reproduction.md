@@ -213,6 +213,30 @@ fn issue_1234_race_condition_stress() {
 }
 ```
 
+## Incremental Research Documentation
+
+**IMPORTANT:** Update your research document incrementally as findings emerge, not at the end.
+
+As you work through reproduction:
+- Document each finding in the research doc immediately
+- Update the spec body with observations as you discover them
+- Keep a running log of what you tried and what you learned
+
+This creates an accurate paper trail and helps the next stage build on documented findings rather than relying on context window memory.
+
+**Example incremental updates:**
+```markdown
+## Reproduction Log
+
+**Initial attempt (14:30):** Tried simple concurrent write test. Reproduced consistently.
+
+**Observation (14:45):** Issue only occurs with >2 concurrent writers. Single writer works fine.
+
+**Discovery (15:00):** Added timing instrumentation. Gap between read and write is critical window.
+
+**Confirmed (15:20):** Issue is timing-dependent race condition, not logic bug.
+```
+
 ## Reproduction Output
 
 A successful reproduction spec produces:

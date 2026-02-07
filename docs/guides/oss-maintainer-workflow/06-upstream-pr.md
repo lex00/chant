@@ -117,9 +117,29 @@ gh pr create \
 
 ### Upstream PR Description Template
 
-The PR description should reference the research:
+The PR description should include **User Impact** and **Parent Context** sections up front:
 
 ```markdown
+## User Impact
+
+**What users see before this change:**
+- Data loss during concurrent write operations when multiple processes write to the same key
+- Silent failures with no error messages
+- Unpredictable behavior under concurrent load
+
+**What users see after this change:**
+- All writes succeed and are correctly serialized
+- Last write wins (predictable behavior)
+- No data loss under concurrent load
+
+## Parent Context
+
+**Related to:** #1234
+
+This PR fixes the root cause identified in issue #1234: concurrent write operations
+could result in data loss due to insufficient synchronization in the storage layer.
+The fix implements proper locking to ensure write atomicity.
+
 ## Summary
 
 Fixes #1234 - data loss during concurrent write operations.
