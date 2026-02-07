@@ -175,6 +175,75 @@ Comprehension is deeper than triage:
 - Produces target_files for next phases
 - More than just categorization
 
+## Decomposition Gate
+
+**When an issue contains multiple distinct bugs**, Comprehension may reveal that what appeared to be one issue is actually several independent problems requiring separate fixes.
+
+### When to Decompose
+
+Decompose when Comprehension reveals:
+
+- **Multiple distinct root causes** — The symptoms point to unrelated bugs in different subsystems
+- **Separable failures** — Each bug can be fixed independently without blocking the others
+- **Umbrella issues** — The reporter grouped multiple problems into one issue for convenience
+
+**Example:** Issue #38109 "Data loss in concurrent scenarios" turns out to contain:
+1. Race condition in storage layer (locking bug)
+2. Missing validation in CLI input (separate issue)
+3. Incorrect error handling in retry logic (separate issue)
+4. Documentation gap about concurrency guarantees (non-code fix)
+5. Test coverage gap exposing all of the above
+
+### When NOT to Decompose
+
+Do NOT decompose when:
+
+- **Single root cause, multiple symptoms** — Different error messages or failures that stem from the same underlying bug
+- **Tightly coupled changes** — Fixes that must be implemented together to avoid breaking behavior
+- **Sequential dependencies** — One fix is a prerequisite for another
+
+**Example:** "Writes fail in three different scenarios" where all three failures are caused by the same incorrect lock scope — this is ONE bug with multiple symptoms, not three bugs.
+
+### How to Decompose
+
+When decomposition is needed:
+
+1. **Create separate spec chains** for each distinct bug:
+   ```bash
+   # Bug 1: Race condition
+   chant add "Comprehension: #38109 race condition" --type research
+   chant add "Root cause: #38109 race condition" --type research
+   chant add "Fix #38109: Add proper locking" --type code
+
+   # Bug 2: Missing validation
+   chant add "Comprehension: #38109 input validation" --type research
+   chant add "Fix #38109: Add CLI input validation" --type code
+
+   # Bug 3: Error handling
+   chant add "Comprehension: #38109 retry logic" --type research
+   chant add "Fix #38109: Fix retry error handling" --type code
+   ```
+
+2. **Pick one bug to pursue first** based on:
+   - Severity and user impact
+   - Clarity of the issue (some may need more investigation)
+   - Dependencies (fix foundational issues before dependent ones)
+
+3. **Document the others** in issue comments or separate tracking issues:
+   ```markdown
+   ## Decomposition Result
+
+   Issue #38109 contains 5 distinct problems:
+
+   1. Race condition (High priority) — Pursuing via specs 001-abc, 002-def
+   2. Input validation (Medium) — Tracked in #38110
+   3. Retry error handling (Medium) — Tracked in #38111
+   4. Documentation (Low) — Tracked in #38112
+   5. Test coverage (Ongoing) — Addressed as each bug is fixed
+   ```
+
+**Exit from Comprehension:** If decomposition is needed, complete the Comprehension spec, document the decomposition decision, and create follow-up specs for each distinct bug. Proceed with one bug at a time through the full workflow.
+
 ## See Also
 
 - [Reproducibility](02-reproduction.md) — Next step: create failing test
