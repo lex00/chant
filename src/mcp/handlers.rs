@@ -202,6 +202,31 @@ fn handle_tools_list() -> Result<Value> {
                         "output": {
                             "type": "string",
                             "description": "Output text to append to spec body"
+                        },
+                        "depends_on": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            },
+                            "description": "List of spec IDs this spec depends on"
+                        },
+                        "labels": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            },
+                            "description": "Labels to tag the spec with"
+                        },
+                        "target_files": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            },
+                            "description": "List of target files this spec affects"
+                        },
+                        "model": {
+                            "type": "string",
+                            "description": "Model to use for this spec (e.g., 'sonnet', 'opus', 'haiku')"
                         }
                     },
                     "required": ["id"]
@@ -773,6 +798,42 @@ fn tool_chant_spec_update(arguments: Option<&Value>) -> Result<Value> {
         updated = true;
     }
 
+    // Update depends_on if provided
+    if let Some(depends_on) = args.get("depends_on").and_then(|v| v.as_array()) {
+        let deps: Vec<String> = depends_on
+            .iter()
+            .filter_map(|v| v.as_str().map(String::from))
+            .collect();
+        spec.frontmatter.depends_on = Some(deps);
+        updated = true;
+    }
+
+    // Update labels if provided
+    if let Some(labels) = args.get("labels").and_then(|v| v.as_array()) {
+        let lbls: Vec<String> = labels
+            .iter()
+            .filter_map(|v| v.as_str().map(String::from))
+            .collect();
+        spec.frontmatter.labels = Some(lbls);
+        updated = true;
+    }
+
+    // Update target_files if provided
+    if let Some(target_files) = args.get("target_files").and_then(|v| v.as_array()) {
+        let files: Vec<String> = target_files
+            .iter()
+            .filter_map(|v| v.as_str().map(String::from))
+            .collect();
+        spec.frontmatter.target_files = Some(files);
+        updated = true;
+    }
+
+    // Update model if provided
+    if let Some(model) = args.get("model").and_then(|v| v.as_str()) {
+        spec.frontmatter.model = Some(model.to_string());
+        updated = true;
+    }
+
     // Append output if provided
     if let Some(output) = args.get("output").and_then(|v| v.as_str()) {
         if !output.is_empty() {
@@ -791,7 +852,7 @@ fn tool_chant_spec_update(arguments: Option<&Value>) -> Result<Value> {
             "content": [
                 {
                     "type": "text",
-                    "text": "No updates specified. Provide 'status' or 'output' parameter."
+                    "text": "No updates specified. Provide 'status', 'output', 'depends_on', 'labels', 'target_files', or 'model' parameter."
                 }
             ],
             "isError": true
