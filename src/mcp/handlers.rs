@@ -588,13 +588,20 @@ fn tool_chant_spec_list(arguments: Option<&Value>) -> Result<Value> {
                 "in_progress" => Some(SpecStatus::InProgress),
                 "completed" => Some(SpecStatus::Completed),
                 "failed" => Some(SpecStatus::Failed),
+                "cancelled" => Some(SpecStatus::Cancelled),
                 _ => None,
             };
 
             if let Some(status) = filter_status {
                 specs.retain(|s| s.frontmatter.status == status);
             }
+        } else {
+            // No status filter provided - filter out cancelled specs by default
+            specs.retain(|s| s.frontmatter.status != SpecStatus::Cancelled);
         }
+    } else {
+        // No arguments provided - filter out cancelled specs by default
+        specs.retain(|s| s.frontmatter.status != SpecStatus::Cancelled);
     }
 
     // Get limit (default 50)

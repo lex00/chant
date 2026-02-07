@@ -406,8 +406,10 @@ pub fn cmd_archive(
         let now = Local::now();
 
         for spec in &specs {
-            // Skip if not completed (unless force)
-            if spec.frontmatter.status != SpecStatus::Completed && !force {
+            // Skip if not completed or cancelled (unless force)
+            let is_archivable = spec.frontmatter.status == SpecStatus::Completed
+                || spec.frontmatter.status == SpecStatus::Cancelled;
+            if !is_archivable && !force {
                 continue;
             }
 
