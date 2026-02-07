@@ -943,7 +943,11 @@ pub fn cmd_work_parallel(
     for result in &direct_mode_results {
         if let Some(ref branch) = result.branch_name {
             println!("[{}] Merging to main...", result.spec_id.cyan());
-            let merge_result = worktree::merge_and_cleanup(branch, options.no_rebase);
+            let merge_result = worktree::merge_and_cleanup(
+                branch,
+                &config.defaults.main_branch,
+                options.no_rebase,
+            );
 
             if merge_result.success {
                 merged_count += 1;
@@ -1036,7 +1040,11 @@ pub fn cmd_work_parallel(
 
         for (spec_id, branch) in &branch_mode_branches {
             println!("[{}] Merging to main...", spec_id.cyan());
-            let merge_result = worktree::merge_and_cleanup(branch, options.no_rebase);
+            let merge_result = worktree::merge_and_cleanup(
+                branch,
+                &config.defaults.main_branch,
+                options.no_rebase,
+            );
 
             if merge_result.success {
                 // Merge succeeded - NOW finalize on main branch
