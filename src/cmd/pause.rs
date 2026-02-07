@@ -59,7 +59,8 @@ pub fn cmd_pause(id: &str, force: bool) -> Result<()> {
 
     // Update spec status to paused if it was in_progress
     if spec.frontmatter.status == SpecStatus::InProgress {
-        spec.frontmatter.status = SpecStatus::Paused;
+        spec.set_status(SpecStatus::Paused)
+            .map_err(|e| anyhow::anyhow!("Failed to pause spec: {}", e))?;
         spec.save(&spec_path)?;
         println!("  {} Status set to: paused", "•".cyan());
     }

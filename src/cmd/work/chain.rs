@@ -238,7 +238,8 @@ fn execute_single_spec_in_chain(
     }
 
     // Update status to in_progress
-    spec.frontmatter.status = SpecStatus::InProgress;
+    spec.set_status(SpecStatus::InProgress)
+        .map_err(|e| anyhow::anyhow!("Failed to transition spec to InProgress: {}", e))?;
     spec.save(&spec_path)?;
     eprintln!("{} [chain] Set {} to InProgress", "→".cyan(), spec.id);
 
@@ -326,7 +327,7 @@ fn execute_single_spec_in_chain(
             } {
                 Ok(commits) => {
                     if commits.is_empty() {
-                        spec.frontmatter.status = SpecStatus::Failed;
+                        spec.force_status(SpecStatus::Failed);
                         spec.save(&spec_path)?;
                         anyhow::bail!("No commits found - agent did not make any changes");
                     }
@@ -336,7 +337,7 @@ fn execute_single_spec_in_chain(
                     if allow_no_commits {
                         vec![]
                     } else {
-                        spec.frontmatter.status = SpecStatus::Failed;
+                        spec.force_status(SpecStatus::Failed);
                         spec.save(&spec_path)?;
                         return Err(e);
                     }
@@ -346,7 +347,7 @@ fn execute_single_spec_in_chain(
             // Check acceptance criteria
             let unchecked_count = spec.count_unchecked_checkboxes();
             if unchecked_count > 0 && !skip_criteria {
-                spec.frontmatter.status = SpecStatus::Failed;
+                spec.force_status(SpecStatus::Failed);
                 spec.save(&spec_path)?;
                 anyhow::bail!("Spec has {} unchecked acceptance criteria", unchecked_count);
             }
@@ -409,7 +410,7 @@ fn execute_single_spec_in_chain(
 
             // Update spec to failed
             let mut spec = spec::resolve_spec(specs_dir, &spec.id)?;
-            spec.frontmatter.status = SpecStatus::Failed;
+            spec.force_status(SpecStatus::Failed);
             spec.save(&spec_path)?;
             Err(e)
         }

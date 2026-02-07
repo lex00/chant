@@ -78,6 +78,26 @@ fn read_spec_from_branch(spec_id: &str, branch: &str) -> Result<Spec> {
 }
 
 impl Spec {
+    /// Set the spec status using validated transitions.
+    /// This method validates the transition through the state machine.
+    pub fn set_status(
+        &mut self,
+        new_status: SpecStatus,
+    ) -> Result<(), super::state_machine::TransitionError> {
+        super::state_machine::TransitionBuilder::new(self).to(new_status)
+    }
+
+    /// Force set the spec status, bypassing validation.
+    /// Only use this for error recovery or exceptional cases.
+    /// Logs a warning when used.
+    pub fn force_status(&mut self, new_status: SpecStatus) {
+        eprintln!(
+            "Force setting status for spec {} from {:?} to {:?} (bypassing validation)",
+            self.id, self.frontmatter.status, new_status
+        );
+        self.frontmatter.status = new_status;
+    }
+
     /// Parse a spec from file content.
     pub fn parse(id: &str, content: &str) -> Result<Self> {
         let (frontmatter_str, body) = split_frontmatter(content);

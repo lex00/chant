@@ -36,7 +36,7 @@ pub fn cmd_reset(
     println!("{} Resetting spec {}", "→".cyan(), spec_id.cyan());
 
     // Reset to pending
-    spec.frontmatter.status = SpecStatus::Pending;
+    spec.force_status(SpecStatus::Pending);
     spec.save(&spec_path)?;
 
     println!("{} Spec {} reset to pending", "✓".green(), spec_id);

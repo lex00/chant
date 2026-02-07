@@ -91,7 +91,7 @@ pub fn cmd_takeover(id: &str, force: bool) -> Result<TakeoverResult> {
 
     // Update spec status to paused if it was in_progress
     if spec.frontmatter.status == SpecStatus::InProgress {
-        spec.frontmatter.status = SpecStatus::Paused;
+        let _ = spec.set_status(SpecStatus::Paused);
     }
 
     // Append takeover analysis to spec body

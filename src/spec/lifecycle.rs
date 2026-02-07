@@ -42,10 +42,10 @@ pub fn apply_blocked_status_with_repos(
 
         if is_blocked_locally || is_blocked_cross_repo {
             // Has unmet dependencies - mark as blocked
-            spec.frontmatter.status = SpecStatus::Blocked;
+            spec.force_status(SpecStatus::Blocked);
         } else if spec.frontmatter.status == SpecStatus::Blocked {
             // No unmet dependencies and was previously blocked - revert to pending
-            spec.frontmatter.status = SpecStatus::Pending;
+            spec.force_status(SpecStatus::Pending);
         }
     }
 }

@@ -501,7 +501,10 @@ pub fn cmd_work_parallel(
         // Update spec status to in_progress
         let spec_path = specs_dir.join(format!("{}.md", spec.id));
         let mut spec_clone = spec.clone();
-        spec_clone.frontmatter.status = SpecStatus::InProgress;
+        spec_clone.set_status(SpecStatus::InProgress).map_err(|e| {
+            eprintln!("[{}] Failed to set status to InProgress: {}", spec.id, e);
+            e
+        })?;
         if let Err(e) = spec_clone.save(&spec_path) {
             println!("{} [{}] Failed to update status: {}", "✗".red(), spec.id, e);
             continue;
@@ -588,7 +591,7 @@ pub fn cmd_work_parallel(
                     // Update spec to failed
                     let spec_path = specs_dir.join(format!("{}.md", spec.id));
                     if let Ok(mut failed_spec) = spec::resolve_spec(specs_dir, &spec.id) {
-                        failed_spec.frontmatter.status = SpecStatus::Failed;
+                        failed_spec.force_status(SpecStatus::Failed);
                         let _ = failed_spec.save(&spec_path);
                     }
                     // Send failed result without spawning thread
@@ -617,7 +620,7 @@ pub fn cmd_work_parallel(
                 // Update spec to failed
                 let spec_path = specs_dir.join(format!("{}.md", spec.id));
                 if let Ok(mut failed_spec) = spec::resolve_spec(specs_dir, &spec.id) {
-                    failed_spec.frontmatter.status = SpecStatus::Failed;
+                    failed_spec.force_status(SpecStatus::Failed);
                     let _ = failed_spec.save(&spec_path);
                 }
                 // Send failed result without spawning thread
@@ -795,7 +798,7 @@ pub fn cmd_work_parallel(
                                         "→".yellow(),
                                         spec_id
                                     );
-                                    failed_spec.frontmatter.status = SpecStatus::NeedsAttention;
+                                    failed_spec.force_status(SpecStatus::NeedsAttention);
                                     let _ = failed_spec.save(&spec_path);
                                 }
                                 (false, commits, Some(e.to_string()), false)
@@ -835,7 +838,7 @@ pub fn cmd_work_parallel(
                     // Update spec to failed
                     let spec_path = specs_dir_clone.join(format!("{}.md", spec_id));
                     if let Ok(mut spec) = spec::resolve_spec(&specs_dir_clone, &spec_id) {
-                        spec.frontmatter.status = SpecStatus::Failed;
+                        spec.force_status(SpecStatus::Failed);
                         let _ = spec.save(&spec_path);
                     }
 
@@ -964,7 +967,7 @@ pub fn cmd_work_parallel(
                 // Update spec status to indicate merge pending
                 let spec_path = specs_dir.join(format!("{}.md", result.spec_id));
                 if let Ok(mut spec) = spec::resolve_spec(specs_dir, &result.spec_id) {
-                    spec.frontmatter.status = SpecStatus::NeedsAttention;
+                    spec.force_status(SpecStatus::NeedsAttention);
                     let _ = spec.save(&spec_path);
                 }
 
@@ -1082,7 +1085,7 @@ pub fn cmd_work_parallel(
                         // Mark as NeedsAttention with clear error context
                         let spec_path = specs_dir.join(format!("{}.md", spec_id));
                         if let Ok(mut spec) = spec::resolve_spec(specs_dir, spec_id) {
-                            spec.frontmatter.status = SpecStatus::NeedsAttention;
+                            spec.force_status(SpecStatus::NeedsAttention);
                             let _ = spec.save(&spec_path);
                         }
 

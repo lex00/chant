@@ -157,7 +157,8 @@ Original spec {} was rejected with reason:
     // Update original spec: add depends_on and set status to blocked
     let depends_on = spec.frontmatter.depends_on.get_or_insert_with(Vec::new);
     depends_on.push(fix_id.clone());
-    spec.frontmatter.status = SpecStatus::Blocked;
+    spec.set_status(SpecStatus::Blocked)
+        .map_err(|e| anyhow::anyhow!("Failed to block spec: {}", e))?;
     spec.save(spec_path)?;
 
     // Git add and commit both files

@@ -381,7 +381,8 @@ pub fn cmd_cancel(id: &str, force: bool, dry_run: bool, yes: bool) -> Result<()>
     }
 
     // Update the spec status to Cancelled
-    spec.frontmatter.status = SpecStatus::Cancelled;
+    spec.set_status(SpecStatus::Cancelled)
+        .map_err(|e| anyhow::anyhow!("Failed to cancel spec: {}", e))?;
 
     // Save the spec file with the new status
     let spec_path = specs_dir.join(format!("{}.md", spec_id));

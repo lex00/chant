@@ -801,7 +801,9 @@ fn tool_chant_spec_update(arguments: Option<&Value>) -> Result<Value> {
                 }));
             }
         };
-        spec.frontmatter.status = new_status;
+        // Use force_status for MCP updates to bypass validation
+        // MCP handlers are external control paths that may need to force status changes
+        spec.force_status(new_status);
         updated = true;
     }
 
@@ -1562,8 +1564,9 @@ fn tool_chant_finalize(arguments: Option<&Value>) -> Result<Value> {
         }));
     }
 
-    // Update status to completed
-    spec.frontmatter.status = SpecStatus::Completed;
+    // Update status to completed using state machine
+    spec.set_status(SpecStatus::Completed)
+        .map_err(|e| anyhow::anyhow!("Failed to transition spec to Completed: {}", e))?;
     spec.frontmatter.completed_at = Some(chrono::Local::now().to_rfc3339());
 
     // Save the spec
@@ -1625,8 +1628,9 @@ fn tool_chant_reset(arguments: Option<&Value>) -> Result<Value> {
         }));
     }
 
-    // Reset to pending
-    spec.frontmatter.status = SpecStatus::Pending;
+    // Reset to pending using state machine
+    spec.set_status(SpecStatus::Pending)
+        .map_err(|e| anyhow::anyhow!("Failed to transition spec to Pending: {}", e))?;
 
     // Save the spec
     let spec_path = specs_dir.join(format!("{}.md", spec.id));
@@ -1685,8 +1689,9 @@ fn tool_chant_cancel(arguments: Option<&Value>) -> Result<Value> {
         }));
     }
 
-    // Set status to cancelled
-    spec.frontmatter.status = SpecStatus::Cancelled;
+    // Set status to cancelled using state machine
+    spec.set_status(SpecStatus::Cancelled)
+        .map_err(|e| anyhow::anyhow!("Failed to transition spec to Cancelled: {}", e))?;
 
     // Save the spec
     let spec_path = specs_dir.join(format!("{}.md", spec.id));
@@ -2225,7 +2230,8 @@ fn tool_chant_pause(arguments: Option<&Value>) -> Result<Value> {
 
     // Update spec status to paused if it was in_progress
     if spec.frontmatter.status == SpecStatus::InProgress {
-        spec.frontmatter.status = SpecStatus::Paused;
+        spec.set_status(SpecStatus::Paused)
+            .map_err(|e| anyhow::anyhow!("Failed to transition spec to Paused: {}", e))?;
         spec.save(&spec_path)?;
     }
 

@@ -549,9 +549,8 @@ pub fn cmd_work(
 
     // Update status to in_progress BEFORE creating worktree
     // so copy_spec_to_worktree picks up the correct status.
-    // Without this, the worktree gets status=pending, and finalization
-    // fails because Pending→Completed is not a valid state transition.
-    spec.frontmatter.status = SpecStatus::InProgress;
+    spec.set_status(SpecStatus::InProgress)
+        .map_err(|e| anyhow::anyhow!("Failed to transition spec to InProgress: {}", e))?;
     spec.frontmatter.branch = Some(branch_name.clone());
     spec.save(&spec_path)?;
 
@@ -672,16 +671,8 @@ pub fn cmd_work(
                 spec::resolve_spec(&specs_dir, &spec.id)?
             };
 
-            // Defense in depth: ensure spec status is InProgress before finalization.
-            // The worktree copy should have in_progress from the save-before-copy fix,
-            // but if it's still pending (e.g., stale worktree), correct it here.
-            if spec.frontmatter.status == SpecStatus::Pending {
-                eprintln!(
-                    "{} Spec loaded from worktree has status=pending, correcting to in_progress",
-                    "⚠".yellow()
-                );
-                spec.frontmatter.status = SpecStatus::InProgress;
-            }
+            // With state machine enforcement, stale pending state shouldn't happen,
+            // but if it does, it will be caught by finalization's transition validation.
 
             // Auto-finalize logic after agent exits:
             // 1. Check if agent made a commit (indicates work was done)
@@ -708,7 +699,7 @@ pub fn cmd_work(
                             "⚠".yellow()
                         );
                         // Mark as failed since no work was done
-                        spec.frontmatter.status = SpecStatus::Failed;
+                        spec.force_status(SpecStatus::Failed);
                         spec.save(&spec_path)?;
                         anyhow::bail!("Cannot complete spec without commits - did the agent make any changes?");
                     }
@@ -725,7 +716,7 @@ pub fn cmd_work(
                     } else {
                         println!("\n{} {}", "⚠".yellow(), e);
                         // Mark as failed since we need commits
-                        spec.frontmatter.status = SpecStatus::Failed;
+                        spec.force_status(SpecStatus::Failed);
                         spec.save(&spec_path)?;
                         return Err(e);
                     }
@@ -802,7 +793,7 @@ pub fn cmd_work(
 
                                 // Check if strict validation is enabled
                                 if config.validation.strict_output_validation {
-                                    spec.frontmatter.status = SpecStatus::NeedsAttention;
+                                    spec.force_status(SpecStatus::NeedsAttention);
                                     spec.save(&spec_path)?;
                                     anyhow::bail!(
                                         "Output validation failed: {} error(s)",
@@ -819,7 +810,7 @@ pub fn cmd_work(
                         Err(e) => {
                             println!("\n{} Failed to validate output: {}", "⚠".yellow(), e);
                             if config.validation.strict_output_validation {
-                                spec.frontmatter.status = SpecStatus::NeedsAttention;
+                                spec.force_status(SpecStatus::NeedsAttention);
                                 spec.save(&spec_path)?;
                                 return Err(e);
                             }
@@ -862,7 +853,7 @@ pub fn cmd_work(
                     "→".cyan(),
                     spec.frontmatter.status
                 );
-                spec.frontmatter.status = SpecStatus::Failed;
+                spec.force_status(SpecStatus::Failed);
                 spec.save(&spec_path)?;
                 anyhow::bail!(
                     "Finalization failed for spec '{}': {}. Spec status set to failed.",
@@ -922,16 +913,14 @@ pub fn cmd_work(
 
             // Update spec to failed using state machine
             let mut spec = spec::resolve_spec(&specs_dir, &spec.id)?;
-            if let Err(transition_err) =
-                spec::TransitionBuilder::new(&mut spec).to(SpecStatus::Failed)
-            {
+            if let Err(transition_err) = spec.set_status(SpecStatus::Failed) {
                 eprintln!(
                     "{} Failed to transition spec to failed: {}",
                     "⚠".yellow(),
                     transition_err
                 );
-                // Fallback to direct status update if transition fails
-                spec.frontmatter.status = SpecStatus::Failed;
+                // Fallback to force status update if transition fails
+                spec.force_status(SpecStatus::Failed);
             }
             spec.save(&spec_path)?;
 

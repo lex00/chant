@@ -443,7 +443,7 @@ fn run_startup_recovery(
                                         if let Ok(mut spec) =
                                             spec::resolve_spec(&specs_dir, spec_id)
                                         {
-                                            spec.frontmatter.status = SpecStatus::Failed;
+                                            spec.force_status(SpecStatus::Failed);
                                             let spec_path =
                                                 specs_dir.join(format!("{}.md", spec_id));
                                             if let Err(e) = spec.save(&spec_path) {
@@ -757,7 +757,7 @@ pub fn run_watch(once: bool, dry_run: bool, poll_interval: Option<u64>) -> Resul
                                         if let Ok(mut spec) =
                                             spec::resolve_spec(&specs_dir, spec_id)
                                         {
-                                            spec.frontmatter.status = SpecStatus::Failed;
+                                            spec.force_status(SpecStatus::Failed);
                                             let spec_path =
                                                 specs_dir.join(format!("{}.md", spec_id));
                                             if let Err(e) = spec.save(&spec_path) {

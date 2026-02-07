@@ -255,7 +255,7 @@ pub fn re_finalize_spec(
     spec.frontmatter.model = get_model_name(Some(config));
 
     // Ensure spec is marked as completed
-    spec.frontmatter.status = SpecStatus::Completed;
+    spec.force_status(SpecStatus::Completed);
 
     // Save the spec
     spec_repo
@@ -504,7 +504,7 @@ fn auto_complete_parent_group(parent_id: &str, specs_dir: &Path) -> Result<()> {
     );
 
     // Set parent as completed (groups don't have commits of their own)
-    parent.frontmatter.status = SpecStatus::Completed;
+    parent.force_status(SpecStatus::Completed);
     parent.frontmatter.completed_at = Some(
         chrono::Local::now()
             .format("%Y-%m-%dT%H:%M:%SZ")

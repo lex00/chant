@@ -740,7 +740,7 @@ fn execute_merge(
                 match spec::resolve_spec(specs_dir, &result.spec_id) {
                     Ok(mut spec) => {
                         // Update spec status to completed
-                        spec.frontmatter.status = SpecStatus::Completed;
+                        spec.force_status(SpecStatus::Completed);
 
                         // Add completed_at if not present
                         if spec.frontmatter.completed_at.is_none() {

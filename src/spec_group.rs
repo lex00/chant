@@ -389,7 +389,7 @@ pub fn mark_driver_in_progress_conditional(
         if driver_path.exists() {
             let mut driver = Spec::load(&driver_path)?;
             if driver.frontmatter.status == SpecStatus::Pending {
-                driver.frontmatter.status = SpecStatus::InProgress;
+                driver.force_status(SpecStatus::InProgress);
                 driver.save(&driver_path)?;
             }
         }
@@ -462,7 +462,7 @@ pub fn auto_complete_driver_if_ready(
     let driver_path = specs_dir.join(format!("{}.md", driver_id));
     let mut driver = Spec::load(&driver_path)?;
 
-    driver.frontmatter.status = SpecStatus::Completed;
+    driver.force_status(SpecStatus::Completed);
     driver.frontmatter.completed_at = Some(
         chrono::Local::now()
             .format("%Y-%m-%dT%H:%M:%SZ")
