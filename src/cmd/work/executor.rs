@@ -198,22 +198,21 @@ pub fn invoke_agent_for_spec(
     let message = chant::prompt::assemble(spec, &prompt_path, config)?;
 
     // Select agent based on rotation strategy
-    let agent_command = if config.defaults.rotation_strategy != "none"
-        && !config.parallel.agents.is_empty()
-    {
-        match cmd::agent_rotation::select_agent_for_work(
-            &config.defaults.rotation_strategy,
-            &config.parallel,
-        ) {
-            Ok(cmd) => Some(cmd),
-            Err(e) => {
-                eprintln!("{} Failed to select agent: {}", "⚠".yellow(), e);
-                None
+    let agent_command =
+        if config.defaults.rotation_strategy != "none" && !config.parallel.agents.is_empty() {
+            match cmd::agent_rotation::select_agent_for_work(
+                &config.defaults.rotation_strategy,
+                &config.parallel,
+            ) {
+                Ok(cmd) => Some(cmd),
+                Err(e) => {
+                    eprintln!("{} Failed to select agent: {}", "⚠".yellow(), e);
+                    None
+                }
             }
-        }
-    } else {
-        None
-    };
+        } else {
+            None
+        };
 
     // Invoke agent
     if let Some(agent_cmd) = agent_command {
@@ -226,15 +225,19 @@ pub fn invoke_agent_for_spec(
             worktree_path,
         )
     } else {
-        cmd::agent::invoke_agent_with_model(&message, spec, prompt_name, config, None, worktree_path)
+        cmd::agent::invoke_agent_with_model(
+            &message,
+            spec,
+            prompt_name,
+            config,
+            None,
+            worktree_path,
+        )
     }
 }
 
 /// Collect commits for a spec
-pub fn collect_commits_for_spec(
-    spec: &Spec,
-    allow_no_commits: bool,
-) -> Result<Vec<String>> {
+pub fn collect_commits_for_spec(spec: &Spec, allow_no_commits: bool) -> Result<Vec<String>> {
     let spec_branch = spec.frontmatter.branch.as_deref();
     let commits = if allow_no_commits {
         cmd::commits::get_commits_for_spec_with_branch_allow_no_commits(&spec.id, spec_branch)
@@ -336,11 +339,7 @@ pub fn finalize_completed_spec(
 }
 
 /// Append agent output and create transcript commit
-pub fn cleanup_completed_spec(
-    spec: &mut Spec,
-    spec_path: &Path,
-    agent_output: &str,
-) -> Result<()> {
+pub fn cleanup_completed_spec(spec: &mut Spec, spec_path: &Path, agent_output: &str) -> Result<()> {
     append_agent_output(spec, agent_output);
     spec.save(spec_path)?;
     commit_transcript(&spec.id, spec_path)?;
@@ -348,11 +347,7 @@ pub fn cleanup_completed_spec(
 }
 
 /// Handle spec failure: write agent status and set Failed status
-pub fn handle_spec_failure(
-    spec_id: &str,
-    specs_dir: &Path,
-    error: &anyhow::Error,
-) -> Result<()> {
+pub fn handle_spec_failure(spec_id: &str, specs_dir: &Path, error: &anyhow::Error) -> Result<()> {
     let spec_path = specs_dir.join(format!("{}.md", spec_id));
 
     // Write agent status file: failed
