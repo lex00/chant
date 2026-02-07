@@ -2042,7 +2042,7 @@ fn tool_chant_work_start(arguments: Option<&Value>) -> Result<Value> {
         cmd.arg("--parallel").arg(p.to_string());
         format!("parallel({})", p)
     } else if chain {
-        cmd.arg("--chain");
+        cmd.arg("--chain").arg(&spec_id);
         "chain".to_string()
     } else {
         cmd.arg(&spec_id);
