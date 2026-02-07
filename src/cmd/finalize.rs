@@ -8,6 +8,7 @@ use colored::Colorize;
 use std::path::Path;
 
 use chant::config::Config;
+use chant::output::{Output, OutputMode};
 use chant::repository::spec_repository::{FileSpecRepository, SpecRepository};
 use chant::spec::{self, load_all_specs, Spec, SpecStatus, TransitionBuilder};
 use chant::worktree;
@@ -35,6 +36,8 @@ pub fn finalize_spec(
     allow_no_commits: bool,
     commits: Option<Vec<String>>,
 ) -> Result<()> {
+    let out = Output::new(OutputMode::Human);
+
     // Check for uncommitted changes in worktree before finalization
     if let Some(worktree_path) = worktree::get_active_worktree(&spec.id, None) {
         if worktree::has_uncommitted_changes(&worktree_path)? {
@@ -182,19 +185,15 @@ pub fn finalize_spec(
     let specs_dir = spec_repo.specs_dir();
     let unblocked = find_dependent_specs(&spec.id, specs_dir)?;
     if !unblocked.is_empty() {
-        println!(
-            "{} Unblocked {} dependent spec(s):",
-            "✓".green(),
-            unblocked.len()
-        );
+        out.success(&format!("Unblocked {} dependent spec(s):", unblocked.len()));
         for dependent_id in unblocked {
-            println!("  - {}", dependent_id);
+            out.detail(&format!("- {}", dependent_id));
         }
     }
 
     // Auto-complete parent group if this is a member and all siblings are complete
     if let Some(parent_id) = get_parent_group_id(&spec.id) {
-        auto_complete_parent_group(&parent_id, specs_dir)?;
+        auto_complete_parent_group(&parent_id, specs_dir, &out)?;
     }
 
     Ok(())
@@ -467,7 +466,7 @@ fn get_parent_group_id(spec_id: &str) -> Option<String> {
 
 /// Auto-complete a parent group spec if all its members are now completed.
 /// This is called after finalizing a member spec.
-fn auto_complete_parent_group(parent_id: &str, specs_dir: &Path) -> Result<()> {
+fn auto_complete_parent_group(parent_id: &str, specs_dir: &Path, out: &Output) -> Result<()> {
     // Load the parent spec
     let parent_path = specs_dir.join(format!("{}.md", parent_id));
     if !parent_path.exists() {
@@ -497,11 +496,10 @@ fn auto_complete_parent_group(parent_id: &str, specs_dir: &Path) -> Result<()> {
     }
 
     // All members complete! Auto-complete the parent group
-    println!(
-        "\n{} All members of group {} are complete. Auto-completing parent...",
-        "→".cyan(),
+    out.step(&format!(
+        "\nAll members of group {} are complete. Auto-completing parent...",
         parent_id
-    );
+    ));
 
     // Set parent as completed (groups don't have commits of their own)
     parent.force_status(SpecStatus::Completed);
@@ -513,11 +511,11 @@ fn auto_complete_parent_group(parent_id: &str, specs_dir: &Path) -> Result<()> {
 
     parent.save(&parent_path)?;
 
-    println!("{} Group {} auto-completed", "✓".green(), parent_id);
+    out.success(&format!("Group {} auto-completed", parent_id));
 
     // Recursively check if this group is itself a member of a parent group
     if let Some(grandparent_id) = get_parent_group_id(parent_id) {
-        auto_complete_parent_group(&grandparent_id, specs_dir)?;
+        auto_complete_parent_group(&grandparent_id, specs_dir, out)?;
     }
 
     Ok(())

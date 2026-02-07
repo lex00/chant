@@ -16,6 +16,7 @@ use std::time::Duration;
 
 use chant::config::Config;
 use chant::conflict;
+use chant::output::{Output, OutputMode};
 use chant::repository::spec_repository::FileSpecRepository;
 use chant::spec::{self, Spec, SpecStatus};
 use chant::worktree;
@@ -352,6 +353,9 @@ pub fn cmd_work_parallel(
     let execution_state = Arc::new(ParallelExecutionState::new(&config.defaults.branch_prefix));
     setup_parallel_cleanup_handlers(execution_state.clone());
 
+    // Create output handler
+    let out = Output::new(OutputMode::Human);
+
     // Load specs: either specific IDs or all ready specs
     let ready_specs: Vec<Spec> = if !options.specific_ids.is_empty() {
         // Resolve specific IDs
@@ -390,17 +394,17 @@ pub fn cmd_work_parallel(
 
     if ready_specs.is_empty() {
         if !options.specific_ids.is_empty() {
-            println!("No specs resolved from provided IDs.");
+            out.info("No specs resolved from provided IDs.");
         } else if !options.labels.is_empty() {
-            println!("No ready specs with specified labels.");
+            out.info("No ready specs with specified labels.");
         } else {
-            println!("No ready specs to execute.");
+            out.info("No ready specs to execute.");
         }
         return Ok(());
     }
 
     // Run lint validation on all specs before starting parallel work - fail fast if any have issues
-    println!("{} Validating {} spec(s)...", "→".cyan(), ready_specs.len());
+    out.step(&format!("Validating {} spec(s)...", ready_specs.len()));
     let spec_ids: Vec<String> = ready_specs.iter().map(|s| s.id.clone()).collect();
     let lint_result = crate::cmd::spec::lint_specific_specs(specs_dir, &spec_ids)?;
     if lint_result.failed > 0 {
@@ -411,34 +415,31 @@ pub fn cmd_work_parallel(
         );
     }
     if lint_result.warned > 0 {
-        println!(
-            "{} {} spec(s) have warnings but are valid for execution",
-            "⚠".yellow(),
+        out.warn(&format!(
+            "{} spec(s) have warnings but are valid for execution",
             lint_result.warned
-        );
+        ));
     }
 
     // Distribute specs across configured agents
     let assignments = distribute_specs_to_agents(&ready_specs, config, options.max_override);
 
     if assignments.len() < ready_specs.len() {
-        println!(
-            "{} Warning: Only {} of {} ready specs will be executed (capacity limit)",
-            "⚠".yellow(),
+        out.warn(&format!(
+            "Only {} of {} ready specs will be executed (capacity limit)",
             assignments.len(),
             ready_specs.len()
-        );
+        ));
     }
 
     // Warn if user has set model preferences that will be ignored by agent CLI profiles
     warn_model_override_in_parallel(config, options.prompt_name);
 
     // Show agent distribution
-    println!(
-        "{} Starting {} specs in parallel...\n",
-        "→".cyan(),
+    out.step(&format!(
+        "Starting {} specs in parallel...\n",
         assignments.len()
-    );
+    ));
 
     // Group assignments by agent for display
     let mut agent_counts: HashMap<&str, usize> = HashMap::new();

@@ -13,6 +13,7 @@ use colored::Colorize;
 use std::path::{Path, PathBuf};
 
 use chant::config::Config;
+use chant::output::{Output, OutputMode};
 use chant::paths::PROMPTS_DIR;
 use chant::prompt;
 use chant::repository::spec_repository::FileSpecRepository;
@@ -224,12 +225,15 @@ pub fn cmd_work(
 
     let id = &final_id;
 
+    // Create output handler (Human mode for interactive CLI)
+    let out = Output::new(OutputMode::Human);
+
     // Resolve spec
     let mut spec = spec::resolve_spec(&specs_dir, id)?;
     let spec_path = specs_dir.join(format!("{}.md", spec.id));
 
     // Run lint validation before worktree creation - fail fast if spec has issues
-    println!("{} Validating spec...", "→".cyan());
+    out.step("Validating spec...");
     let lint_result = spec_cmd::lint_specific_specs(&specs_dir, &[spec.id.clone()])?;
     if lint_result.failed > 0 {
         anyhow::bail!(
@@ -240,11 +244,10 @@ pub fn cmd_work(
         );
     }
     if lint_result.warned > 0 {
-        println!(
-            "{} Spec has {} warning(s) but is valid for execution",
-            "⚠".yellow(),
+        out.warn(&format!(
+            "Spec has {} warning(s) but is valid for execution",
             lint_result.warned
-        );
+        ));
     }
 
     // Validate work preconditions (unless bypassed with flags)
@@ -306,17 +309,13 @@ pub fn cmd_work(
 
         // Ask for confirmation (unless --skip-criteria is used)
         if !confirm_re_finalize(&spec.id, skip_criteria)? {
-            println!("Re-finalization cancelled.");
+            out.info("Re-finalization cancelled.");
             return Ok(());
         }
 
         // Check if this spec has an active worktree - if so, finalize there
         if let Some(worktree_path) = worktree::get_active_worktree(&spec.id, None) {
-            println!(
-                "{} Re-finalizing spec {} in worktree...",
-                "→".cyan(),
-                spec.id
-            );
+            out.step(&format!("Re-finalizing spec {} in worktree...", spec.id));
 
             // Get the spec path in the worktree
             let worktree_spec_path = worktree_path
@@ -338,47 +337,46 @@ pub fn cmd_work(
             let commit_message = format!("chant({}): finalize spec", spec.id);
             worktree::commit_in_worktree(&worktree_path, &commit_message)?;
 
-            println!("{} Spec re-finalized in worktree!", "✓".green());
+            out.success("Spec re-finalized in worktree!");
 
             if let Some(commits) = &worktree_spec.frontmatter.commits {
                 for commit in commits {
-                    println!("Commit: {}", commit);
+                    out.info(&format!("Commit: {}", commit));
                 }
             }
             if let Some(completed_at) = &worktree_spec.frontmatter.completed_at {
-                println!("Completed at: {}", completed_at);
+                out.info(&format!("Completed at: {}", completed_at));
             }
             if let Some(model) = &worktree_spec.frontmatter.model {
-                println!("Model: {}", model);
+                out.info(&format!("Model: {}", model));
             }
-            println!("Worktree: {}", worktree_path.display());
+            out.info(&format!("Worktree: {}", worktree_path.display()));
         } else {
             // No active worktree - finalize on current branch
-            println!("{} Re-finalizing spec {}...", "→".cyan(), spec.id);
+            out.step(&format!("Re-finalizing spec {}...", spec.id));
             let spec_repo = FileSpecRepository::new(specs_dir.to_path_buf());
             re_finalize_spec(&mut spec, &spec_repo, &config, allow_no_commits)?;
-            println!("{} Spec re-finalized!", "✓".green());
+            out.success("Spec re-finalized!");
 
             if let Some(commits) = &spec.frontmatter.commits {
                 for commit in commits {
-                    println!("Commit: {}", commit);
+                    out.info(&format!("Commit: {}", commit));
                 }
             }
             if let Some(completed_at) = &spec.frontmatter.completed_at {
-                println!("Completed at: {}", completed_at);
+                out.info(&format!("Completed at: {}", completed_at));
             }
             if let Some(model) = &spec.frontmatter.model {
-                println!("Model: {}", model);
+                out.info(&format!("Model: {}", model));
             }
 
             // If this is a member spec, check if driver should be auto-completed
             let all_specs = spec::load_all_specs(&specs_dir)?;
             if spec::auto_complete_driver_if_ready(&spec.id, &all_specs, &specs_dir)? {
-                println!(
-                    "\n{} Auto-completed driver spec: {}",
-                    "✓".green(),
+                out.success(&format!(
+                    "\nAuto-completed driver spec: {}",
                     spec::extract_driver_id(&spec.id).unwrap()
-                );
+                ));
             }
         }
 
@@ -556,7 +554,7 @@ pub fn cmd_work(
 
     let worktree_path = worktree::create_worktree(&spec.id, &branch_name, project_name)?;
     worktree::copy_spec_to_worktree(&spec.id, &worktree_path)?;
-    println!("{} Worktree: {}", "→".cyan(), worktree_path.display());
+    out.step(&format!("Worktree: {}", worktree_path.display()));
 
     // Resolve prompt: CLI > wizard > frontmatter > auto-select by type > default
     let resolved_prompt_name = prompt_name
@@ -590,12 +588,10 @@ pub fn cmd_work(
     // If this is a member spec, mark the driver spec as in_progress if it's pending
     spec::mark_driver_in_progress(&specs_dir, &spec.id)?;
 
-    println!(
-        "{} {} with prompt '{}'",
-        "Working".cyan(),
-        spec.id,
-        prompt_name
-    );
+    out.info(&format!(
+        "Working {} with prompt '{}'",
+        spec.id, prompt_name
+    ));
 
     // Assemble prompt
     let message = prompt::assemble(&spec, &prompt_path, &config)?;
@@ -730,42 +726,39 @@ pub fn cmd_work(
             if !skip_criteria {
                 let unchecked_count_before = spec.count_unchecked_checkboxes();
                 if unchecked_count_before > 0 {
-                    println!(
-                        "\n{} Found {} unchecked acceptance {}. Auto-checking...",
-                        "→".cyan(),
+                    out.step(&format!(
+                        "\nFound {} unchecked acceptance {}. Auto-checking...",
                         unchecked_count_before,
                         if unchecked_count_before == 1 {
                             "criterion"
                         } else {
                             "criteria"
                         }
-                    );
+                    ));
 
                     // Auto-check all unchecked criteria
                     let modified = spec.auto_check_acceptance_criteria();
                     if modified {
                         spec.save(&spec_path)?;
-                        println!(
-                            "{} Auto-checked {} acceptance {}",
-                            "✓".green(),
+                        out.success(&format!(
+                            "Auto-checked {} acceptance {}",
                             unchecked_count_before,
                             if unchecked_count_before == 1 {
                                 "criterion"
                             } else {
                                 "criteria"
                             }
-                        );
+                        ));
                     }
                 }
             }
 
             // Show lint warnings if any (but allow finalization if criteria are checked)
             if lint_result.warned > 0 {
-                println!(
-                    "\n{} Lint check found {} warning(s), but criteria are all checked - proceeding with finalization.",
-                    "→".cyan(),
+                out.step(&format!(
+                    "\nLint check found {} warning(s), but criteria are all checked - proceeding with finalization.",
                     lint_result.warned
-                );
+                ));
             }
 
             // Validate output against schema if output_schema is defined
@@ -826,10 +819,7 @@ pub fn cmd_work(
             }
 
             // All criteria are checked, auto-finalize the spec
-            println!(
-                "\n{} Auto-finalizing spec (all acceptance criteria checked)...",
-                "→".cyan()
-            );
+            out.step("\nAuto-finalizing spec (all acceptance criteria checked)...");
             let all_specs = spec::load_all_specs(&specs_dir)?;
             let spec_repo = FileSpecRepository::new(specs_dir.to_path_buf());
             // Pass the commits we already retrieved to avoid fetching twice
@@ -866,21 +856,20 @@ pub fn cmd_work(
             // Reload specs to get the freshly-saved completed status
             let all_specs = spec::load_all_specs(&specs_dir)?;
             if spec::auto_complete_driver_if_ready(&spec.id, &all_specs, &specs_dir)? {
-                println!(
-                    "\n{} Auto-completed driver spec: {}",
-                    "✓".green(),
+                out.success(&format!(
+                    "\nAuto-completed driver spec: {}",
                     spec::extract_driver_id(&spec.id).unwrap()
-                );
+                ));
             }
 
-            println!("\n{} Spec completed!", "✓".green());
+            out.success("\nSpec completed!");
             if let Some(commits) = &spec.frontmatter.commits {
                 for commit in commits {
-                    println!("Commit: {}", commit);
+                    out.info(&format!("Commit: {}", commit));
                 }
             }
             if let Some(model) = &spec.frontmatter.model {
-                println!("Model: {}", model);
+                out.info(&format!("Model: {}", model));
             }
 
             // Append agent output to spec body (after finalization so finalized spec is the base)

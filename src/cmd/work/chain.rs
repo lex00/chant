@@ -13,6 +13,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use std::path::Path;
 
 use chant::config::Config;
+use chant::output::{Output, OutputMode};
 use chant::repository::spec_repository::FileSpecRepository;
 use chant::spec::{self, Spec, SpecStatus};
 use chant::spec_group;
@@ -134,12 +135,15 @@ fn execute_single_spec_in_chain(
     allow_no_commits: bool,
     skip_approval: bool,
 ) -> Result<()> {
+    // Create output handler
+    let out = Output::new(OutputMode::Human);
+
     // Resolve spec
     let mut spec = spec::resolve_spec(specs_dir, spec_id)?;
     let spec_path = specs_dir.join(format!("{}.md", spec.id));
 
     // Run lint validation before starting work - fail fast if spec has issues
-    eprintln!("{} [chain] Validating spec {}...", "→".cyan(), spec.id);
+    out.step(&format!("[chain] Validating spec {}...", spec.id));
     let lint_result = crate::cmd::spec::lint_specific_specs(specs_dir, &[spec.id.clone()])?;
     if lint_result.failed > 0 {
         anyhow::bail!(
@@ -150,12 +154,10 @@ fn execute_single_spec_in_chain(
         );
     }
     if lint_result.warned > 0 {
-        eprintln!(
-            "{} [chain] Spec {} has {} warning(s) but is valid for execution",
-            "⚠".yellow(),
-            spec.id,
-            lint_result.warned
-        );
+        out.warn(&format!(
+            "[chain] Spec {} has {} warning(s) but is valid for execution",
+            spec.id, lint_result.warned
+        ));
     }
 
     // Reject cancelled specs
@@ -191,11 +193,7 @@ fn execute_single_spec_in_chain(
 
     // Check if already completed
     if spec.frontmatter.status == SpecStatus::Completed && !(skip_deps || skip_criteria) {
-        println!(
-            "{} Spec {} already completed, skipping.",
-            "→".cyan(),
-            spec.id
-        );
+        out.step(&format!("Spec {} already completed, skipping.", spec.id));
         return Ok(());
     }
 
@@ -241,7 +239,7 @@ fn execute_single_spec_in_chain(
     spec.set_status(SpecStatus::InProgress)
         .map_err(|e| anyhow::anyhow!("Failed to transition spec to InProgress: {}", e))?;
     spec.save(&spec_path)?;
-    eprintln!("{} [chain] Set {} to InProgress", "→".cyan(), spec.id);
+    out.step(&format!("[chain] Set {} to InProgress", spec.id));
 
     // Create log file immediately (fix B: create log file when work starts)
     crate::cmd::agent::create_log_file_if_not_exists(&spec.id, &resolved_prompt_name)?;
