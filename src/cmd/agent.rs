@@ -29,6 +29,7 @@ pub fn invoke_agent_with_command_override(
     prompt_name: &str,
     config: &Config,
     agent_command: Option<&str>,
+    cwd: Option<&Path>,
 ) -> Result<String> {
     use std::io::{BufRead, BufReader};
     use std::process::{Command, Stdio};
@@ -69,6 +70,11 @@ pub fn invoke_agent_with_command_override(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
+    // Set working directory if provided
+    if let Some(path) = cwd {
+        cmd.current_dir(path);
+    }
+
     let mut child = cmd.spawn().with_context(|| {
         format!(
             "Failed to invoke agent '{}'. Is it installed and in PATH?",
@@ -83,6 +89,7 @@ pub fn invoke_agent_with_command_override(
 
     // Collect output while streaming to terminal and log
     let mut captured_output = String::new();
+    let mut stderr_output = String::new();
 
     // Stream stdout to both terminal and log file
     if let Some(stdout) = child.stdout.take() {
@@ -103,15 +110,30 @@ pub fn invoke_agent_with_command_override(
         }
     }
 
+    // Capture stderr for diagnostics
+    if let Some(stderr) = child.stderr.take() {
+        use std::io::Read;
+        let mut stderr_reader = BufReader::new(stderr);
+        let _ = stderr_reader.read_to_string(&mut stderr_output);
+    }
+
     let status = child.wait()?;
 
     // Clean up PID file
     if let Err(e) = chant::pid::remove_pid_file(&spec.id) {
-        eprintln!("{} Failed to remove PID file: {}", "⚠".yellow(), e);
+        eprintln!("{} Failed to write PID file: {}", "⚠".yellow(), e);
     }
 
     if !status.success() {
-        anyhow::bail!("Agent exited with status: {}", status);
+        // Include stderr output in error message for diagnostics
+        let mut error_msg = format!("Agent exited with status: {}", status);
+        if !stderr_output.is_empty() {
+            error_msg.push_str(&format!("\n\nStderr:\n{}", stderr_output.trim()));
+        }
+        if captured_output.is_empty() && stderr_output.is_empty() {
+            error_msg.push_str("\n\nNo output captured - agent may have died immediately after starting. Check working directory and CLAUDE.md configuration.");
+        }
+        anyhow::bail!(error_msg);
     }
 
     Ok(captured_output)
@@ -194,6 +216,7 @@ pub fn invoke_agent_with_command(
     }
 
     // Stream stdout with prefix to both terminal and log file
+    let mut stderr_output = String::new();
     if let Some(stdout) = child.stdout.take() {
         let reader = BufReader::new(stdout);
         let prefix = format!("[{}]", spec_id);
@@ -216,6 +239,13 @@ pub fn invoke_agent_with_command(
         }
     }
 
+    // Capture stderr for diagnostics
+    if let Some(stderr) = child.stderr.take() {
+        use std::io::Read;
+        let mut stderr_reader = BufReader::new(stderr);
+        let _ = stderr_reader.read_to_string(&mut stderr_output);
+    }
+
     let status = child.wait()?;
 
     // Clean up PID file
@@ -229,7 +259,11 @@ pub fn invoke_agent_with_command(
     }
 
     if !status.success() {
-        anyhow::bail!("Agent exited with status: {}", status);
+        let mut error_msg = format!("[{}] Agent exited with status: {}", spec_id, status);
+        if !stderr_output.is_empty() {
+            error_msg.push_str(&format!("\n\nStderr:\n{}", stderr_output.trim()));
+        }
+        anyhow::bail!(error_msg);
     }
 
     Ok(())

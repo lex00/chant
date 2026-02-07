@@ -288,6 +288,7 @@ fn execute_single_spec_in_chain(
             &resolved_prompt_name,
             config,
             Some(&agent_cmd),
+            None, // No worktree in chain mode
         )
     } else {
         cmd::agent::invoke_agent(&message, &spec, &resolved_prompt_name, config)

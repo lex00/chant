@@ -615,7 +615,7 @@ pub fn cmd_work(
             None
         };
 
-    // Invoke agent
+    // Invoke agent in worktree
     let result = if let Some(agent_cmd) = agent_command {
         cmd::agent::invoke_agent_with_command_override(
             &message,
@@ -623,9 +623,17 @@ pub fn cmd_work(
             prompt_name,
             &config,
             Some(&agent_cmd),
+            Some(&worktree_path),
         )
     } else {
-        cmd::agent::invoke_agent(&message, &spec, prompt_name, &config)
+        cmd::agent::invoke_agent_with_model(
+            &message,
+            &spec,
+            prompt_name,
+            &config,
+            None,
+            Some(&worktree_path),
+        )
     };
 
     match result {
