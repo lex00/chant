@@ -66,6 +66,7 @@ fn test_happy_path_pending_to_completed() {
     let repo_dir = PathBuf::from("/tmp/test-state-machine-happy-path");
     let _ = common::cleanup_test_repo(&repo_dir);
     setup_git_repo(&repo_dir).expect("Failed to setup repo");
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
 
     let spec_content = r#"---
 type: code
@@ -127,6 +128,7 @@ status: pending
     );
     assert_eq!(spec.frontmatter.status, SpecStatus::Completed);
 
+    std::env::set_current_dir(&original_dir).ok();
     common::cleanup_test_repo(&repo_dir).ok();
 }
 

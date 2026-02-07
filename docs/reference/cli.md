@@ -804,14 +804,19 @@ chant log 001                         # Show last 50 lines and follow (default)
 chant log 001 --no-follow             # Show last 50 lines without following
 chant log 001 -n 100                  # Show last 100 lines and follow
 chant log 001 -n 100 --no-follow      # Show last 100 lines without following
+chant log 001 --run latest            # Show only the most recent run's output
+chant log 001 --run 2                 # Show output from the 2nd run
 ```
 
 Logs are stored in `.chant/logs/{spec-id}.log` and are created when a spec is executed with `chant work`. The log contains the full agent output including timestamp and prompt used.
+
+When a spec is retried, subsequent runs are appended to the same log file with visual run separators (`========`). Use `--run` to isolate output from a specific run.
 
 **Use cases:**
 - Monitor spec execution in real-time (follows by default)
 - Review agent output after execution with `--no-follow`
 - Debug failed specs
+- Isolate output from a specific run with `--run`
 
 ### Real-time Log Streaming
 

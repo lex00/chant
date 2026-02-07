@@ -345,6 +345,10 @@ Update a chant spec status or append output.
 - `id` (required): Spec ID (full or partial match)
 - `status` (optional): New status - `pending`, `in_progress`, `completed`, `failed`
 - `output` (optional): Output text to append to spec body
+- `depends_on` (optional): Array of spec IDs this spec depends on
+- `labels` (optional): Array of labels to assign to the spec
+- `target_files` (optional): Array of target file paths for the spec
+- `model` (optional): Model name to use for the spec
 
 #### Output Append Behavior
 
@@ -935,9 +939,12 @@ Take over a running spec, stopping the agent and analyzing progress.
   "spec_id": "2026-02-02-001-xyz",
   "analysis": "Agent was implementing feature X. Made progress on 3/5 acceptance criteria.",
   "log_tail": "Last 20 lines of execution log...",
-  "suggestion": "Continue by completing the remaining 2 acceptance criteria."
+  "suggestion": "Continue by completing the remaining 2 acceptance criteria.",
+  "worktree_path": "/tmp/chant-2026-02-02-001-xyz"
 }
 ```
+
+The `worktree_path` field contains the path to the spec's worktree directory. After takeover, use this path as your working directory to continue the agent's work. If the worktree no longer exists, the field will be `null`.
 
 **Example Request:**
 ```json
@@ -1288,7 +1295,7 @@ Full JSON schemas as returned by `tools/list`. Only showing key tools; run `echo
     },
     {
       "name": "chant_spec_update",
-      "description": "Update a chant spec status or add output",
+      "description": "Update a chant spec status, frontmatter fields, or add output",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1303,6 +1310,25 @@ Full JSON schemas as returned by `tools/list`. Only showing key tools; run `echo
           "output": {
             "type": "string",
             "description": "Output text to append to spec body"
+          },
+          "depends_on": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Spec IDs this spec depends on"
+          },
+          "labels": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Labels to assign to the spec"
+          },
+          "target_files": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Target file paths for the spec"
+          },
+          "model": {
+            "type": "string",
+            "description": "Model name to use for the spec"
           }
         },
         "required": ["id"]

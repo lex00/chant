@@ -80,8 +80,8 @@ pub fn finalize_spec(
     }
 
     // Update spec to completed using SpecStateMachine
+    // Note: clean tree check is already done above via worktree::has_uncommitted_changes
     TransitionBuilder::new(spec)
-        .require_clean_tree()
         .to(SpecStatus::Completed)
         .context("Failed to transition spec to Completed status")?;
     spec.frontmatter.commits = if commits.is_empty() {
