@@ -671,7 +671,10 @@ pub fn cmd_work(
             // At this point, commits exist on chant/SPEC_ID but not merged yet
             let spec_branch = spec.frontmatter.branch.as_deref();
             let found_commits = match if allow_no_commits {
-                cmd::commits::get_commits_for_spec_allow_no_commits(&spec.id)
+                cmd::commits::get_commits_for_spec_with_branch_allow_no_commits(
+                    &spec.id,
+                    spec_branch,
+                )
             } else {
                 cmd::commits::get_commits_for_spec_with_branch(&spec.id, spec_branch)
             } {

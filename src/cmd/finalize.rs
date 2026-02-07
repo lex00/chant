@@ -9,7 +9,7 @@ use std::path::Path;
 
 use chant::config::Config;
 use chant::repository::spec_repository::{FileSpecRepository, SpecRepository};
-use chant::spec::{self, load_all_specs, Spec, SpecStatus};
+use chant::spec::{self, load_all_specs, Spec, SpecStatus, TransitionBuilder};
 use chant::worktree;
 
 use crate::cmd::commits::{
@@ -79,8 +79,11 @@ pub fn finalize_spec(
         check_and_set_agent_approval(spec, &commits, config)?;
     }
 
-    // Update spec to completed
-    spec.frontmatter.status = SpecStatus::Completed;
+    // Update spec to completed using SpecStateMachine
+    TransitionBuilder::new(spec)
+        .require_clean_tree()
+        .to(SpecStatus::Completed)
+        .context("Failed to transition spec to Completed status")?;
     spec.frontmatter.commits = if commits.is_empty() {
         None
     } else {

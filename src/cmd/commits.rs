@@ -552,6 +552,15 @@ pub fn get_commits_for_spec_allow_no_commits(spec_id: &str) -> Result<Vec<String
     get_commits_for_spec_internal(spec_id, None, true)
 }
 
+/// Get commits for a spec with branch context, allowing no commits (HEAD fallback).
+/// If spec_branch is provided, searches that branch first before current branch.
+pub fn get_commits_for_spec_with_branch_allow_no_commits(
+    spec_id: &str,
+    spec_branch: Option<&str>,
+) -> Result<Vec<String>> {
+    get_commits_for_spec_internal(spec_id, spec_branch, true)
+}
+
 /// Search for commits on a specific branch matching the spec pattern.
 /// Returns Ok(commits) if found, Err if not found or git command failed.
 fn find_commits_on_branch(branch: &str, spec_id: &str) -> Result<Vec<String>> {
