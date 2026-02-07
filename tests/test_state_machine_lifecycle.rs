@@ -96,8 +96,24 @@ status: pending
     // Save the updated spec
     spec.save(&spec_path).expect("Failed to save spec");
 
+    // Commit the status change
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to add");
+    Command::new("git")
+        .args(["commit", "-m", "Update spec status"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to commit");
+
     // Transition: InProgress -> Completed (with all preconditions)
     let mut spec = Spec::load(&spec_path).expect("Failed to reload spec");
+
+    // Ensure we're in the correct directory before transition
+    std::env::set_current_dir(&repo_dir).expect("Failed to set dir before transition");
+
     let result = TransitionBuilder::new(&mut spec)
         .require_clean_tree()
         .require_all_criteria_checked()
@@ -106,7 +122,8 @@ status: pending
 
     assert!(
         result.is_ok(),
-        "InProgress -> Completed should succeed with preconditions met"
+        "InProgress -> Completed should succeed with preconditions met: {:?}",
+        result
     );
     assert_eq!(spec.frontmatter.status, SpecStatus::Completed);
 
@@ -120,6 +137,10 @@ fn test_retry_flow_pending_to_failed_to_completed() {
     let repo_dir = PathBuf::from("/tmp/test-state-machine-retry");
     let _ = common::cleanup_test_repo(&repo_dir);
     setup_git_repo(&repo_dir).expect("Failed to setup repo");
+
+    // Save original directory and change to test repo
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
+    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
 
     let spec_content = r#"---
 type: code
@@ -166,6 +187,18 @@ status: pending
         .expect("Pending -> InProgress (retry) failed");
     spec.save(&spec_path).expect("Failed to save spec");
 
+    // Commit the status change
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to add");
+    Command::new("git")
+        .args(["commit", "-m", "Update spec status"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("Failed to commit");
+
     // InProgress -> Completed
     let mut spec = Spec::load(&spec_path).expect("Failed to reload spec");
     TransitionBuilder::new(&mut spec)
@@ -176,6 +209,8 @@ status: pending
         .expect("InProgress -> Completed failed");
     assert_eq!(spec.frontmatter.status, SpecStatus::Completed);
 
+    // Restore original directory
+    std::env::set_current_dir(&original_dir).ok();
     common::cleanup_test_repo(&repo_dir).ok();
 }
 
@@ -186,6 +221,10 @@ fn test_blocked_flow_with_dependencies() {
     let repo_dir = PathBuf::from("/tmp/test-state-machine-blocked");
     let _ = common::cleanup_test_repo(&repo_dir);
     setup_git_repo(&repo_dir).expect("Failed to setup repo");
+
+    // Save original directory and change to test repo
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
+    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
 
     // Create dependency spec
     let dep_content = r#"---
@@ -259,6 +298,8 @@ depends_on: {}
     assert!(result.is_ok(), "Transition should succeed after dep met");
     assert_eq!(blocked_spec.frontmatter.status, SpecStatus::InProgress);
 
+    // Restore original directory
+    std::env::set_current_dir(&original_dir).ok();
     common::cleanup_test_repo(&repo_dir).ok();
 }
 
@@ -269,6 +310,10 @@ fn test_precondition_errors() {
     let repo_dir = PathBuf::from("/tmp/test-state-machine-preconditions");
     let _ = common::cleanup_test_repo(&repo_dir);
     setup_git_repo(&repo_dir).expect("Failed to setup repo");
+
+    // Save original directory and change to test repo
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
+    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
 
     // Test DirtyWorktree error
     let spec_content = r#"---
@@ -405,6 +450,8 @@ depends_on: {}
         _ => panic!("Expected UnmetDependencies error, got: {:?}", result),
     }
 
+    // Restore original directory
+    std::env::set_current_dir(&original_dir).ok();
     common::cleanup_test_repo(&repo_dir).ok();
 }
 
@@ -415,6 +462,10 @@ fn test_force_bypass() {
     let repo_dir = PathBuf::from("/tmp/test-state-machine-force");
     let _ = common::cleanup_test_repo(&repo_dir);
     setup_git_repo(&repo_dir).expect("Failed to setup repo");
+
+    // Save original directory and change to test repo
+    let original_dir = std::env::current_dir().expect("Failed to get cwd");
+    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
 
     let spec_content = r#"---
 type: code
@@ -493,5 +544,7 @@ status: in_progress
     );
     assert_eq!(spec.frontmatter.status, SpecStatus::Completed);
 
+    // Restore original directory
+    std::env::set_current_dir(&original_dir).ok();
     common::cleanup_test_repo(&repo_dir).ok();
 }
