@@ -9,6 +9,7 @@
 mod frontmatter;
 mod lifecycle;
 mod parse;
+mod state_machine;
 
 // Re-export types from submodules
 pub use frontmatter::{Approval, ApprovalStatus, BlockingDependency, SpecFrontmatter, SpecStatus};
@@ -17,6 +18,7 @@ pub use lifecycle::{
     load_all_specs_with_options, resolve_spec,
 };
 pub use parse::{split_frontmatter, Spec};
+pub use state_machine::{TransitionBuilder, TransitionError};
 
 // Re-export group/driver functions from spec_group for backward compatibility
 pub use crate::spec_group::{
