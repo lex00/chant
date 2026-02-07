@@ -402,6 +402,55 @@ pub fn write_agent_status_done(
     Ok(())
 }
 
+/// Prepare spec for execution: validate, resolve prompt, update status
+pub fn prepare_spec_for_execution(
+    spec: &mut Spec,
+    spec_path: &Path,
+    specs_dir: &Path,
+    prompts_dir: &Path,
+    config: &Config,
+    prompt_name: Option<&str>,
+    validation_opts: &ValidationOptions,
+) -> Result<String> {
+    validate_spec(spec, specs_dir, config, validation_opts)?;
+
+    // Resolve prompt
+    let resolved_prompt_name = prompt_name
+        .map(std::string::ToString::to_string)
+        .or_else(|| spec.frontmatter.prompt.clone())
+        .unwrap_or_else(|| config.defaults.prompt.clone());
+
+    let prompt_path = prompts_dir.join(format!("{}.md", resolved_prompt_name));
+    if !prompt_path.exists() {
+        anyhow::bail!("Prompt not found: {}", resolved_prompt_name);
+    }
+
+    // Update status to in_progress
+    spec.set_status(SpecStatus::InProgress)
+        .map_err(|e| anyhow::anyhow!("Failed to transition spec to InProgress: {}", e))?;
+    spec.save(spec_path)?;
+    eprintln!("{} Set {} to InProgress", "→".cyan(), spec.id);
+
+    // Create log file
+    cmd::agent::create_log_file_if_not_exists(&spec.id, &resolved_prompt_name)?;
+
+    // Write agent status: working
+    let status_path = specs_dir.join(format!(".chant-status-{}.json", spec.id));
+    let agent_status = chant::worktree::status::AgentStatus {
+        spec_id: spec.id.clone(),
+        status: chant::worktree::status::AgentStatusState::Working,
+        updated_at: chrono::Utc::now().to_rfc3339(),
+        error: None,
+        commits: vec![],
+    };
+    chant::worktree::status::write_status(&status_path, &agent_status)?;
+
+    // Mark driver as in_progress if needed (conditional for chain mode)
+    spec::mark_driver_in_progress_conditional(specs_dir, &spec.id, true)?;
+
+    Ok(resolved_prompt_name)
+}
+
 /// Validate agent output against schema if defined
 pub fn validate_output_schema(
     spec: &Spec,

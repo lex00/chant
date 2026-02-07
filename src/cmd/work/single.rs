@@ -74,7 +74,6 @@ pub fn cmd_work(
             max_specs: chain_max,
             labels,
             prompt_name,
-            cli_branch: None,
             skip_deps,
             skip_criteria,
             allow_no_commits,
