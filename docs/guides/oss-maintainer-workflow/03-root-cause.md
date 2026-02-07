@@ -206,6 +206,51 @@ As you investigate, document each theory you test:
 
 This systematic approach ensures thorough investigation and creates documentation that explains why the root cause identification took time and effort.
 
+## When to Pivot
+
+Investigation can hit dead ends. Rather than digging deeper into unproductive paths, recognize when to step back and re-evaluate your approach.
+
+### Pivot Decision Heuristics
+
+**Consider pivoting when:**
+
+1. **Hypotheses aren't narrowing the search**
+   - You've tested 4-5 distinct hypotheses and each one gets eliminated
+   - New hypotheses aren't building on previous findings
+   - You're generating theories without a clear connection to evidence
+
+2. **Stuck in one code path too long**
+   - You've spent significant time (multiple hypothesis cycles) in a single file or module
+   - You keep re-reading the same code looking for what you missed
+   - Your hypothesis table shows repeated tests of similar theories in the same location
+
+3. **Re-reading the issue thread reveals missed clues**
+   - Go back to the original issue report with fresh eyes
+   - Check for details you dismissed initially (version numbers, environment specifics, timing)
+   - Look for reporter comments added after your initial comprehension
+   - Review similar/related issues linked in the thread
+
+4. **Your reproduction keeps failing**
+   - If you can't reproduce reliably after several attempts, you might be testing the wrong scenario
+   - The reported symptoms might be side effects of a different root cause
+   - Environmental factors might be more critical than you realized
+
+**What to do when pivoting:**
+
+- Update your comprehension: Re-read issue comments, linked discussions, related PRs
+- Broaden your search: Look at adjacent modules, calling code, or dependent components
+- Check your reproduction case: Does it actually match the reported symptoms?
+- Review your hypothesis table: Are you missing an entire category of potential causes?
+- Consider environmental factors: Configuration, platform differences, timing/concurrency
+
+**What NOT to do:**
+
+- Don't abandon hypotheses prematurely after a single test
+- Don't pivot just because investigation is taking time (some bugs are genuinely complex)
+- Don't guess wildly - pivoting should be deliberate re-orientation, not random searching
+
+The goal is to recognize when you're not making progress and deliberately shift your investigative approach, rather than persisting on an unproductive path or giving up entirely.
+
 ## Research Output Structure
 
 A comprehensive RCA document includes:

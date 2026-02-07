@@ -219,3 +219,50 @@ chant work <impl-spec-id>
 - Loses some auditability (no per-stage git commits)
 
 The single-spec mode preserves the research rigor and deliverables of the full workflow while reducing ceremony for solo investigators.
+
+## Investigation Heuristics
+
+During any investigation (whether single-spec or multi-spec), you may encounter dead ends or unproductive paths. These heuristics help you recognize when to pivot rather than dig deeper into a failing approach.
+
+### Recognizing Investigation Dead Ends
+
+**Pivot signals:**
+
+1. **Hypotheses aren't converging**
+   - Multiple distinct theories tested, all eliminated
+   - New hypotheses don't build on previous findings
+   - Generating theories without clear connection to evidence
+
+2. **Stuck in one location**
+   - Spent multiple hypothesis cycles in a single file/module
+   - Re-reading the same code repeatedly
+   - Hypothesis table shows redundant tests in same area
+
+3. **Fresh perspective reveals missed clues**
+   - Re-read the issue thread - details dismissed initially may be critical
+   - Check for comments added after initial comprehension
+   - Review version numbers, environment specifics, timing details
+   - Look at related/similar issues linked in thread
+
+4. **Reproduction keeps failing**
+   - Can't reproduce reliably after several attempts
+   - Reported symptoms might be side effects of different root cause
+   - Environmental factors more critical than realized
+
+### Pivot Actions
+
+When you recognize a dead end:
+
+- **Update comprehension:** Re-read issue with fresh perspective
+- **Broaden search:** Look at adjacent modules, callers, dependencies
+- **Verify reproduction:** Does your test actually match reported symptoms?
+- **Review hypothesis patterns:** Missing an entire category of causes?
+- **Check environmental factors:** Configuration, platform, timing, concurrency
+
+### What NOT to Do
+
+- Don't abandon hypotheses after single test (some require iteration)
+- Don't pivot just because investigation takes time (complex bugs exist)
+- Don't guess wildly - pivot deliberately, not randomly
+
+The goal is deliberate re-orientation when progress stalls, not premature abandonment or endless persistence on unproductive paths.
