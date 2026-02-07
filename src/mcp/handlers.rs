@@ -2019,10 +2019,15 @@ fn tool_chant_work_start(arguments: Option<&Value>) -> Result<Value> {
         }
     }
 
-    // Update status to in_progress before spawning agent (matches CLI behavior)
+    // Update status to in_progress after quality validation passes (matches CLI behavior)
+    use crate::spec::TransitionBuilder;
     let mut spec = spec;
-    spec.frontmatter.status = SpecStatus::InProgress;
     let spec_path = specs_dir.join(format!("{}.md", spec_id));
+
+    TransitionBuilder::new(&mut spec)
+        .to(SpecStatus::InProgress)
+        .map_err(|e| anyhow::anyhow!("Failed to transition spec to in_progress: {}", e))?;
+
     spec.save(&spec_path)?;
 
     // Build command based on mode
