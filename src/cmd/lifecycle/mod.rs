@@ -235,13 +235,20 @@ pub fn handle_completed(spec_id: &str) -> Result<()> {
     // Step 1: Finalize the spec
     println!("{} Finalizing spec {}", "→".cyan(), spec_id.cyan());
 
-    let status = Command::new(std::env::current_exe()?)
+    let output = Command::new(std::env::current_exe()?)
         .args(["finalize", spec_id])
-        .status()
+        .output()
         .context("Failed to run chant finalize")?;
 
-    if !status.success() {
-        anyhow::bail!("Finalize failed for spec {}", spec_id);
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        anyhow::bail!(
+            "Finalize failed for spec {}\nStdout: {}\nStderr: {}",
+            spec_id,
+            stdout.trim(),
+            stderr.trim()
+        );
     }
 
     println!("{} Finalized spec {}", "✓".green(), spec_id);
@@ -299,20 +306,47 @@ pub fn handle_completed(spec_id: &str) -> Result<()> {
     // Step 4: Merge the branch
     println!("{} Merging branch {}", "→".cyan(), branch_name.cyan());
 
-    let status = Command::new(std::env::current_exe()?)
+    let output = Command::new(std::env::current_exe()?)
         .args(["merge", spec_id])
-        .status()
+        .output()
         .context("Failed to run chant merge")?;
 
-    if !status.success() {
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
         anyhow::bail!(
-            "Merge failed for spec {} (branch: {})",
+            "Merge failed for spec {} (branch: {})\nStdout: {}\nStderr: {}",
             spec_id,
-            branch_name
+            branch_name,
+            stdout.trim(),
+            stderr.trim()
         );
     }
 
     println!("{} Merged spec {}", "✓".green(), spec_id);
+
+    // Step 5: Verify spec status after merge
+    // The finalization commit should have been merged to main
+    // Reload the spec from main and verify it has status=completed
+    let specs_dir = crate::cmd::ensure_initialized()?;
+    let spec = spec::resolve_spec(&specs_dir, spec_id)?;
+
+    if spec.frontmatter.status != spec::SpecStatus::Completed {
+        // Merge succeeded but spec status wasn't updated - this indicates
+        // the finalization commit didn't make it to main
+        anyhow::bail!(
+            "Merge succeeded but spec {} status is {:?} instead of Completed. \
+             This may indicate the finalization commit was not included in the merge.",
+            spec_id,
+            spec.frontmatter.status
+        );
+    }
+
+    println!(
+        "{} Verified spec {} has status=completed on main",
+        "✓".green(),
+        spec_id
+    );
 
     Ok(())
 }

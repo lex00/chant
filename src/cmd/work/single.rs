@@ -546,9 +546,17 @@ pub fn cmd_work(
     // Create worktree for this spec
     let branch_name = format!("{}{}", config.defaults.branch_prefix, spec.id);
     let project_name = Some(config.project.name.as_str()).filter(|n| !n.is_empty());
+
+    // Update status to in_progress BEFORE creating worktree
+    // so copy_spec_to_worktree picks up the correct status.
+    // Without this, the worktree gets status=pending, and finalization
+    // fails because Pending→Completed is not a valid state transition.
+    spec.frontmatter.status = SpecStatus::InProgress;
+    spec.frontmatter.branch = Some(branch_name.clone());
+    spec.save(&spec_path)?;
+
     let worktree_path = worktree::create_worktree(&spec.id, &branch_name, project_name)?;
     worktree::copy_spec_to_worktree(&spec.id, &worktree_path)?;
-    spec.frontmatter.branch = Some(branch_name);
     println!("{} Worktree: {}", "→".cyan(), worktree_path.display());
 
     // Resolve prompt: CLI > wizard > frontmatter > auto-select by type > default
@@ -564,10 +572,6 @@ pub fn cmd_work(
         anyhow::bail!("Prompt not found: {}", resolved_prompt_name);
     }
     let prompt_name = resolved_prompt_name.as_str();
-
-    // Update status to in_progress
-    spec.frontmatter.status = SpecStatus::InProgress;
-    spec.save(&spec_path)?;
 
     // Create log file immediately (fix B: create log file when work starts)
     // This ensures log exists as soon as status is in_progress
@@ -667,6 +671,17 @@ pub fn cmd_work(
             } else {
                 spec::resolve_spec(&specs_dir, &spec.id)?
             };
+
+            // Defense in depth: ensure spec status is InProgress before finalization.
+            // The worktree copy should have in_progress from the save-before-copy fix,
+            // but if it's still pending (e.g., stale worktree), correct it here.
+            if spec.frontmatter.status == SpecStatus::Pending {
+                eprintln!(
+                    "{} Spec loaded from worktree has status=pending, correcting to in_progress",
+                    "⚠".yellow()
+                );
+                spec.frontmatter.status = SpecStatus::InProgress;
+            }
 
             // Auto-finalize logic after agent exits:
             // 1. Check if agent made a commit (indicates work was done)
@@ -832,14 +847,29 @@ pub fn cmd_work(
             } else {
                 Some(found_commits)
             };
-            finalize_spec(
+            if let Err(e) = finalize_spec(
                 &mut spec,
                 &spec_repo,
                 &config,
                 &all_specs,
                 allow_no_commits,
                 commits_to_pass,
-            )?;
+            ) {
+                // Finalization failed - set spec to failed with clear error
+                eprintln!("\n{} Finalization failed: {}", "✗".red(), e);
+                eprintln!(
+                    "{} Spec status was {:?} when finalization was attempted",
+                    "→".cyan(),
+                    spec.frontmatter.status
+                );
+                spec.frontmatter.status = SpecStatus::Failed;
+                spec.save(&spec_path)?;
+                anyhow::bail!(
+                    "Finalization failed for spec '{}': {}. Spec status set to failed.",
+                    spec.id,
+                    e
+                );
+            }
 
             // If this is a member spec, check if driver should be auto-completed
             // Reload specs to get the freshly-saved completed status
