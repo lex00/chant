@@ -36,6 +36,30 @@ Chant uses git worktrees for isolation. Each spec executes in its own worktree w
    └── git commit -m "chant: mark 2026-01-22-001-x7m complete"
 ```
 
+## Concurrency
+
+Worktree isolation ensures each spec executes in its own branch without conflicts. However, **merge races** can occur when multiple specs finish simultaneously and attempt to merge back to main:
+
+```
+Terminal 1: chant work spec-a   →  git checkout main && git merge chant/spec-a
+Terminal 2: chant work spec-b   →  git checkout main && git merge chant/spec-b
+                                    ⚠️  Race: both merge to main at the same time
+```
+
+> **Warning:** Running multiple `chant work` processes in separate terminals can cause merge conflicts when specs finish concurrently. Both processes attempt `git checkout main && git merge` in the main repository, leading to race conditions.
+
+### Safe Approach: Use `--parallel`
+
+```bash
+chant work --parallel 3    # Sequences all merges safely
+```
+
+The `--parallel` flag coordinates merge-back operations across workers, ensuring only one spec merges at a time.
+
+### Watch Mode
+
+Watch mode (`chant watch`) uses a PID lock to ensure only one instance runs, preventing concurrent merges by design.
+
 ---
 
 ## Git Hooks
