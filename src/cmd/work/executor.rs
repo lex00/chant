@@ -3,6 +3,8 @@
 //! Provides unified validation, agent invocation, and finalization logic
 //! that is used by single, chain, and parallel execution modes.
 
+#![allow(dead_code)]
+
 use anyhow::Result;
 use colored::Colorize;
 use std::path::Path;

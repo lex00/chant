@@ -37,14 +37,45 @@ mod tests {
     use crate::cmd::commits::CommitError;
     use crate::cmd::finalize::finalize_spec;
     use crate::cmd::model::{get_model_name, get_model_name_with_default};
-    use crate::{lookup_log_file, LogLookupResult};
     use chant::config::Config;
     use chant::repository::spec_repository::FileSpecRepository;
     use chant::spec::{self, Spec, SpecFrontmatter, SpecStatus};
     use lint::validate_spec_type;
     use serial_test::serial;
     use show::{format_yaml_value, key_to_title_case};
+    use std::path::{Path, PathBuf};
     use tempfile::TempDir;
+
+    /// Result of log file lookup (used in tests)
+    #[derive(Debug)]
+    enum LogLookupResult {
+        /// Log file exists at the given path
+        Found(PathBuf),
+        /// Log file not found for the spec
+        NotFound { spec_id: String, log_path: PathBuf },
+    }
+
+    /// Look up the log file for a spec (used for testing)
+    fn lookup_log_file(base_path: &Path, id: &str) -> anyhow::Result<LogLookupResult> {
+        let specs_dir = base_path.join("specs");
+        let logs_dir = base_path.join("logs");
+
+        if !specs_dir.exists() {
+            anyhow::bail!("Chant not initialized. Run `chant init` first.");
+        }
+
+        let spec = chant::spec::resolve_spec(&specs_dir, id)?;
+        let log_path = logs_dir.join(format!("{}.log", spec.id));
+
+        if log_path.exists() {
+            Ok(LogLookupResult::Found(log_path))
+        } else {
+            Ok(LogLookupResult::NotFound {
+                spec_id: spec.id,
+                log_path,
+            })
+        }
+    }
 
     #[test]
     fn test_ensure_logs_dir_creates_directory() {

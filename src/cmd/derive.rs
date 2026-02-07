@@ -87,7 +87,7 @@ mod tests {
 
         if std::env::set_current_dir(&temp_dir).is_ok() {
             // Initialize chant
-            crate::cmd_init(
+            crate::cmd::init::run(
                 None,
                 Some("test".to_string()),
                 false,
@@ -116,7 +116,7 @@ mod tests {
 
         if std::env::set_current_dir(&temp_dir).is_ok() {
             // Initialize chant
-            crate::cmd_init(
+            crate::cmd::init::run(
                 None,
                 Some("test".to_string()),
                 false,
