@@ -142,11 +142,7 @@ pub fn commit_in_worktree(worktree_path: &Path, message: &str) -> Result<String>
 /// - The branch already exists
 /// - Git worktree creation fails (e.g., corrupted repo)
 /// - Directory creation fails
-pub fn create_worktree(
-    spec_id: &str,
-    branch: &str,
-    project_name: Option<&str>,
-) -> Result<PathBuf> {
+pub fn create_worktree(spec_id: &str, branch: &str, project_name: Option<&str>) -> Result<PathBuf> {
     let worktree_path = worktree_path_for_spec(spec_id, project_name);
 
     // Check if worktree already exists
@@ -1068,7 +1064,10 @@ mod tests {
         assert_eq!(path, PathBuf::from("/tmp/chant-2026-01-27-001-abc"));
 
         let path = worktree_path_for_spec("2026-01-27-001-abc", Some("myproject"));
-        assert_eq!(path, PathBuf::from("/tmp/chant-myproject-2026-01-27-001-abc"));
+        assert_eq!(
+            path,
+            PathBuf::from("/tmp/chant-myproject-2026-01-27-001-abc")
+        );
 
         let path = worktree_path_for_spec("2026-01-27-001-abc", Some(""));
         assert_eq!(path, PathBuf::from("/tmp/chant-2026-01-27-001-abc"));

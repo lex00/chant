@@ -667,10 +667,13 @@ pub fn cmd_work(
             // 4. If criteria unchecked, fail with clear message
 
             // Check for commits and store them for finalization
+            // CRITICAL: Search the worktree branch, not current branch (main)
+            // At this point, commits exist on chant/SPEC_ID but not merged yet
+            let spec_branch = spec.frontmatter.branch.as_deref();
             let found_commits = match if allow_no_commits {
                 cmd::commits::get_commits_for_spec_allow_no_commits(&spec.id)
             } else {
-                cmd::commits::get_commits_for_spec(&spec.id)
+                cmd::commits::get_commits_for_spec_with_branch(&spec.id, spec_branch)
             } {
                 Ok(commits) => {
                     if commits.is_empty() {

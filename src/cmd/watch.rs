@@ -322,7 +322,11 @@ pub fn is_watch_running() -> bool {
 /// - Orphaned worktrees (no status file, >1 day old): Cleanup
 ///
 /// Returns the number of recovery actions taken
-fn run_startup_recovery(logger: &mut WatchLogger, dry_run: bool, branch_prefix: &str) -> Result<usize> {
+fn run_startup_recovery(
+    logger: &mut WatchLogger,
+    dry_run: bool,
+    branch_prefix: &str,
+) -> Result<usize> {
     let mut actions = 0;
     let now = chrono::Utc::now();
 
