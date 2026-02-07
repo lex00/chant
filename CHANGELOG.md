@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.2] - 2026-02-07
+
+### Fixed
+
+- **Spec finalization failing silently**: Root cause identified and fixed — `copy_spec_to_worktree` was called before setting `status: in_progress`, so the worktree received `status: pending`. After agent completed work, `Pending→Completed` was rejected by the state machine. Fix moves the status update before the worktree copy, adds defense-in-depth correction, and adds explicit error handling when finalization fails
+- **Agents dying silently in worktree mode**: Agent process was spawned with CWD set to the main repo instead of the worktree directory. Fix passes worktree path as working directory to agent invocation and adds stderr capture for diagnostic output
+
+### Changed
+
+- **OSS maintainer workflow: "Codebase Sprawl" renamed to "Impact Map"**: Better reflects the intent of mapping downstream consequences of a bug across the codebase
+- **Comprehension exit criteria sharpened**: Added explicit "Exit Criteria" section with checklist for when to advance from Comprehension phase
+- **Decomposition gate added**: New checkpoint after Comprehension to identify umbrella issues and decompose into targeted sub-specs before proceeding
+
+### Added
+
+- **OSS workflow: Hypothesis Elimination deliverable**: Root Cause phase now includes a hypothesis table template for tracking and systematically eliminating candidates
+- **OSS workflow: Single-spec investigation mode**: New section in Advanced Patterns for small, well-scoped bugs that don't need the full 6-phase pipeline
+- **OSS workflow: Pivot guidance**: "When to Pivot" and "Investigation Heuristics" sections with time-boxing rules and decision framework
+- **Finalization error diagnostics**: When finalization fails, error now includes spec status at time of attempt and sets spec to `failed` with clear message instead of silently propagating
+- **Post-merge status verification**: `handle_completed` now verifies spec has `status: completed` on main after merge, catching cases where the finalization commit wasn't included
+
+## [0.18.1] - 2026-02-07
+
+### Fixed
+
+- **Chain mode spec skipping in MCP handler**: Fixed MCP `chant_work_start` with `chain: true` skipping ready specs
+
+## [0.18.0] - 2026-02-07
+
+### Added
+
+- **SpecStateMachine module**: Builder pattern for validated state transitions with precondition checks (clean tree, dependencies, criteria, commits, approval)
+- **Lifecycle integration tests**: Comprehensive tests for finalize validation, state transitions, and edge cases
+- **Enhanced log run delimiters**: Clear `# New Run:` markers in agent logs; `--run` flag to view specific runs
+- **Frontmatter params in `chant_spec_update`**: MCP tool now accepts `target_files`, `depends_on`, `labels`, and `model` fields
+- **Worktree path in takeover response**: `chant_takeover` now returns the worktree path for easy navigation
+
+### Fixed
+
+- **Commit detection branch context**: Finalization searches the worktree branch for commits instead of only the current branch
+- **MCP quality gate status race**: Quality gate now reads fresh spec status from disk instead of using potentially stale in-memory state
+- **Failure cleanup uses state machine**: Failed spec transitions validated through `SpecStateMachine` instead of direct status assignment
+- **Hardcoded "main" branch in merge_and_cleanup**: Now uses configured `main_branch` from project settings
+
+### Changed
+
+- **Cancelled spec filtering in MCP**: `chant_spec_list` excludes cancelled specs by default; `chant_archive` accepts cancelled specs
+
+## [0.17.1] - 2026-02-06
+
+### Fixed
+
+- **Skill install on agent-only update path**: Fixed skill installation when only the agent configuration was updated
+
+## [0.17.0] - 2026-02-06
+
 ### Added
 
 - **Auto-check acceptance criteria**: Agent work now programmatically checks AC checkboxes before finalization instead of failing when agents forget — `auto_check_acceptance_criteria()` in `Spec`
