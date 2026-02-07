@@ -879,10 +879,23 @@ pub fn cmd_work(
                 );
             }
 
-            // Update spec to failed
+            // Update spec to failed using state machine
             let mut spec = spec::resolve_spec(&specs_dir, &spec.id)?;
-            spec.frontmatter.status = SpecStatus::Failed;
+            if let Err(transition_err) =
+                spec::TransitionBuilder::new(&mut spec).to(SpecStatus::Failed)
+            {
+                eprintln!(
+                    "{} Failed to transition spec to failed: {}",
+                    "⚠".yellow(),
+                    transition_err
+                );
+                // Fallback to direct status update if transition fails
+                spec.frontmatter.status = SpecStatus::Failed;
+            }
             spec.save(&spec_path)?;
+
+            // Ensure main repo is back on main branch before returning error
+            let _ = chant::git::ensure_on_main_branch(&config.defaults.main_branch);
 
             println!("\n{} Spec failed: {}", "✗".red(), e);
             return Err(e);
