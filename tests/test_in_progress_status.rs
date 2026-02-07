@@ -3,27 +3,19 @@
 //! Tests that specs being worked are correctly marked as in_progress
 //! when running `chant work` in parallel mode.
 
-mod common;
+mod support;
+use support::harness::TestHarness;
 
-use serial_test::serial;
 use std::fs;
-use std::path::PathBuf;
 use std::process::Command;
 
 #[test]
-#[serial]
-#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_spec_marked_in_progress_when_copied_to_worktree() {
-    let repo_dir = PathBuf::from("/tmp/test-chant-in-progress-status");
-    let _ = common::cleanup_test_repo(&repo_dir);
-
-    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    let harness = TestHarness::new();
+    let repo_dir = harness.path();
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
-    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
-
-    // Create .chant/specs directory
-    fs::create_dir_all(repo_dir.join(".chant/specs")).expect("Failed to create specs dir");
+    std::env::set_current_dir(repo_dir).expect("Failed to change dir");
 
     // Create a pending spec
     let spec_id = "test-001";

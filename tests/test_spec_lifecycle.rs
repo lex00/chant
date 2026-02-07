@@ -1,39 +1,23 @@
 //! Test full spec lifecycle: create → pending → in_progress → completed → archived
 
 use chant::spec::{Spec, SpecStatus};
-use serial_test::serial;
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::path::Path;
 
-mod common;
-
-fn get_chant_binary() -> PathBuf {
-    PathBuf::from(env!("CARGO_BIN_EXE_chant"))
-}
-
-fn run_chant(repo_dir: &Path, args: &[&str]) -> std::io::Result<std::process::Output> {
-    let chant_binary = get_chant_binary();
-    Command::new(&chant_binary)
-        .args(args)
-        .current_dir(repo_dir)
-        .output()
-}
+mod support;
+use support::harness::TestHarness;
 
 #[test]
-#[serial]
-#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_full_spec_lifecycle() {
-    let repo_dir = PathBuf::from("/tmp/test-chant-full-lifecycle");
-    let _ = common::cleanup_test_repo(&repo_dir);
-
-    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    let harness = TestHarness::new();
+    let repo_dir = harness.path();
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
 
     // Initialize chant
-    let init_output =
-        run_chant(&repo_dir, &["init", "--minimal"]).expect("Failed to run chant init");
+    let init_output = harness
+        .run(&["init", "--minimal"])
+        .expect("Failed to run chant init");
     if !init_output.status.success() {
         let _ = std::env::set_current_dir(&original_dir);
         let _ = common::cleanup_test_repo(&repo_dir);
@@ -44,8 +28,9 @@ fn test_full_spec_lifecycle() {
     }
 
     // Step 1: Create a spec using `chant add`
-    let add_output =
-        run_chant(&repo_dir, &["add", "Test lifecycle spec"]).expect("Failed to run chant add");
+    let add_output = harness
+        .run(&["add", "Test lifecycle spec"])
+        .expect("Failed to run chant add");
 
     assert!(
         add_output.status.success(),
@@ -159,8 +144,9 @@ fn test_full_spec_lifecycle() {
     );
 
     // Step 5: Archive the completed spec
-    let archive_output =
-        run_chant(&repo_dir, &["archive", &spec_id]).expect("Failed to run archive");
+    let archive_output = harness
+        .run(&["archive", &spec_id])
+        .expect("Failed to run archive");
 
     assert!(
         archive_output.status.success(),

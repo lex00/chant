@@ -5,9 +5,10 @@ use serial_test::serial;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use tempfile::TempDir;
 
-mod common;
+mod support;
+use support::factory::SpecFactory;
+use support::harness::TestHarness;
 
 // Helper function that wraps archive command with proper initialization
 fn cmd_archive_wrapper(
@@ -59,36 +60,14 @@ fn cmd_archive_wrapper(
     Ok(())
 }
 
-fn setup_test_env() -> (TempDir, PathBuf, PathBuf) {
-    let temp_dir = TempDir::new().unwrap();
-    let base_path = temp_dir.path();
-    let specs_dir = base_path.join(".chant/specs");
-    let archive_dir = base_path.join(".chant/archive");
-    let prompts_dir = base_path.join(".chant/prompts");
-    let config_path = base_path.join(".chant/config.md");
-
-    fs::create_dir_all(&specs_dir).unwrap();
-    fs::create_dir_all(&prompts_dir).unwrap();
-
-    let config_content = r#"---
-model: sonnet
-silent: false
----
-
-# Project Config
-"#;
-    fs::write(&config_path, config_content).unwrap();
-
-    let prompt_content = "You are implementing a task for chant.";
-    fs::write(prompts_dir.join("standard.md"), prompt_content).unwrap();
-
-    std::env::set_current_dir(base_path).unwrap();
-    common::setup_test_repo(base_path).unwrap();
-
-    (temp_dir, specs_dir, archive_dir)
+fn setup_test_env() -> TestHarness {
+    let harness = TestHarness::new();
+    std::env::set_current_dir(harness.path()).unwrap();
+    harness
 }
 
-fn create_spec(specs_dir: &Path, id: &str, title: &str, status: SpecStatus) -> Spec {
+fn create_spec(harness: &TestHarness, id: &str, title: &str, status: SpecStatus) -> Spec {
+    let specs_dir = &harness.specs_dir;
     let status_str = match status {
         SpecStatus::Pending => "pending",
         SpecStatus::InProgress => "in_progress",
@@ -116,7 +95,7 @@ status: {}
         status_str, title
     );
 
-    let spec_path = specs_dir.join(format!("{}.md", id));
+    let spec_path = harness.specs_dir.join(format!("{}.md", id));
     fs::write(&spec_path, &content).unwrap();
 
     let mut spec = Spec::parse(id, &content).unwrap();
@@ -141,11 +120,10 @@ status: {}
 // ============================================================================
 
 #[test]
-#[serial]
 fn test_archive_completed_spec() {
-    let (_temp_dir, specs_dir, archive_dir) = setup_test_env();
+    let harness = setup_test_env();
     let spec = create_spec(
-        &specs_dir,
+        &harness,
         "2026-02-03-001-abc",
         "Test completed spec",
         SpecStatus::Completed,
@@ -153,7 +131,7 @@ fn test_archive_completed_spec() {
 
     // Archive the spec
     let result = cmd_archive_wrapper(
-        &specs_dir,
+        &harness.specs_dir,
         Some("2026-02-03-001-abc"),
         false, // dry_run
         None,  // older_than
@@ -164,7 +142,10 @@ fn test_archive_completed_spec() {
     assert!(result.is_ok());
 
     // Verify spec was moved to archive
-    let src = specs_dir.join(format!("{}.md", spec.id));
+    let src = harness.specs_dir.join(format!("{}.md", spec.id));
+    let archive_dir = harness.path().join(".chant/archive");
+    let _archive_dir = harness.path().join(".chant/archive");
+    let archive_dir = harness.path().join(".chant/archive");
     let dst = archive_dir
         .join("2026-02-03")
         .join(format!("{}.md", spec.id));
@@ -174,17 +155,16 @@ fn test_archive_completed_spec() {
 }
 
 #[test]
-#[serial]
 fn test_archive_with_date_directories() {
-    let (_temp_dir, specs_dir, archive_dir) = setup_test_env();
+    let harness = setup_test_env();
     let spec1 = create_spec(
-        &specs_dir,
+        &harness,
         "2026-02-03-001-abc",
         "Spec from Feb 3",
         SpecStatus::Completed,
     );
     let spec2 = create_spec(
-        &specs_dir,
+        &harness,
         "2026-02-04-001-def",
         "Spec from Feb 4",
         SpecStatus::Completed,
@@ -192,7 +172,7 @@ fn test_archive_with_date_directories() {
 
     // Archive both specs
     cmd_archive_wrapper(
-        &specs_dir,
+        &harness.specs_dir,
         Some("2026-02-03-001-abc"),
         false,
         None,
@@ -202,7 +182,7 @@ fn test_archive_with_date_directories() {
     )
     .unwrap();
     cmd_archive_wrapper(
-        &specs_dir,
+        &harness.specs_dir,
         Some("2026-02-04-001-def"),
         false,
         None,
@@ -213,8 +193,10 @@ fn test_archive_with_date_directories() {
     .unwrap();
 
     // Verify directory structure
-    let date_dir1 = archive_dir.join("2026-02-03");
-    let date_dir2 = archive_dir.join("2026-02-04");
+    let archive_dir = harness.path().join(".chant/archive");
+    let _archive_dir = harness.path().join(".chant/archive");
+    let date_dir1 = harness.path().join(".chant/archive").join("2026-02-03");
+    let date_dir2 = harness.path().join(".chant/archive").join("2026-02-04");
 
     assert!(
         date_dir1.exists(),
@@ -236,11 +218,10 @@ fn test_archive_with_date_directories() {
 }
 
 #[test]
-#[serial]
 fn test_archive_non_completed_spec() {
-    let (_temp_dir, specs_dir, _archive_dir) = setup_test_env();
+    let harness = setup_test_env();
     create_spec(
-        &specs_dir,
+        &harness,
         "2026-02-03-002-xyz",
         "Test pending spec",
         SpecStatus::Pending,
@@ -248,7 +229,7 @@ fn test_archive_non_completed_spec() {
 
     // Try to archive non-completed spec without force
     let result = cmd_archive_wrapper(
-        &specs_dir,
+        &harness.specs_dir,
         Some("2026-02-03-002-xyz"),
         false,
         None,
@@ -262,11 +243,10 @@ fn test_archive_non_completed_spec() {
 }
 
 #[test]
-#[serial]
 fn test_archive_with_allow_non_completed() {
-    let (_temp_dir, specs_dir, archive_dir) = setup_test_env();
+    let harness = setup_test_env();
     let spec = create_spec(
-        &specs_dir,
+        &harness,
         "2026-02-03-003-pen",
         "Test pending spec",
         SpecStatus::Pending,
@@ -274,7 +254,7 @@ fn test_archive_with_allow_non_completed() {
 
     // Archive with force flag
     let result = cmd_archive_wrapper(
-        &specs_dir,
+        &harness.specs_dir,
         Some("2026-02-03-003-pen"),
         false,
         None,
@@ -288,7 +268,8 @@ fn test_archive_with_allow_non_completed() {
     assert!(result.is_ok());
 
     // Verify spec was moved
-    let src = specs_dir.join(format!("{}.md", spec.id));
+    let src = harness.specs_dir.join(format!("{}.md", spec.id));
+    let archive_dir = harness.path().join(".chant/archive");
     let dst = archive_dir
         .join("2026-02-03")
         .join(format!("{}.md", spec.id));
@@ -298,11 +279,10 @@ fn test_archive_with_allow_non_completed() {
 }
 
 #[test]
-#[serial]
 fn test_archive_dry_run() {
-    let (_temp_dir, specs_dir, archive_dir) = setup_test_env();
+    let harness = setup_test_env();
     let spec = create_spec(
-        &specs_dir,
+        &harness,
         "2026-02-03-004-dry",
         "Test dry run",
         SpecStatus::Completed,
@@ -310,7 +290,7 @@ fn test_archive_dry_run() {
 
     // Archive with dry_run
     let result = cmd_archive_wrapper(
-        &specs_dir,
+        &harness.specs_dir,
         Some("2026-02-03-004-dry"),
         true, // dry_run = true
         None,
@@ -321,7 +301,8 @@ fn test_archive_dry_run() {
     assert!(result.is_ok());
 
     // Verify spec was NOT moved
-    let src = specs_dir.join(format!("{}.md", spec.id));
+    let src = harness.specs_dir.join(format!("{}.md", spec.id));
+    let archive_dir = harness.path().join(".chant/archive");
     let dst = archive_dir
         .join("2026-02-03")
         .join(format!("{}.md", spec.id));
@@ -331,11 +312,10 @@ fn test_archive_dry_run() {
 }
 
 #[test]
-#[serial]
 fn test_archive_older_than() {
     use chrono::Local;
 
-    let (_temp_dir, specs_dir, archive_dir) = setup_test_env();
+    let harness = setup_test_env();
 
     // Create old completed spec (30 days ago)
     let old_date = Local::now() - chrono::Duration::days(30);
@@ -356,7 +336,7 @@ completed_at: {}
 "#,
         old_completed_at
     );
-    let old_spec_path = specs_dir.join(format!("{}.md", old_spec_id));
+    let old_spec_path = harness.specs_dir.join(format!("{}.md", old_spec_id));
     fs::write(&old_spec_path, &old_content).unwrap();
     Command::new("git")
         .args(["add", &format!(".chant/specs/{}.md", old_spec_id)])
@@ -386,7 +366,7 @@ completed_at: {}
 "#,
         recent_completed_at
     );
-    let recent_spec_path = specs_dir.join(format!("{}.md", recent_spec_id));
+    let recent_spec_path = harness.specs_dir.join(format!("{}.md", recent_spec_id));
     fs::write(&recent_spec_path, &recent_content).unwrap();
     Command::new("git")
         .args(["add", &format!(".chant/specs/{}.md", recent_spec_id)])
@@ -399,7 +379,7 @@ completed_at: {}
 
     // Archive specs older than 14 days
     let result = cmd_archive_wrapper(
-        &specs_dir,
+        &harness.specs_dir,
         None,     // archive all
         false,    // dry_run
         Some(14), // older_than = 14 days
@@ -410,34 +390,34 @@ completed_at: {}
     assert!(result.is_ok());
 
     // Verify only old spec was archived
+    let archive_dir = harness.path().join(".chant/archive");
     let old_dst = archive_dir
         .join("2026-01-04")
         .join(format!("{}.md", old_spec_id));
-    let recent_src = specs_dir.join(format!("{}.md", recent_spec_id));
+    let recent_src = harness.specs_dir.join(format!("{}.md", recent_spec_id));
 
     assert!(old_dst.exists(), "Old spec should be archived");
     assert!(recent_src.exists(), "Recent spec should not be archived");
 }
 
 #[test]
-#[serial]
 fn test_archive_all() {
-    let (_temp_dir, specs_dir, archive_dir) = setup_test_env();
+    let harness = setup_test_env();
 
     let spec1 = create_spec(
-        &specs_dir,
+        &harness,
         "2026-02-03-005-all1",
         "Completed 1",
         SpecStatus::Completed,
     );
     let spec2 = create_spec(
-        &specs_dir,
+        &harness,
         "2026-02-03-006-all2",
         "Completed 2",
         SpecStatus::Completed,
     );
     create_spec(
-        &specs_dir,
+        &harness,
         "2026-02-03-007-pend",
         "Pending",
         SpecStatus::Pending,
@@ -445,7 +425,8 @@ fn test_archive_all() {
 
     // Archive all (should only archive completed)
     let result = cmd_archive_wrapper(
-        &specs_dir, None,  // archive all
+        &harness.specs_dir,
+        None,  // archive all
         false, // dry_run
         None,  // older_than
         false, // force
@@ -455,13 +436,15 @@ fn test_archive_all() {
     assert!(result.is_ok());
 
     // Verify completed specs were archived
+    let archive_dir = harness.path().join(".chant/archive");
     let dst1 = archive_dir
         .join("2026-02-03")
         .join(format!("{}.md", spec1.id));
+    let archive_dir = harness.path().join(".chant/archive");
     let dst2 = archive_dir
         .join("2026-02-03")
         .join(format!("{}.md", spec2.id));
-    let pending_src = specs_dir.join("2026-02-03-007-pend.md");
+    let pending_src = harness.specs_dir.join("2026-02-03-007-pend.md");
 
     assert!(dst1.exists(), "Completed spec 1 should be archived");
     assert!(dst2.exists(), "Completed spec 2 should be archived");
@@ -469,16 +452,25 @@ fn test_archive_all() {
 }
 
 #[test]
-#[serial]
 fn test_archive_directory_structure() {
-    let (_temp_dir, specs_dir, archive_dir) = setup_test_env();
+    let harness = setup_test_env();
     let spec_id = "2026-02-03-008-dir";
-    create_spec(&specs_dir, spec_id, "Directory test", SpecStatus::Completed);
+    create_spec(&harness, spec_id, "Directory test", SpecStatus::Completed);
 
     // Archive the spec
-    cmd_archive_wrapper(&specs_dir, Some(spec_id), false, None, false, false, false).unwrap();
+    cmd_archive_wrapper(
+        &harness.specs_dir,
+        Some(spec_id),
+        false,
+        None,
+        false,
+        false,
+        false,
+    )
+    .unwrap();
 
     // Verify structure: .chant/archive/YYYY-MM-DD/spec.md
+    let archive_dir = harness.path().join(".chant/archive");
     let expected_path = archive_dir
         .join("2026-02-03")
         .join(format!("{}.md", spec_id));
@@ -494,15 +486,14 @@ fn test_archive_directory_structure() {
 }
 
 #[test]
-#[serial]
 fn test_archive_with_commit() {
-    let (_temp_dir, specs_dir, archive_dir) = setup_test_env();
+    let harness = setup_test_env();
     let spec_id = "2026-02-03-009-com";
-    create_spec(&specs_dir, spec_id, "Commit test", SpecStatus::Completed);
+    create_spec(&harness, spec_id, "Commit test", SpecStatus::Completed);
 
     // Archive with commit flag
     let result = cmd_archive_wrapper(
-        &specs_dir,
+        &harness.specs_dir,
         Some(spec_id),
         false, // dry_run
         None,  // older_than
@@ -513,6 +504,7 @@ fn test_archive_with_commit() {
     assert!(result.is_ok());
 
     // Verify spec was archived
+    let archive_dir = harness.path().join(".chant/archive");
     let dst = archive_dir
         .join("2026-02-03")
         .join(format!("{}.md", spec_id));
@@ -523,6 +515,6 @@ fn test_archive_with_commit() {
     // A full test would require isolating git state, which is complex in integration tests.
 
     // Verify the spec was moved (no longer in specs dir)
-    let src = specs_dir.join(format!("{}.md", spec_id));
+    let src = harness.specs_dir.join(format!("{}.md", spec_id));
     assert!(!src.exists(), "Source spec should be removed after archive");
 }

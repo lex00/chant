@@ -1,13 +1,14 @@
 //! Worktree
 
-mod common {
-    pub use crate::common::*;
+mod support {
+    pub use crate::support::*;
 }
 
 use serial_test::serial;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use support::harness::TestHarness;
 
 fn get_branches(repo_dir: &Path) -> Vec<String> {
     let output = Command::new("git")
@@ -83,22 +84,19 @@ fn run_chant(repo_dir: &Path, args: &[&str]) -> std::io::Result<std::process::Ou
 }
 
 #[test]
-#[serial]
-#[cfg_attr(target_os = "windows", ignore = "Uses Unix /tmp paths")]
 fn test_worktree_creation_basic() {
-    let repo_dir = PathBuf::from("/tmp/test-chant-wt-basic");
-    let _ = common::cleanup_test_repo(&repo_dir);
-
-    assert!(common::setup_test_repo(&repo_dir).is_ok(), "Setup failed");
+    let harness = TestHarness::new();
+    let repo_dir = harness.path();
 
     let original_dir = std::env::current_dir().expect("Failed to get cwd");
-    std::env::set_current_dir(&repo_dir).expect("Failed to change dir");
+    std::env::set_current_dir(repo_dir).expect("Failed to change dir");
 
     let spec_id = "test-spec-001";
     let branch = format!("spec/{}", spec_id);
 
     // Create worktree using git commands directly
-    let wt_path_str = format!("/tmp/chant-{}", spec_id);
+    let wt_path_str = repo_dir.join(format!("chant-{}", spec_id));
+    let wt_path_str = wt_path_str.to_str().unwrap();
     let _output = Command::new("git")
         .args(["worktree", "add", "-b", &branch, &wt_path_str])
         .current_dir(&repo_dir)

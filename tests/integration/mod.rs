@@ -1,4 +1,8 @@
 // Integration test modules
+#[allow(dead_code)]
+mod support {
+    pub use crate::support::*;
+}
 
 mod config_test;
 mod dependency_test;
