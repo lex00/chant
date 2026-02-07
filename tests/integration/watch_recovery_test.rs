@@ -169,10 +169,7 @@ fn test_recovery_orphaned_worktree_cleanup() -> Result<()> {
         .output()?;
 
     let spec_id = "2026-02-03-003-ghi";
-    harness.create_spec(
-        spec_id,
-        "---\ntype: code\nstatus: pending\n---\n# Test\n",
-    );
+    harness.create_spec(spec_id, "---\ntype: code\nstatus: pending\n---\n# Test\n");
 
     let worktree_path = PathBuf::from(format!("/tmp/chant-{}", spec_id));
     let _ = fs::remove_dir_all(&worktree_path);
@@ -232,10 +229,7 @@ fn test_recovery_no_worktrees_no_action() -> Result<()> {
         .output()?;
 
     let spec_id = "2026-02-03-004-jkl";
-    harness.create_spec(
-        spec_id,
-        "---\ntype: code\nstatus: pending\n---\n# Test\n",
-    );
+    harness.create_spec(spec_id, "---\ntype: code\nstatus: pending\n---\n# Test\n");
 
     let output = Command::new(env!("CARGO_BIN_EXE_chant"))
         .args(["watch", "--once"])

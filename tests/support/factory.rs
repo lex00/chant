@@ -145,4 +145,43 @@ Test specification with approval.
             status, approval_status, id
         )
     }
+
+    /// Creates a spec with dependencies as markdown.
+    pub fn as_markdown_with_deps(id: &str, status: &str, dependencies: &[&str]) -> String {
+        let deps_yaml = if dependencies.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "depends_on:\n{}",
+                dependencies
+                    .iter()
+                    .map(|d| format!("  - {}", d))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            )
+        };
+
+        format!(
+            r#"---
+type: code
+status: {}
+{}---
+
+# Test Spec: {}
+
+Test specification for dependency testing.
+
+## Acceptance Criteria
+
+- [ ] Test criterion
+"#,
+            status,
+            if deps_yaml.is_empty() {
+                String::new()
+            } else {
+                format!("{}\n", deps_yaml)
+            },
+            id
+        )
+    }
 }
