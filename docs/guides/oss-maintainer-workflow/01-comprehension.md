@@ -164,6 +164,33 @@ informed_by:
   - src/storage/concurrent.rs  # From target_files
 ```
 
+## Decision Point: Collapsing Research Stages
+
+After Comprehension, evaluate whether to proceed with separate research stages or collapse them:
+
+### Keep All Stages Separate (Default)
+
+Use separate Reproducibility and Root Cause stages when:
+- **Genuine unknown** — Root cause is unclear and requires investigation
+- **Complex reproduction** — Multiple ways to reproduce or unclear reproduction steps
+- **Research-heavy** — Significant investigation needed after confirming reproducibility
+
+### Collapse Stages 2-3 (Known Fix Path)
+
+Combine Reproducibility and Root Cause into a single "Research" stage when:
+- **Root cause is already apparent** — The fix is known from Comprehension
+- **Simple validation needed** — Just need to confirm the obvious cause
+- **Well-understood problem** — Issue matches known patterns or previous fixes
+
+**Example of collapsing:**
+```bash
+# Instead of separate Reproducibility + Root Cause specs:
+chant add "Research: Validate and confirm fix for #1234" --type research
+# This single spec both confirms reproduction AND validates the known fix approach
+```
+
+**When in doubt:** Keep stages separate. It's easier to have thorough research than to redo incomplete research.
+
 ## Comprehension vs Triage
 
 **Old approach (triage):** Categorize and prioritize issues

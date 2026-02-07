@@ -111,6 +111,38 @@ Output:
 - Edge cases to consider
 ```
 
+## Incremental Research Documentation
+
+**IMPORTANT:** Update your research document incrementally throughout the investigation, not retroactively at the end.
+
+As you investigate root cause:
+- Add findings to the research doc as you discover them
+- Document each hypothesis test result immediately
+- Update the document as your understanding evolves
+
+This approach:
+- Creates an accurate paper trail of the investigation
+- Prevents loss of important findings if the agent context is interrupted
+- Helps the next stage (Impact Map or Implementation) build on documented findings
+- Makes the research reproducible by future maintainers
+
+**Anti-pattern (retroactive):**
+```markdown
+# Bad: Writing everything at the end
+[Spend 2 hours investigating]
+[Then write up entire RCA from memory]
+```
+
+**Good pattern (incremental):**
+```markdown
+# Good: Updating as you go
+10:00 - Initial hypothesis: Lock timeout issue
+10:15 - [UPDATE] Ruled out: lock timing logs show no timeouts
+10:30 - New hypothesis: Version counter race
+10:45 - [UPDATE] Confirmed: two threads got same version number
+11:00 - [UPDATE] Root cause identified: optimistic locking gap
+```
+
 ## Using `informed_by` for Research
 
 The `informed_by` field is critical for research specs. It tells the agent what context to consider:

@@ -114,7 +114,7 @@ Output:
 
 ## Creating the Staging PR
 
-After implementing the fix, create a fork-internal PR:
+After implementing the fix, create a fork-internal PR with proper structure:
 
 ```bash
 # Push to your fork
@@ -128,7 +128,32 @@ gh pr create \
   --base main \
   --head yourusername:fix/issue-1234 \
   --title "Fix #1234: Data loss on concurrent writes" \
-  --body "Research-backed fix. See .chant/research/ for analysis."
+  --body "$(cat <<'EOF'
+## User Impact
+
+**What users see before this change:**
+- Data loss during concurrent writes
+
+**What users see after this change:**
+- All concurrent writes succeed correctly
+
+## Parent Context
+
+**Related to:** #1234 (upstream issue)
+
+This staging PR implements the fix for the data loss bug identified in research phases.
+
+## Implementation
+
+Research-backed fix using pessimistic locking. See .chant/research/ for full analysis.
+
+## Testing
+
+- Regression test passes
+- All existing tests pass
+- Added concurrency stress tests
+EOF
+)"
 ```
 
 This staging PR:
