@@ -1,8 +1,7 @@
 //! Worktree
 
-mod support {
-    pub use crate::support::*;
-}
+use crate::common;
+use crate::support;
 
 use serial_test::serial;
 use std::fs;

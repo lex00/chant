@@ -1,8 +1,6 @@
 //! Spec Lifecycle
 
-mod common {
-    pub use crate::common::*;
-}
+use crate::common;
 
 use serial_test::serial;
 use std::fs;
