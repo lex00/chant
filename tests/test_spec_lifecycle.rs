@@ -3,6 +3,7 @@
 use chant::spec::{Spec, SpecStatus};
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 
 mod support;
 use support::harness::TestHarness;
@@ -20,7 +21,6 @@ fn test_full_spec_lifecycle() {
         .expect("Failed to run chant init");
     if !init_output.status.success() {
         let _ = std::env::set_current_dir(&original_dir);
-        let _ = common::cleanup_test_repo(&repo_dir);
         panic!(
             "Chant init failed: {}",
             String::from_utf8_lossy(&init_output.stderr)
@@ -119,11 +119,9 @@ fn test_full_spec_lifecycle() {
         .expect("Failed to checkout main");
 
     // Merge the branch to bring commits to main
-    let merge_output = run_chant(
-        &repo_dir,
-        &["merge", &spec_id, "--delete-branch", "--finalize"],
-    )
-    .expect("Failed to run merge");
+    let merge_output = harness
+        .run(&["merge", &spec_id, "--delete-branch", "--finalize"])
+        .expect("Failed to run merge");
 
     assert!(
         merge_output.status.success(),
@@ -188,5 +186,5 @@ fn test_full_spec_lifecycle() {
         .args(["branch", "-D", &branch])
         .current_dir(&repo_dir)
         .output();
-    let _ = common::cleanup_test_repo(&repo_dir);
+    // TempDir auto-cleans
 }

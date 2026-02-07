@@ -50,6 +50,7 @@ fn cmd_archive_wrapper(
 
     let output = Command::new(env!("CARGO_BIN_EXE_chant"))
         .args(&args)
+        .current_dir(std::env::current_dir()?)
         .output()?;
 
     if !output.status.success() {
@@ -120,6 +121,7 @@ status: {}
 // ============================================================================
 
 #[test]
+#[serial]
 fn test_archive_completed_spec() {
     let harness = setup_test_env();
     let spec = create_spec(
@@ -155,6 +157,7 @@ fn test_archive_completed_spec() {
 }
 
 #[test]
+#[serial]
 fn test_archive_with_date_directories() {
     let harness = setup_test_env();
     let spec1 = create_spec(
@@ -218,6 +221,7 @@ fn test_archive_with_date_directories() {
 }
 
 #[test]
+#[serial]
 fn test_archive_non_completed_spec() {
     let harness = setup_test_env();
     create_spec(
@@ -243,6 +247,7 @@ fn test_archive_non_completed_spec() {
 }
 
 #[test]
+#[serial]
 fn test_archive_with_allow_non_completed() {
     let harness = setup_test_env();
     let spec = create_spec(
@@ -279,6 +284,7 @@ fn test_archive_with_allow_non_completed() {
 }
 
 #[test]
+#[serial]
 fn test_archive_dry_run() {
     let harness = setup_test_env();
     let spec = create_spec(
@@ -312,6 +318,7 @@ fn test_archive_dry_run() {
 }
 
 #[test]
+#[serial]
 fn test_archive_older_than() {
     use chrono::Local;
 
@@ -401,6 +408,7 @@ completed_at: {}
 }
 
 #[test]
+#[serial]
 fn test_archive_all() {
     let harness = setup_test_env();
 
@@ -452,6 +460,7 @@ fn test_archive_all() {
 }
 
 #[test]
+#[serial]
 fn test_archive_directory_structure() {
     let harness = setup_test_env();
     let spec_id = "2026-02-03-008-dir";
@@ -486,6 +495,7 @@ fn test_archive_directory_structure() {
 }
 
 #[test]
+#[serial]
 fn test_archive_with_commit() {
     let harness = setup_test_env();
     let spec_id = "2026-02-03-009-com";

@@ -96,5 +96,5 @@ This spec tests that status is updated to in_progress.
         .current_dir(&repo_dir)
         .output();
     let _ = std::env::set_current_dir(&original_dir);
-    let _ = common::cleanup_test_repo(&repo_dir);
+    // TempDir auto-cleans
 }
