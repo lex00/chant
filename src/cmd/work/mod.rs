@@ -19,6 +19,7 @@ pub mod chain;
 pub mod executor;
 pub mod parallel;
 pub mod single;
+pub mod ui;
 pub mod wizard;
 
 // Re-export public types from submodules

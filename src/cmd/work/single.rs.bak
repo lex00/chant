@@ -228,8 +228,10 @@ pub fn cmd_work(
 
     match result {
         Ok(agent_output) => {
-            executor::write_agent_status_done(&specs_dir, &spec.id, allow_no_commits)?;
+            // Write agent status: done
+            write_agent_status_done(&specs_dir, &spec.id, allow_no_commits)?;
 
+            // Reload spec from worktree
             let worktree_spec_path = worktree_path
                 .join(".chant/specs")
                 .join(format!("{}.md", spec.id));
@@ -239,9 +241,16 @@ pub fn cmd_work(
                 spec::resolve_spec(&specs_dir, &spec.id)?
             };
 
+            // Collect commits through executor
             let commits = executor::collect_commits_for_spec(&spec, allow_no_commits)?;
-            executor::validate_output_schema(&spec, &agent_output, &config, &spec_path)?;
+
+            // Validate output against schema
+            validate_output_schema(&spec, &agent_output, &config, &spec_path)?;
+
+            // Handle acceptance criteria (auto-check in single mode)
             executor::handle_acceptance_criteria(&mut spec, &spec_path, skip_criteria)?;
+
+            // Finalize spec through executor
             executor::finalize_completed_spec(
                 &mut spec,
                 &specs_dir,
@@ -352,6 +361,92 @@ fn print_finalization_info(spec: &Spec, worktree_path: Option<&Path>) {
     }
 }
 
+/// Write agent status file for completed work
+fn write_agent_status_done(specs_dir: &Path, spec_id: &str, allow_no_commits: bool) -> Result<()> {
+    let status_path = specs_dir.join(format!(".chant-status-{}.json", spec_id));
+    let found_commits = (if allow_no_commits {
+        cmd::commits::get_commits_for_spec_allow_no_commits(spec_id)
+    } else {
+        cmd::commits::get_commits_for_spec(spec_id)
+    })
+    .unwrap_or_default();
+
+    let agent_status = chant::worktree::status::AgentStatus {
+        spec_id: spec_id.to_string(),
+        status: chant::worktree::status::AgentStatusState::Done,
+        updated_at: chrono::Utc::now().to_rfc3339(),
+        error: None,
+        commits: found_commits,
+    };
+    chant::worktree::status::write_status(&status_path, &agent_status)?;
+    Ok(())
+}
+
+/// Validate agent output against schema if defined
+fn validate_output_schema(
+    spec: &Spec,
+    agent_output: &str,
+    config: &Config,
+    spec_path: &Path,
+) -> Result<()> {
+    if let Some(ref schema_path_str) = spec.frontmatter.output_schema {
+        let schema_path = Path::new(schema_path_str);
+        if schema_path.exists() {
+            match validation::validate_agent_output(&spec.id, schema_path, agent_output) {
+                Ok(result) => {
+                    if result.is_valid {
+                        println!(
+                            "\n{} Output validation passed (schema: {})",
+                            "✓".green(),
+                            schema_path_str
+                        );
+                    } else {
+                        println!(
+                            "\n{} Output validation failed (schema: {})",
+                            "✗".red(),
+                            schema_path_str
+                        );
+                        for error in &result.errors {
+                            println!("  - {}", error);
+                        }
+                        println!("  → Review .chant/logs/{}.log for details", spec.id);
+                        if config.validation.strict_output_validation {
+                            let mut spec = spec.clone();
+                            spec.force_status(SpecStatus::NeedsAttention);
+                            spec.save(spec_path)?;
+                            anyhow::bail!(
+                                "Output validation failed: {} error(s)",
+                                result.errors.len()
+                            );
+                        } else {
+                            println!(
+                                "  {} Proceeding anyway (strict_output_validation=false)",
+                                "→".cyan()
+                            );
+                        }
+                    }
+                }
+                Err(e) => {
+                    println!("\n{} Failed to validate output: {}", "⚠".yellow(), e);
+                    if config.validation.strict_output_validation {
+                        let mut spec = spec.clone();
+                        spec.force_status(SpecStatus::NeedsAttention);
+                        spec.save(spec_path)?;
+                        return Err(e);
+                    }
+                }
+            }
+        } else {
+            println!(
+                "\n{} Output schema file not found: {}",
+                "⚠".yellow(),
+                schema_path_str
+            );
+        }
+    }
+    Ok(())
+}
+
 /// Show friendly validation errors for single mode
 fn show_friendly_validation_errors(
     spec: &Spec,
@@ -382,6 +477,7 @@ fn show_friendly_validation_errors(
 
 /// Interactive quality score check for single mode
 fn check_quality_interactive(spec: &Spec, specs_dir: &Path, config: &Config) -> Result<()> {
+    use chant::score::traffic_light;
     use chant::scoring::TrafficLight;
 
     let all_specs = spec::load_all_specs(specs_dir)?;
@@ -394,12 +490,49 @@ fn check_quality_interactive(spec: &Spec, specs_dir: &Path, config: &Config) -> 
                 "Warning:".red().bold(),
                 spec.id.cyan()
             );
-            ui::print_quality_assessment(&quality_score);
-            ui::print_quality_suggestions_and_guidance(&quality_score);
+            eprintln!("Quality Assessment:");
+            eprintln!(
+                "  Complexity:    {}",
+                ui::format_grade(&quality_score.complexity)
+            );
+            eprintln!(
+                "  Confidence:    {}",
+                ui::format_grade(&quality_score.confidence)
+            );
+            eprintln!(
+                "  Splittability: {}",
+                ui::format_grade(&quality_score.splittability)
+            );
+            eprintln!(
+                "  AC Quality:    {}",
+                ui::format_grade(&quality_score.ac_quality)
+            );
+            if let Some(iso) = quality_score.isolation {
+                eprintln!("  Isolation:     {}", ui::format_grade(&iso));
+            }
+
+            let suggestions = traffic_light::generate_suggestions(&quality_score);
+            if !suggestions.is_empty() {
+                eprintln!("\nSuggestions:");
+                for suggestion in &suggestions {
+                    eprintln!("  • {}", suggestion);
+                }
+            }
+
+            let guidance = traffic_light::generate_detailed_guidance(&quality_score);
+            if !guidance.is_empty() {
+                eprint!("{}", guidance);
+            }
             eprintln!();
 
             if atty::is(atty::Stream::Stdin) {
-                if !ui::confirm_continue_with_quality_issues()? {
+                use std::io::{self, Write};
+                print!("Continue anyway? [y/N] ");
+                io::stdout().flush()?;
+                let mut input = String::new();
+                io::stdin().read_line(&mut input)?;
+                let input = input.trim().to_lowercase();
+                if input != "y" && input != "yes" {
                     println!("Work cancelled.");
                     anyhow::bail!("User cancelled work due to quality issues");
                 }

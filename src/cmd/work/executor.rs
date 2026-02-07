@@ -3,8 +3,6 @@
 //! Provides unified validation, agent invocation, and finalization logic
 //! that is used by single, chain, and parallel execution modes.
 
-#![allow(dead_code)]
-
 use anyhow::Result;
 use colored::Colorize;
 use std::path::Path;
@@ -12,6 +10,7 @@ use std::path::Path;
 use chant::config::Config;
 use chant::repository::spec_repository::FileSpecRepository;
 use chant::spec::{self, Spec, SpecStatus};
+use chant::validation;
 
 use crate::cmd;
 use crate::cmd::finalize::{append_agent_output, finalize_spec};
@@ -375,5 +374,95 @@ pub fn handle_spec_failure(spec_id: &str, specs_dir: &Path, error: &anyhow::Erro
     }
     spec.save(&spec_path)?;
 
+    Ok(())
+}
+
+/// Write agent status file for completed work
+pub fn write_agent_status_done(
+    specs_dir: &Path,
+    spec_id: &str,
+    allow_no_commits: bool,
+) -> Result<()> {
+    let status_path = specs_dir.join(format!(".chant-status-{}.json", spec_id));
+    let found_commits = (if allow_no_commits {
+        cmd::commits::get_commits_for_spec_allow_no_commits(spec_id)
+    } else {
+        cmd::commits::get_commits_for_spec(spec_id)
+    })
+    .unwrap_or_default();
+
+    let agent_status = chant::worktree::status::AgentStatus {
+        spec_id: spec_id.to_string(),
+        status: chant::worktree::status::AgentStatusState::Done,
+        updated_at: chrono::Utc::now().to_rfc3339(),
+        error: None,
+        commits: found_commits,
+    };
+    chant::worktree::status::write_status(&status_path, &agent_status)?;
+    Ok(())
+}
+
+/// Validate agent output against schema if defined
+pub fn validate_output_schema(
+    spec: &Spec,
+    agent_output: &str,
+    config: &Config,
+    spec_path: &Path,
+) -> Result<()> {
+    if let Some(ref schema_path_str) = spec.frontmatter.output_schema {
+        let schema_path = Path::new(schema_path_str);
+        if schema_path.exists() {
+            match validation::validate_agent_output(&spec.id, schema_path, agent_output) {
+                Ok(result) => {
+                    if result.is_valid {
+                        println!(
+                            "\n{} Output validation passed (schema: {})",
+                            "✓".green(),
+                            schema_path_str
+                        );
+                    } else {
+                        println!(
+                            "\n{} Output validation failed (schema: {})",
+                            "✗".red(),
+                            schema_path_str
+                        );
+                        for error in &result.errors {
+                            println!("  - {}", error);
+                        }
+                        println!("  → Review .chant/logs/{}.log for details", spec.id);
+                        if config.validation.strict_output_validation {
+                            let mut spec = spec.clone();
+                            spec.force_status(SpecStatus::NeedsAttention);
+                            spec.save(spec_path)?;
+                            anyhow::bail!(
+                                "Output validation failed: {} error(s)",
+                                result.errors.len()
+                            );
+                        } else {
+                            println!(
+                                "  {} Proceeding anyway (strict_output_validation=false)",
+                                "→".cyan()
+                            );
+                        }
+                    }
+                }
+                Err(e) => {
+                    println!("\n{} Failed to validate output: {}", "⚠".yellow(), e);
+                    if config.validation.strict_output_validation {
+                        let mut spec = spec.clone();
+                        spec.force_status(SpecStatus::NeedsAttention);
+                        spec.save(spec_path)?;
+                        return Err(e);
+                    }
+                }
+            }
+        } else {
+            println!(
+                "\n{} Output schema file not found: {}",
+                "⚠".yellow(),
+                schema_path_str
+            );
+        }
+    }
     Ok(())
 }
