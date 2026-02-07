@@ -436,13 +436,16 @@ impl StreamingLogWriter {
             file
         };
 
-        // For existing files, add a continuation marker
+        // For existing files, add a visual run separator
         if file_exists {
             let timestamp = chrono::Local::now()
                 .format("%Y-%m-%dT%H:%M:%SZ")
                 .to_string();
-            writeln!(file, "\n# Continued: {}", timestamp)?;
+            writeln!(file)?;
+            writeln!(file, "{}", "=".repeat(80))?;
+            writeln!(file, "# New Run: {}", timestamp)?;
             writeln!(file, "# Prompt: {}", prompt_name)?;
+            writeln!(file, "{}", "=".repeat(80))?;
             writeln!(file)?;
             file.flush()?;
         }

@@ -342,6 +342,9 @@ enum Commands {
         /// Do not follow the log in real-time (show static output)
         #[arg(long)]
         no_follow: bool,
+        /// Show only a specific run (e.g., 'latest' for most recent run)
+        #[arg(long)]
+        run: Option<String>,
     },
     /// Split a spec into member specs
     Split {
@@ -993,7 +996,8 @@ impl cmd::dispatch::Execute for Commands {
                 id,
                 lines,
                 no_follow,
-            } => cmd::lifecycle::cmd_log(&id, lines, !no_follow),
+                run,
+            } => cmd::lifecycle::cmd_log(&id, lines, !no_follow, run.as_deref()),
             Commands::Split {
                 id,
                 model,

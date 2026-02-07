@@ -122,12 +122,18 @@ pub fn cmd_diagnose(id: &str) -> Result<()> {
 // ============================================================================
 
 /// Show log for a spec (uses default .chant directory)
-pub fn cmd_log(id: &str, lines: usize, follow: bool) -> Result<()> {
-    cmd_log_at(&PathBuf::from(".chant"), id, lines, follow)
+pub fn cmd_log(id: &str, lines: usize, follow: bool, run: Option<&str>) -> Result<()> {
+    cmd_log_at(&PathBuf::from(".chant"), id, lines, follow, run)
 }
 
 /// Show log for a spec with custom base path (useful for testing)
-pub fn cmd_log_at(base_path: &std::path::Path, id: &str, lines: usize, follow: bool) -> Result<()> {
+pub fn cmd_log_at(
+    base_path: &std::path::Path,
+    id: &str,
+    lines: usize,
+    follow: bool,
+    run: Option<&str>,
+) -> Result<()> {
     let specs_dir = base_path.join("specs");
     let logs_dir = base_path.join("logs");
 
@@ -149,6 +155,33 @@ pub fn cmd_log_at(base_path: &std::path::Path, id: &str, lines: usize, follow: b
         println!("\nLogs are created when a spec is executed with `chant work`.");
         println!("Log path: {}", log_path.display());
         return Ok(());
+    }
+
+    // If --run flag is specified, extract that run's content
+    if let Some(run_filter) = run {
+        if run_filter == "latest" {
+            let content = std::fs::read_to_string(&log_path).context("Failed to read log file")?;
+
+            // Find the last run separator or start of file
+            let separator = "=".repeat(80);
+            let runs: Vec<&str> = content.split(&separator).collect();
+
+            // The latest run is the last segment
+            if let Some(latest_run) = runs.last() {
+                // Print the latest run content
+                print!("{}", latest_run.trim_start_matches('\n'));
+                return Ok(());
+            } else {
+                // No separator found, show entire file
+                print!("{}", content);
+                return Ok(());
+            }
+        } else {
+            anyhow::bail!(
+                "Invalid run filter '{}'. Currently only 'latest' is supported.",
+                run_filter
+            );
+        }
     }
 
     // Use tail command to show/follow the log
