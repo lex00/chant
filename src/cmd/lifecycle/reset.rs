@@ -3,17 +3,12 @@
 use anyhow::Result;
 use colored::Colorize;
 
-use chant::spec::{self, SpecStatus};
+use chant::spec;
 
 use crate::cmd;
 
 /// Reset a failed spec by resetting it to pending status
-pub fn cmd_reset(
-    id: &str,
-    work: bool,
-    prompt: Option<&str>,
-    _branch: Option<String>,
-) -> Result<()> {
+pub fn cmd_reset(id: &str, work: bool, prompt: Option<&str>, branch: Option<String>) -> Result<()> {
     let specs_dir = crate::cmd::ensure_initialized()?;
 
     // Resolve the spec
@@ -21,23 +16,16 @@ pub fn cmd_reset(
     let spec_path = specs_dir.join(format!("{}.md", spec.id));
     let spec_id = spec.id.clone();
 
-    // Check if spec is in failed or in_progress state
-    if spec.frontmatter.status != SpecStatus::Failed
-        && spec.frontmatter.status != SpecStatus::InProgress
-    {
-        anyhow::bail!(
-            "Spec {} is not in failed or in_progress state (current status: {:?}). \
-             Only failed or in_progress specs can be reset.",
-            spec_id,
-            spec.frontmatter.status
-        );
-    }
-
     println!("{} Resetting spec {}", "→".cyan(), spec_id.cyan());
 
-    // Reset to pending
-    spec.force_status(SpecStatus::Pending);
-    spec.save(&spec_path)?;
+    // Use operations module for reset
+    let options = chant::operations::reset::ResetOptions {
+        re_execute: work,
+        prompt: prompt.map(String::from),
+        branch,
+    };
+
+    chant::operations::reset::reset_spec(&mut spec, &spec_path, options)?;
 
     println!("{} Spec {} reset to pending", "✓".green(), spec_id);
 

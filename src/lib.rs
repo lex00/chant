@@ -64,6 +64,7 @@ pub mod mcp;
 pub mod merge;
 pub mod merge_driver;
 pub mod merge_errors;
+pub mod operations;
 pub mod pid;
 pub mod prompt;
 pub mod prompts;

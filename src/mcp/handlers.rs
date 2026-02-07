@@ -6,7 +6,6 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use crate::diagnose;
-use crate::id;
 use crate::paths::{ARCHIVE_DIR, LOGS_DIR, SPECS_DIR};
 use crate::spec::{load_all_specs, resolve_spec, SpecStatus};
 use crate::spec_group;
@@ -780,10 +779,11 @@ fn tool_chant_spec_update(arguments: Option<&Value>) -> Result<Value> {
         }
     };
 
-    let mut updated = false;
+    let spec_id = spec.id.clone();
+    let spec_path = specs_dir.join(format!("{}.md", spec.id));
 
-    // Update status if provided
-    if let Some(status_str) = args.get("status").and_then(|v| v.as_str()) {
+    // Parse status if provided
+    let status = if let Some(status_str) = args.get("status").and_then(|v| v.as_str()) {
         let new_status = match status_str {
             "pending" => SpecStatus::Pending,
             "in_progress" => SpecStatus::InProgress,
@@ -801,85 +801,72 @@ fn tool_chant_spec_update(arguments: Option<&Value>) -> Result<Value> {
                 }));
             }
         };
-        // Use force_status for MCP updates to bypass validation
-        // MCP handlers are external control paths that may need to force status changes
-        spec.force_status(new_status);
-        updated = true;
-    }
+        Some(new_status)
+    } else {
+        None
+    };
 
-    // Update depends_on if provided
-    if let Some(depends_on) = args.get("depends_on").and_then(|v| v.as_array()) {
-        let deps: Vec<String> = depends_on
-            .iter()
+    // Parse other fields
+    let depends_on = args
+        .get("depends_on")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        });
+
+    let labels = args.get("labels").and_then(|v| v.as_array()).map(|arr| {
+        arr.iter()
             .filter_map(|v| v.as_str().map(String::from))
-            .collect();
-        spec.frontmatter.depends_on = Some(deps);
-        updated = true;
-    }
+            .collect()
+    });
 
-    // Update labels if provided
-    if let Some(labels) = args.get("labels").and_then(|v| v.as_array()) {
-        let lbls: Vec<String> = labels
-            .iter()
-            .filter_map(|v| v.as_str().map(String::from))
-            .collect();
-        spec.frontmatter.labels = Some(lbls);
-        updated = true;
-    }
+    let target_files = args
+        .get("target_files")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        });
 
-    // Update target_files if provided
-    if let Some(target_files) = args.get("target_files").and_then(|v| v.as_array()) {
-        let files: Vec<String> = target_files
-            .iter()
-            .filter_map(|v| v.as_str().map(String::from))
-            .collect();
-        spec.frontmatter.target_files = Some(files);
-        updated = true;
-    }
+    let model = args.get("model").and_then(|v| v.as_str()).map(String::from);
 
-    // Update model if provided
-    if let Some(model) = args.get("model").and_then(|v| v.as_str()) {
-        spec.frontmatter.model = Some(model.to_string());
-        updated = true;
-    }
+    let output = args
+        .get("output")
+        .and_then(|v| v.as_str())
+        .map(String::from);
 
-    // Append output if provided
-    if let Some(output) = args.get("output").and_then(|v| v.as_str()) {
-        if !output.is_empty() {
-            if !spec.body.ends_with('\n') && !spec.body.is_empty() {
-                spec.body.push('\n');
-            }
-            spec.body.push_str("\n## Output\n\n");
-            spec.body.push_str(output);
-            spec.body.push('\n');
-            updated = true;
-        }
-    }
+    // Use operations module for update
+    let options = crate::operations::update::UpdateOptions {
+        status,
+        depends_on,
+        labels,
+        target_files,
+        model,
+        output,
+    };
 
-    if !updated {
-        return Ok(json!({
+    match crate::operations::update::update_spec(&mut spec, &spec_path, options) {
+        Ok(_) => Ok(json!({
             "content": [
                 {
                     "type": "text",
-                    "text": "No updates specified. Provide 'status', 'output', 'depends_on', 'labels', 'target_files', or 'model' parameter."
+                    "text": format!("Updated spec: {}", spec_id)
+                }
+            ]
+        })),
+        Err(e) => Ok(json!({
+            "content": [
+                {
+                    "type": "text",
+                    "text": format!("Failed to update spec: {}", e)
                 }
             ],
             "isError": true
-        }));
+        })),
     }
-
-    // Save the spec
-    let spec_path = specs_dir.join(format!("{}.md", spec.id));
-    spec.save(&spec_path)?;
-
-    Ok(json!({
-        "content": [
-            {
-                "type": "text",
-                "text": format!("Updated spec: {}", spec.id)
-            }
-        ]
-    }))
 }
 
 fn tool_chant_status(arguments: Option<&Value>) -> Result<Value> {
@@ -1421,76 +1408,40 @@ fn tool_chant_add(arguments: Option<&Value>) -> Result<Value> {
 
     let prompt = args.get("prompt").and_then(|v| v.as_str());
 
-    // Generate ID
-    let new_id = id::generate_id(&specs_dir)?;
-    let filename = format!("{}.md", new_id);
-    let filepath = specs_dir.join(&filename);
-
-    // Create spec content
-    let prompt_line = match prompt {
-        Some(p) => format!("prompt: {}\n", p),
-        None => String::new(),
+    // Load config for derivation
+    let config = match crate::config::Config::load() {
+        Ok(c) => c,
+        Err(e) => {
+            return Ok(json!({
+                "content": [{ "type": "text", "text": format!("Failed to load config: {}", e) }],
+                "isError": true
+            }));
+        }
     };
 
-    // Split description if it's longer than ~80 chars
-    let (title, body) = if description.len() > 80 {
-        // Find first sentence boundary (period followed by space or end, or newline)
-        let mut split_pos = None;
-
-        // Check for newline first
-        if let Some(newline_pos) = description.find('\n') {
-            split_pos = Some(newline_pos);
-        } else {
-            // Look for period followed by space or end of string
-            for (i, c) in description.char_indices() {
-                if c == '.' {
-                    let next_pos = i + c.len_utf8();
-                    if next_pos >= description.len() {
-                        // Period at end
-                        split_pos = Some(next_pos);
-                        break;
-                    } else if description[next_pos..].starts_with(' ') {
-                        // Period followed by space
-                        split_pos = Some(next_pos);
-                        break;
-                    }
-                }
-            }
-        }
-
-        if let Some(pos) = split_pos {
-            let title_part = description[..pos].trim();
-            let body_part = description[pos..].trim();
-            if !body_part.is_empty() {
-                (title_part.to_string(), format!("\n{}", body_part))
-            } else {
-                (description.to_string(), String::new())
-            }
-        } else {
-            // No sentence boundary found, use whole description as title
-            (description.to_string(), String::new())
-        }
-    } else {
-        // Short description, use as-is
-        (description.to_string(), String::new())
+    // Use operations module for spec creation
+    let options = crate::operations::create::CreateOptions {
+        prompt: prompt.map(String::from),
+        needs_approval: false,
+        auto_commit: false, // MCP doesn't auto-commit
     };
 
-    let content = format!(
-        r#"---
-type: code
-status: pending
-{}---
+    let (spec, _filepath) = match crate::operations::create::create_spec(
+        description,
+        &specs_dir,
+        &config,
+        options,
+    ) {
+        Ok(result) => result,
+        Err(e) => {
+            return Ok(json!({
+                "content": [{ "type": "text", "text": format!("Failed to create spec: {}", e) }],
+                "isError": true
+            }));
+        }
+    };
 
-# {}{}
-"#,
-        prompt_line, title, body
-    );
-
-    std::fs::write(&filepath, content)?;
-
-    // Note: Lint diagnostics removed as they require CLI-specific imports
-    // that are not available in the library module
-    let response_text = format!("Created spec: {}", new_id);
+    let response_text = format!("Created spec: {}", spec.id);
 
     Ok(json!({
         "content": [
@@ -1564,23 +1515,55 @@ fn tool_chant_finalize(arguments: Option<&Value>) -> Result<Value> {
         }));
     }
 
-    // Update status to completed using state machine
-    spec.set_status(SpecStatus::Completed)
-        .map_err(|e| anyhow::anyhow!("Failed to transition spec to Completed: {}", e))?;
-    spec.frontmatter.completed_at = Some(chrono::Local::now().to_rfc3339());
+    // Load config and all specs for finalization
+    let config = match crate::config::Config::load() {
+        Ok(c) => c,
+        Err(e) => {
+            return Ok(json!({
+                "content": [{ "type": "text", "text": format!("Failed to load config: {}", e) }],
+                "isError": true
+            }));
+        }
+    };
 
-    // Save the spec
-    let spec_path = specs_dir.join(format!("{}.md", spec.id));
-    spec.save(&spec_path)?;
+    let all_specs = match load_all_specs(&specs_dir) {
+        Ok(specs) => specs,
+        Err(e) => {
+            return Ok(json!({
+                "content": [{ "type": "text", "text": format!("Failed to load specs: {}", e) }],
+                "isError": true
+            }));
+        }
+    };
 
-    Ok(json!({
-        "content": [
-            {
-                "type": "text",
-                "text": format!("Finalized spec: {}", spec_id)
-            }
-        ]
-    }))
+    // Use operations module for finalization with full validation
+    let spec_repo = crate::repository::spec_repository::FileSpecRepository::new(specs_dir.clone());
+    let options = crate::operations::finalize::FinalizeOptions {
+        allow_no_commits: false,
+        commits: None, // Auto-detect commits
+    };
+
+    match crate::operations::finalize::finalize_spec(
+        &mut spec, &spec_repo, &config, &all_specs, options,
+    ) {
+        Ok(_) => Ok(json!({
+            "content": [
+                {
+                    "type": "text",
+                    "text": format!("Finalized spec: {}", spec_id)
+                }
+            ]
+        })),
+        Err(e) => Ok(json!({
+            "content": [
+                {
+                    "type": "text",
+                    "text": format!("Failed to finalize spec: {}", e)
+                }
+            ],
+            "isError": true
+        })),
+    }
 }
 
 fn tool_chant_reset(arguments: Option<&Value>) -> Result<Value> {
@@ -1612,38 +1595,30 @@ fn tool_chant_reset(arguments: Option<&Value>) -> Result<Value> {
     };
 
     let spec_id = spec.id.clone();
+    let spec_path = specs_dir.join(format!("{}.md", spec.id));
 
-    // Check if spec is in failed or in_progress state
-    if spec.frontmatter.status != SpecStatus::Failed
-        && spec.frontmatter.status != SpecStatus::InProgress
-    {
-        return Ok(json!({
+    // Use operations module for reset
+    let options = crate::operations::reset::ResetOptions::default();
+
+    match crate::operations::reset::reset_spec(&mut spec, &spec_path, options) {
+        Ok(_) => Ok(json!({
             "content": [
                 {
                     "type": "text",
-                    "text": format!("Spec '{}' is not in failed or in_progress state (current: {:?}). Only failed or in_progress specs can be reset.", spec_id, spec.frontmatter.status)
+                    "text": format!("Reset spec '{}' to pending", spec_id)
+                }
+            ]
+        })),
+        Err(e) => Ok(json!({
+            "content": [
+                {
+                    "type": "text",
+                    "text": format!("Failed to reset spec: {}", e)
                 }
             ],
             "isError": true
-        }));
+        })),
     }
-
-    // Reset to pending using state machine
-    spec.set_status(SpecStatus::Pending)
-        .map_err(|e| anyhow::anyhow!("Failed to transition spec to Pending: {}", e))?;
-
-    // Save the spec
-    let spec_path = specs_dir.join(format!("{}.md", spec.id));
-    spec.save(&spec_path)?;
-
-    Ok(json!({
-        "content": [
-            {
-                "type": "text",
-                "text": format!("Reset spec '{}' to pending", spec_id)
-            }
-        ]
-    }))
 }
 
 fn tool_chant_cancel(arguments: Option<&Value>) -> Result<Value> {
