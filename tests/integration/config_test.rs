@@ -112,7 +112,7 @@ This spec has branch and labels fields.
 
     let output = format!("{}{}", stdout, stderr);
     assert!(
-        output.contains("All 1 specs valid"),
+        output.contains("Lint validation") && output.contains("1 total") && output.contains("1 passed"),
         "Should report all specs valid"
     );
 }
@@ -155,7 +155,7 @@ This spec should pass even without required fields since none are configured.
 
     let output = format!("{}{}", stdout, stderr);
     assert!(
-        output.contains("All 1 specs valid"),
+        output.contains("Lint validation") && output.contains("1 total") && output.contains("1 passed"),
         "Should report all specs valid"
     );
 }

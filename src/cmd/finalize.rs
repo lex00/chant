@@ -18,6 +18,8 @@ use chant::operations::{
     get_commits_for_spec_with_branch, get_model_name,
 };
 
+use crate::cmd::validate::{Severity, ValidationCategory, ValidationIssue, ValidationResult};
+
 /// Maximum characters to store in agent output section
 pub const MAX_AGENT_OUTPUT_CHARS: usize = 5000;
 
@@ -118,57 +120,104 @@ pub fn finalize_spec(
         spec.id
     );
 
+    // Run validation checks through unified framework
+    let mut validation_result = ValidationResult::new(ValidationCategory::Lint);
+    validation_result.total = 1;
+
     // Validation 1: Verify that status was actually changed to Completed
-    anyhow::ensure!(
-        spec.frontmatter.status == SpecStatus::Completed,
-        "Status was not set to Completed after finalization"
-    );
+    if spec.frontmatter.status != SpecStatus::Completed {
+        validation_result.add_issue(ValidationIssue::new(
+            Severity::Error,
+            ValidationCategory::Lint,
+            &spec.id,
+            "Status was not set to Completed after finalization",
+        ));
+    }
 
     // Validation 2: Verify that completed_at timestamp is set and in valid ISO format
-    let completed_at = spec
-        .frontmatter
-        .completed_at
-        .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("completed_at timestamp was not set"))?;
-
-    // Parse timestamp to validate ISO 8601 format
-    chrono::DateTime::parse_from_rfc3339(completed_at).with_context(|| {
-        format!(
-            "completed_at must be valid ISO 8601 format, got: {}",
-            completed_at
-        )
-    })?;
+    match &spec.frontmatter.completed_at {
+        Some(completed_at) => {
+            // Parse timestamp to validate ISO 8601 format
+            if chrono::DateTime::parse_from_rfc3339(completed_at).is_err() {
+                validation_result.add_issue(ValidationIssue::new(
+                    Severity::Error,
+                    ValidationCategory::Lint,
+                    &spec.id,
+                    format!(
+                        "completed_at must be valid ISO 8601 format, got: {}",
+                        completed_at
+                    ),
+                ));
+            }
+        }
+        None => {
+            validation_result.add_issue(ValidationIssue::new(
+                Severity::Error,
+                ValidationCategory::Lint,
+                &spec.id,
+                "completed_at timestamp was not set",
+            ));
+        }
+    }
 
     // Validation 3: Verify that spec was actually saved (reload and check)
     let saved_spec = spec_repo
         .load(&spec.id)
         .context("Failed to reload spec from disk to verify persistence")?;
 
-    anyhow::ensure!(
-        saved_spec.frontmatter.status == SpecStatus::Completed,
-        "Persisted spec status is not Completed - save may have failed"
-    );
+    if saved_spec.frontmatter.status != SpecStatus::Completed {
+        validation_result.add_issue(ValidationIssue::new(
+            Severity::Error,
+            ValidationCategory::Lint,
+            &spec.id,
+            "Persisted spec status is not Completed - save may have failed",
+        ));
+    }
 
-    anyhow::ensure!(
-        saved_spec.frontmatter.completed_at.is_some(),
-        "Persisted spec is missing completed_at - save may have failed"
-    );
+    if saved_spec.frontmatter.completed_at.is_none() {
+        validation_result.add_issue(ValidationIssue::new(
+            Severity::Error,
+            ValidationCategory::Lint,
+            &spec.id,
+            "Persisted spec is missing completed_at - save may have failed",
+        ));
+    }
 
     // Model may be None if no model was detected, but commits should match memory
     match (&spec.frontmatter.commits, &saved_spec.frontmatter.commits) {
         (Some(mem_commits), Some(saved_commits)) => {
-            anyhow::ensure!(
-                mem_commits == saved_commits,
-                "Persisted commits don't match memory - save may have failed"
-            );
+            if mem_commits != saved_commits {
+                validation_result.add_issue(ValidationIssue::new(
+                    Severity::Error,
+                    ValidationCategory::Lint,
+                    &spec.id,
+                    "Persisted commits don't match memory - save may have failed",
+                ));
+            }
         }
         (None, None) => {
             // Both None is correct
         }
         _ => {
-            anyhow::bail!("Persisted commits don't match memory - save may have failed");
+            validation_result.add_issue(ValidationIssue::new(
+                Severity::Error,
+                ValidationCategory::Lint,
+                &spec.id,
+                "Persisted commits don't match memory - save may have failed",
+            ));
         }
     }
+
+    // Check validation result and fail if there are errors
+    if validation_result.has_errors() {
+        validation_result.failed = 1;
+        for issue in &validation_result.issues {
+            eprintln!("{} {}: {}", "✗".red(), issue.item_id, issue.message);
+        }
+        anyhow::bail!("Finalization validation failed");
+    }
+
+    validation_result.passed = 1;
 
     // Check what this spec unblocked
     let specs_dir = spec_repo.specs_dir();
@@ -248,42 +297,79 @@ pub fn re_finalize_spec(
         .save(spec)
         .context("Failed to save re-finalized spec")?;
 
+    // Run validation checks through unified framework
+    let mut validation_result = ValidationResult::new(ValidationCategory::Lint);
+    validation_result.total = 1;
+
     // Validation 1: Verify that status is Completed
-    anyhow::ensure!(
-        spec.frontmatter.status == SpecStatus::Completed,
-        "Status was not set to Completed after re-finalization"
-    );
+    if spec.frontmatter.status != SpecStatus::Completed {
+        validation_result.add_issue(ValidationIssue::new(
+            Severity::Error,
+            ValidationCategory::Lint,
+            &spec.id,
+            "Status was not set to Completed after re-finalization",
+        ));
+    }
 
     // Validation 2: Verify completed_at timestamp is set and valid
-    let completed_at = spec
-        .frontmatter
-        .completed_at
-        .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("completed_at timestamp was not set"))?;
-
-    // Parse timestamp to validate ISO 8601 format
-    chrono::DateTime::parse_from_rfc3339(completed_at).with_context(|| {
-        format!(
-            "completed_at must be valid ISO 8601 format, got: {}",
-            completed_at
-        )
-    })?;
+    match &spec.frontmatter.completed_at {
+        Some(completed_at) => {
+            // Parse timestamp to validate ISO 8601 format
+            if chrono::DateTime::parse_from_rfc3339(completed_at).is_err() {
+                validation_result.add_issue(ValidationIssue::new(
+                    Severity::Error,
+                    ValidationCategory::Lint,
+                    &spec.id,
+                    format!(
+                        "completed_at must be valid ISO 8601 format, got: {}",
+                        completed_at
+                    ),
+                ));
+            }
+        }
+        None => {
+            validation_result.add_issue(ValidationIssue::new(
+                Severity::Error,
+                ValidationCategory::Lint,
+                &spec.id,
+                "completed_at timestamp was not set",
+            ));
+        }
+    }
 
     // Validation 3: Verify spec was saved (reload and check)
     let saved_spec = spec_repo
         .load(&spec.id)
         .context("Failed to reload spec from disk to verify persistence")?;
 
-    anyhow::ensure!(
-        saved_spec.frontmatter.status == SpecStatus::Completed,
-        "Persisted spec status is not Completed - save may have failed"
-    );
+    if saved_spec.frontmatter.status != SpecStatus::Completed {
+        validation_result.add_issue(ValidationIssue::new(
+            Severity::Error,
+            ValidationCategory::Lint,
+            &spec.id,
+            "Persisted spec status is not Completed - save may have failed",
+        ));
+    }
 
-    anyhow::ensure!(
-        saved_spec.frontmatter.completed_at.is_some(),
-        "Persisted spec is missing completed_at - save may have failed"
-    );
+    if saved_spec.frontmatter.completed_at.is_none() {
+        validation_result.add_issue(ValidationIssue::new(
+            Severity::Error,
+            ValidationCategory::Lint,
+            &spec.id,
+            "Persisted spec is missing completed_at - save may have failed",
+        ));
+    }
 
+    // Check validation result and fail if there are errors
+    if validation_result.has_errors() {
+        validation_result.failed = 1;
+        for issue in &validation_result.issues {
+            eprintln!("{} {}: {}", "✗".red(), issue.item_id, issue.message);
+        }
+        anyhow::bail!("Re-finalization validation failed");
+    }
+
+    validation_result.passed = 1;
     Ok(())
 }
 

@@ -5,8 +5,6 @@
 //! - Spec verification (acceptance criteria validation)
 //! - Config validation (configuration file validation)
 
-#![allow(dead_code)] // Framework is being progressively adopted
-
 use anyhow::Result;
 use colored::Colorize;
 
@@ -18,6 +16,7 @@ pub enum ValidationCategory {
     /// Acceptance criteria verification
     Verify,
     /// Configuration validation
+    #[allow(dead_code)]
     Config,
 }
 
@@ -35,6 +34,7 @@ impl std::fmt::Display for ValidationCategory {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Severity {
     /// Informational message
+    #[allow(dead_code)]
     Info,
     /// Warning - should be addressed but not critical
     Warning,
@@ -153,6 +153,7 @@ impl ValidationResult {
     }
 
     /// Check if there are any warnings
+    #[allow(dead_code)]
     pub fn has_warnings(&self) -> bool {
         self.issues.iter().any(|i| i.severity == Severity::Warning)
     }
@@ -244,6 +245,7 @@ impl ValidationResult {
 }
 
 /// Trait for types that can be validated
+#[allow(dead_code)]
 pub trait Validate {
     /// Perform validation and return issues
     fn validate(&self) -> Vec<ValidationIssue>;

@@ -827,6 +827,8 @@ pub fn lint_specific_specs(specs_dir: &std::path::Path, spec_ids: &[String]) -> 
 }
 
 pub fn cmd_lint(spec_id: Option<&str>, format: LintFormat, verbose: bool) -> Result<()> {
+    use crate::cmd::validate::{ValidationCategory, ValidationResult};
+
     let specs_dir = crate::cmd::ensure_initialized()?;
 
     if format == LintFormat::Text {
@@ -1070,16 +1072,41 @@ pub fn cmd_lint(spec_id: Option<&str>, format: LintFormat, verbose: bool) -> Res
     // Output results based on format
     match format {
         LintFormat::Text => {
-            // Print summary with enterprise policy if configured
-            if error_count > 0 {
-                println!(
-                    "\nFound {} {} in {} specs.",
-                    error_count,
-                    if error_count == 1 { "error" } else { "errors" },
-                    total_specs
-                );
+            // Convert to unified validation framework
+            let mut result = ValidationResult::new(ValidationCategory::Lint);
+            result.total = total_specs;
 
-                // Show enterprise policy if required fields are configured
+            // Convert diagnostics to validation issues
+            for diag in all_diagnostics {
+                result.add_issue(diag.into());
+            }
+
+            // Count passed/warned/failed specs
+            let mut spec_errors = std::collections::HashSet::new();
+            let mut spec_warnings = std::collections::HashSet::new();
+
+            for issue in &result.issues {
+                if issue.severity == crate::cmd::validate::Severity::Error {
+                    spec_errors.insert(&issue.item_id);
+                } else if issue.severity == crate::cmd::validate::Severity::Warning {
+                    spec_warnings.insert(&issue.item_id);
+                }
+            }
+
+            result.failed = spec_errors.len();
+            result.warned = spec_warnings.difference(&spec_errors).count();
+            result.passed = total_specs - result.failed - result.warned;
+
+            // Display issues
+            for issue in &result.issues {
+                issue.display();
+            }
+
+            // Display summary
+            result.display_summary();
+
+            // Show enterprise policy if required fields are configured
+            if result.has_errors() {
                 if let Some(cfg) = &config {
                     if !cfg.enterprise.required.is_empty() {
                         println!(
@@ -1089,12 +1116,9 @@ pub fn cmd_lint(spec_id: Option<&str>, format: LintFormat, verbose: bool) -> Res
                         );
                     }
                 }
-
-                std::process::exit(1);
-            } else {
-                println!("\nAll {} specs valid.", total_specs);
-                Ok(())
             }
+
+            result.exit_if_failed()
         }
         LintFormat::Json => {
             // Count specs by diagnostic status

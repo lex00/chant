@@ -26,36 +26,18 @@ pub struct SpecVerificationResult {
 
 /// Display a summary of verification results for multiple specs
 fn display_verification_summary(results: &[SpecVerificationResult]) {
+    use crate::cmd::validate::{ValidationCategory, ValidationResult};
+
     let passed_count = results.iter().filter(|r| r.passed).count();
     let failed_count = results.len() - passed_count;
 
-    println!("\n{}", "━".repeat(60).cyan());
-    if failed_count == 0 {
-        println!(
-            "{} Verified {} spec{}: {} {}",
-            "✓".green(),
-            results.len(),
-            if results.len() == 1 { "" } else { "s" },
-            passed_count,
-            "passed".green()
-        );
-    } else {
-        println!(
-            "{} Verified {} spec{}: {} {}, {} {}",
-            if failed_count > 0 {
-                "✗".red()
-            } else {
-                "✓".green()
-            },
-            results.len(),
-            if results.len() == 1 { "" } else { "s" },
-            passed_count,
-            "passed".green(),
-            failed_count,
-            "failed".red()
-        );
-    }
-    println!("{}", "━".repeat(60).cyan());
+    // Use unified validation framework for display
+    let mut validation_result = ValidationResult::new(ValidationCategory::Verify);
+    validation_result.total = results.len();
+    validation_result.passed = passed_count;
+    validation_result.failed = failed_count;
+
+    validation_result.display_summary();
 }
 
 /// Execute the verify command
