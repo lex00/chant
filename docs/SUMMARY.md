@@ -27,6 +27,7 @@
 
 - [Overview](architecture/architecture.md)
 - [Agent Protocol](architecture/protocol.md)
+- [Operations Layer](architecture/operations-layer.md)
 - [Patterns](architecture/patterns.md)
 
 # Guides
