@@ -17,6 +17,7 @@ fn is_gitignored(path: &Path) -> bool {
 }
 
 /// Create a new branch or switch to an existing one.
+#[allow(dead_code)]
 pub fn create_or_switch_branch(branch_name: &str) -> Result<()> {
     use std::process::Command;
 

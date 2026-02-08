@@ -100,3 +100,11 @@ pub mod paths {
     /// Directory containing internal store: `.chant/.store`
     pub const STORE_DIR: &str = ".chant/.store";
 }
+
+/// Generate a UTC timestamp in ISO 8601 format: `YYYY-MM-DDTHH:MM:SSZ`
+///
+/// This function uses `chrono::Utc::now()` to ensure the timestamp is truly in UTC,
+/// not local time with a misleading `Z` suffix.
+pub fn utc_now_iso() -> String {
+    chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()
+}

@@ -105,11 +105,7 @@ pub fn finalize_spec(
     } else {
         Some(commits)
     };
-    spec.frontmatter.completed_at = Some(
-        chrono::Local::now()
-            .format("%Y-%m-%dT%H:%M:%SZ")
-            .to_string(),
-    );
+    spec.frontmatter.completed_at = Some(crate::utc_now_iso());
     spec.frontmatter.model = get_model_name_impl(Some(config));
 
     // Save the spec
@@ -130,18 +126,13 @@ pub fn finalize_spec(
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("completed_at timestamp was not set"))?;
 
-    if !completed_at.ends_with('Z') {
-        anyhow::bail!(
-            "completed_at must end with 'Z' (UTC format), got: {}",
+    // Parse timestamp to validate ISO 8601 format
+    chrono::DateTime::parse_from_rfc3339(completed_at).with_context(|| {
+        format!(
+            "completed_at must be valid ISO 8601 format, got: {}",
             completed_at
-        );
-    }
-    if !completed_at.contains('T') {
-        anyhow::bail!(
-            "completed_at must contain 'T' separator (ISO format), got: {}",
-            completed_at
-        );
-    }
+        )
+    })?;
 
     // Validation: Verify that spec was actually saved (reload and check)
     let saved_spec = spec_repo
