@@ -73,7 +73,7 @@ Documentation may be outdated for:
   - docs/architecture/modules.md (Reporting Module section)
 
 Recommendation: Re-run spec to update documentation
-  $ chant replay 001-doc
+  $ chant reset 001-doc && chant work 001-doc
 ```
 
 ### 2. Analysis Drift (origin:)
@@ -109,7 +109,7 @@ Analysis may need updating for:
   - analysis/coupling/extraction-candidates.md (rankings may shift)
 
 Recommendation: Re-run spec with updated metrics
-  $ chant replay 001-cpl
+  $ chant reset 001-cpl && chant work 001-cpl
 ```
 
 ### 3. Cascade Drift (depends_on:)
@@ -135,80 +135,31 @@ Cascade detected:
       └─> 2026-02-01-001-ext (extraction)
             Status: CASCADE DRIFT (upstream stale)
 
-Recommendation: Replay upstream spec first
-  $ chant replay 001-cpl
-  $ chant replay 001-doc  # After 001-cpl completes
+Recommendation: Re-run upstream spec first
+  1. `chant reset 001-cpl && chant work 001-cpl` — Refresh coupling analysis
+  2. `chant reset 001-doc && chant work 001-doc` — Update architecture docs
 ```
 
-## Automated Drift Monitoring
+## Periodic Drift Monitoring
 
-Alex configures scheduled drift checks:
-
-**File: `.chant/config.md`**
-
-```markdown
-## schedule
-
-### drift-check
-
-- frequency: weekly
-- day: monday
-- time: 09:00
-- notify: slack
-- channel: #engineering-alerts
-```
-
-Every Monday, chant checks all specs for drift and posts to Slack:
-
-```
-🔍 Weekly Drift Report - 2026-03-18
-
-Specs checked: 8
-Up to date: 5
-Drifted: 3
-
-📄 2026-01-28-001-doc (Document system architecture)
-   └─ src/auth/routes.py changed (+45 lines)
-   └─ Action: Documentation may need update
-
-📄 2026-01-27-001-cpl (Analyze codebase coupling)
-   └─ production-metrics.md changed
-   └─ Action: Re-analyze with new data
-
-📄 2026-02-01-001-ext.4 (Integration testing)
-   └─ Upstream coupling analysis stale
-   └─ Action: Verify validation still accurate
-
-Run `chant drift --all` for details
-```
-
-## Selective Replay
-
-Alex can replay just what's needed:
+Alex runs drift checks periodically to catch stale specs:
 
 ```bash
-# Replay documentation with updated code context
-$ chant replay 001-doc
-
-Replaying: 2026-01-28-001-doc (Document system architecture)
-
-Changes detected:
-  - src/auth/routes.py: New MFA endpoints
-  - src/reporting/routes.py: Realtime report endpoint
-
-Updating documentation...
-
-Changes to docs/architecture/modules.md:
-  Auth Module:
-    + New endpoint: /auth/mfa/setup
-    + New endpoint: /auth/mfa/verify
-
-  Reporting Module:
-    + New endpoint: /reports/realtime
-    + Updated: Standalone service deployment notes
-
-Replay complete.
+$ chant drift
 ```
+
+This shows all specs with detected drift, helping decide which to re-run.
+
+## Selective Re-runs
+
+Alex can re-run just what's needed:
+
+```bash
+$ chant reset 001-doc
+$ chant work 001-doc
+```
+
+The agent regenerates documentation incorporating recent code changes.
 
 ## Weekly Coupling Reports
 

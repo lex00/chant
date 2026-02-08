@@ -72,7 +72,7 @@ Origin files changed since completion (2026-01-16):
 Total new observations: 708
 
 Recommendation: Re-run spec to incorporate new data
-  $ chant replay 001-ana
+  $ chant reset 001-ana && chant work 001-ana
 
 ---
 
@@ -83,39 +83,19 @@ Member 2026-01-20-001-drv.1 has upstream drift
 Cascade: drv.1 → drv.2 → drv.3, drv.4
 
 Recommendation: Re-run entire pipeline
-  $ chant replay 001-drv
+  $ chant reset 001-drv && chant work 001-drv
 ```
 
-## Replaying Analysis
+## Re-running Analysis
 
 Sarah re-runs the pipeline to incorporate new data:
 
 ```bash
-$ chant replay 001-drv
+$ chant reset 001-drv
+$ chant work 001-drv
 ```
 
-```
-Replaying: 2026-01-20-001-drv (Arctic analysis pipeline)
-
-Original completion: 2026-01-20
-Data changed: 2026-03-15 (+708 observations)
-
-Executing pipeline...
-
-Phase 1: 2026-01-20-001-drv.1 (Data cleaning)
-  New observations: 708
-  Excluded by quality flags: 12
-  Net added: 696
-
-Phase 2: 2026-01-20-001-drv.2 (Statistical analysis)
-  Comparing to original results...
-
-Phase 3: 2026-01-20-001-drv.3, drv.4 (parallel)
-  Sensitivity analysis updated
-  Figures regenerated
-
-Replay complete.
-```
+The agent re-executes the pipeline with the new data, updating all analysis outputs.
 
 ## Comparison Report
 
@@ -192,53 +172,29 @@ Informed-by files changed since completion (2026-01-15):
       Status: New file
 
 Recommendation: Re-run spec to incorporate new paper
-  $ chant replay 001-lit
+  $ chant reset 001-lit && chant work 001-lit
 ```
 
-## Selective Replay
+## Re-running Selective Analysis
 
-Sarah can replay just the affected spec:
+Sarah can re-run just the affected spec:
 
 ```bash
-$ chant replay 001-lit
+$ chant reset 001-lit
+$ chant work 001-lit
 ```
 
-```
-Replaying: 2026-01-15-001-lit (Synthesize Arctic warming literature)
+The agent re-synthesizes the literature review incorporating the new paper.
 
-Original completion: 2026-01-15
-New paper: petrov-2026-siberian-warming.pdf
+## Periodic Drift Checks
 
-Agent synthesizing new paper with existing review...
+Sarah runs drift detection periodically to check for stale findings:
 
-Update to literature-review.md:
-  Section 1.1: Added Petrov 2026 findings on Siberian amplification
-  Table 1: Added new study (26th paper)
-
-Update to research-gaps.md:
-  Gap 1: Petrov 2026 partially addresses post-2015 acceleration
-  Note: My analysis still provides station-level detail not in Petrov
-
-Replay complete.
+```bash
+$ chant drift
 ```
 
-## Scheduled Drift Checks
-
-Sarah configures automated drift detection:
-
-**File: `.chant/config.md`**
-
-```markdown
-## schedule
-
-### drift-check
-
-- frequency: weekly
-- notify: email
-- auto-replay: false
-```
-
-Every Monday, chant checks for drift and emails Sarah if any specs are stale.
+This shows all specs with detected drift, allowing her to decide which to re-run.
 
 ## Drift Types Summary
 
@@ -250,7 +206,7 @@ Every Monday, chant checks for drift and emails Sarah if any specs are stale.
 
 ## Recurring Research
 
-For ongoing monitoring, Sarah uses scheduled specs:
+For ongoing monitoring, Sarah documents the intended cadence:
 
 **File: `.chant/specs/2026-03-01-001-mon.md`**
 
@@ -279,31 +235,23 @@ Generate monthly update on Arctic temperature trends.
 - [ ] Alert if significant change detected
 ```
 
-This spec runs automatically each month when new data arrives.
+The `schedule: monthly` field documents the intended recurrence. Sarah manually runs `chant work 001-mon` each month when new data arrives.
 
 ## Audit Trail
 
-Every drift detection and replay is logged:
+Git commits track the history of each spec execution:
 
 ```bash
-$ chant log 001-ana --drift
+$ git log --oneline --grep="001-ana"
 ```
 
 ```
-Drift History: 2026-01-16-001-ana
-=================================
-
-2026-01-16  Spec created and completed
-2026-03-15  DRIFT: +708 observations in origin files
-2026-03-15  REPLAY: Analysis updated
-2026-03-15  FINDING: Trend strengthened (+0.02°C/decade)
-
-2026-05-01  DRIFT: +420 observations in origin files
-2026-05-02  REPLAY: Analysis updated
-2026-05-02  FINDING: No significant change
-
-Current status: Up to date (last check: 2026-05-15)
+abc1234 chant(001-ana): update analysis with May data
+def5678 chant(001-ana): update analysis with March data
+9ab0cde chant(001-ana): initial Arctic temperature analysis
 ```
+
+Each re-run creates a new commit, preserving the full audit trail.
 
 ## Dissertation Defense
 
@@ -317,14 +265,14 @@ When Sarah defends her dissertation, she can demonstrate:
 Her advisor's reproducibility audit is straightforward:
 
 ```bash
-# Show all specs with their completion dates and data versions
-$ chant list --completed --verbose
+# Show all specs with their completion dates
+$ chant list
 
 # Verify no drift in final results
-$ chant drift --all
+$ chant drift
 
-# Re-run entire pipeline from original data
-$ chant replay 001-drv --from-scratch
+# Re-run entire pipeline to verify reproducibility
+$ chant reset 001-drv && chant work 001-drv
 ```
 
 ## What's Next

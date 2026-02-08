@@ -23,7 +23,7 @@ Chant addresses this:
 chant init
 
 # Create a research spec
-chant add "Analyze Q1 survey data" --type research
+chant add "Analyze Q1 survey data"
 ```
 
 Edit the spec:
@@ -179,7 +179,7 @@ target_files:
 
 ## Recurring Research
 
-Use `schedule:` for automated recurring analysis:
+For recurring analysis, use the `schedule:` field to track cadence:
 
 ```yaml
 ---
@@ -204,7 +204,7 @@ target_files:
 - [ ] Actionable recommendations
 ```
 
-Schedule options: `daily`, `weekly`, `monthly`, or cron expressions.
+The `schedule:` field documents intended recurrence (e.g., `daily`, `weekly`, `monthly`) but does not trigger automated execution.
 
 ## Drift Detection
 
@@ -238,24 +238,16 @@ Informed-by files changed since completion:
 Recommendation: Re-run spec to incorporate updates
 ```
 
-### Replaying Analysis
+### Re-running Analysis
+
+When drift is detected, re-run the spec to update findings:
 
 ```bash
-$ chant replay 001
-Replaying spec 001: Analyze Q1 survey data
-
-Original completion: 2026-01-15
-Data changed: 2026-01-25 (47 new rows)
-
-Agent re-analyzing...
-
-Comparison:
-  - Average satisfaction: 4.2 → 4.1 (slight decrease)
-  - Tenure correlation: 0.45 → 0.52 (stronger)
-  - New theme identified: "remote work"
-
-Replay complete.
+$ chant reset 001
+$ chant work 001
 ```
+
+Compare the new results to the original to see what changed.
 
 ## Verification Strategies
 
@@ -395,4 +387,3 @@ Chant doesn't help with:
 - [Research Workflow Example](../../examples/research-workflow/) — Example demonstrating synthesis and analysis
 - [spec-types.md](../concepts/spec-types.md) — Overview of spec types including research
 - [prompts.md](../concepts/prompts.md) — research-synthesis and research-analysis prompts
-- [autonomy.md](../concepts/autonomy.md) — Drift detection and replay

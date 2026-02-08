@@ -42,7 +42,7 @@ Traditional documentation has problems:
 Alex creates a documentation spec for architecture:
 
 ```bash
-chant add "Document system architecture" --type documentation
+chant add "Document system architecture"
 ```
 
 **File: `.chant/specs/2026-01-28-001-doc.md`**
@@ -406,7 +406,7 @@ Tracked files changed since completion (2026-01-28):
       New endpoint: /auth/mfa/setup
 
 Recommendation: Re-run spec to update documentation
-  $ chant replay 001-doc
+  $ chant reset 001-doc && chant work 001-doc
 ```
 
 ## Documentation Benefits
