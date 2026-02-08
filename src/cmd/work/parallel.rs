@@ -436,7 +436,9 @@ fn handle_direct_mode_merges(
                 merge_failed.push((result.spec_id.clone(), merge_result.has_conflict));
                 let spec_path = specs_dir.join(format!("{}.md", result.spec_id));
                 if let Ok(mut spec) = spec::resolve_spec(specs_dir, &result.spec_id) {
-                    spec.force_status(SpecStatus::NeedsAttention);
+                    let _ = spec::TransitionBuilder::new(&mut spec)
+                        .force()
+                        .to(SpecStatus::NeedsAttention);
                     let _ = spec.save(&spec_path);
                 }
 
@@ -527,7 +529,9 @@ fn handle_branch_mode_merges(
                     );
                     let spec_path = specs_dir.join(format!("{}.md", spec_id));
                     if let Ok(mut spec) = spec::resolve_spec(specs_dir, spec_id) {
-                        spec.force_status(SpecStatus::Failed);
+                        let _ = spec::TransitionBuilder::new(&mut spec)
+                            .force()
+                            .to(SpecStatus::Failed);
                         let _ = spec.save(&spec_path);
                     }
                     failed.push((spec_id.clone(), false));
@@ -674,7 +678,9 @@ fn spawn_worker_threads(
                 let spec_path = specs_dir.join(format!("{}.md", spec.id));
                 if let Ok(failed_spec) = spec::resolve_spec(specs_dir, &spec.id) {
                     let mut failed_spec = failed_spec;
-                    failed_spec.force_status(SpecStatus::Failed);
+                    let _ = spec::TransitionBuilder::new(&mut failed_spec)
+                        .force()
+                        .to(SpecStatus::Failed);
                     let _ = failed_spec.save(&spec_path);
                 }
 
@@ -1102,7 +1108,9 @@ fn execute_spec_in_thread(
                     Err(e) => {
                         eprintln!("{} [{}] ✗ Cannot finalize spec: {}", "✗".red(), spec_id, e);
                         if let Ok(mut spec) = spec::resolve_spec(&specs_dir, &spec_id) {
-                            spec.force_status(SpecStatus::Failed);
+                            let _ = spec::TransitionBuilder::new(&mut spec)
+                                .force()
+                                .to(SpecStatus::Failed);
                             let _ = spec.save(&specs_dir.join(format!("{}.md", spec_id)));
                         }
                         (false, commits, Some(e.to_string()), false)

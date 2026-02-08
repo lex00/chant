@@ -90,7 +90,10 @@ impl Spec {
     /// Force set the spec status, bypassing validation.
     /// Only use this for error recovery or exceptional cases.
     /// Logs a warning when used.
-    pub fn force_status(&mut self, new_status: SpecStatus) {
+    ///
+    /// DEPRECATED: Use `TransitionBuilder::new(spec).force().to(status)` instead.
+    #[allow(dead_code)]
+    pub(crate) fn force_status(&mut self, new_status: SpecStatus) {
         eprintln!(
             "Force setting status for spec {} from {:?} to {:?} (bypassing validation)",
             self.id, self.frontmatter.status, new_status

@@ -239,7 +239,9 @@ pub fn re_finalize_spec(
     spec.frontmatter.model = get_model_name(Some(config));
 
     // Ensure spec is marked as completed
-    spec.force_status(SpecStatus::Completed);
+    let _ = spec::TransitionBuilder::new(spec)
+        .force()
+        .to(SpecStatus::Completed);
 
     // Save the spec
     spec_repo
@@ -480,7 +482,9 @@ fn auto_complete_parent_group(parent_id: &str, specs_dir: &Path, out: &Output) -
     ));
 
     // Set parent as completed (groups don't have commits of their own)
-    parent.force_status(SpecStatus::Completed);
+    let _ = spec::TransitionBuilder::new(&mut parent)
+        .force()
+        .to(SpecStatus::Completed);
     parent.frontmatter.completed_at = Some(chant::utc_now_iso());
 
     parent.save(&parent_path)?;

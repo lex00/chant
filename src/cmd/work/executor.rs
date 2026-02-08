@@ -375,7 +375,9 @@ pub fn handle_spec_failure(spec_id: &str, specs_dir: &Path, error: &anyhow::Erro
             "⚠".yellow(),
             transition_err
         );
-        spec.force_status(SpecStatus::Failed);
+        let _ = spec::TransitionBuilder::new(&mut spec)
+            .force()
+            .to(SpecStatus::Failed);
     }
     spec.save(&spec_path)?;
 
@@ -486,7 +488,9 @@ pub fn validate_output_schema(
                         println!("  → Review .chant/logs/{}.log for details", spec.id);
                         if config.validation.strict_output_validation {
                             let mut spec = spec.clone();
-                            spec.force_status(SpecStatus::NeedsAttention);
+                            let _ = spec::TransitionBuilder::new(&mut spec)
+                                .force()
+                                .to(SpecStatus::NeedsAttention);
                             spec.save(spec_path)?;
                             anyhow::bail!(
                                 "Output validation failed: {} error(s)",
@@ -504,7 +508,9 @@ pub fn validate_output_schema(
                     println!("\n{} Failed to validate output: {}", "⚠".yellow(), e);
                     if config.validation.strict_output_validation {
                         let mut spec = spec.clone();
-                        spec.force_status(SpecStatus::NeedsAttention);
+                        let _ = spec::TransitionBuilder::new(&mut spec)
+                            .force()
+                            .to(SpecStatus::NeedsAttention);
                         spec.save(spec_path)?;
                         return Err(e);
                     }
