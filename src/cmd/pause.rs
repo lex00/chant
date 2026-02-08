@@ -17,37 +17,29 @@ pub fn cmd_pause(id: &str, force: bool) -> Result<()> {
 
     println!("{} Pausing work for spec {}", "→".cyan(), spec_id.cyan());
 
-    // Check if there's a PID file
+    // Check if there's a PID file for force flag handling
     let pid = pid::read_pid_file(&spec_id)?;
 
-    let mut process_stopped = false;
-    if let Some(pid) = pid {
-        if pid::is_process_running(pid) {
-            // Process is running, stop it
-            println!("  {} Process {} is running", "•".cyan(), pid);
+    if let Some(pid_value) = pid {
+        if pid::is_process_running(pid_value) {
+            println!("  {} Process {} is running", "•".cyan(), pid_value);
 
-            if force {
-                println!("  {} Sending SIGTERM to process {}", "•".cyan(), pid);
-                pid::stop_process(pid)?;
-                pid::remove_pid_file(&spec_id)?;
-                process_stopped = true;
-                println!("  {} Process stopped", "✓".green());
-            } else {
+            if !force {
                 println!("{} Use --force to stop the process", "⚠".yellow());
                 anyhow::bail!(
                     "Spec {} has a running process (PID: {}). Use --force to stop it.",
                     spec_id,
-                    pid
+                    pid_value
                 );
             }
+
+            println!("  {} Sending SIGTERM to process {}", "•".cyan(), pid_value);
         } else {
-            // Process not running, clean up PID file
             println!(
                 "  {} Process {} is not running (cleaning up PID file)",
                 "•".cyan(),
-                pid
+                pid_value
             );
-            pid::remove_pid_file(&spec_id)?;
         }
     } else {
         println!(
@@ -57,15 +49,16 @@ pub fn cmd_pause(id: &str, force: bool) -> Result<()> {
         );
     }
 
-    // Update spec status to paused if it was in_progress
-    if spec.frontmatter.status == SpecStatus::InProgress {
-        spec.set_status(SpecStatus::Paused)
-            .map_err(|e| anyhow::anyhow!("Failed to pause spec: {}", e))?;
-        spec.save(&spec_path)?;
+    // Use operations layer
+    let options = chant::operations::PauseOptions { force };
+    let process_stopped = chant::operations::pause_spec(&mut spec, &spec_path, options)?;
+
+    if spec.frontmatter.status == SpecStatus::Paused {
         println!("  {} Status set to: paused", "•".cyan());
     }
 
     if process_stopped {
+        println!("  {} Process stopped", "✓".green());
         println!("{} Paused work for spec {}", "✓".green(), spec_id);
     }
 
