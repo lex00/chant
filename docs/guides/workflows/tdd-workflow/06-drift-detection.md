@@ -147,7 +147,7 @@ jobs:
 
       - name: Check all doc specs for drift
         run: |
-          chant drift --all --format json > drift-report.json
+          chant drift > drift-report.txt
 
       - name: Notify on drift
         if: ${{ steps.drift.outputs.drift_count > 0 }}
@@ -227,9 +227,8 @@ To prevent drift from accumulating, Marcus adds a drift check to PR validation:
 # .github/workflows/pr-check.yml
 - name: Check for drift
   run: |
-    # Only check doc specs related to changed files
-    changed_files=$(git diff --name-only origin/main)
-    chant drift --files "$changed_files" --fail-on-drift
+    # Check drift on all doc specs
+    chant drift
 ```
 
 This fails the PR if code changes would cause test drift without updating tests.

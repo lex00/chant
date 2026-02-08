@@ -86,7 +86,7 @@ Before writing tests, understand what's missing. Research specs analyze existing
 ### Coverage Analysis Spec
 
 ```bash
-chant add "Analyze payment service test coverage gaps" --type research
+chant add "Analyze payment service test coverage gaps"
 ```
 
 **File: `.chant/specs/2026-01-18-001-cov.md`**

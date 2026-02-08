@@ -181,7 +181,8 @@ class TestRefundAuthorization:
 For the full payment coverage initiative, Marcus runs all test specs in parallel:
 
 ```bash
-chant work --parallel --label payments --label tdd
+# Note: work in parallel by passing multiple spec IDs or using --chain
+chant work 001-rfn 002-cur 003-frd 004-rty
 ```
 
 ```
@@ -207,10 +208,10 @@ While agents run, Marcus monitors progress:
 
 ```bash
 # Watch live execution
-chant log 2026-01-20-001-rfn --follow
+chant log 2026-01-20-001-rfn
 
 # Check all TDD specs
-chant list --label tdd --format table
+chant list --label tdd
 ```
 
 ```
@@ -227,7 +228,7 @@ ID           Type    Status       Title
 After completion, merge all test changes:
 
 ```bash
-chant merge --all --rebase --auto
+chant merge --all-completed --rebase --auto
 ```
 
 ```

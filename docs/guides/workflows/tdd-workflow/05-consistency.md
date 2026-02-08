@@ -276,7 +276,9 @@ Performance-sensitive tests:
 Regular validation reports track compliance:
 
 ```bash
-chant report --type test-quality --since 30d
+# Note: Use activity and export commands for reporting
+chant activity --since 30d
+chant export --format json
 ```
 
 ```
