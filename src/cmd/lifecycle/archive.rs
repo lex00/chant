@@ -548,21 +548,9 @@ pub fn cmd_archive(
     // Move specs to archive
     let count = to_archive.len();
     let mut archived_spec_ids = Vec::new();
+    let options = chant::operations::ArchiveOptions { no_stage };
     for spec in to_archive {
-        let src = specs_dir.join(format!("{}.md", spec.id));
-
-        // Extract date from spec ID (format: YYYY-MM-DD-XXX-abc)
-        let date_part = &spec.id[..10]; // First 10 chars: YYYY-MM-DD
-        let date_dir = archive_dir.join(date_part);
-
-        // Create date-based subdirectory if it doesn't exist
-        if !date_dir.exists() {
-            std::fs::create_dir_all(&date_dir)?;
-        }
-
-        let dst = date_dir.join(format!("{}.md", spec.id));
-
-        move_spec_file(&src, &dst, no_stage)?;
+        chant::operations::archive_spec(&specs_dir, &spec.id, &options)?;
         archived_spec_ids.push(spec.id.clone());
         if spec::extract_driver_id(&spec.id).is_some() {
             println!("  {} {} (archived)", "→".cyan(), spec.id);

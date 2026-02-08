@@ -272,7 +272,7 @@ pub fn cmd_cancel(id: &str, force: bool, dry_run: bool, yes: bool) -> Result<()>
     let specs_dir = crate::cmd::ensure_initialized()?;
 
     // Resolve the spec ID
-    let mut spec = spec::resolve_spec(&specs_dir, id)?;
+    let spec = spec::resolve_spec(&specs_dir, id)?;
     let spec_id = &spec.id.clone();
 
     // Check if this is a member spec - cancel is not allowed for members
@@ -380,15 +380,11 @@ pub fn cmd_cancel(id: &str, force: bool, dry_run: bool, yes: bool) -> Result<()>
         }
     }
 
-    // Update the spec status to Cancelled
-    spec.set_status(SpecStatus::Cancelled)
-        .map_err(|e| anyhow::anyhow!("Failed to cancel spec: {}", e))?;
+    // Cancel the spec using the operations layer
+    let options = chant::operations::CancelOptions { force: true };
+    let spec = chant::operations::cancel_spec(&specs_dir, spec_id, &options)?;
 
-    // Save the spec file with the new status
-    let spec_path = specs_dir.join(format!("{}.md", spec_id));
-    spec.save(&spec_path)?;
-
-    println!("{} Cancelled spec: {}", "✓".green(), spec_id);
+    println!("{} Cancelled spec: {}", "✓".green(), spec.id);
 
     Ok(())
 }

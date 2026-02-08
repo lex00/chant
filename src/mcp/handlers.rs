@@ -6,7 +6,8 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use crate::diagnose;
-use crate::paths::{ARCHIVE_DIR, LOGS_DIR, SPECS_DIR};
+use crate::operations;
+use crate::paths::{LOGS_DIR, SPECS_DIR};
 use crate::spec::{load_all_specs, resolve_spec, SpecStatus};
 use crate::spec_group;
 
@@ -1634,52 +1635,27 @@ fn tool_chant_cancel(arguments: Option<&Value>) -> Result<Value> {
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("Missing required parameter: id"))?;
 
-    let mut spec = match resolve_spec(&specs_dir, id) {
-        Ok(s) => s,
-        Err(e) => {
-            return Ok(json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": e.to_string()
-                    }
-                ],
-                "isError": true
-            }));
-        }
-    };
+    let options = operations::CancelOptions::default();
 
-    let spec_id = spec.id.clone();
-
-    // Check if already cancelled
-    if spec.frontmatter.status == SpecStatus::Cancelled {
-        return Ok(json!({
+    match operations::cancel_spec(&specs_dir, id, &options) {
+        Ok(spec) => Ok(json!({
             "content": [
                 {
                     "type": "text",
-                    "text": format!("Spec '{}' is already cancelled", spec_id)
+                    "text": format!("Cancelled spec: {}", spec.id)
+                }
+            ]
+        })),
+        Err(e) => Ok(json!({
+            "content": [
+                {
+                    "type": "text",
+                    "text": e.to_string()
                 }
             ],
             "isError": true
-        }));
+        })),
     }
-
-    // Set status to cancelled using state machine
-    spec.set_status(SpecStatus::Cancelled)
-        .map_err(|e| anyhow::anyhow!("Failed to transition spec to Cancelled: {}", e))?;
-
-    // Save the spec
-    let spec_path = specs_dir.join(format!("{}.md", spec.id));
-    spec.save(&spec_path)?;
-
-    Ok(json!({
-        "content": [
-            {
-                "type": "text",
-                "text": format!("Cancelled spec: {}", spec_id)
-            }
-        ]
-    }))
 }
 
 fn tool_chant_archive(arguments: Option<&Value>) -> Result<Value> {
@@ -1695,55 +1671,27 @@ fn tool_chant_archive(arguments: Option<&Value>) -> Result<Value> {
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("Missing required parameter: id"))?;
 
-    let spec = match resolve_spec(&specs_dir, id) {
-        Ok(s) => s,
-        Err(e) => {
-            return Ok(json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": e.to_string()
-                    }
-                ],
-                "isError": true
-            }));
-        }
-    };
+    let options = operations::ArchiveOptions::default();
 
-    let spec_id = spec.id.clone();
-
-    // Check if completed
-    if spec.frontmatter.status != SpecStatus::Completed {
-        return Ok(json!({
+    match operations::archive_spec(&specs_dir, id, &options) {
+        Ok(dest_path) => Ok(json!({
             "content": [
                 {
                     "type": "text",
-                    "text": format!("Spec '{}' must be completed to archive (current: {:?})", spec_id, spec.frontmatter.status)
+                    "text": format!("Archived spec: {} -> {}", id, dest_path.display())
+                }
+            ]
+        })),
+        Err(e) => Ok(json!({
+            "content": [
+                {
+                    "type": "text",
+                    "text": e.to_string()
                 }
             ],
             "isError": true
-        }));
+        })),
     }
-
-    let archive_dir = PathBuf::from(ARCHIVE_DIR);
-
-    // Create archive directory if it doesn't exist
-    std::fs::create_dir_all(&archive_dir)?;
-
-    let source_path = specs_dir.join(format!("{}.md", spec_id));
-    let dest_path = archive_dir.join(format!("{}.md", spec_id));
-
-    // Move the spec file
-    std::fs::rename(&source_path, &dest_path)?;
-
-    Ok(json!({
-        "content": [
-            {
-                "type": "text",
-                "text": format!("Archived spec: {} -> {}", spec_id, dest_path.display())
-            }
-        ]
-    }))
 }
 
 fn tool_chant_verify(arguments: Option<&Value>) -> Result<Value> {
