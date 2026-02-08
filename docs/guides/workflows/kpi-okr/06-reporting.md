@@ -42,7 +42,7 @@ labels:
   - q1-2026
   - reporting
 schedule: daily  # Metadata field - documents intended frequency, not a trigger
-context:
+informed_by:
   - .chant/context/kpi-churn-q1/research-findings.md
 target_files:
   - reports/kpi-churn-daily.md
@@ -92,7 +92,7 @@ jobs:
         run: chant work --parallel --label reporting
       - name: Post update
         run: |
-          chant activity --since 1d --format json
+          chant activity --since 1d
 ```
 
 ## Example Daily Report
@@ -138,7 +138,7 @@ the trend is sustained.
 For a quick summary across all KPI-labeled specs:
 
 ```bash
-chant list --label kpi-churn --format table
+chant list --label kpi-churn
 ```
 
 ```
@@ -153,24 +153,18 @@ ID           Type      Status     Title
 ```
 
 ```bash
-chant activity --label kpi-churn --since 30d --format summary
+chant activity --label kpi-churn --since 30d
 ```
 
 ```
-KPI Churn Q1 2026 — 30 Day Summary
-
-Specs:       6 total, 6 completed
-Research:    1 spec (approved after 1 rejection)
-Code:        3 specs (all merged)
-Reports:     1 recurring (daily)
-
-Timeline:
-  Week 1: Data ingestion (human)
-  Week 2: Research + approval
-  Week 3: Parallel implementation
-  Week 4: Tracking and reporting
-
-Labels: kpi-churn, q1-2026
+2026-01-22 14:10  002-abc-1  COMPLETED  Add onboarding wizard
+2026-01-22 14:08  002-abc-2  COMPLETED  Promote Slack integration
+2026-01-22 14:06  002-abc-3  COMPLETED  Surface team invite
+2026-01-22 14:00  002-abc    WORKED     Reduce Q1 churn (parallel)
+2026-01-16 14:15  001-xyz    APPROVED   Analyze Q1 churn drivers
+2026-01-15 09:30  001-xyz    REJECTED   Analyze Q1 churn drivers
+2026-01-14 16:45  001-xyz    COMPLETED  Analyze Q1 churn drivers
+2026-01-13 10:00  001-xyz    CREATED    Analyze Q1 churn drivers
 ```
 
 ## End-to-End Recap

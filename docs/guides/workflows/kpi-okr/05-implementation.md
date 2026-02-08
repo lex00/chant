@@ -231,7 +231,7 @@ chant log 2026-01-16-002-abc-1
 After all member specs complete, Sarah merges the worktrees back to main:
 
 ```bash
-chant merge --all --rebase --auto
+chant merge --all --rebase
 ```
 
 ```

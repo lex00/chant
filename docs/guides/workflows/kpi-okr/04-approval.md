@@ -99,7 +99,7 @@ bias is likely. Conservative estimate: 2-3pp attributable to integration.
 Sarah resumes the spec with the new context:
 
 ```bash
-chant resume 2026-01-13-001-xyz --work
+chant reset 2026-01-13-001-xyz --work
 ```
 
 The agent re-reads all context files (including the new integration beta data) and updates the findings. The integration section now reflects validated data:

@@ -21,7 +21,6 @@ status: ready
 labels:
   - kpi-churn
   - q1-2026
-needs_approval: true
 approval:
   required: true
   status: pending
@@ -167,7 +166,6 @@ status: completed
 labels:
   - kpi-churn
   - q1-2026
-needs_approval: true
 approval:
   required: true
   status: pending
