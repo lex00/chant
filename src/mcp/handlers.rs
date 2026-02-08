@@ -1776,7 +1776,7 @@ fn tool_chant_verify(arguments: Option<&Value>) -> Result<Value> {
 
     let spec_id = spec.id.clone();
 
-    // Count checked and unchecked criteria
+    // Count checked and unchecked criteria using operations layer
     let unchecked_count = spec.count_unchecked_checkboxes();
 
     // Find total checkboxes in Acceptance Criteria section
@@ -2188,27 +2188,9 @@ fn tool_chant_pause(arguments: Option<&Value>) -> Result<Value> {
     let spec_id = spec.id.clone();
     let spec_path = specs_dir.join(format!("{}.md", spec_id));
 
-    // Pause the work (stops process and updates status)
-    // Check if there's a PID file
-    let pid = crate::pid::read_pid_file(&spec_id)?;
-
-    if let Some(pid) = pid {
-        if crate::pid::is_process_running(pid) {
-            // Process is running, stop it
-            crate::pid::stop_process(pid)?;
-            crate::pid::remove_pid_file(&spec_id)?;
-        } else {
-            // Process not running, clean up PID file
-            crate::pid::remove_pid_file(&spec_id)?;
-        }
-    }
-
-    // Update spec status to paused if it was in_progress
-    if spec.frontmatter.status == SpecStatus::InProgress {
-        spec.set_status(SpecStatus::Paused)
-            .map_err(|e| anyhow::anyhow!("Failed to transition spec to Paused: {}", e))?;
-        spec.save(&spec_path)?;
-    }
+    // Use operations layer (MCP always forces pause)
+    let options = crate::operations::PauseOptions { force: true };
+    crate::operations::pause_spec(&mut spec, &spec_path, options)?;
 
     Ok(json!({
         "content": [

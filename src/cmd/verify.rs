@@ -5,39 +5,12 @@
 
 use anyhow::{Context, Result};
 use chant::config::Config;
-use chant::prompt;
+use chant::operations::{VerificationStatus, VerifyOptions};
 use chant::spec::{load_all_specs, resolve_spec, Spec, SpecStatus};
-use chrono::Utc;
 use colored::Colorize;
 use std::path::PathBuf;
 
 use crate::cmd::agent;
-
-/// Verification status for a spec
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum VerificationStatus {
-    Pass,
-    Fail,
-    Mixed,
-}
-
-impl std::fmt::Display for VerificationStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Pass => write!(f, "PASS"),
-            Self::Fail => write!(f, "FAIL"),
-            Self::Mixed => write!(f, "MIXED"),
-        }
-    }
-}
-
-/// Result of verifying an individual criterion
-#[derive(Debug, Clone)]
-pub struct CriterionResult {
-    pub criterion: String,
-    pub status: String, // "PASS", "FAIL", or "SKIP"
-    pub note: Option<String>,
-}
 
 /// Result of verifying a single spec
 #[derive(Debug, Clone)]
@@ -49,117 +22,6 @@ pub struct SpecVerificationResult {
     pub passed: bool,
     #[allow(dead_code)]
     pub total_criteria: usize,
-}
-
-/// Parse verification response from the agent
-fn parse_verification_response(
-    response: &str,
-) -> Result<(VerificationStatus, Vec<CriterionResult>)> {
-    let mut criteria_results = Vec::new();
-    let mut overall_status = VerificationStatus::Pass;
-    let mut in_verification_section = false;
-    let mut in_code_fence = false;
-
-    for line in response.lines() {
-        let trimmed = line.trim();
-
-        // Track code fence boundaries
-        if trimmed.starts_with("```") {
-            in_code_fence = !in_code_fence;
-            continue;
-        }
-
-        // Look for the Verification Summary section (can be anywhere, including inside code fences)
-        if trimmed.contains("Verification Summary") {
-            in_verification_section = true;
-            continue;
-        }
-
-        // Stop at next section (marked by ## heading), but only if we're not in a code fence
-        if in_verification_section
-            && !in_code_fence
-            && trimmed.starts_with("##")
-            && !trimmed.contains("Verification Summary")
-        {
-            break;
-        }
-
-        if !in_verification_section {
-            continue;
-        }
-
-        // Parse criterion lines: "- [x] Criterion: STATUS — optional note"
-        if trimmed.starts_with("- [") {
-            // Extract the status and criterion
-            if let Some(rest) = trimmed.strip_prefix("- [") {
-                if let Some(criterion_part) = rest.split_once(']') {
-                    let criterion_line = criterion_part.1.trim();
-
-                    // Parse criterion and status
-                    if let Some(colon_pos) = criterion_line.find(':') {
-                        let criterion_text = criterion_line[..colon_pos].trim().to_string();
-                        let status_part = criterion_line[colon_pos + 1..].trim();
-
-                        // Extract status and optional note
-                        let (status, note) = if let Some(dash_idx) = status_part.find(" — ") {
-                            let status_text = status_part[..dash_idx].trim().to_uppercase();
-                            let note_text = status_part[dash_idx + " — ".len()..].trim();
-                            (status_text, Some(note_text.to_string()))
-                        } else {
-                            (status_part.to_uppercase(), None)
-                        };
-
-                        // Validate status
-                        if !["PASS", "FAIL", "SKIP"].iter().any(|s| status.contains(s)) {
-                            continue;
-                        }
-
-                        // Update overall status based on individual results
-                        if status.contains("FAIL") {
-                            overall_status = VerificationStatus::Fail;
-                        } else if status.contains("SKIP")
-                            && overall_status == VerificationStatus::Pass
-                        {
-                            overall_status = VerificationStatus::Mixed;
-                        }
-
-                        criteria_results.push(CriterionResult {
-                            criterion: criterion_text,
-                            status: if status.contains("PASS") {
-                                "PASS".to_string()
-                            } else if status.contains("FAIL") {
-                                "FAIL".to_string()
-                            } else {
-                                "SKIP".to_string()
-                            },
-                            note,
-                        });
-                    }
-                }
-            }
-        }
-
-        // Also look for "Overall status: X" line
-        if trimmed.starts_with("Overall status:") {
-            if let Some(status_text) = trimmed.split(':').nth(1) {
-                let status_upper = status_text.trim().to_uppercase();
-                overall_status = if status_upper.contains("FAIL") {
-                    VerificationStatus::Fail
-                } else if status_upper.contains("PASS") {
-                    VerificationStatus::Pass
-                } else {
-                    VerificationStatus::Mixed
-                };
-            }
-        }
-    }
-
-    // If we didn't find any criteria, it's an error
-    if criteria_results.is_empty() {
-        anyhow::bail!("Could not parse verification response from agent. Expected format with 'Verification Summary' section.");
-    }
-
-    Ok((overall_status, criteria_results))
 }
 
 /// Display a summary of verification results for multiple specs
@@ -194,48 +56,6 @@ fn display_verification_summary(results: &[SpecVerificationResult]) {
         );
     }
     println!("{}", "━".repeat(60).cyan());
-}
-
-/// Extract acceptance criteria section from spec body
-fn extract_acceptance_criteria(spec: &Spec) -> Option<String> {
-    let acceptance_criteria_marker = "## Acceptance Criteria";
-    let mut in_ac_section = false;
-    let mut ac_content = String::new();
-    let mut in_code_fence = false;
-
-    for line in spec.body.lines() {
-        let trimmed = line.trim_start();
-
-        // Track code fences
-        if trimmed.starts_with("```") {
-            in_code_fence = !in_code_fence;
-        }
-
-        // Look for AC section heading outside code fences
-        if !in_code_fence && trimmed.starts_with(acceptance_criteria_marker) {
-            in_ac_section = true;
-            continue;
-        }
-
-        // Stop at next heading
-        if in_ac_section
-            && trimmed.starts_with("## ")
-            && !trimmed.starts_with(acceptance_criteria_marker)
-        {
-            break;
-        }
-
-        if in_ac_section {
-            ac_content.push_str(line);
-            ac_content.push('\n');
-        }
-    }
-
-    if ac_content.is_empty() {
-        None
-    } else {
-        Some(ac_content)
-    }
 }
 
 /// Execute the verify command
@@ -348,7 +168,7 @@ pub fn cmd_verify(
     let mut verification_results = Vec::new();
 
     for spec in specs_to_verify {
-        let result = verify_spec(&spec, &config, prompt)?;
+        let result = verify_spec_cmd(&spec, &config, prompt)?;
         verification_results.push(result);
     }
 
@@ -369,7 +189,7 @@ pub fn cmd_verify(
 }
 
 /// Verify a single spec by invoking the agent
-fn verify_spec(
+fn verify_spec_cmd(
     spec: &Spec,
     config: &Config,
     custom_prompt: Option<&str>,
@@ -378,7 +198,7 @@ fn verify_spec(
     println!("\n{} {} - {}", "Verifying:".cyan(), spec.id.cyan(), title);
 
     // Check if spec has acceptance criteria
-    let ac_section = extract_acceptance_criteria(spec);
+    let ac_section = chant::operations::extract_acceptance_criteria(spec);
     if ac_section.is_none() {
         println!(
             "  {} No acceptance criteria found in spec. Skipping verification.",
@@ -392,151 +212,64 @@ fn verify_spec(
         });
     }
 
-    // Determine which prompt to use
-    let prompt_name = custom_prompt.unwrap_or("verify");
-    let prompt_path = PathBuf::from(format!(".chant/prompts/{}.md", prompt_name));
-
-    if !prompt_path.exists() {
-        anyhow::bail!(
-            "Prompt file not found: {}. Run `chant init` to create default prompts.",
-            prompt_path.display()
-        );
-    }
-
-    // Assemble the prompt with spec context
-    let message = prompt::assemble(spec, &prompt_path, config)
-        .context("Failed to assemble verification prompt")?;
-
-    // Invoke the agent
     println!("  {} Invoking agent...", "→".cyan());
 
-    let response = match agent::invoke_agent(&message, spec, "verify", config) {
-        Ok(output) => output,
-        Err(e) => {
-            println!("  {} Agent invocation failed: {}", "✗".red(), e);
-            return Err(e).context("Failed to invoke agent for verification");
-        }
+    // Use operations layer
+    let options = VerifyOptions {
+        custom_prompt: custom_prompt.map(String::from),
     };
 
-    // Parse the response
-    match parse_verification_response(&response) {
-        Ok((overall_status, criteria)) => {
-            let total_criteria = criteria.len();
-            let passed = overall_status == VerificationStatus::Pass;
+    let (overall_status, criteria) =
+        chant::operations::verify_spec(spec, config, options, agent::invoke_agent)?;
 
-            // Display criteria with icons
-            if criteria.is_empty() {
-                println!("  {} No criteria to verify", "⚠".yellow());
-            } else {
-                for (i, criterion) in criteria.iter().enumerate() {
-                    let status_icon = match criterion.status.as_str() {
-                        "PASS" => "✓".green(),
-                        "FAIL" => "✗".red(),
-                        "SKIP" => "~".yellow(),
-                        _ => "?".bright_yellow(),
-                    };
+    let total_criteria = criteria.len();
+    let passed = overall_status == VerificationStatus::Pass;
 
-                    print!("  {} {}: {}", status_icon, i + 1, criterion.criterion);
-                    if let Some(note) = &criterion.note {
-                        print!(" — {}", note);
-                    }
-                    println!();
-                }
-            }
-
-            // Display overall result
-            let overall_label = match overall_status {
-                VerificationStatus::Pass => {
-                    format!("{}", "✓ VERIFIED".green())
-                }
-                VerificationStatus::Fail => {
-                    format!("{}", "✗ FAILED".red())
-                }
-                VerificationStatus::Mixed => {
-                    format!("{}", "~ PARTIAL".yellow())
-                }
+    // Display criteria with icons
+    if criteria.is_empty() {
+        println!("  {} No criteria to verify", "⚠".yellow());
+    } else {
+        for (i, criterion) in criteria.iter().enumerate() {
+            let status_icon = match criterion.status.as_str() {
+                "PASS" => "✓".green(),
+                "FAIL" => "✗".red(),
+                "SKIP" => "~".yellow(),
+                _ => "?".bright_yellow(),
             };
 
-            println!("  {} Overall: {}", "→".cyan(), overall_label);
-
-            // Update spec frontmatter with verification results
-            update_spec_with_verification_results(spec, overall_status, &criteria)?;
-
-            Ok(SpecVerificationResult {
-                spec_id: spec.id.clone(),
-                spec_title: spec.title.clone(),
-                passed,
-                total_criteria,
-            })
-        }
-        Err(e) => {
-            println!(
-                "  {} Failed to parse verification response: {}",
-                "✗".red(),
-                e
-            );
-            Err(e).context("Could not parse agent response")
+            print!("  {} {}: {}", status_icon, i + 1, criterion.criterion);
+            if let Some(note) = &criterion.note {
+                print!(" — {}", note);
+            }
+            println!();
         }
     }
-}
 
-/// Update spec frontmatter with verification results
-fn update_spec_with_verification_results(
-    spec: &Spec,
-    overall_status: VerificationStatus,
-    criteria: &[CriterionResult],
-) -> Result<()> {
-    // Get current UTC timestamp in ISO 8601 format
-    let now = Utc::now();
-    let timestamp = now.to_rfc3339();
-
-    // Determine verification status string
-    let verification_status = match overall_status {
-        VerificationStatus::Pass => "passed".to_string(),
-        VerificationStatus::Fail => "failed".to_string(),
-        VerificationStatus::Mixed => "partial".to_string(),
-    };
-
-    // Extract failure reasons from FAIL criteria
-    let verification_failures: Option<Vec<String>> = {
-        let failures: Vec<String> = criteria
-            .iter()
-            .filter(|c| c.status == "FAIL")
-            .map(|c| {
-                if let Some(note) = &c.note {
-                    format!("{} — {}", c.criterion, note)
-                } else {
-                    c.criterion.clone()
-                }
-            })
-            .collect();
-
-        if failures.is_empty() {
-            None
-        } else {
-            Some(failures)
+    // Display overall result
+    let overall_label = match overall_status {
+        VerificationStatus::Pass => {
+            format!("{}", "✓ VERIFIED".green())
+        }
+        VerificationStatus::Fail => {
+            format!("{}", "✗ FAILED".red())
+        }
+        VerificationStatus::Mixed => {
+            format!("{}", "~ PARTIAL".yellow())
         }
     };
 
-    // Create updated spec with new frontmatter
-    let mut updated_spec = spec.clone();
-    updated_spec.frontmatter.last_verified = Some(timestamp);
-    updated_spec.frontmatter.verification_status = Some(verification_status);
-    updated_spec.frontmatter.verification_failures = verification_failures;
-
-    // Save the updated spec to disk
-    let spec_path = PathBuf::from(format!(".chant/specs/{}.md", spec.id));
-    updated_spec.save(&spec_path).context(format!(
-        "Failed to write updated spec to {}",
-        spec_path.display()
-    ))?;
-
+    println!("  {} Overall: {}", "→".cyan(), overall_label);
     println!(
         "  {} Frontmatter updated with verification results",
         "→".cyan()
     );
 
-    Ok(())
+    Ok(SpecVerificationResult {
+        spec_id: spec.id.clone(),
+        spec_title: spec.title.clone(),
+        passed,
+        total_criteria,
+    })
 }
 
 #[cfg(test)]
@@ -810,12 +543,12 @@ mod tests {
     fn test_extract_acceptance_criteria() {
         let spec = Spec {
             id: "2026-01-26-001-abc".to_string(),
-            frontmatter: SpecFrontmatter::default(),
+            frontmatter: chant::spec::SpecFrontmatter::default(),
             title: Some("Test".to_string()),
             body: "# Test\n\n## Acceptance Criteria\n\n- [ ] Criterion 1\n- [ ] Criterion 2\n\n## Edge Cases\n\nSome content".to_string(),
         };
 
-        let ac = extract_acceptance_criteria(&spec).unwrap();
+        let ac = chant::operations::extract_acceptance_criteria(&spec).unwrap();
         assert!(ac.contains("Criterion 1"));
         assert!(ac.contains("Criterion 2"));
         assert!(!ac.contains("Edge Cases"));
@@ -825,12 +558,12 @@ mod tests {
     fn test_extract_acceptance_criteria_none() {
         let spec = Spec {
             id: "2026-01-26-001-abc".to_string(),
-            frontmatter: SpecFrontmatter::default(),
+            frontmatter: chant::spec::SpecFrontmatter::default(),
             title: Some("Test".to_string()),
             body: "# Test\n\nNo acceptance criteria here.".to_string(),
         };
 
-        let ac = extract_acceptance_criteria(&spec);
+        let ac = chant::operations::extract_acceptance_criteria(&spec);
         assert!(ac.is_none());
     }
 
@@ -843,7 +576,7 @@ mod tests {
 
 Overall status: PASS"#;
 
-        let (status, criteria) = parse_verification_response(response).unwrap();
+        let (status, criteria) = chant::operations::parse_verification_response(response).unwrap();
         assert_eq!(status, VerificationStatus::Pass);
         assert_eq!(criteria.len(), 2);
         assert_eq!(criteria[0].status, "PASS");
@@ -860,7 +593,7 @@ Overall status: PASS"#;
 
 Overall status: FAIL"#;
 
-        let (status, criteria) = parse_verification_response(response).unwrap();
+        let (status, criteria) = chant::operations::parse_verification_response(response).unwrap();
         assert_eq!(status, VerificationStatus::Fail);
         assert_eq!(criteria.len(), 3);
         assert_eq!(criteria[0].status, "PASS");
@@ -878,7 +611,7 @@ Overall status: FAIL"#;
 
 Overall status: MIXED"#;
 
-        let (status, criteria) = parse_verification_response(response).unwrap();
+        let (status, criteria) = chant::operations::parse_verification_response(response).unwrap();
         assert_eq!(status, VerificationStatus::Mixed);
         assert_eq!(criteria.len(), 3);
         assert_eq!(criteria[1].status, "SKIP");
@@ -891,7 +624,7 @@ Overall status: MIXED"#;
     #[test]
     fn test_parse_verification_response_malformed() {
         let response = "Some random output without verification summary";
-        let result = parse_verification_response(response);
+        let result = chant::operations::parse_verification_response(response);
         assert!(result.is_err());
     }
 
@@ -911,7 +644,7 @@ Overall status: FAIL
 
 Done."#;
 
-        let (status, criteria) = parse_verification_response(response).unwrap();
+        let (status, criteria) = chant::operations::parse_verification_response(response).unwrap();
         assert_eq!(status, VerificationStatus::Fail);
         assert_eq!(criteria.len(), 3);
         assert_eq!(criteria[0].status, "PASS");
@@ -933,19 +666,7 @@ Done."#;
 
     #[test]
     fn test_frontmatter_update_all_pass() {
-        let temp_dir = TempDir::new().unwrap();
-        let specs_dir = temp_dir.path();
-        fs::create_dir_all(specs_dir).unwrap();
-
-        let spec = Spec {
-            id: "2026-01-26-001-abc".to_string(),
-            frontmatter: SpecFrontmatter::default(),
-            title: Some("Test Spec".to_string()),
-            body: "# Test\n\nBody content.".to_string(),
-        };
-
-        let spec_path = specs_dir.join("2026-01-26-001-abc.md");
-        spec.save(&spec_path).unwrap();
+        use chant::operations::CriterionResult;
 
         // Create criteria results with all PASS
         let criteria = [
@@ -961,8 +682,6 @@ Done."#;
             },
         ];
 
-        // Note: We can't directly call update_spec_with_verification_results from tests
-        // since it's a private function. Instead, we verify the logic manually here.
         let overall_status = VerificationStatus::Pass;
 
         let verification_status = match overall_status {
@@ -990,6 +709,8 @@ Done."#;
 
     #[test]
     fn test_frontmatter_update_with_failures() {
+        use chant::operations::CriterionResult;
+
         let criteria = [
             CriterionResult {
                 criterion: "Feature X".to_string(),
@@ -1039,6 +760,8 @@ Done."#;
 
     #[test]
     fn test_frontmatter_update_mixed_status() {
+        use chant::operations::CriterionResult;
+
         let criteria = [
             CriterionResult {
                 criterion: "Feature X".to_string(),
@@ -1079,6 +802,8 @@ Done."#;
 
     #[test]
     fn test_timestamp_iso8601_format() {
+        use chrono::Utc;
+
         let now = Utc::now();
         let timestamp = now.to_rfc3339();
 

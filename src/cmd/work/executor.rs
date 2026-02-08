@@ -9,8 +9,8 @@ use std::path::Path;
 
 use chant::config::Config;
 use chant::operations::{
-    get_commits_for_spec, get_commits_for_spec_allow_no_commits,
-    get_commits_for_spec_with_branch, get_commits_for_spec_with_branch_allow_no_commits,
+    get_commits_for_spec, get_commits_for_spec_allow_no_commits, get_commits_for_spec_with_branch,
+    get_commits_for_spec_with_branch_allow_no_commits,
 };
 use chant::repository::spec_repository::FileSpecRepository;
 use chant::spec::{self, Spec, SpecStatus};
