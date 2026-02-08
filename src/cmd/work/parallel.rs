@@ -780,11 +780,32 @@ pub fn cmd_work_parallel(
 
     // Load specs: either specific IDs or all ready specs
     let ready_specs: Vec<Spec> = if !options.specific_ids.is_empty() {
-        // Resolve specific IDs
+        // Resolve specific IDs and validate their status
+        let all_specs = spec::load_all_specs(specs_dir)?;
         let mut specs = Vec::new();
         for id in options.specific_ids {
             match spec::resolve_spec(specs_dir, id) {
-                Ok(s) => specs.push(s),
+                Ok(s) => {
+                    // Validate that the spec is actually ready to execute
+                    if s.frontmatter.status != SpecStatus::Pending {
+                        println!(
+                            "{} Spec '{}' has status {:?}, expected pending",
+                            "✗".red(),
+                            s.id,
+                            s.frontmatter.status
+                        );
+                        return Err(anyhow::anyhow!("Spec '{}' is not in pending status", s.id));
+                    }
+                    if !s.is_ready(&all_specs) {
+                        println!(
+                            "{} Spec '{}' is not ready (has unmet dependencies)",
+                            "✗".red(),
+                            s.id
+                        );
+                        return Err(anyhow::anyhow!("Spec '{}' has unmet dependencies", s.id));
+                    }
+                    specs.push(s);
+                }
                 Err(e) => {
                     println!("{} Failed to resolve spec '{}': {}", "✗".red(), id, e);
                     return Err(e);
@@ -797,7 +818,7 @@ pub fn cmd_work_parallel(
         let all_specs = spec::load_all_specs(specs_dir)?;
         let mut specs: Vec<Spec> = all_specs
             .iter()
-            .filter(|s| s.frontmatter.status != SpecStatus::Cancelled && s.is_ready(&all_specs))
+            .filter(|s| s.is_ready(&all_specs))
             .cloned()
             .collect();
 
