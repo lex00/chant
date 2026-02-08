@@ -556,7 +556,10 @@ pub fn cmd_archive(
     // Move specs to archive
     let count = to_archive.len();
     let mut archived_spec_ids = Vec::new();
-    let options = chant::operations::ArchiveOptions { no_stage, allow_non_completed: force };
+    let options = chant::operations::ArchiveOptions {
+        no_stage,
+        allow_non_completed: force,
+    };
     for spec in to_archive {
         chant::operations::archive_spec(&specs_dir, &spec.id, &options)?;
         archived_spec_ids.push(spec.id.clone());
