@@ -517,6 +517,206 @@ fn run_startup_recovery(
     Ok(actions)
 }
 
+/// State for tracking drift check timestamps
+struct DriftCheckState {
+    last_verified: std::collections::HashMap<String, chrono::DateTime<chrono::Utc>>,
+}
+
+impl DriftCheckState {
+    fn new() -> Self {
+        Self {
+            last_verified: std::collections::HashMap::new(),
+        }
+    }
+
+    fn should_check(&self, spec_id: &str, cooldown_minutes: i64) -> bool {
+        if let Some(last_time) = self.last_verified.get(spec_id) {
+            let now = chrono::Utc::now();
+            let elapsed = now.signed_duration_since(*last_time);
+            elapsed.num_minutes() >= cooldown_minutes
+        } else {
+            true
+        }
+    }
+
+    fn record_check(&mut self, spec_id: String) {
+        self.last_verified.insert(spec_id, chrono::Utc::now());
+    }
+}
+
+/// Check completed specs for drift and auto-trigger verification
+fn check_drift_and_verify(
+    logger: &mut WatchLogger,
+    dry_run: bool,
+    specs_dir: &PathBuf,
+    drift_state: &mut DriftCheckState,
+) -> Result<()> {
+    // Load all completed specs
+    let specs = spec::load_all_specs(specs_dir)?;
+    let completed_specs: Vec<_> = specs
+        .iter()
+        .filter(|s| matches!(s.frontmatter.status, SpecStatus::Completed))
+        .collect();
+
+    if completed_specs.is_empty() {
+        return Ok(());
+    }
+
+    let cooldown_minutes = 30; // Rate limit: don't re-check specs verified within 30 minutes
+
+    for spec in completed_specs {
+        // Check if spec has trackable fields
+        let has_trackable_fields = spec.frontmatter.tracks.is_some()
+            || spec.frontmatter.origin.is_some()
+            || spec.frontmatter.informed_by.is_some();
+
+        if !has_trackable_fields {
+            continue;
+        }
+
+        // Rate limiting: skip if recently verified
+        if !drift_state.should_check(&spec.id, cooldown_minutes) {
+            continue; // Skip this spec - recently checked
+        }
+
+        // Get completion time
+        let completed_at = match &spec.frontmatter.completed_at {
+            Some(timestamp) => timestamp.clone(),
+            None => continue,
+        };
+
+        let completed_time = match chrono::DateTime::parse_from_rfc3339(&completed_at) {
+            Ok(dt) => dt,
+            Err(_) => continue,
+        };
+
+        // Check for drift
+        let mut has_drift = false;
+
+        // Helper function to check files for changes
+        let check_files = |pattern: &str| -> Result<bool> {
+            let mut changed = false;
+
+            if pattern.contains('*') || pattern.contains('?') || pattern.contains('[') {
+                use glob::glob as glob_fn;
+                for entry in glob_fn(pattern)
+                    .context(format!("Invalid glob pattern: {}", pattern))?
+                    .flatten()
+                {
+                    if entry.is_file() {
+                        if let Ok(metadata) = std::fs::metadata(&entry) {
+                            if let Ok(modified) = metadata.modified() {
+                                let file_modified_time =
+                                    chrono::DateTime::<chrono::Utc>::from(modified);
+                                let completed_utc = completed_time.with_timezone(&chrono::Utc);
+
+                                if file_modified_time > completed_utc {
+                                    changed = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                let path = std::path::PathBuf::from(pattern);
+                if path.exists() && path.is_file() {
+                    if let Ok(metadata) = std::fs::metadata(&path) {
+                        if let Ok(modified) = metadata.modified() {
+                            let file_modified_time =
+                                chrono::DateTime::<chrono::Utc>::from(modified);
+                            let completed_utc = completed_time.with_timezone(&chrono::Utc);
+
+                            if file_modified_time > completed_utc {
+                                changed = true;
+                            }
+                        }
+                    }
+                }
+            }
+
+            Ok(changed)
+        };
+
+        // Check tracked files
+        if let Some(tracked) = &spec.frontmatter.tracks {
+            for file_pattern in tracked {
+                if check_files(file_pattern)? {
+                    has_drift = true;
+                    break;
+                }
+            }
+        }
+
+        // Check origin files
+        if !has_drift {
+            if let Some(origin) = &spec.frontmatter.origin {
+                for file_pattern in origin {
+                    if check_files(file_pattern)? {
+                        has_drift = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Check informed_by files
+        if !has_drift {
+            if let Some(informed_by) = &spec.frontmatter.informed_by {
+                for file_pattern in informed_by {
+                    if check_files(file_pattern)? {
+                        has_drift = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // If drift detected, trigger verification
+        if has_drift {
+            logger.log_event(&format!(
+                "Drift detected for spec {} - input files changed since completion",
+                spec.id.cyan()
+            ))?;
+
+            if dry_run {
+                logger.log_event(&format!("  {} would verify spec {}", "→".dimmed(), spec.id))?;
+            } else {
+                logger.log_event(&format!("  {} Running verification...", "→".cyan()))?;
+
+                // Run verification via subprocess
+                match std::process::Command::new(std::env::current_exe()?)
+                    .args(["verify", &spec.id])
+                    .output()
+                {
+                    Ok(output) => {
+                        if output.status.success() {
+                            logger.log_event(&format!("  {} Verification passed", "✓".green()))?;
+                        } else {
+                            logger.log_event(&format!(
+                                "  {} Verification failed - spec marked needs_attention",
+                                "✗".red()
+                            ))?;
+                        }
+                    }
+                    Err(e) => {
+                        logger.log_event(&format!(
+                            "  {} Failed to run verification: {}",
+                            "✗".red(),
+                            e
+                        ))?;
+                    }
+                }
+
+                // Update last verified timestamp for rate limiting
+                drift_state.record_check(spec.id.clone());
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Main entry point for watch command
 pub fn run_watch(once: bool, dry_run: bool, poll_interval: Option<u64>) -> Result<()> {
     let _specs_dir = cmd::ensure_initialized()?;
@@ -575,6 +775,9 @@ pub fn run_watch(once: bool, dry_run: bool, poll_interval: Option<u64>) -> Resul
     // Track last activity time for idle timeout
     let mut last_activity = Instant::now();
     let idle_timeout = Duration::from_secs(config.watch.idle_timeout_minutes * 60);
+
+    // Initialize drift check state for rate limiting
+    let mut drift_state = DriftCheckState::new();
 
     // Main event loop
     loop {
@@ -834,6 +1037,12 @@ pub fn run_watch(once: bool, dry_run: bool, poll_interval: Option<u64>) -> Resul
                     }
                 }
             }
+        }
+
+        // Check for drift and auto-verify
+        let specs_dir = PathBuf::from(".chant/specs");
+        if let Err(e) = check_drift_and_verify(&mut logger, dry_run, &specs_dir, &mut drift_state) {
+            logger.log_event(&format!("{} Drift check failed: {}", "⚠".yellow(), e))?;
         }
 
         // Exit after one iteration if --once flag is set
