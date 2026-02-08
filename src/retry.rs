@@ -66,10 +66,11 @@ pub enum RetryDecision {
     PermanentFailure(String),
 }
 
-/// Determine whether a failed spec should be retried based on error log and config.
+/// Determine whether a failed spec should be retried based on retry state, error log and config.
 ///
 /// # Arguments
-/// * `spec_id` - The spec ID (for error messages)
+/// * `spec_id` - The spec ID (for error messages, currently unused)
+/// * `retry_state` - Current retry state with attempt count
 /// * `error_log` - The error log content to scan for retryable patterns
 /// * `config` - Failure configuration with retry settings and patterns
 ///
@@ -84,49 +85,18 @@ pub enum RetryDecision {
 /// * No pattern match → PermanentFailure
 /// * Backoff overflow → Capped at 1 hour
 /// * Multiple pattern matches → Still retryable (OR logic)
+/// * Exceeded max_retries → PermanentFailure
 pub fn should_retry(
-    spec_id: &str,
+    _spec_id: &str,
+    retry_state: &RetryState,
     error_log: &str,
     config: &FailureConfig,
 ) -> Result<RetryDecision> {
     // Validate config
     config.validate()?;
 
-    // Edge case: Empty or missing error log
-    if error_log.trim().is_empty() {
-        return Ok(RetryDecision::PermanentFailure(
-            "Empty error log (no pattern match)".to_string(),
-        ));
-    }
-
-    // Edge case: max_retries = 0 means first failure is permanent
-    if config.max_retries == 0 {
-        return Ok(RetryDecision::PermanentFailure(
-            "max_retries is 0".to_string(),
-        ));
-    }
-
-    // Check if error log contains any retryable pattern
-    let has_retryable_pattern = config
-        .retryable_patterns
-        .iter()
-        .any(|pattern| error_log.contains(pattern));
-
-    if !has_retryable_pattern {
-        return Ok(RetryDecision::PermanentFailure(format!(
-            "No retryable pattern found in error log for spec {}",
-            spec_id
-        )));
-    }
-
-    // At this point, we have a retryable error
-    // We need to get the current attempt count from somewhere
-    // For now, we'll calculate based on the assumption this is called after each failure
-    // The caller should maintain RetryState to track attempts
-
-    Ok(RetryDecision::PermanentFailure(
-        "Retry state tracking not yet integrated".to_string(),
-    ))
+    // Delegate to decide_retry which has the full implementation
+    Ok(decide_retry(retry_state, error_log, config))
 }
 
 /// Calculate exponential backoff delay for a given attempt number.
