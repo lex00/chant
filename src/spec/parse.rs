@@ -87,20 +87,6 @@ impl Spec {
         super::state_machine::TransitionBuilder::new(self).to(new_status)
     }
 
-    /// Force set the spec status, bypassing validation.
-    /// Only use this for error recovery or exceptional cases.
-    /// Logs a warning when used.
-    ///
-    /// DEPRECATED: Use `TransitionBuilder::new(spec).force().to(status)` instead.
-    #[allow(dead_code)]
-    pub(crate) fn force_status(&mut self, new_status: SpecStatus) {
-        eprintln!(
-            "Force setting status for spec {} from {:?} to {:?} (bypassing validation)",
-            self.id, self.frontmatter.status, new_status
-        );
-        self.frontmatter.status = new_status;
-    }
-
     /// Parse a spec from file content.
     pub fn parse(id: &str, content: &str) -> Result<Self> {
         let (frontmatter_str, body) = split_frontmatter(content);

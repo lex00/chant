@@ -245,9 +245,6 @@ pub enum Commands {
         /// Allow spec to complete without matching commits (uses HEAD as fallback). Use only in special cases.
         #[arg(long)]
         allow_no_commits: bool,
-        /// Override maximum parallel agents (deprecated: use --parallel=N instead)
-        #[arg(long = "max")]
-        max_parallel: Option<usize>,
         /// Skip cleanup prompt after parallel execution
         #[arg(long)]
         no_cleanup: bool,
@@ -427,21 +424,6 @@ pub enum Commands {
         /// Spec ID (full or partial)
         id: String,
         /// Automatically re-execute the spec after resetting
-        #[arg(long)]
-        work: bool,
-        /// Prompt to use if --work is specified
-        #[arg(long)]
-        prompt: Option<String>,
-        /// Create a feature branch before re-executing (only with --work)
-        #[arg(long, num_args = 0..=1, require_equals = true, value_name = "PREFIX")]
-        branch: Option<String>,
-    },
-    /// Resume a failed spec - resets it to pending and optionally re-runs it (deprecated: use 'reset' instead)
-    #[command(hide = true)]
-    Resume {
-        /// Spec ID (full or partial)
-        id: String,
-        /// Automatically re-execute the spec after resuming
         #[arg(long)]
         work: bool,
         /// Prompt to use if --work is specified

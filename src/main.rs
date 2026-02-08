@@ -195,7 +195,6 @@ impl cmd::dispatch::Execute for Commands {
                 label,
                 finalize,
                 allow_no_commits,
-                max_parallel,
                 no_cleanup,
                 cleanup,
                 skip_approval,
@@ -206,19 +205,18 @@ impl cmd::dispatch::Execute for Commands {
                 no_watch,
             } => {
                 // Handle --parallel flag: if provided, convert to (true, max_workers)
-                // If --max is also provided, it takes precedence (for backwards compat)
                 let (parallel_flag, effective_max) = if let Some(n) = parallel {
                     // --parallel was provided
                     if n == 0 {
-                        // --parallel with no value, use max_parallel or default
-                        (true, max_parallel)
+                        // --parallel with no value, use default
+                        (true, None)
                     } else {
                         // --parallel=N was provided
                         (true, Some(n))
                     }
                 } else {
                     // --parallel not provided
-                    (false, max_parallel)
+                    (false, None)
                 };
                 cmd::work::cmd_work(
                     &ids,
@@ -340,12 +338,6 @@ impl cmd::dispatch::Execute for Commands {
             Commands::Diagnose { id } => cmd::lifecycle::cmd_diagnose(&id),
             Commands::Drift { id } => cmd::lifecycle::cmd_drift(id.as_deref()),
             Commands::Reset {
-                id,
-                work,
-                prompt,
-                branch,
-            } => cmd::lifecycle::cmd_reset(&id, work, prompt.as_deref(), branch),
-            Commands::Resume {
                 id,
                 work,
                 prompt,

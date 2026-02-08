@@ -279,20 +279,6 @@ fn handle_tools_list() -> Result<Value> {
                 }
             },
             {
-                "name": "chant_resume",
-                "description": "Reset a failed spec to pending status so it can be reworked (deprecated: use 'chant_reset' instead)",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "id": {
-                            "type": "string",
-                            "description": "Spec ID (full or partial)"
-                        }
-                    },
-                    "required": ["id"]
-                }
-            },
-            {
                 "name": "chant_cancel",
                 "description": "Cancel a spec (sets status to cancelled)",
                 "inputSchema": {
@@ -489,7 +475,6 @@ fn handle_tools_call(params: Option<&Value>) -> Result<Value> {
         "chant_add" => tool_chant_add(arguments),
         "chant_finalize" => tool_chant_finalize(arguments),
         "chant_reset" => tool_chant_reset(arguments),
-        "chant_resume" => tool_chant_reset(arguments), // deprecated alias
         "chant_cancel" => tool_chant_cancel(arguments),
         "chant_archive" => tool_chant_archive(arguments),
         "chant_verify" => tool_chant_verify(arguments),
