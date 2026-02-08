@@ -198,7 +198,7 @@ fn prepare_spec_for_parallel(
     spec_prompt: &str,
     prompt_path: &Path,
     specs_dir: &Path,
-    prompts_dir: &Path,
+    _prompts_dir: &Path,
     config: &Config,
     execution_state: &Arc<ParallelExecutionState>,
     branch_prefix: &str,
@@ -224,7 +224,26 @@ fn prepare_spec_for_parallel(
     // Determine branch name and create worktree
     let branch_name = format!("{}{}", branch_prefix, spec.id);
     let project_name = Some(config.project.name.as_str()).filter(|n| !n.is_empty());
-    let worktree_path = worktree::create_worktree(&spec.id, &branch_name, project_name)?;
+
+    // Create worktree with error logging
+    let worktree_path = match worktree::create_worktree(&spec.id, &branch_name, project_name) {
+        Ok(path) => path,
+        Err(e) => {
+            // Log the error to the spec log file
+            let log_msg = format!(
+                "[{}] ERROR: Failed to create worktree: {}\n",
+                chrono::Utc::now().to_rfc3339(),
+                e
+            );
+            if let Err(log_err) = cmd::agent::append_to_log(&spec.id, &log_msg) {
+                eprintln!(
+                    "⚠️  [{}] Failed to write error to log: {}",
+                    spec.id, log_err
+                );
+            }
+            return Err(e);
+        }
+    };
 
     execution_state.register_worktree(&spec.id, worktree_path.clone());
     worktree::copy_spec_to_worktree(&spec.id, &worktree_path)?;
@@ -445,6 +464,9 @@ fn handle_direct_mode_merges(
     Ok((merged_count, merge_failed))
 }
 
+/// Result type for branch mode merge operations
+type BranchMergeResult = (usize, Vec<(String, bool)>, Vec<(String, String)>);
+
 /// Handle branch mode merges
 fn handle_branch_mode_merges(
     branches: &[(String, String)],
@@ -452,10 +474,10 @@ fn handle_branch_mode_merges(
     config: &Config,
     no_merge: bool,
     no_rebase: bool,
-) -> Result<(usize, Vec<(String, bool)>, Vec<(String, String)>)> {
+) -> Result<BranchMergeResult> {
     let mut merged_count = 0;
     let mut failed = Vec::new();
-    let mut skipped = Vec::new();
+    let skipped = Vec::new();
 
     if no_merge {
         return Ok((0, vec![], branches.to_vec()));
@@ -634,7 +656,7 @@ fn spawn_worker_threads(
             (false, config.defaults.branch_prefix.clone())
         };
 
-        let (spec_clone, worktree_path, branch_name, message) = match prepare_spec_for_parallel(
+        let (_spec_clone, worktree_path, branch_name, message) = match prepare_spec_for_parallel(
             spec,
             spec_prompt,
             &prompt_path,
@@ -647,6 +669,15 @@ fn spawn_worker_threads(
             Ok(result) => result,
             Err(e) => {
                 println!("{} [{}] Failed to prepare spec: {}", "✗".red(), spec.id, e);
+
+                // Mark spec as failed in the filesystem
+                let spec_path = specs_dir.join(format!("{}.md", spec.id));
+                if let Ok(failed_spec) = spec::resolve_spec(specs_dir, &spec.id) {
+                    let mut failed_spec = failed_spec;
+                    failed_spec.force_status(SpecStatus::Failed);
+                    let _ = failed_spec.save(&spec_path);
+                }
+
                 let _ = tx.send(ParallelResult {
                     spec_id: spec.id.clone(),
                     success: false,
