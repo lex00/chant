@@ -10,7 +10,7 @@ use crate::scoring::SplittabilityGrade;
 use crate::spec::Spec;
 
 /// Coupling keywords that indicate tightly coupled components
-const COUPLING_KEYWORDS: &[&str] = &["shared", "depends on each other", "tightly coupled"];
+const COUPLING_KEYWORDS: &[&str] = &["depends on each other", "tightly coupled"];
 
 /// Calculate splittability grade based on spec structure and decomposability.
 ///
@@ -18,12 +18,12 @@ const COUPLING_KEYWORDS: &[&str] = &["shared", "depends on each other", "tightly
 /// - Grade A: Clear subsections (3+ headers), multiple target files (3+), independent tasks
 /// - Grade B: Some structure (1-2 headers), 2 target files
 /// - Grade C: Single concern, 1 target file, minimal structure
-/// - Grade D: Tightly coupled indicators (many cross-references, shared state mentioned)
+/// - Grade D: Coupling keywords present AND high structural complexity (downgrade from A/B)
 ///
 /// Edge cases:
 /// - Specs already part of a group (has parent_id) should be Grade C (already split)
 /// - Specs with 1 criterion should be Grade C (atomic)
-/// - Detection of coupling keywords: "shared", "depends on each other", "tightly coupled"
+/// - Detection of coupling keywords: "depends on each other", "tightly coupled"
 ///
 /// # Arguments
 ///
@@ -33,11 +33,6 @@ const COUPLING_KEYWORDS: &[&str] = &["shared", "depends on each other", "tightly
 ///
 /// A `SplittabilityGrade` based on the spec's decomposability
 pub fn calculate_splittability(spec: &Spec) -> SplittabilityGrade {
-    // Edge case: Check for coupling keywords first (Grade D)
-    if has_coupling_keywords(&spec.body) {
-        return SplittabilityGrade::D;
-    }
-
     // Edge case: Specs already part of a group (already split) → Grade C
     if is_part_of_group(&spec.id) {
         return SplittabilityGrade::C;
@@ -52,19 +47,31 @@ pub fn calculate_splittability(spec: &Spec) -> SplittabilityGrade {
     // Count structural elements
     let header_count = count_markdown_headers(&spec.body);
     let file_count = count_target_files(spec);
+    let has_coupling = has_coupling_keywords(&spec.body);
 
     // Grade A: 3+ headers, 3+ files, independent tasks
+    // Downgrade to D if coupling keywords present (complex AND coupled)
     if header_count >= 3 && file_count >= 3 {
-        return SplittabilityGrade::A;
+        return if has_coupling {
+            SplittabilityGrade::D
+        } else {
+            SplittabilityGrade::A
+        };
     }
 
     // Grade B: 1-2 headers, 2 files
+    // Downgrade to D if coupling keywords present
     if (1..=2).contains(&header_count) && file_count == 2 {
-        return SplittabilityGrade::B;
+        return if has_coupling {
+            SplittabilityGrade::D
+        } else {
+            SplittabilityGrade::B
+        };
     }
 
     // Grade C: Single concern, 1 target file, minimal structure
     // This is the default for specs that don't fit A or B criteria
+    // Coupling keywords don't affect Grade C (already focused)
     SplittabilityGrade::C
 }
 
@@ -238,16 +245,12 @@ mod tests {
     }
 
     #[test]
-    fn test_grade_d_coupling_keywords() {
-        // Spec mentioning "tightly coupled components" → Grade D
+    fn test_grade_d_coupling_keywords_with_grade_b_structure() {
+        // 2 headers, 2 files with coupling keywords → Grade D (downgrade from B)
         let spec = Spec {
             id: "test".to_string(),
             frontmatter: SpecFrontmatter {
-                target_files: Some(vec![
-                    "file1.rs".to_string(),
-                    "file2.rs".to_string(),
-                    "file3.rs".to_string(),
-                ]),
+                target_files: Some(vec!["file1.rs".to_string(), "file2.rs".to_string()]),
                 ..Default::default()
             },
             title: Some("Test".to_string()),
@@ -380,8 +383,9 @@ Final section
 
     #[test]
     fn test_has_coupling_keywords_shared() {
+        // "shared" keyword removed - should not match
         let body = "This code uses shared state between components.";
-        assert!(has_coupling_keywords(body));
+        assert!(!has_coupling_keywords(body));
     }
 
     #[test]
@@ -468,8 +472,8 @@ Final section
     }
 
     #[test]
-    fn test_coupling_overrides_good_structure() {
-        // Even with 4 headers and 5 files, coupling keywords force Grade D
+    fn test_coupling_downgrades_complex_structure() {
+        // 4 headers and 5 files with coupling keywords → Grade D
         let spec = Spec {
             id: "test".to_string(),
             frontmatter: SpecFrontmatter {
@@ -496,11 +500,33 @@ Final section
 ## Section 4
 - [ ] Criterion 4
 
-Note: These components have shared state.
+Note: These components are tightly coupled.
 "#
             .to_string(),
         };
 
         assert_eq!(calculate_splittability(&spec), SplittabilityGrade::D);
+    }
+
+    #[test]
+    fn test_coupling_does_not_affect_simple_structure() {
+        // 0 headers, 2 files with coupling keywords → still Grade C
+        let spec = Spec {
+            id: "test".to_string(),
+            frontmatter: SpecFrontmatter {
+                target_files: Some(vec!["file1.rs".to_string(), "file2.rs".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Test".to_string()),
+            body: r#"
+- [ ] Criterion 1
+- [ ] Criterion 2
+
+Note: Components depends on each other.
+"#
+            .to_string(),
+        };
+
+        assert_eq!(calculate_splittability(&spec), SplittabilityGrade::C);
     }
 }
