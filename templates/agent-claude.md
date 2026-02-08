@@ -156,8 +156,6 @@ When implementing a spec:
   - Formats: `--format json|csv|markdown`
   - Supports filters: `--status`, `--type`, `--label`, `--ready-only`
   - Options: `--output <file>` to save to file
-- `chant disk` - Show disk usage of chant artifacts
-- `chant cleanup` - Remove orphan worktrees and stale artifacts
 - `chant init [--force]` - Initialize or reinitialize .chant/ directory
   - `--force`: Fully reinitialize while preserving specs, config, and custom files
   - Use when updating agent configurations or resetting to defaults

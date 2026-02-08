@@ -387,11 +387,9 @@ impl fmt::Display for MergeError {
                      \x20 - A previous execution may not have cleaned up properly\n\
                      \x20 - The worktree may still be in use by another process\n\n\
                      Next Steps:\n\
-                     \x20 1. Clean up stale worktrees:  chant cleanup --worktrees\n\
-                     \x20 2. Or remove manually:  git worktree remove {} --force\n\
-                     \x20 3. List all worktrees:  git worktree list\n\
-                     \x20 4. Then retry:  chant work {}\n\n\
-                     Documentation: See 'chant cleanup --help' for more options",
+                     \x20 1. Remove manually:  git worktree remove {} --force\n\
+                     \x20 2. List all worktrees:  git worktree list\n\
+                     \x20 3. Then retry:  chant work {}",
                     spec_id, worktree_path, branch, worktree_path, spec_id
                 )
             }

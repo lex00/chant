@@ -149,7 +149,6 @@ All code must meet these standards:
 | Merge specs | `just chant merge --all --rebase --auto` |
 | Show status | `just chant status` |
 | Export specs | `just chant export` |
-| Check disk usage | `just chant disk` |
 | Run tests | `just test` |
 | Run linter | `just lint` |
 | Format code | `just fmt` |

@@ -123,12 +123,8 @@ chant work <next-id> --chain
 
 **Fix:**
 ```bash
-chant cleanup  # Remove stale worktrees
-```
-
-Or manually:
-```bash
-rm -rf .chant/.worktrees/<spec-id>
+# Manually remove stale worktree
+rm -rf /tmp/chant-<spec-id>
 git worktree prune
 ```
 
@@ -255,21 +251,15 @@ chant watch start
 
 ### Stale worktrees accumulating
 
-**Symptom:** `.chant/.worktrees/` directory grows large with old worktree directories.
+**Symptom:** `/tmp/chant-*` directories accumulate from failed specs.
 
-**Cause:** Worktrees not cleaned up after specs complete or fail.
+**Cause:** Worktrees are only cleaned up after successful merge. Failed specs preserve worktrees for debugging.
 
 **Fix:**
 ```bash
-chant cleanup  # Remove stale worktrees
-```
-
-Or enable automatic cleanup:
-```yaml
-# config.md
-worktrees:
-  auto_cleanup: true
-  cleanup_delay: 1h  # Clean up 1 hour after completion
+# Manually remove worktree for failed spec
+rm -rf /tmp/chant-<spec-id>
+git worktree prune
 ```
 
 ## Debugging Steps
@@ -346,7 +336,8 @@ For a spec stuck in a bad state:
 
 4. **If worktree is corrupted:**
    ```bash
-   chant cleanup
+   rm -rf /tmp/chant-<spec-id>
+   git worktree prune
    chant reset <spec-id>
    ```
 
@@ -361,9 +352,6 @@ For a spec stuck in a bad state:
 
 For general repository issues:
 ```bash
-# Clean up all stale state
-chant cleanup
-
 # Verify all completed specs
 chant verify --all
 

@@ -9,7 +9,6 @@
 | Config | `.chant/config.md` | Git | Forever |
 | Locks | `.chant/.locks/*.pid` | No | Until released |
 | Index | `.chant/.store/` | No | Rebuilt on demand |
-| Clones | `.chant/.clones/` | No | Configurable |
 | Logs | `.chant/logs/` | Optional | Configurable |
 
 ## Spec Lifecycle
@@ -190,19 +189,6 @@ lifecycle:
 
 **Note**: Archival changes spec IDs (moved file). References break. Use sparingly.
 
-### Clone Cleanup
-
-Clones from completed specs:
-
-```yaml
-lifecycle:
-  clones:
-    retain_completed: 7d       # Keep for 7 days after completion
-    retain_failed: 30d         # Keep failed longer for debugging
-    max_disk: 10G              # Clean oldest if over limit
-```
-
-Automatic cleanup runs periodically. Use `chant cleanup` for manual cleanup when needed.
 
 ## Data Flow Diagram
 
@@ -344,27 +330,7 @@ lifecycle:
     retain_unmerged: 30d       # Keep unmerged branches for 30d
 ```
 
-Branches are cleaned up automatically when specs are completed. Use `chant cleanup` for manual cleanup when needed.
-
-## Disk Usage
-
-```bash
-$ chant disk
-Disk usage:
-
-  Specs:    12 MB (847 files)
-  Prompts:  45 KB (12 files)
-  Config:   2 KB
-  Clones:   2.3 GB (8 clones)
-  Index:    156 MB
-  Logs:     89 MB
-
-  Total:    2.5 GB
-
-Recommendations:
-  - 3 clones older than 7 days (1.2 GB)
-  - Run 'chant cleanup clones' to reclaim
-```
+Branches are cleaned up automatically when specs are completed.
 
 ## Export
 
@@ -403,11 +369,6 @@ lifecycle:
       enabled: false
       location: .chant/archive/
       compress: true
-
-  clones:
-    retain_completed: 7d
-    retain_failed: 30d
-    max_disk: 10G
 
   branches:
     delete_after_merge: true

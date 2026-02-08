@@ -1200,8 +1200,8 @@ fn cleanup_successful_worktrees(results: &[ParallelResult]) {
             eprintln!("  {} [{}]: {}", "→".yellow(), spec_id, error);
         }
         eprintln!(
-            "\nRun {} to manually cleanup orphan worktrees.",
-            "chant cleanup --worktrees".bold()
+            "\nManually cleanup orphan worktrees with: {}",
+            "git worktree prune".bold()
         );
     }
 }

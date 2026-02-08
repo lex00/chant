@@ -474,8 +474,6 @@ After parallel execution, chant detects and reports issues:
 → Issues detected:
   ✗ [spec-002] API concurrency error (retryable): Error 429
   ⚠ [spec-003] Worktree not cleaned up: /path/to/worktree
-
-→ Run chant cleanup to analyze and resolve issues.
 ```
 
 ### Chain Execution
@@ -1279,36 +1277,6 @@ chant export --fields all             # Include all fields
 
 Default fields: `id`, `type`, `status`, `title`, `labels`, `model`, `completed_at`
 
-## Disk
-
-Show disk usage of chant artifacts:
-
-```bash
-chant disk                            # Show disk usage summary
-```
-
-**Example output:**
-
-```
-Chant Disk Usage
-
-.chant/ directory breakdown:
-  Specs:               92.0 KB
-  Prompts:             44.0 KB
-  Logs:                1.1 MB
-  Archive:             1.2 MB
-  Locks:               0 B
-  Store:               0 B
-  .chant/ Total:       2.5 MB
-
-Worktrees in /tmp:
-  Count:               25 worktrees
-  Total Size:          5.8 GB
-
-Grand Total:
-  5.8 GB
-```
-
 ## Config Validation
 
 Validate configuration semantically:
@@ -1363,43 +1331,6 @@ Recommended Fields:
 ```
 
 Exit code: 0 (valid) or 1 (errors found)
-
-## Cleanup
-
-Remove orphan worktrees and stale artifacts from /tmp:
-
-```bash
-chant cleanup                         # Interactive - show and prompt
-chant cleanup --dry-run               # Show what would be cleaned
-chant cleanup --yes                   # Remove without prompting
-```
-
-**Example output:**
-
-```
-Scanning for orphan worktrees...
-
-Found 3 orphan worktrees:
-  chant-2026-01-25-01g-v2e (234 MB, 2 days)
-  chant-2026-01-25-01l-c41 (512 MB, 3 days)
-  chant-2026-01-24-009-8f2 (128 MB, 5 days)
-
-Total: 874 MB
-
-? Clean up these worktrees? [Y/n] y
-
-Removing chant-2026-01-25-01g-v2e... done
-Removing chant-2026-01-25-01l-c41... done
-Removing chant-2026-01-24-009-8f2... done
-Running git worktree prune... done
-
-Cleaned up 3 worktrees, 874 MB reclaimed
-```
-
-**Use cases:**
-- Recover disk space after failed or abandoned specs
-- Clean up stale worktrees from interrupted executions
-- Maintain clean /tmp directory on CI systems
 
 ## Execution Flow
 
@@ -1542,7 +1473,7 @@ Found 3 chant worktrees:
     Status: unknown (spec not found)
     Size:   156 MB  Age: 3d
 
-⚠ 1 prunable worktree (run chant cleanup to clean up)
+⚠ 1 prunable worktree (run git worktree prune to clean up)
 Total disk usage: 579 MB
 ```
 

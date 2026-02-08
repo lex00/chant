@@ -516,6 +516,25 @@ pub fn merge_single_spec(
         }
     }
 
+    // Clean up worktree after successful merge
+    if merge_success && !dry_run {
+        use crate::worktree::git_ops::{get_active_worktree, remove_worktree};
+
+        // Load config to get project name
+        if let Ok(config) = crate::config::Config::load() {
+            let project_name = Some(config.project.name.as_str());
+            if let Some(worktree_path) = get_active_worktree(spec_id, project_name) {
+                if let Err(e) = remove_worktree(&worktree_path) {
+                    // Log warning but don't fail the merge
+                    eprintln!(
+                        "Warning: Failed to clean up worktree at {:?}: {}",
+                        worktree_path, e
+                    );
+                }
+            }
+        }
+    }
+
     // Return to original branch, BUT not if:
     // 1. We're already on main (no need to switch)
     // 2. The original branch was the spec branch that we just deleted
