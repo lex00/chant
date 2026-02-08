@@ -11,6 +11,14 @@
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::Mutex;
+use std::time::Duration;
+
+/// Global mutex to serialize worktree creation operations.
+///
+/// This prevents race conditions when multiple concurrent `git worktree add` calls
+/// attempt to access git's internal locks simultaneously.
+static WORKTREE_CREATION_LOCK: Mutex<()> = Mutex::new(());
 
 /// Returns the worktree path for a given spec ID.
 ///
@@ -127,10 +135,15 @@ pub fn commit_in_worktree(worktree_path: &Path, message: &str) -> Result<String>
 
 /// Creates a new git worktree for the given spec.
 ///
+/// This function is serialized to prevent concurrent `git worktree add` calls from
+/// racing on git's internal locks. If worktree creation fails due to a lock error,
+/// it will retry once after a short delay.
+///
 /// # Arguments
 ///
 /// * `spec_id` - The specification ID (used to create unique worktree paths)
 /// * `branch` - The branch name to create in the worktree
+/// * `project_name` - Optional project name to namespace the worktree path
 ///
 /// # Returns
 ///
@@ -139,10 +152,14 @@ pub fn commit_in_worktree(worktree_path: &Path, message: &str) -> Result<String>
 /// # Errors
 ///
 /// Returns an error if:
-/// - The branch already exists
-/// - Git worktree creation fails (e.g., corrupted repo)
-/// - Directory creation fails
+/// - Git worktree creation fails after retry
+/// - Directory cleanup/creation fails
 pub fn create_worktree(spec_id: &str, branch: &str, project_name: Option<&str>) -> Result<PathBuf> {
+    // Acquire the global lock to serialize worktree creation
+    let _lock = WORKTREE_CREATION_LOCK
+        .lock()
+        .map_err(|e| anyhow::anyhow!("Failed to acquire worktree creation lock: {}", e))?;
+
     let worktree_path = worktree_path_for_spec(spec_id, project_name);
 
     // Check if worktree already exists
@@ -174,24 +191,56 @@ pub fn create_worktree(spec_id: &str, branch: &str, project_name: Option<&str>) 
         let _ = Command::new("git").args(["branch", "-D", branch]).output();
     }
 
-    // Create the worktree with the new branch
-    let output = Command::new("git")
-        .args([
-            "worktree",
-            "add",
-            "-b",
-            branch,
-            &worktree_path.to_string_lossy(),
-        ])
-        .output()
-        .context("Failed to create git worktree")?;
+    // Attempt to create the worktree with retry on lock errors
+    let max_attempts = 2;
+    let mut last_error = None;
 
-    if !output.status.success() {
+    for attempt in 1..=max_attempts {
+        let output = Command::new("git")
+            .args([
+                "worktree",
+                "add",
+                "-b",
+                branch,
+                &worktree_path.to_string_lossy(),
+            ])
+            .output()
+            .context("Failed to execute git worktree add")?;
+
+        if output.status.success() {
+            return Ok(worktree_path);
+        }
+
         let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("Failed to create worktree: {}", stderr);
+        let error_msg = stderr.trim().to_string();
+
+        // Check if this is a transient lock error
+        let is_lock_error = error_msg.contains("lock")
+            || error_msg.contains("unable to create")
+            || error_msg.contains("already exists");
+
+        last_error = Some(error_msg.clone());
+
+        if is_lock_error && attempt < max_attempts {
+            // Retry after a short delay
+            eprintln!(
+                "⚠️  [{}] Worktree creation failed (attempt {}/{}): {}. Retrying...",
+                spec_id, attempt, max_attempts, error_msg
+            );
+            std::thread::sleep(Duration::from_millis(250));
+        } else {
+            // Not a lock error or out of retries
+            break;
+        }
     }
 
-    Ok(worktree_path)
+    // All attempts failed
+    let error_msg = last_error.unwrap_or_else(|| "Unknown error".to_string());
+    anyhow::bail!(
+        "Failed to create worktree after {} attempts: {}",
+        max_attempts,
+        error_msg
+    )
 }
 
 /// Copies the spec file from the main working directory to a worktree.

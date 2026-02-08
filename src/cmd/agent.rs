@@ -497,6 +497,31 @@ impl StreamingLogWriter {
     }
 }
 
+/// Append a message to the spec log file
+///
+/// Creates the log file if it doesn't exist. Used for logging errors
+/// that occur before the agent starts.
+pub fn append_to_log(spec_id: &str, message: &str) -> Result<()> {
+    use std::io::Write;
+
+    let base_path = PathBuf::from(".chant");
+    ensure_logs_dir_at(&base_path)?;
+
+    let log_path = base_path.join("logs").join(format!("{}.log", spec_id));
+
+    // Open in append mode, create if doesn't exist
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .context("Failed to open log file for writing")?;
+
+    write!(file, "{}", message)?;
+    file.flush()?;
+
+    Ok(())
+}
+
 /// Create log file for a spec if it doesn't already exist
 /// This is called when work starts to ensure log file exists immediately
 pub fn create_log_file_if_not_exists(spec_id: &str, prompt_name: &str) -> Result<()> {
