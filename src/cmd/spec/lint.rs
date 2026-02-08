@@ -679,6 +679,7 @@ pub struct LintResult {
     pub passed: usize,
     pub warned: usize,
     pub failed: usize,
+    pub diagnostics: Vec<String>,
 }
 
 /// Lint specific specs (by ID) and return a summary.
@@ -727,6 +728,7 @@ pub fn lint_specific_specs(specs_dir: &std::path::Path, spec_ids: &[String]) -> 
                         passed: 0,
                         warned: 0,
                         failed: 1,
+                        diagnostics: vec![],
                     });
                 }
             }
@@ -736,6 +738,7 @@ pub fn lint_specific_specs(specs_dir: &std::path::Path, spec_ids: &[String]) -> 
     let mut passed = 0;
     let mut warned = 0;
     let mut failed = 0;
+    let mut all_warning_messages: Vec<String> = Vec::new();
 
     // Validate each spec
     for spec in &specs_to_check {
@@ -804,6 +807,7 @@ pub fn lint_specific_specs(specs_dir: &std::path::Path, spec_ids: &[String]) -> 
                     warnings.iter().any(|d| d.rule == LintRule::Complexity);
                 for diagnostic in &warnings {
                     println!("  {} {}: {}", "⚠".yellow(), spec.id, diagnostic.message);
+                    all_warning_messages.push(diagnostic.message.clone());
                     if let Some(ref suggestion) = diagnostic.suggestion {
                         println!("      {} {}", "→".cyan(), suggestion);
                     }
@@ -823,6 +827,7 @@ pub fn lint_specific_specs(specs_dir: &std::path::Path, spec_ids: &[String]) -> 
         passed,
         warned,
         failed,
+        diagnostics: all_warning_messages,
     })
 }
 

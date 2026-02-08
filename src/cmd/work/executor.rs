@@ -50,11 +50,13 @@ pub fn validate_spec(
     }
 
     if lint_result.warned > 0 {
+        eprintln!("{} Quality advisory for {}:", "⚠".yellow(), spec.id);
+        for warning in &lint_result.diagnostics {
+            eprintln!("  • {}", warning);
+        }
         eprintln!(
-            "{} Spec {} has {} warning(s) but is valid for execution",
-            "⚠".yellow(),
-            spec.id,
-            lint_result.warned
+            "{} Proceeding with execution (warnings are advisory)",
+            "✓".green()
         );
     }
 
