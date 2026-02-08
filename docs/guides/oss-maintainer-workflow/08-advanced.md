@@ -30,7 +30,7 @@ The agent stops immediately and the spec status is set to `paused`. Use this whe
 - The spec is blocked on external information
 - You're taking a break and want to resume later
 
-Resume with `chant work <spec-id>` or `chant resume <spec-id>`.
+Resume with `chant work <spec-id>` or `chant reset <spec-id> --work`.
 
 **Example:** You're running a research spec to evaluate libraries, but realize you need maintainer input on architectural constraints. Pause the spec, gather input, then resume.
 
@@ -190,17 +190,17 @@ Complete full investigation of issue #1234 from comprehension through impact ana
 
 ```bash
 # Create single investigation spec
-chant add "Investigation: issue #1234 connection leak" --type research
+chant add "Investigation: issue #1234 connection leak"
 
-# Edit spec to add target_files and template
+# Edit spec to set type: research, add target_files and template
 # (Use the single-spec template above)
 
 # Work the spec - agent completes all stages in one pass
 chant work <spec-id>
 
 # When investigation is complete, create implementation spec
-chant add "Fix issue #1234: Release connections properly" --type code
-# Set informed_by to reference the investigation spec
+chant add "Fix issue #1234: Release connections properly"
+# Edit spec to set type: code, informed_by to reference the investigation spec
 chant work <impl-spec-id>
 ```
 

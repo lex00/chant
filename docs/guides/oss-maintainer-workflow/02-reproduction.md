@@ -40,7 +40,7 @@ Comprehension     Reproduction Spec      Failing Test       Research Input
 ## Creating a Reproduction Spec
 
 ```bash
-chant add "Reproduce issue #1234: Data loss on concurrent writes" --type task
+chant add "Reproduce issue #1234: Data loss on concurrent writes"
 ```
 
 Edit the spec:

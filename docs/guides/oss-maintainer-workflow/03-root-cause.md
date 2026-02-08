@@ -36,7 +36,7 @@ is where the real detective work happens.
 ## Creating a Root Cause Research Spec
 
 ```bash
-chant add "Root cause: issue #1234 concurrent write data loss" --type research
+chant add "Root cause: issue #1234 concurrent write data loss"
 ```
 
 Edit the spec to reference comprehension output:
@@ -543,11 +543,12 @@ Sometimes research reveals the fix is more complex than expected:
 
 ```bash
 # Phase 1: Foundational changes
-chant add "Refactor Lock module for reentrant locking" --type code
+chant add "Refactor Lock module for reentrant locking"
+# Edit spec to set type: code
 
 # Phase 2: The actual fix (depends on phase 1)
-chant add "Fix issue #1234 using reentrant locks" --type code
-# Add: depends_on: [phase-1-spec-id]
+chant add "Fix issue #1234 using reentrant locks"
+# Edit spec to set type: code, depends_on: [phase-1-spec-id]
 ```
 
 ### Expand Scope
@@ -556,7 +557,8 @@ If research reveals the bug exists in multiple places:
 
 ```bash
 # Create a driver spec to coordinate fixes
-chant add "Fix concurrent write bugs across storage layer" --type driver
+chant add "Fix concurrent write bugs across storage layer"
+# Edit spec to set type: driver
 # The driver creates member specs for each location
 ```
 

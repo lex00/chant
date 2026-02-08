@@ -68,7 +68,8 @@ For trivial bugs (typos, obvious one-line fixes, clear documentation errors), yo
 
 ```bash
 # For simple fixes, go directly to implementation
-chant add "Fix typo in README" --type code
+chant add "Fix typo in README"
+# Edit the created spec to set type: code in frontmatter
 chant work <spec-id>
 ```
 
@@ -141,30 +142,30 @@ Here's a minimal example of the full workflow:
 
 ```bash
 # 1. Comprehension research
-chant add "Comprehension: issue #1234" --type research
-# Edit spec to set: target_files: [.chant/research/issue-1234-comprehension.md]
+chant add "Comprehension: issue #1234"
+# Edit spec to set: type: research, target_files: [.chant/research/issue-1234-comprehension.md]
 chant work <comprehension-spec-id>
 
 # 2. Reproducibility
-chant add "Reproduce issue #1234" --type task
-# Edit spec to add: informed_by: [<comprehension-spec-id>]
+chant add "Reproduce issue #1234"
+# Edit spec to set: type: task, informed_by: [<comprehension-spec-id>]
 chant work <repro-spec-id>
 
 # 3. Root cause research
-chant add "Root cause: issue #1234" --type research
-# Edit spec to add: informed_by: [<comprehension-spec-id>, <repro-spec-id>]
+chant add "Root cause: issue #1234"
+# Edit spec to set: type: research, informed_by: [<comprehension-spec-id>, <repro-spec-id>],
 #                   target_files: [.chant/research/issue-1234-root-cause.md]
 chant work <root-cause-spec-id>
 
 # 4. Impact map research
-chant add "Impact Map: issue #1234" --type research
-# Edit spec to add: informed_by: [<root-cause-spec-id>]
+chant add "Impact Map: issue #1234"
+# Edit spec to set: type: research, informed_by: [<root-cause-spec-id>],
 #                   target_files: [.chant/research/issue-1234-impact-map.md]
 chant work <impact-map-spec-id>
 
 # 5. Fork fix with staging PR
-chant add "Fix issue #1234: Use locking for concurrent writes" --type code
-# Edit spec to add: informed_by: [<root-cause-spec-id>, <impact-map-spec-id>]
+chant add "Fix issue #1234: Use locking for concurrent writes"
+# Edit spec to set: type: code, informed_by: [<root-cause-spec-id>, <impact-map-spec-id>]
 chant work <impl-spec-id>
 # Agent creates staging PR in fork (not upstream)
 

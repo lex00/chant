@@ -57,7 +57,7 @@ GitHub Issue    Comprehension Spec    Understanding      Target Files
 ## Creating a Comprehension Spec
 
 ```bash
-chant add "Comprehension: issue #1234" --type research
+chant add "Comprehension: issue #1234"
 ```
 
 Edit the spec:
@@ -185,7 +185,8 @@ Combine Reproducibility and Root Cause into a single "Research" stage when:
 **Example of collapsing:**
 ```bash
 # Instead of separate Reproducibility + Root Cause specs:
-chant add "Research: Validate and confirm fix for #1234" --type research
+chant add "Research: Validate and confirm fix for #1234"
+# Edit spec to set: type: research
 # This single spec both confirms reproduction AND validates the known fix approach
 ```
 
@@ -238,17 +239,24 @@ When decomposition is needed:
 1. **Create separate spec chains** for each distinct bug:
    ```bash
    # Bug 1: Race condition
-   chant add "Comprehension: #38109 race condition" --type research
-   chant add "Root cause: #38109 race condition" --type research
-   chant add "Fix #38109: Add proper locking" --type code
+   chant add "Comprehension: #38109 race condition"
+   # Edit to set type: research
+   chant add "Root cause: #38109 race condition"
+   # Edit to set type: research
+   chant add "Fix #38109: Add proper locking"
+   # Edit to set type: code
 
    # Bug 2: Missing validation
-   chant add "Comprehension: #38109 input validation" --type research
-   chant add "Fix #38109: Add CLI input validation" --type code
+   chant add "Comprehension: #38109 input validation"
+   # Edit to set type: research
+   chant add "Fix #38109: Add CLI input validation"
+   # Edit to set type: code
 
    # Bug 3: Error handling
-   chant add "Comprehension: #38109 retry logic" --type research
-   chant add "Fix #38109: Fix retry error handling" --type code
+   chant add "Comprehension: #38109 retry logic"
+   # Edit to set type: research
+   chant add "Fix #38109: Fix retry error handling"
+   # Edit to set type: code
    ```
 
 2. **Pick one bug to pursue first** based on:

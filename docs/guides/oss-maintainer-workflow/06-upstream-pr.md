@@ -60,7 +60,7 @@ Review the staging PR for:
 Create a review spec for agent-based review:
 
 ```bash
-chant add "Phase 6: Upstream PR - Human review for issue #1234" --type documentation
+chant add "Phase 6: Upstream PR - Human review for issue #1234"
 ```
 
 ```yaml

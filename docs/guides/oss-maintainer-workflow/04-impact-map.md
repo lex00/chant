@@ -31,7 +31,7 @@ Root Cause      Impact Map         Expanded View      Implementation
 ## Creating an Impact Map Research Spec
 
 ```bash
-chant add "Impact Map: issue #1234" --type research
+chant add "Impact Map: issue #1234"
 ```
 
 Edit the spec to reference root cause research:

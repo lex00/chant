@@ -31,7 +31,7 @@ Research        Implementation       Working Fix      Staging PR       Human Gat
 ## Creating a Fork Fix Spec
 
 ```bash
-chant add "Fix issue #1234: Add locking to concurrent writes" --type code
+chant add "Fix issue #1234: Add locking to concurrent writes"
 ```
 
 Edit the spec to reference all research phases:
@@ -382,7 +382,8 @@ If the recommended approach fundamentally won't work, don't force it:
 
 ```bash
 # Create follow-up research spec
-chant add "Re-research issue #1234: Pessimistic locking insufficient" --type task
+chant add "Re-research issue #1234: Pessimistic locking insufficient"
+# Edit spec to set type: task
 # Reference original research and new findings
 ```
 
