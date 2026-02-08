@@ -6,6 +6,34 @@ This guide walks through the complete spec lifecycle by building a realistic fea
 
 You're maintaining `datalog`, a CLI tool for analyzing logs. A user requests an export feature to save query results as CSV or JSON. You'll use chant to manage this work, encountering each lifecycle phase along the way.
 
+## Following Along
+
+This walkthrough includes a **[working example project](workflows/lifecycle-walkthrough/artifacts/)** you can use to follow along:
+
+1. Copy the artifacts directory to your working location:
+   ```bash
+   cp -r docs/guides/workflows/lifecycle-walkthrough/artifacts ~/datalog-tutorial
+   cd ~/datalog-tutorial
+   ```
+
+2. Initialize chant and install dependencies:
+   ```bash
+   chant init
+   pip install click pytest
+   ```
+
+3. Run the test script to verify setup:
+   ```bash
+   ./test.sh
+   ```
+
+The example includes:
+- **Source code** - A minimal `datalog` CLI tool to build against
+- **Spec files** - Pre-built specs for each lifecycle phase to reference
+- **Tests** - Test files that demonstrate the failure/recovery phases
+
+You can follow the guide below and compare your work to the reference specs, or copy specs into `.chant/specs/` to jump to specific phases.
+
 ## Phase 1: Create
 
 Start by creating a spec for the export feature:
@@ -377,6 +405,16 @@ You've experienced the full lifecycle:
 - **Verification** re-checks criteria against current codebase
 - **Drift detection** catches when reality diverges from intent
 - **Follow-up specs** handle changes over time
+
+## Working Example
+
+The **[artifacts directory](workflows/lifecycle-walkthrough/artifacts/)** contains a complete working example:
+
+- **Datalog CLI tool** - Minimal Python CLI with source and tests
+- **Reference specs** - Pre-built specs for each phase of the walkthrough
+- **Test script** - Validates the example works with chant commands
+
+See the [artifacts README](workflows/lifecycle-walkthrough/artifacts/README.md) for setup instructions and usage.
 
 ## Further Reading
 

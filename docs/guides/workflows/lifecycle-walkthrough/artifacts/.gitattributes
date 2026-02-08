@@ -1,0 +1,5 @@
+# Chant spec files use a custom merge driver for intelligent conflict resolution
+# This driver automatically resolves frontmatter conflicts while preserving implementation content
+#
+# The merge driver is configured automatically by `chant init`
+.chant/specs/*.md merge=chant-spec
