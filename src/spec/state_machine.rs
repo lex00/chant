@@ -214,9 +214,7 @@ impl<'a> TransitionBuilder<'a> {
             }
         }
 
-        if self.require_clean
-            && !is_clean(&self.spec.id, self.project_name.as_deref())?
-        {
+        if self.require_clean && !is_clean(&self.spec.id, self.project_name.as_deref())? {
             return Err(TransitionError::DirtyWorktree(
                 "Worktree has uncommitted changes".to_string(),
             ));

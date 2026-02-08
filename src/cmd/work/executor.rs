@@ -8,6 +8,10 @@ use colored::Colorize;
 use std::path::Path;
 
 use chant::config::Config;
+use chant::operations::{
+    get_commits_for_spec, get_commits_for_spec_allow_no_commits,
+    get_commits_for_spec_with_branch, get_commits_for_spec_with_branch_allow_no_commits,
+};
 use chant::repository::spec_repository::FileSpecRepository;
 use chant::spec::{self, Spec, SpecStatus};
 use chant::validation;
@@ -242,9 +246,9 @@ pub fn invoke_agent_for_spec(
 pub fn collect_commits_for_spec(spec: &Spec, allow_no_commits: bool) -> Result<Vec<String>> {
     let spec_branch = spec.frontmatter.branch.as_deref();
     let commits = if allow_no_commits {
-        cmd::commits::get_commits_for_spec_with_branch_allow_no_commits(&spec.id, spec_branch)
+        get_commits_for_spec_with_branch_allow_no_commits(&spec.id, spec_branch)
     } else {
-        cmd::commits::get_commits_for_spec_with_branch(&spec.id, spec_branch)
+        get_commits_for_spec_with_branch(&spec.id, spec_branch)
     }?;
 
     if commits.is_empty() && !allow_no_commits {
@@ -386,9 +390,9 @@ pub fn write_agent_status_done(
 ) -> Result<()> {
     let status_path = specs_dir.join(format!(".chant-status-{}.json", spec_id));
     let found_commits = (if allow_no_commits {
-        cmd::commits::get_commits_for_spec_allow_no_commits(spec_id)
+        get_commits_for_spec_allow_no_commits(spec_id)
     } else {
-        cmd::commits::get_commits_for_spec(spec_id)
+        get_commits_for_spec(spec_id)
     })
     .unwrap_or_default();
 

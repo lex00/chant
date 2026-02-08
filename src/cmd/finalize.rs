@@ -13,11 +13,10 @@ use chant::repository::spec_repository::{FileSpecRepository, SpecRepository};
 use chant::spec::{self, load_all_specs, Spec, SpecStatus, TransitionBuilder};
 use chant::worktree;
 
-use crate::cmd::commits::{
+use chant::operations::{
     detect_agent_in_commit, get_commits_for_spec, get_commits_for_spec_allow_no_commits,
-    get_commits_for_spec_with_branch,
+    get_commits_for_spec_with_branch, get_model_name,
 };
-use crate::cmd::model::get_model_name;
 
 /// Maximum characters to store in agent output section
 pub const MAX_AGENT_OUTPUT_CHARS: usize = 5000;

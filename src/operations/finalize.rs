@@ -5,6 +5,11 @@
 use anyhow::{Context, Result};
 
 use crate::config::Config;
+use crate::operations::commits::{
+    detect_agent_in_commit, get_commits_for_spec_allow_no_commits,
+    get_commits_for_spec_with_branch, get_commits_for_spec_with_branch_allow_no_commits,
+};
+use crate::operations::model::get_model_name;
 use crate::repository::spec_repository::{FileSpecRepository, SpecRepository};
 use crate::spec::{Spec, SpecStatus, TransitionBuilder};
 use crate::worktree;
@@ -16,28 +21,6 @@ pub struct FinalizeOptions {
     pub allow_no_commits: bool,
     /// Pre-fetched commits (if None, will auto-detect)
     pub commits: Option<Vec<String>>,
-}
-
-/// Get commits for a spec (placeholder - should be implemented in library).
-/// For now, this is a simplified version that doesn't auto-detect commits.
-fn get_commits_for_spec_impl(_spec_id: &str, _allow_no_commits: bool) -> Result<Vec<String>> {
-    // This is a placeholder - in a real implementation, this would
-    // call git log to find commits for the spec
-    Ok(Vec::new())
-}
-
-/// Detect if a commit has agent co-authorship (placeholder).
-fn detect_agent_in_commit_impl(_commit: &str) -> Result<bool> {
-    // This is a placeholder - in a real implementation, this would
-    // parse the commit message for "Co-Authored-By: Claude" etc.
-    Ok(false)
-}
-
-/// Get model name from config (placeholder).
-fn get_model_name_impl(_config: Option<&Config>) -> Option<String> {
-    // This is a placeholder - in a real implementation, this would
-    // extract the model name from environment or config
-    None
 }
 
 /// Finalize a spec after successful completion.
@@ -85,8 +68,17 @@ pub fn finalize_spec(
     let commits = match options.commits {
         Some(c) => c,
         None => {
-            // Auto-detect commits (simplified version)
-            get_commits_for_spec_impl(&spec.id, options.allow_no_commits)?
+            // Auto-detect commits with branch awareness
+            let spec_branch = spec.frontmatter.branch.as_deref();
+            if spec_branch.is_some() && !options.allow_no_commits {
+                get_commits_for_spec_with_branch(&spec.id, spec_branch)?
+            } else if options.allow_no_commits {
+                get_commits_for_spec_allow_no_commits(&spec.id)?
+            } else if let Some(branch) = spec_branch {
+                get_commits_for_spec_with_branch_allow_no_commits(&spec.id, Some(branch))?
+            } else {
+                get_commits_for_spec_allow_no_commits(&spec.id)?
+            }
         }
     };
 
@@ -106,7 +98,7 @@ pub fn finalize_spec(
         Some(commits)
     };
     spec.frontmatter.completed_at = Some(crate::utc_now_iso());
-    spec.frontmatter.model = get_model_name_impl(Some(config));
+    spec.frontmatter.model = get_model_name(Some(config));
 
     // Save the spec
     spec_repo
@@ -183,15 +175,27 @@ fn check_and_set_agent_approval(
 
     // Check each commit for agent co-authorship
     for commit in commits {
-        if detect_agent_in_commit_impl(commit)? {
-            // Agent detected - set approval requirement
-            spec.frontmatter.approval = Some(Approval {
-                required: true,
-                status: ApprovalStatus::Pending,
-                by: None,
-                at: None,
-            });
-            return Ok(());
+        match detect_agent_in_commit(commit) {
+            Ok(result) if result.has_agent => {
+                // Agent detected - set approval requirement
+                spec.frontmatter.approval = Some(Approval {
+                    required: true,
+                    status: ApprovalStatus::Pending,
+                    by: None,
+                    at: None,
+                });
+                return Ok(());
+            }
+            Ok(_) => {
+                // No agent found in this commit, continue
+            }
+            Err(e) => {
+                // Log warning but continue checking other commits
+                eprintln!(
+                    "Warning: Failed to check commit {} for agent: {}",
+                    commit, e
+                );
+            }
         }
     }
 

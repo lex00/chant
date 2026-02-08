@@ -16,6 +16,7 @@ use std::time::Duration;
 
 use chant::config::Config;
 use chant::conflict;
+use chant::operations::get_commits_for_spec;
 use chant::output::{Output, OutputMode};
 use chant::repository::spec_repository::FileSpecRepository;
 use chant::spec::{self, Spec, SpecStatus};
@@ -23,7 +24,6 @@ use chant::worktree;
 
 use super::executor;
 use crate::cmd;
-use crate::cmd::commits::get_commits_for_spec;
 use crate::cmd::finalize::finalize_spec;
 
 // ============================================================================

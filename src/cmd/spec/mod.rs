@@ -34,10 +34,9 @@ pub use show::cmd_show;
 mod tests {
     use super::*;
     use crate::cmd;
-    use crate::cmd::commits::CommitError;
     use crate::cmd::finalize::finalize_spec;
-    use crate::cmd::model::{get_model_name, get_model_name_with_default};
     use chant::config::Config;
+    use chant::operations::{get_model_name, get_model_name_with_default, CommitError};
     use chant::repository::spec_repository::FileSpecRepository;
     use chant::spec::{self, Spec, SpecFrontmatter, SpecStatus};
     use lint::validate_spec_type;
