@@ -1,0 +1,6 @@
+{
+  "spec_id": "2026-02-06-007-mrk",
+  "status": "failed",
+  "updated_at": "2026-02-06T22:36:59.692338+00:00",
+  "error": "Agent exited with status: exit status: 143"
+}
