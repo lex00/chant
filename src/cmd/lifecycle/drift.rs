@@ -73,16 +73,21 @@ fn check_files_for_changes(
 pub fn cmd_drift(id: Option<&str>) -> Result<()> {
     let specs_dir = crate::cmd::ensure_initialized()?;
 
-    let specs = spec::load_all_specs(&specs_dir)?;
+    let mut specs = spec::load_all_specs(&specs_dir)?;
 
     // If a specific ID is provided, filter to that spec
-    let specs_to_check: Vec<&Spec> = if let Some(filter_id) = id {
-        specs.iter().filter(|s| s.id.contains(filter_id)).collect()
+    let specs_to_check_indices: Vec<usize> = if let Some(filter_id) = id {
+        specs
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| s.id.contains(filter_id))
+            .map(|(i, _)| i)
+            .collect()
     } else {
-        specs.iter().collect()
+        (0..specs.len()).collect()
     };
 
-    if specs_to_check.is_empty() {
+    if specs_to_check_indices.is_empty() {
         if let Some(filter_id) = id {
             anyhow::bail!("No specs found matching: {}", filter_id);
         } else {
@@ -94,7 +99,9 @@ pub fn cmd_drift(id: Option<&str>) -> Result<()> {
     let mut drifted_specs = Vec::new();
     let mut up_to_date_specs = Vec::new();
 
-    for spec in specs_to_check {
+    for idx in specs_to_check_indices {
+        let spec = &specs[idx];
+
         // Only check completed specs
         if spec.frontmatter.status != SpecStatus::Completed {
             continue;
@@ -150,6 +157,12 @@ pub fn cmd_drift(id: Option<&str>) -> Result<()> {
         if drift_report.drifted_files.is_empty() {
             up_to_date_specs.push(drift_report);
         } else {
+            // Update spec status to needs_attention
+            let spec_mut = &mut specs[idx];
+            spec::TransitionBuilder::new(spec_mut).to(SpecStatus::NeedsAttention)?;
+            let spec_path = specs_dir.join(format!("{}.md", spec_mut.id));
+            spec_mut.save(&spec_path)?;
+
             drifted_specs.push(drift_report);
         }
     }

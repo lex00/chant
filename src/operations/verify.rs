@@ -202,6 +202,8 @@ pub fn update_spec_with_verification_results(
     overall_status: VerificationStatus,
     criteria: &[CriterionResult],
 ) -> Result<()> {
+    use crate::spec::TransitionBuilder;
+
     // Get current UTC timestamp in ISO 8601 format
     let now = Utc::now();
     let timestamp = now.to_rfc3339();
@@ -239,6 +241,11 @@ pub fn update_spec_with_verification_results(
     updated_spec.frontmatter.last_verified = Some(timestamp);
     updated_spec.frontmatter.verification_status = Some(verification_status);
     updated_spec.frontmatter.verification_failures = verification_failures;
+
+    // Update status to needs_attention if verification failed
+    if overall_status == VerificationStatus::Fail {
+        TransitionBuilder::new(&mut updated_spec).to(crate::spec::SpecStatus::NeedsAttention)?;
+    }
 
     // Save the updated spec to disk
     let spec_path = PathBuf::from(format!(".chant/specs/{}.md", spec.id));
