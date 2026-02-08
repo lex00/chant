@@ -27,7 +27,7 @@ $ chant add "Analyze codebase coupling for microservices evaluation"
 Created spec: 2026-01-27-001-cpl
 ```
 
-Alex edits the spec to add structure: research questions about import dependencies, database coupling, and cyclomatic complexity. The frontmatter declares what to read and what to produce:
+Alex edits the spec to add structure: research questions about import dependencies, database coupling, and cyclomatic complexity. The frontmatter declares what to read and what to produce — `informed_by` lists source material the agent should read, and `target_files` lists what it should write:
 
 ```yaml
 ---

@@ -97,14 +97,14 @@ Created spec: 2026-02-08-002-def
 ### When to Use Each Mode
 
 **Use the full six-spec workflow when:**
-- Multiple people will work the issue
-- Investigation spans multiple days or sessions
-- The issue is complex enough to benefit from discrete resumable units
+- Multiple people will work the issue (one person does comprehension, another picks up root cause)
+- Investigation spans multiple days or sessions (each spec is a resumable checkpoint)
+- The issue is complex: multiple hypotheses, more than two affected files, or unclear reproduction steps
 
 **Use single-spec mode when:**
-- You're working solo in one session
-- The issue is moderate complexity
-- You want research rigor without multi-spec overhead
+- You're the only person working the issue, in a single sitting
+- You can describe the bug and likely fix direction in a paragraph
+- The fix will touch one or two files with a clear test strategy
 
 ## Investigation Heuristics
 

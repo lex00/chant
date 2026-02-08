@@ -17,7 +17,7 @@ Comprehension --> Reproduction --> Root Cause --> Impact Map --> Fork Fix --> Up
    (research)       (task)        (research)    (research)     (code)     (human gate)
 ```
 
-Each phase is a separate spec. Research specs produce documents that inform later phases. The chain creates an auditable trail from issue report to merged fix.
+Each phase is a separate spec. Research specs produce documents that inform later phases. The chain creates an auditable trail from issue report to merged fix. (Spec IDs in this guide aren't sequential — 001, 004, 005, 008, 010 — because real investigations create additional specs along the way: decomposition experiments, exploratory tangents, discarded approaches. The gaps are normal.)
 
 ### Why separate phases?
 
@@ -50,7 +50,7 @@ The rest of this guide follows the kvstore concurrent write bug through each pha
 4. **[Impact Map](04-impact-map.md)** -- Discover what else is affected
 5. **[Fork Fix](05-fork-fix.md)** -- Implement the fix and create a staging PR
 6. **[Upstream PR](06-upstream-pr.md)** -- Human reviews and submits upstream
-7. **[Advanced Patterns](08-advanced.md)** -- Single-spec mode, pausing, takeover
+7. **[Advanced Patterns](08-advanced.md)** -- Single-spec mode, pausing, takeover (file is `08-advanced.md` because an earlier draft phase was removed)
 
 ## How Specs Connect
 

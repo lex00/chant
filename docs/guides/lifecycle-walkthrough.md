@@ -2,6 +2,8 @@
 
 This guide walks through the complete spec lifecycle using a realistic scenario. Each of the ten lifecycle phases appears naturally as the feature progresses from idea to long-term maintenance. Command examples and output are illustrative — your exact output will differ.
 
+Chant identifies specs by partial ID matching: `001`, `001-xyz`, and `2026-02-08-001-xyz` all refer to the same spec. Throughout these guides, commands use whichever form is convenient.
+
 ## Scenario
 
 You're maintaining `datalog`, a Python CLI tool for analyzing logs. A user requests an export feature to save query results as CSV. You'll use chant to manage this work.
@@ -15,7 +17,7 @@ $ chant add "Add export command to datalog CLI"
 Created spec: 2026-02-08-001-xyz
 ```
 
-You open the spec and write out the full requirements — CSV and JSON formats, streaming support, compression, custom field selection. By the time you're done, the spec has 12 acceptance criteria and 8 target files. Chant lints it automatically:
+You open the spec with `chant edit 001` and write out the full requirements — CSV and JSON formats, streaming support, compression, custom field selection. By the time you're done, the spec has 12 acceptance criteria and 8 target files. When you save, chant lints the spec automatically:
 
 ```
 Lint diagnostics:
@@ -162,7 +164,7 @@ $ chant log 001.3
 [2026-02-08 14:32:15]   at src/export.py:18, in export_csv
 ```
 
-The CSV handler assumed at least one row of data.
+The CSV handler assumed at least one row of data. (For a deeper look at failure scenarios — agent crashes, merge conflicts, stale state — see the [Recovery guide](recovery.md).)
 
 ## Phase 6: Recover
 
@@ -282,6 +284,11 @@ Created spec: 2026-03-01-004-abc
 $ chant edit 004
 # Add to frontmatter:
 # informed_by: [2026-02-08-001-xyz]
+#
+# informed_by is for context — "read this to understand the background."
+# depends_on is for ordering — "don't start until that spec completes."
+# This spec doesn't depend on 001 completing (it's already done),
+# it just references 001 for traceability.
 ```
 
 Execute and verify:

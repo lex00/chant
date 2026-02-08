@@ -63,7 +63,7 @@ test storage::concurrent_batch_write ... ok
 
 ## Why Fork-Internal Staging?
 
-For open source work, the agent's changes land in your fork, not upstream. You create a staging PR within your fork (`yourfork:fix/issue-1234` to `yourfork:main`) to review the changes before exposing them upstream:
+For open source work, the agent's changes land in your fork, not upstream. After the agent finishes and its worktree merges to your local main, you manually create a staging PR within your fork (`yourfork:fix/issue-1234` to `yourfork:main`) to review the changes before exposing them upstream:
 
 ```bash
 $ gh pr create \
