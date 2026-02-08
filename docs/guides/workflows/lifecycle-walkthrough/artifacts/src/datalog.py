@@ -3,7 +3,7 @@
 Datalog - A simple CLI tool for analyzing logs
 """
 import click
-from query import execute_query
+from src.query import execute_query
 
 
 @click.group()

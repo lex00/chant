@@ -57,7 +57,7 @@ fi
 # Test 4: Verify Python syntax is valid
 echo -n "Checking Python syntax is valid... "
 if command -v python3 &> /dev/null; then
-    python3 -m py_compile src/datalog.py src/query.py src/export.py tests/test_query.py tests/test_export.py 2>/dev/null
+    PYTHONPATH="$SCRIPT_DIR:$PYTHONPATH" python3 -m py_compile src/datalog.py src/query.py src/export.py tests/test_query.py tests/test_export.py 2>/dev/null
     pass "PASS"
 else
     echo "SKIP (python3 not available)"

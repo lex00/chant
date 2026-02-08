@@ -101,9 +101,3 @@ When these files change, the documentation may become stale.
 - ADR-001: Monolithic Architecture (2017)
 - ADR-002: Shared Utils Pattern (2018)
 - ADR-003: PostgreSQL for All Data (2017)
-
-## Drift Note
-
-This spec tracks 152 Python files. Any changes to tracked files
-will trigger drift detection, indicating documentation may need
-updating.

@@ -80,7 +80,3 @@ Users need to export query results for external analysis. The export feature sho
 - [ ] Documentation updated with examples
 - [ ] Help text added for all flags
 
-## Notes
-
-This is the initial spec before linting and splitting (Phase 1: Create).
-It will trigger complexity warnings and need to be simplified or split.

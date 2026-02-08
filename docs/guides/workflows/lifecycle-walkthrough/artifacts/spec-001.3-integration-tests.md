@@ -42,10 +42,3 @@ Part of the export feature implementation. These tests ensure the export command
 
 Depends on 001.1 (CSV handler) and 001.2 (export command)
 
-## Notes
-
-This is member spec 001.3 after splitting (Phase 2: Split).
-Blocked until 001.1 and 001.2 complete (Phase 3: Dependencies).
-Will be executed third in Phase 4: Execute.
-Will fail in Phase 5 due to empty dataset edge case bug.
-Will be retried and succeed in Phase 6 after manual fix.

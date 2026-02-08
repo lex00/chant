@@ -43,8 +43,3 @@ Users need to export query results for external analysis. Start with basic CSV s
 - [ ] Integration tests pass
 - [ ] Edge cases handled (empty datasets, large results)
 
-## Notes
-
-This is the simplified spec after editing based on lint feedback (Phase 1: Create).
-Still has 4 target files and 4 criteria, which is borderline.
-Will be split in Phase 2 into driver + members.

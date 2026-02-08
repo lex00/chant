@@ -1,120 +1,44 @@
-# Setup for OSS Maintainers
+# Phase 0: Setup
 
-## Quick Setup
+Before starting the investigation, you configure chant for working on a shared open source repository. The key decision: keep your specs local so they don't clutter the project's git history.
 
-For open source maintainers who want to use chant on shared repositories while keeping specs personal and local:
-
-```bash
-# Initialize chant in your repository
-chant init
-
-# Enable silent mode (keeps .chant/ local, not tracked in git)
-chant silent
-```
-
-That's it. You're ready to use chant for your personal workflow while keeping the repository clean for collaborators.
-
-## Why Silent Mode?
-
-**Silent mode is essential for OSS maintainers** who want to use chant on shared repositories. Here's why:
-
-### Personal Workflow on Shared Repos
-
-Open source repositories are collaborative spaces. Your personal specs—research notes, investigation logs, work-in-progress implementations—shouldn't clutter the team's git history. Silent mode lets you:
-
-- Use chant's full workflow locally
-- Keep your specs and research notes private
-- Avoid adding `.chant/` to the shared repository
-- Maintain your own investigation trail without affecting others
-
-### How It Works
-
-When you enable silent mode:
-
-1. `.chant/` is added to `.git/info/exclude` (git ignores it locally)
-2. Spec files remain local to your working copy
-3. Warnings about untracked specs are suppressed
-4. All chant functionality works normally
-5. Nothing from `.chant/` appears in `git status` or commits
-
-**The result:** Your investigation and planning process stays personal while your final pull requests remain clean and focused on the actual changes.
-
-## Complete Setup Example
+## Silent Mode
 
 ```bash
-# Clone the repository
-git clone https://github.com/org/project
-cd project
+$ chant init
+Initialized .chant/ directory
 
-# Initialize chant for your personal workflow
-chant init
-
-# Enable silent mode to keep specs local
-chant silent
-
-# Verify silent mode is active
-chant list --summary
+$ chant silent
+Silent mode enabled. .chant/ added to .git/info/exclude.
 ```
 
-Now when you use chant's workflow (comprehension → research → implementation), all your specs and research artifacts stay local. Your eventual pull request will contain only the final code changes, tests, and documentation—no `.chant/` artifacts.
+Silent mode adds `.chant/` to your local git exclude file. Your specs, research documents, and execution logs stay on your machine. When you eventually submit a pull request, it contains only the code changes -- no `.chant/` artifacts.
 
-## Configuration Reference
+This matters because your investigation trail is personal workflow. The upstream project doesn't need to see your hypothesis elimination table or your three failed reproduction attempts. They need a clean fix with tests.
 
-Your `.chant/config.md` might look like this:
+## What Silent Mode Does
+
+1. Adds `.chant/` to `.git/info/exclude` (local-only gitignore)
+2. Suppresses warnings about untracked spec files
+3. All chant functionality works normally
+4. Nothing from `.chant/` appears in `git status` or commits
+
+## When Not to Use Silent Mode
+
+If you're the sole maintainer and want specs tracked in the repository, or if your team has agreed to share specs, skip `chant silent`. The default behavior tracks specs in git, which is useful for team workflows where investigation history should be shared.
+
+## Configuration
+
+Your `.chant/config.md` for this workflow:
 
 ```yaml
 defaults:
-  silent: true          # Keep .chant/ local (not tracked in git)
-  main_branch: "main"   # Target branch for merges
-
-# Optional: GitHub configuration for fork workflow
-github:
-  user: your-username
-  fork: your-username/project
+  silent: true
+  main_branch: "main"
 ```
 
-**Key settings for OSS maintainers:**
+If you're working on a fix branch instead of main, set `main_branch` to your branch name so worktree merges land in the right place.
 
-- **`silent: true`** — Essential for shared repos. Keeps your workflow private.
-- **`main_branch`** — Usually "main" or "master". Set to your fix branch if working on a specific issue branch.
+With setup complete, you're ready to start investigating issue #1234.
 
-## When to Use Silent Mode
-
-**Use silent mode when:**
-- Contributing to open source projects where you don't control `.gitignore`
-- Working on repositories with multiple maintainers
-- You want a personal spec workflow without affecting the team
-- The repository shouldn't include `.chant/` in version control
-
-**Don't use silent mode when:**
-- You're on a team that wants to track specs in git (shared workflow)
-- You're the sole maintainer and want specs archived in the repository
-- The team has agreed to include `.chant/` in version control
-
-## Global vs. Project Silent Mode
-
-Enable silent mode for a single project:
-```bash
-cd project
-chant silent
-```
-
-Enable silent mode globally for all projects:
-```bash
-chant silent --global
-```
-
-The global setting applies to all repositories where you use chant. You can override it per-project if needed.
-
-## Next Steps
-
-Now that you've set up chant for OSS maintenance, learn the complete workflow:
-
-1. **[Comprehension Research](01-comprehension.md)** — Understand what the issue is about
-2. **[Reproducibility](02-reproduction.md)** — Create failing tests (auto/assisted)
-3. **[Root Cause Research](03-root-cause.md)** — Determine what needs to be fixed
-4. **[Impact Map Research](04-impact-map.md)** — Expand view based on root cause
-5. **[Fork Fix + Staging PR](05-fork-fix.md)** — Fix in fork with fork-internal PR
-6. **[Upstream PR](06-upstream-pr.md)** — Human gate before creating real PR
-
-Or jump to the [workflow overview](index.md) to see how all the phases connect.
+**Next:** [Comprehension](01-comprehension.md)

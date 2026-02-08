@@ -43,8 +43,3 @@ Part of the export feature implementation. This command integrates the CSV handl
 
 Depends on 001.1 (CSV handler must exist first)
 
-## Notes
-
-This is member spec 001.2 after splitting (Phase 2: Split).
-Blocked until 001.1 completes (Phase 3: Dependencies).
-Will be executed second in Phase 4: Execute.

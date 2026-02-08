@@ -1,49 +1,21 @@
 # Lifecycle Walkthrough: Building an Export Command
 
-This guide walks through the complete spec lifecycle by building a realistic feature: adding an `export` command to an existing CLI tool. You'll see every lifecycle phase naturally unfold, from initial creation through drift detection weeks later.
+This guide walks through the complete spec lifecycle using a realistic scenario. Each of the ten lifecycle phases appears naturally as the feature progresses from idea to long-term maintenance. Command examples and output are illustrative — your exact output will differ.
 
 ## Scenario
 
-You're maintaining `datalog`, a CLI tool for analyzing logs. A user requests an export feature to save query results as CSV or JSON. You'll use chant to manage this work, encountering each lifecycle phase along the way.
-
-## Following Along
-
-This walkthrough includes a **[working example project](workflows/lifecycle-walkthrough/artifacts/)** you can use to follow along:
-
-1. Copy the artifacts directory to your working location:
-   ```bash
-   cp -r docs/guides/workflows/lifecycle-walkthrough/artifacts ~/datalog-tutorial
-   cd ~/datalog-tutorial
-   ```
-
-2. Initialize chant and install dependencies:
-   ```bash
-   chant init
-   pip install click pytest
-   ```
-
-3. Run the test script to verify setup:
-   ```bash
-   ./test.sh
-   ```
-
-The example includes:
-- **Source code** - A minimal `datalog` CLI tool to build against
-- **Spec files** - Pre-built specs for each lifecycle phase to reference
-- **Tests** - Test files that demonstrate the failure/recovery phases
-
-You can follow the guide below and compare your work to the reference specs, or copy specs into `.chant/specs/` to jump to specific phases.
+You're maintaining `datalog`, a Python CLI tool for analyzing logs. A user requests an export feature to save query results as CSV. You'll use chant to manage this work.
 
 ## Phase 1: Create
 
-Start by creating a spec for the export feature:
+You start by creating a spec:
 
 ```bash
 $ chant add "Add export command to datalog CLI"
 Created spec: 2026-02-08-001-xyz
 ```
 
-Chant automatically lints the new spec and provides feedback:
+You open the spec and write out the full requirements — CSV and JSON formats, streaming support, compression, custom field selection. By the time you're done, the spec has 12 acceptance criteria and 8 target files. Chant lints it automatically:
 
 ```
 Lint diagnostics:
@@ -55,13 +27,13 @@ Lint diagnostics:
     → Consider splitting into smaller, focused specs
 ```
 
-You realize the spec is too complex. Edit it to be more focused:
+The linter is telling you: this spec is trying to do too much. You edit it down to basic CSV export only:
 
 ```bash
 $ chant edit 001
 ```
 
-Reduce the scope to basic CSV export only. After saving, chant re-lints automatically:
+After saving, chant re-lints:
 
 ```
 Lint diagnostics:
@@ -69,11 +41,11 @@ Lint diagnostics:
     → Borderline complexity
 ```
 
-Better, but still a bit much. Time to split.
+Better, but still borderline. Time to split.
 
 ## Phase 2: Split
 
-Use `chant split` to break down the complex spec:
+`chant split` analyzes the spec and proposes a breakdown:
 
 ```bash
 $ chant split 001
@@ -94,7 +66,7 @@ Created:
 Updated 001 to driver type with dependencies
 ```
 
-The driver spec (001) now coordinates the three members. Check the structure:
+The original spec becomes a **driver** that coordinates three **member** specs. Each member is focused on one concern:
 
 ```bash
 $ chant list --type driver
@@ -105,16 +77,16 @@ ID          Type    Status   Title
 
 ## Phase 3: Dependencies
 
-The members have dependencies on each other. Check which specs are ready:
+The members have a natural ordering. The command skeleton needs the CSV handler to exist first, and integration tests need both:
 
 ```bash
-$ chant ready
+$ chant list --ready
 
 ID          Type  Status  Title
 001.1-xyz   code  ready   Add CSV export format handler
 ```
 
-Only `001.1` is ready because `001.2` depends on `001.1`, and `001.3` depends on both. View the dependency graph:
+Only `001.1` is ready because `001.2` depends on it, and `001.3` depends on both. The dependency graph makes this explicit:
 
 ```bash
 $ chant dag
@@ -127,43 +99,35 @@ $ chant dag
     depends_on: [001.1-xyz, 001.2-xyz]
 ```
 
-The dependency chain ensures work happens in the right order.
-
 ## Phase 4: Execute
 
-Start working through the specs:
+Chain mode processes each spec in dependency order, spawning an agent in an isolated worktree for each:
 
 ```bash
 $ chant work --chain
 
 [1/3] Working 001.1-xyz: Add CSV export format handler
-→ Starting watch (auto-started)
 → Agent working in worktree /tmp/chant-001.1-xyz
 ...
 ✓ Completed in 2m 15s
-→ Merged to main, branch deleted, worktree cleaned up
+→ Merged to main, worktree cleaned up
 
 [2/3] Working 001.2-xyz: Implement export command skeleton
 → Agent working in worktree /tmp/chant-001.2-xyz
 ...
 ✓ Completed in 1m 45s
-→ Merged to main, branch deleted, worktree cleaned up
+→ Merged to main, worktree cleaned up
 
 [3/3] Working 001.3-xyz: Add integration tests for export
 → Agent working in worktree /tmp/chant-001.3-xyz
 ...
 ```
 
-**Under the hood:**
-- `chant work --chain` auto-starts watch if not running
-- Watch monitors worktrees for agent status changes (`.chant-status.json`)
-- Each agent works in isolation in its own worktree
-- When agent writes `status: done`, watch merges, finalizes, and cleans up
-- Next ready spec automatically starts
+Each agent works in its own worktree so there are no conflicts. When an agent finishes, its changes are merged to main and the worktree is cleaned up before the next spec starts.
 
 ## Phase 5: Failure
 
-The third spec fails—tests discover an edge case with empty datasets:
+The third spec fails — the agent's tests discover an edge case with empty datasets:
 
 ```
 [3/3] Working 001.3-xyz: Add integration tests for export
@@ -177,7 +141,7 @@ Chain execution stopped:
 ════════════════════════════════════════════════════════════
 ```
 
-Check the spec status:
+Chain mode stops on failure rather than continuing. You inspect the damage:
 
 ```bash
 $ chant show 001.3
@@ -185,29 +149,28 @@ $ chant show 001.3
 ID:     2026-02-08-001-xyz.3
 Status: failed
 Title:  Add integration tests for export
-...
 ```
 
-View the agent's log to understand the failure:
+The log shows what went wrong:
 
 ```bash
 $ chant log 001.3
 
 [2026-02-08 14:32:00] Running integration tests...
 [2026-02-08 14:32:15] ✗ Test failed: export_empty_dataset
-[2026-02-08 14:32:15] Error: panic: runtime error: slice bounds out of range
-[2026-02-08 14:32:15]   at src/export.rs:42
+[2026-02-08 14:32:15] Error: IndexError: list index out of range
+[2026-02-08 14:32:15]   at src/export.py:18, in export_csv
 ```
 
-The CSV export handler doesn't handle empty result sets.
+The CSV handler assumed at least one row of data.
 
 ## Phase 6: Recover
 
-Fix the edge case manually, then retry the spec:
+You fix the edge case, then reset and retry:
 
 ```bash
-# Fix the bug in src/export.rs
-$ vim src/export.rs
+# Fix the bug
+$ vim src/export.py
 
 # Reset the spec to pending and re-execute
 $ chant reset 001.3
@@ -219,24 +182,11 @@ Working 001.3-xyz: Add integration tests for export
 ✓ Completed in 1m 10s (attempt 2)
 ```
 
-**Under the hood:**
-- `chant reset` transitions from `failed` → `pending`
-- Retry counter increments (attempt 2)
-- Watch handles the retry just like the initial attempt
-
-All members are now complete. Check the driver:
-
-```bash
-$ chant show 001
-
-ID:     2026-02-08-001-xyz
-Type:   driver
-Status: completed (auto-completed when all members finished)
-```
+`chant reset` transitions from `failed` back to `pending` and increments the retry counter. The agent gets a fresh worktree and tries again.
 
 ## Phase 7: Complete
 
-The driver auto-completes when all members finish. View the final state:
+All members are now complete, and the driver auto-completed with them:
 
 ```bash
 $ chant list --status completed
@@ -248,29 +198,19 @@ ID          Type    Status     Title
 001.3-xyz   code    completed  Add integration tests for export
 ```
 
-All worktrees have been cleaned up:
+No manual cleanup needed — worktrees are gone, branches merged and deleted, the feature is on main:
 
 ```bash
 $ chant worktree status
 No active worktrees
-```
 
-All branches merged and deleted:
-
-```bash
 $ git branch
 * main
 ```
 
-**Under the hood:**
-- Watch merged each branch to main after agent completion
-- Worktrees removed immediately after merge
-- Branches deleted after successful merge
-- Driver status auto-updated to `completed` when last member finished
-
 ## Phase 8: Verify
 
-Before deploying, verify acceptance criteria still hold:
+Before shipping, you verify that acceptance criteria still hold against the actual codebase:
 
 ```bash
 $ chant verify 001
@@ -286,7 +226,7 @@ Checking acceptance criteria...
 Spec 001-xyz: VERIFIED
 ```
 
-Verification updates the spec frontmatter:
+Verification updates the spec frontmatter with a timestamp and status:
 
 ```yaml
 ---
@@ -298,7 +238,7 @@ verification_status: passed
 
 ## Phase 9: Drift
 
-Three weeks later, the data model changes—a new field is added to log entries. Your CI pipeline runs nightly verification and detects drift:
+Three weeks later, the data model changes — a new `severity` field is added to log entries. Your CI pipeline runs nightly verification:
 
 ```bash
 $ chant verify --all
@@ -317,7 +257,7 @@ Verification Summary:
   Failed: 0
 ```
 
-The spec frontmatter is updated:
+The spec frontmatter records what drifted:
 
 ```yaml
 ---
@@ -329,38 +269,29 @@ verification_failures:
 ---
 ```
 
-**Under the hood:**
-- `chant verify` re-checks acceptance criteria against current codebase
-- Agent reads spec and validates each criterion
-- Detects that new `severity` field isn't in CSV export
-- Updates verification status in frontmatter
+The spec is still completed — the original work was correct. But reality has moved on, and verification caught the gap.
 
 ## Phase 10: React
 
-Create a follow-up spec to handle the drift:
+You create a follow-up spec to address the drift, linking it to the original for traceability:
 
 ```bash
 $ chant add "Add severity field to CSV export"
 Created spec: 2026-03-01-004-abc
 
-# Link to original spec for context
 $ chant edit 004
 # Add to frontmatter:
 # informed_by: [2026-02-08-001-xyz]
 ```
 
-Execute the fix:
+Execute and verify:
 
 ```bash
 $ chant work 004
 Working 004-abc: Add severity field to CSV export
 ...
 ✓ Completed in 45s
-```
 
-Verify the original spec again:
-
-```bash
 $ chant verify 001.3
 
 Verifying spec 001.3-xyz: Add integration tests for export
@@ -375,46 +306,39 @@ Checking acceptance criteria...
 Spec 001.3-xyz: VERIFIED
 ```
 
-The cycle is complete. The original spec is verified clean, and the fix is tracked separately.
+The cycle is complete. The original spec verifies clean again, and the fix is tracked as a separate spec with a clear link to what prompted it.
 
 ## Summary
 
-You've experienced the full lifecycle:
+| Concept | What it does |
+|---------|-------------|
+| **Auto-lint** | Catches complexity early at creation time |
+| **Split** | Breaks large specs into focused members with a driver |
+| **Dependencies** | `depends_on` ensures correct execution order |
+| **Chain mode** | `--chain` processes ready specs sequentially |
+| **Worktree isolation** | Each agent works in its own git worktree |
+| **Retry tracking** | `reset` increments attempt counter |
+| **Driver auto-completion** | Driver completes when all members finish |
+| **Verification** | Re-checks criteria against current codebase |
+| **Drift detection** | Catches when code diverges from spec intent |
+| **Follow-up specs** | `informed_by` links new work to what prompted it |
 
-1. **Create** — Spec created, auto-linted with feedback
-2. **Split** — Complex spec split into driver + members
-3. **Dependencies** — Members ordered via dependency chain
-4. **Execute** — Chain execution with worktree isolation
-5. **Failure** — Tests revealed edge case
-6. **Recover** — Manual fix + retry with attempt tracking
-7. **Complete** — All members done, driver auto-completes, cleanup automatic
-8. **Verify** — Acceptance criteria re-checked before deploy
-9. **Drift** — Weeks later, verification detects model change
-10. **React** — Follow-up spec created to address drift
+## Reference Implementation
 
-## Key Concepts Demonstrated
+A **[reference implementation](workflows/lifecycle-walkthrough/artifacts/)** accompanies this guide with concrete examples of each phase:
 
-- **Auto-lint** catches complexity early
-- **Split** breaks large work into manageable pieces
-- **Dependencies** (`depends_on`) ensure correct execution order
-- **Chain mode** (`--chain`) processes specs sequentially
-- **Watch** auto-starts and handles lifecycle (merge, finalize, cleanup)
-- **Worktree isolation** prevents conflicts during execution
-- **Retry tracking** increments attempt counter on `reset`
-- **Driver auto-completion** when all members finish
-- **Verification** re-checks criteria against current codebase
-- **Drift detection** catches when reality diverges from intent
-- **Follow-up specs** handle changes over time
+- **Source code** — A minimal Python `datalog` CLI tool (`src/datalog.py`, `src/query.py`, `src/export.py`) with tests
+- **Spec files** — Pre-built specs showing what each phase produces:
+  - `spec-001-initial.md` — The overly complex initial spec (Phase 1)
+  - `spec-001-focused.md` — After editing down (Phase 1)
+  - `spec-001-driver.md` — After splitting into driver (Phase 2)
+  - `spec-001.1-csv-handler.md` — CSV handler member (Phase 2)
+  - `spec-001.2-command-skeleton.md` — Command skeleton member (Phase 2)
+  - `spec-001.3-integration-tests.md` — Integration tests member (Phase 2)
+  - `spec-004-severity-field.md` — Drift follow-up spec (Phase 10)
+- **Test script** — `test.sh` validates the artifacts (source files, spec frontmatter, Python syntax, chant operations)
 
-## Working Example
-
-The **[artifacts directory](workflows/lifecycle-walkthrough/artifacts/)** contains a complete working example:
-
-- **Datalog CLI tool** - Minimal Python CLI with source and tests
-- **Reference specs** - Pre-built specs for each phase of the walkthrough
-- **Test script** - Validates the example works with chant commands
-
-See the [artifacts README](workflows/lifecycle-walkthrough/artifacts/README.md) for setup instructions and usage.
+See the [artifacts README](workflows/lifecycle-walkthrough/artifacts/README.md) for details.
 
 ## Further Reading
 

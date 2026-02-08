@@ -30,7 +30,3 @@ This spec has been split into three focused member specs:
 
 Driver completes when all member specs are completed.
 
-## Notes
-
-This is the driver spec after splitting (Phase 2: Split).
-Auto-completes when all three members finish (Phase 7: Complete).

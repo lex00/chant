@@ -63,11 +63,3 @@ detected in the origin files.
 ## Conclusion
 [Brief summary of whether findings remain stable]
 ```
-
-## Drift Integration
-
-This scheduled spec complements manual drift detection:
-- `chant drift` — Manual check for staleness
-- This spec — Automated monthly re-analysis
-
-Both use the same origin files, ensuring consistency.

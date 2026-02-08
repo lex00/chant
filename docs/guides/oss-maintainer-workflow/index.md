@@ -1,242 +1,81 @@
 # Open Source Maintainer Workflow
 
-A complete guide for open source maintainers showing how to use chant for research-driven issue resolution.
+Command examples and output are illustrative -- your exact output will differ.
 
-## The Challenge
+## The Scenario
 
-Open source maintainers face a common problem: incoming issues require deep investigation before implementation. A hasty fix without proper root cause analysis often leads to:
+You maintain `kvstore`, a Rust CLI tool for key-value storage. A user files issue #1234: concurrent writes to the same key silently lose data. Two CLI processes writing simultaneously should both succeed, but one write vanishes without an error.
 
-- Incomplete solutions that miss edge cases
-- Regressions in related functionality
-- Wasted time on symptoms instead of causes
-- Poor documentation for future maintainers
+This is the kind of issue that tempts you to grep for the write path and add a mutex. But a hasty fix without proper investigation leads to incomplete solutions, regressions, and poor documentation for future maintainers. Instead, you'll use chant to work through the issue systematically -- understanding before acting.
 
 ## The Research-First Approach
 
-Chant enables a systematic workflow where understanding precedes action:
+The workflow moves through six phases, each producing a spec that feeds the next:
 
 ```
-Issue       Comprehension   Repro    Root Cause   Impact Map  Fork Fix    Upstream PR
-Report         Research                Research    Research                (Human Gate)
-  │               │            │          │           │            │             │
-  ▼               ▼            ▼          ▼           ▼            ▼             ▼
-┌──────┐    ┌──────────┐  ┌──────┐  ┌──────────┐ ┌────────┐ ┌─────────┐  ┌──────────┐
-│GitHub│    │Understand│  │Test  │  │Find Root │ │Expand  │ │Fix in   │  │Human     │
-│Issue │───▶│What It   │─▶│Repro │─▶│Cause     │─▶│View    │─▶│Fork +   │─▶│Creates   │
-│      │    │Is About  │  │      │  │          │ │        │ │Staging  │  │Real PR   │
-└──────┘    └──────────┘  └──────┘  └──────────┘ └────────┘ │PR       │  └──────────┘
-                │             │          │           │        └─────────┘
-                ▼             ▼          ▼           ▼             │
-           target_files  reproduce  target_files target_files informed_by
-              spec         spec        spec        spec      (research specs)
+Comprehension --> Reproduction --> Root Cause --> Impact Map --> Fork Fix --> Upstream PR
+   (research)       (task)        (research)    (research)     (code)     (human gate)
 ```
 
-Each stage produces a spec that informs the next, creating an auditable trail from issue to resolution.
+Each phase is a separate spec. Research specs produce documents that inform later phases. The chain creates an auditable trail from issue report to merged fix.
 
-## Key Benefits
+### Why separate phases?
 
-### Auditability
+A single "fix the bug" spec would leave no record of what was investigated, what was ruled out, or why this approach was chosen over alternatives. Separate specs mean:
 
-Every decision is documented in specs. When someone asks "why was this fixed this way?", the research spec explains the reasoning.
+- **Auditability.** When someone asks "why was this fixed with locking instead of CAS?", the root cause spec explains the reasoning.
+- **Resumability.** If the agent fails during root cause analysis, you reset that one spec -- not the entire investigation.
+- **Collaboration.** One maintainer can do comprehension, another can pick up root cause, each with full context.
 
-### Reproducibility
+### When to skip phases
 
-Research specs capture the investigation process. Future similar issues can reference past analysis rather than starting from scratch.
-
-### Quality
-
-Implementation specs reference research findings, ensuring fixes address root causes rather than symptoms.
-
-### Collaboration
-
-Specs serve as handoff documents. One maintainer can triage, another can research, a third can implement—all with full context.
-
-## Workflow Stages
-
-| Stage | Spec Type | Output | Purpose |
-|-------|-----------|--------|---------|
-| [Comprehension](01-comprehension.md) | `research` | `target_files` + decomposition gate | State observable symptom, affected areas, prior work—no hypothesis yet. Includes gate: decompose if multiple distinct bugs found |
-| [Reproducibility](02-reproduction.md) | `task` | Failing test or instructions | Confirm and isolate the bug (auto/assisted) |
-| [Root Cause](03-root-cause.md) | `research` | `target_files` | Determine what needs to be fixed |
-| [Impact Map](04-impact-map.md) | `research` | `target_files` | Expand view based on root cause |
-| [Fork Fix](05-fork-fix.md) | `code` | Working fix + staging PR | Fix in fork, create fork-internal PR |
-| [Upstream PR](06-upstream-pr.md) | `task` | Real PR | Human gate → create upstream PR |
-
-## Quick Path for Simple Fixes
-
-For trivial bugs (typos, obvious one-line fixes, clear documentation errors), you can skip the research phases:
+For trivial bugs -- typos, obvious one-liners, clear documentation errors -- go straight to implementation:
 
 ```bash
-# For simple fixes, go directly to implementation
-chant add "Fix typo in README"
-# Edit the created spec to set type: code in frontmatter
-chant work <spec-id>
+$ chant add "Fix typo in README storage section"
+Created spec: 2026-02-08-001-abc
+$ chant work 001
 ```
 
-**When to use Quick Path:**
-- Typos in documentation or code comments
-- Obvious one-line bug fixes with no side effects
-- Clear, isolated changes with minimal scope
+If comprehension reveals the report is not a bug or won't be fixed, document the finding and stop. Not every issue needs all six phases.
 
-**When NOT to use Quick Path:**
-- Anything involving logic changes
-- Bugs with unclear root causes
-- Changes affecting multiple components
+## The Investigation
 
-## Early Exit: "Not a Bug" or "Won't Fix"
+The rest of this guide follows the kvstore concurrent write bug through each phase:
 
-After comprehension research, you may determine the issue should be closed without a fix:
+0. **[Setup](00-setup.md)** -- Configure silent mode for working on a shared repo
+1. **[Comprehension](01-comprehension.md)** -- Understand what the issue is about
+2. **[Reproduction](02-reproduction.md)** -- Create a failing test that proves the bug
+3. **[Root Cause](03-root-cause.md)** -- Find out why data is lost
+4. **[Impact Map](04-impact-map.md)** -- Discover what else is affected
+5. **[Fork Fix](05-fork-fix.md)** -- Implement the fix and create a staging PR
+6. **[Upstream PR](06-upstream-pr.md)** -- Human reviews and submits upstream
+7. **[Advanced Patterns](08-advanced.md)** -- Single-spec mode, pausing, takeover
 
-**Not a Bug:**
-```markdown
-## Comprehension Outcome
+## How Specs Connect
 
-**Result:** Working as designed
-
-The reported behavior is intentional per the design doc (docs/design/storage.md).
-User expected last-write-wins semantics, but the system implements first-write-wins
-by design to prevent data races.
-
-**Recommendation:** Close issue with explanation, improve documentation.
-```
-
-**Won't Fix:**
-```markdown
-## Comprehension Outcome
-
-**Result:** Won't fix
-
-The requested feature would require breaking changes to the public API and
-conflicts with the project's stability guarantees. The workaround (using
-manual locking) is sufficient for this use case.
-
-**Recommendation:** Close issue, suggest workaround.
-```
-
-**When to exit early:**
-- After comprehension: issue is not actionable
-- After reproduction: cannot reproduce, likely user error
-- After root cause: fix would be harmful (security, breaking changes)
-
-## Getting Started: Setup for OSS Maintainers
-
-**Before diving into the workflow,** OSS maintainers should configure silent mode to keep specs personal and local:
-
-```bash
-# Initialize chant
-chant init
-
-# Enable silent mode (keeps .chant/ local, not tracked in git)
-chant silent
-```
-
-**Why this matters:** Silent mode keeps your research specs, investigation notes, and work-in-progress out of the shared repository's git history. You get the full workflow benefits while keeping the repo clean for collaborators.
-
-**Full setup guide:** See [Setup for OSS Maintainers](00-setup.md) for complete configuration details.
-
----
-
-## Quick Start
-
-Here's a minimal example of the full workflow:
-
-```bash
-# 1. Comprehension research
-chant add "Comprehension: issue #1234"
-# Edit spec to set: type: research, target_files: [.chant/research/issue-1234-comprehension.md]
-chant work <comprehension-spec-id>
-
-# 2. Reproducibility
-chant add "Reproduce issue #1234"
-# Edit spec to set: type: task, informed_by: [<comprehension-spec-id>]
-chant work <repro-spec-id>
-
-# 3. Root cause research
-chant add "Root cause: issue #1234"
-# Edit spec to set: type: research, informed_by: [<comprehension-spec-id>, <repro-spec-id>],
-#                   target_files: [.chant/research/issue-1234-root-cause.md]
-chant work <root-cause-spec-id>
-
-# 4. Impact map research
-chant add "Impact Map: issue #1234"
-# Edit spec to set: type: research, informed_by: [<root-cause-spec-id>],
-#                   target_files: [.chant/research/issue-1234-impact-map.md]
-chant work <impact-map-spec-id>
-
-# 5. Fork fix with staging PR
-chant add "Fix issue #1234: Use locking for concurrent writes"
-# Edit spec to set: type: code, informed_by: [<root-cause-spec-id>, <impact-map-spec-id>]
-chant work <impl-spec-id>
-# Agent creates staging PR in fork (not upstream)
-
-# 6. Human gate → upstream PR
-# Human reviews staging PR in fork, then creates real PR to upstream
-gh pr create --base upstream/main --title "Fix #1234"
-```
-
-## Workflow Summary
-
-The six phases work together:
-
-1. **Comprehension** → Understand the issue, produce `target_files`
-2. **Reproducibility** → Confirm with test or instructions
-3. **Root Cause** → Find the bug, produce `target_files`
-4. **Impact Map** → Expand view, produce complete `target_files`
-5. **Fork Fix** → Implement + staging PR in fork
-6. **Upstream PR** → Human reviews staging PR → creates upstream PR
-
-## Guide Pages
-
-0. **[Setup for OSS Maintainers](00-setup.md)** — Configure silent mode and initial setup
-1. **[Comprehension Research](01-comprehension.md)** — Understand what the issue is about
-2. **[Reproducibility](02-reproduction.md)** — Create failing tests (auto/assisted)
-3. **[Root Cause Research](03-root-cause.md)** — Determine what needs to be fixed
-4. **[Impact Map Research](04-impact-map.md)** — Expand view based on root cause
-5. **[Fork Fix + Staging PR](05-fork-fix.md)** — Fix in fork with fork-internal PR
-6. **[Upstream PR](06-upstream-pr.md)** — Human gate before creating real PR
-7. **[Advanced Patterns](08-advanced.md)** — Configuration and advanced workflows
-
-## Key Concepts
-
-### target_files Pattern
-
-Research specs produce `target_files` that feed into later phases:
+Research specs pass knowledge forward through `informed_by` and `target_files`:
 
 ```yaml
-# Comprehension research
+# Comprehension produces a research document
 target_files:
   - .chant/research/issue-1234-comprehension.md
 
-# Root cause research uses comprehension output
+# Root cause reads the comprehension output
 informed_by:
   - .chant/research/issue-1234-comprehension.md
 target_files:
   - .chant/research/issue-1234-root-cause.md
 
-# Implementation uses all research
+# Implementation reads all research
 informed_by:
   - .chant/research/issue-1234-root-cause.md
   - .chant/research/issue-1234-impact-map.md
 ```
 
-### Fork-Staging Pattern
-
-Fork-internal PRs serve as quality gates:
-
-1. Agent implements in fork
-2. Agent creates staging PR (fork branch → fork main)
-3. Human reviews staging PR
-4. Human creates upstream PR (fork branch → upstream main)
-
-## Prerequisites
-
-- Familiarity with [core concepts](../../concepts/specs.md)
-- Understanding of [spec types](../../concepts/spec-types.md)
-- Basic knowledge of [prompts](../../concepts/prompts.md)
+Each spec is a self-contained unit of work with its own acceptance criteria, but the `informed_by` chain ensures nothing is lost between phases.
 
 ## See Also
 
-- [OSS Maintainer Workflow Example](../../../examples/oss-maintainer-workflow/) — Complete example with 6-phase bug fix
-- [Research Workflows Guide](../research.md) — General research workflow concepts
-- [Approval Workflow](../approval-workflow.md) — Approval gates and review
-- [Recovery & Resume](../recovery.md) — Handling failed specs
+- [Lifecycle Walkthrough](../lifecycle-walkthrough.md) -- Core spec lifecycle concepts
+- [Recovery & Resume](../recovery.md) -- Handling failed specs

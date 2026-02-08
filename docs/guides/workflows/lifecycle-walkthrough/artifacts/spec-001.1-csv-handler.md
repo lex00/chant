@@ -35,8 +35,3 @@ Part of the export feature implementation. This handler provides the core CSV fo
 - [ ] Empty datasets return valid CSV (header only)
 - [ ] Non-empty datasets format correctly
 
-## Notes
-
-This is member spec 001.1 after splitting (Phase 2: Split).
-Ready to work immediately (no dependencies).
-Will be executed first in Phase 4: Execute.

@@ -1,176 +1,197 @@
-# Recovery & Resume
+# Recovery
 
-## Approach
+Things go wrong. Agents crash, tests fail, merges conflict. This guide walks through common failure scenarios and how to recover from each.
 
-Failures happen. Chant detects failures, preserves work, makes recovery explicit, and never loses data (git tracks everything).
+## Scenario: Agent Fails a Spec
 
-See [philosophy](../getting-started/philosophy.md) for chant's broader design principles.
-
-## Quick Reference
+The most common failure. An agent runs, encounters a problem (tests fail, can't meet acceptance criteria), and the spec ends up in `failed` status:
 
 ```bash
-chant recover --check     # Check for recovery-needed specs
-chant recover             # Interactive recovery
-chant resume 001          # Resume specific spec
-chant retry 001           # Retry failed spec
-chant unlock 001 --force  # Force unlock (dangerous)
-chant verify --all        # Verify all completed specs
-chant push --all          # Push unpushed completions
+$ chant show 001
+
+ID:     2026-02-08-001-xyz
+Status: failed
+Title:  Add CSV export handler
 ```
 
-## Failure Scenarios
-
-### Agent Crash Mid-Work
+Check the log to understand what went wrong:
 
 ```bash
+$ chant log 001
+
+[2026-02-08 14:32:00] Running tests...
+[2026-02-08 14:32:15] ✗ 2 tests failed
+[2026-02-08 14:32:15] Agent exiting with failure
+```
+
+If the problem is in the spec (unclear requirements, wrong approach), edit it first:
+
+```bash
+$ chant edit 001
+```
+
+Then reset and retry:
+
+```bash
+$ chant reset 001
+Spec 001-xyz reset to pending
+
 $ chant work 001
-Warning: Stale lock detected
-
-Lock info:
-  PID: 12345 (not running)
-  Started: 2026-01-22 10:00:00 (2 hours ago)
-
-Options:
-  [R] Resume - keep existing work, continue
-  [C] Clean - discard, start fresh
-  [A] Abort - do nothing
+Working 001-xyz: Add CSV export handler
+...
+✓ Completed in 1m 30s (attempt 2)
 ```
 
-Detection: PID file exists but process is gone.
-
-### Machine Reboot
+Or do both in one step:
 
 ```bash
-$ chant list --summary
-Warning: Found 2 specs with stale locks
+$ chant reset 001 --work
+```
 
-$ chant recover
-Spec 001:
-  Clone: .chant/.clones/001
+The retry counter increments each time — the agent sees it's on attempt 2 and can try a different approach.
+
+## Scenario: Agent Killed (OOM, SIGKILL)
+
+Sometimes the agent process gets killed by the OS (memory pressure, too many Claude processes). The spec stays `in_progress` with no agent running, and a stale worktree may be left behind.
+
+Diagnose the state:
+
+```bash
+$ chant diagnose 001
+
+Spec: 001-xyz
+Status: in_progress
+Lock: stale (PID 12345 not running)
+Worktree: exists at /tmp/chant-001-xyz
   Uncommitted changes: 3 files
-  [R] Resume  [D] Discard  [S] Skip
+Branch: chant/2026-02-08-001-xyz (ahead of main by 2 commits)
 ```
 
-Detection: On startup, scan for stale locks.
-
-### Network Failure During Push
+The worktree may contain useful partial work. If you want to preserve it, check the branch manually before cleanup:
 
 ```bash
-$ chant verify 001
-Spec 001: NOT PUSHED
-
-Local commit: abc123
-Remote branch: does not exist
-
-Fix: chant push 001
+$ git -C /tmp/chant-001-xyz log --oneline main..HEAD
+abc1234 Add CSV formatter
+def5678 Update export module
 ```
 
-### Git Conflict on Merge
+Reset the spec and retry — the agent gets a fresh worktree:
 
 ```bash
-$ chant merge 001
-Error: Content conflicts detected
-
-Files with conflicts:
-  - src/api/handler.go
-
-Next steps:
-  1. Resolve manually: git merge --continue
-  2. Auto-rebase: chant merge 001 --rebase --auto
-  3. Abort: git merge --abort
+$ chant reset 001 --work
 ```
 
-Conflict types: fast-forward, content, tree.
-
-### Agent Failure (Non-Crash)
-
-```yaml
-# Spec frontmatter
----
-status: failed
-error: "Tests failed: 2 assertions"
-failed_at: 2026-01-22T12:30:00Z
-attempts: 1
----
-```
-
-Recovery: `chant retry 001`
-
-## State Diagram
-
-```
-pending ──→ in_progress ──┬──→ completed
-     ↑                    ├──→ failed ────→ in_progress (retry)
-     │                    └──→ crashed ───→ in_progress (resume)
-     └────────────────────────────────────────────────────┘
-```
-
-## Rollback / Undo
+Clean up the orphaned worktree:
 
 ```bash
-# Undo completed spec (creates revert commit)
-chant undo 001
+$ chant cleanup
+Found 1 orphan worktree:
+  /tmp/chant-001-xyz (spec: 001-xyz, stale)
 
-# Undo specific files
-chant undo 001 --files src/auth/middleware.go
-
-# Undo multiple specs (reverse order)
-chant undo 001 002 003
+Remove? [y/N] y
+Cleaned 1 worktree
 ```
 
-Prefer **revert** (safe, history preserved) over **reset** (dangerous, requires force push).
+## Scenario: Merge Conflict
 
-## Checkpoints
+After parallel execution, merging branches back to main can conflict if two specs touched the same files:
 
-Enable incremental commits for long-running specs:
-
-```markdown
-# In prompt
-Commit frequently:
-  git commit -m "chant(001): checkpoint - auth middleware done"
-```
-
-```yaml
-# Spec tracks checkpoints
----
-checkpoints:
-  - at: 2026-01-22T10:15:00Z
-    commit: abc123
-    message: "checkpoint - auth middleware done"
----
-```
-
-Resume from checkpoint:
 ```bash
-$ chant resume 001
-Found 2 checkpoints. Resume from latest? [y/N]
+$ chant merge --all-completed
+
+Merging 001-xyz... ✓
+Merging 002-xyz... ✗ conflict in src/lib.rs
+
+Resolve manually:
+  cd /tmp/chant-002-xyz
+  # fix conflicts
+  git add src/lib.rs
+  git commit
+  # then retry merge
 ```
 
-## Configuration
+Or use rebase to replay on top of the first merge:
 
-```yaml
-# config.md
-recovery:
-  stale_lock_timeout: 4h
-
-  post_work_checks:
-    untracked_files: warn
-    unstaged_changes: error
-    unpushed_commits: warn
-
-checkpoints:
-  enabled: true
-  squash: true              # Squash into single commit on completion
-
-conflicts:
-  prevention:
-    warn_if_modified: 1h    # Warn if target files recently changed
-    auto_rebase: true       # Rebase before completing
+```bash
+$ git -C /tmp/chant-002-xyz rebase main
+# resolve conflicts
+$ chant merge 002
 ```
 
-## Best Practices
+The `--no-merge` flag on `chant work --parallel` skips auto-merge entirely, leaving branches for manual review:
 
-1. **Small specs** - Easier to recover, less work lost
-2. **Frequent commits** - Agent should commit incrementally
-3. **Target files** - Declare expected files to detect missing work
-4. **Checkpoints** - Enable for long specs
+```bash
+$ chant work --parallel --no-merge
+```
+
+## Scenario: Stale State After Reboot
+
+Your machine reboots mid-work. Lock files, worktrees, and process records are left behind. On your next session:
+
+```bash
+$ chant cleanup --dry-run
+Would remove:
+  Worktree: /tmp/chant-001-xyz (stale, no running process)
+  Worktree: /tmp/chant-003-xyz (stale, no running process)
+
+$ chant cleanup --yes
+Cleaned 2 worktrees
+```
+
+Any specs left `in_progress` need manual reset:
+
+```bash
+$ chant list --status in_progress
+
+ID          Type  Status       Title
+001-xyz     code  in_progress  Add CSV export handler
+003-xyz     code  in_progress  Fix edge case
+
+$ chant reset 001
+$ chant reset 003
+```
+
+Then re-execute:
+
+```bash
+$ chant work --chain
+```
+
+## Scenario: Wrong Approach
+
+The agent completed work, but the approach is wrong — you want to redo it differently. Edit the spec with guidance and reset:
+
+```bash
+$ chant edit 001
+# Add: "Use pessimistic locking, not optimistic. See src/lock.rs for the existing Lock module."
+
+$ chant reset 001 --work
+```
+
+The agent sees the updated spec and takes the new direction.
+
+## Recovery Principles
+
+| Principle | How chant implements it |
+|-----------|------------------------|
+| **Never lose data** | Git tracks everything — branches, commits, worktree state |
+| **Make recovery explicit** | `reset` is deliberate, not automatic |
+| **Preserve partial work** | Branches survive agent crashes; inspect before cleanup |
+| **Fail fast in parallel** | Chain mode stops on first failure |
+| **Track attempts** | Retry counter in frontmatter lets agents adapt |
+
+## Key Commands
+
+| Command | When to use |
+|---------|-------------|
+| `chant reset <id>` | Reset a failed/stuck spec to pending |
+| `chant reset <id> --work` | Reset and immediately re-execute |
+| `chant cleanup` | Remove orphan worktrees and stale artifacts |
+| `chant cleanup --dry-run` | Preview what would be cleaned |
+| `chant diagnose <id>` | Inspect a spec's state (lock, worktree, branch) |
+| `chant log <id>` | Read the agent's execution log |
+
+## Further Reading
+
+- [Lifecycle](../concepts/lifecycle.md) — State transitions including failed and recovery
+- [CLI Reference](../reference/cli.md) — Full command documentation

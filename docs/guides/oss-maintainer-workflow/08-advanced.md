@@ -2,267 +2,116 @@
 
 ## Working on Fix Branches
 
-When working on a specific issue branch instead of main:
+If you're developing the fix on a dedicated branch instead of main, configure chant to merge worktree results there:
 
 ```yaml
 # .chant/config.md
 defaults:
-  main_branch: "fix/issue-123"  # Target for merges
+  main_branch: "fix/issue-1234"
 ```
 
-This lets you:
-- Create specs for your fix
-- Work in isolated worktrees
-- Merge spec work into your fix branch (not main)
+Now `chant work` merges completed specs into your fix branch rather than main.
 
-## Controlling Running Work
+## Pausing and Taking Over
 
 ### Pausing Work
 
-Stop a running agent without losing progress:
+If you need to stop an agent mid-investigation -- say, you realize it needs information you haven't provided -- pause it:
 
 ```bash
-chant pause <spec-id>
+$ chant pause 005
+Paused spec 005-k9w. Agent stopped, progress preserved.
 ```
 
-The agent stops immediately and the spec status is set to `paused`. Use this when:
-- You need to make a human decision before continuing
-- The spec is blocked on external information
-- You're taking a break and want to resume later
+The spec moves to paused status. Resume later with `chant work 005`.
 
-Resume with `chant work <spec-id>` or `chant reset <spec-id> --work`.
+### Taking Over
 
-**Example:** You're running a research spec to evaluate libraries, but realize you need maintainer input on architectural constraints. Pause the spec, gather input, then resume.
-
-### Taking Over Work
-
-Pause and prepare a spec for manual continuation:
+If the agent is heading in the wrong direction, take over the spec entirely:
 
 ```bash
-chant takeover <spec-id>
+$ chant takeover 005
+Stopping agent for 005-k9w...
+Analyzing execution log...
+
+Progress summary:
+- Tested 3 hypotheses (all eliminated)
+- Currently investigating filesystem cache coherency
+- No root cause identified yet
+
+Spec updated with progress notes and suggested next steps.
 ```
 
-This command:
-1. Pauses the running agent
-2. Analyzes the execution log
-3. Updates the spec with progress summary and next steps
-
-Use takeover when:
-- The agent is heading in the wrong direction
-- You want to provide human guidance on how to proceed
-- The work needs a different approach than the agent chose
-
-**MCP integration:** The `chant_takeover` tool is available for agent-to-agent handoff scenarios.
-
-**Example:** An implementation spec is repeatedly failing tests with the same approach. Take over, review what's been tried, and manually guide the next attempt or fix it yourself.
+Takeover stops the agent, reads its log, and updates the spec body with a summary of what was accomplished and what remains. You can then fix the approach manually or edit the spec and re-run `chant work 005`.
 
 ## Single-Spec Investigation Mode
 
-The full OSS workflow uses six separate specs (comprehension, reproduction, root cause, impact map, fork fix, upstream PR). This provides excellent auditability and enables multi-agent handoffs, but creates overhead for a solo investigator working a single issue in one session.
+The full six-phase workflow provides excellent auditability and enables handoffs between people. But for a solo investigator working one issue in a single session, six specs can feel ceremonial.
 
-For focused investigations where you want the full research rigor without the multi-spec ceremony, use a single spec with stage markers instead of separate files.
+Single-spec mode consolidates the research phases into one document with stage markers:
 
-### When to Use Single-Spec Mode
-
-**Use single-spec mode when:**
-- Working solo (one human + one agent)
-- Single investigation session (hours, not days)
-- You want a continuous narrative with all findings in one place
-- Overhead of creating/updating multiple specs feels excessive
-
-**Use full 6-spec workflow when:**
-- Multiple people will work the issue (handoffs benefit from clear boundaries)
-- Investigation spans multiple days/sessions (resumption benefits from discrete units)
-- Complex issues requiring parallel research branches
-- You need granular dependency tracking between phases
-
-### Single-Spec Template
-
-Create a research spec with all stages in one document:
+```bash
+$ chant add "Investigation: issue #1234 concurrent write data loss"
+Created spec: 2026-02-08-001-abc
+```
 
 ```yaml
 ---
 type: research
-status: pending
-labels:
-- oss-workflow
-- investigation
+labels: [investigation, issue-1234]
 target_files:
-- .chant/research/issue-1234-investigation.md
+  - .chant/research/issue-1234-investigation.md
 ---
-# Investigation: issue #1234 [Short Title]
-
-## Task
-
-Complete full investigation of issue #1234 from comprehension through impact analysis. Document findings in `.chant/research/issue-1234-investigation.md` with stage markers.
-
-## Acceptance Criteria
-
-- [ ] Comprehension stage completed
-- [ ] Reproduction confirmed
-- [ ] Root cause identified
-- [ ] Impact map analyzed
-- [ ] All findings documented in target file
 ```
 
-**Target file structure (`.chant/research/issue-1234-investigation.md`):**
+The target file uses stage markers to organize findings:
 
 ```markdown
-# Investigation: issue #1234 [Short Title]
+# Investigation: Issue #1234
 
 ## Stage 1: Comprehension
-
-**Goal:** Understand what the issue is about
-
-### Issue Summary
-[Brief description of reported problem]
-
-### Key Observations
-- [Finding 1]
-- [Finding 2]
-
-### Initial Hypothesis
-[What you think might be happening]
-
----
+[Issue summary, affected components, initial observations]
 
 ## Stage 2: Reproduction
-
-**Goal:** Confirm and isolate the bug
-
-### Reproduction Steps
-1. [Step 1]
-2. [Step 2]
-
-### Expected vs Actual
-- Expected: [description]
-- Actual: [description]
-
-### Test Case
-[Code snippet or test that demonstrates the issue]
-
----
+[Failing test, reproduction steps, environment details]
 
 ## Stage 3: Root Cause
-
-**Goal:** Determine what needs to be fixed
-
-### Analysis
-[Deep dive into the code]
-
-### Root Cause
-[The actual bug or design flaw]
-
-### Evidence
-- [Evidence 1]
-- [Evidence 2]
-
----
+[Hypothesis table, root cause identification, evidence]
 
 ## Stage 4: Impact Map
-
-**Goal:** Expand view based on root cause
-
-### Affected Components
-- `path/to/file.rs` - [description]
-- `path/to/other.rs` - [description]
-
-### Side Effects
-[What else might be affected by a fix]
-
-### Related Issues
-[Links to similar past issues]
-
----
+[Affected components, similar patterns, test gaps]
 
 ## Summary
-
-**Root Cause:** [One sentence]
-
-**Fix Strategy:** [High-level approach]
-
-**Target Files for Implementation:**
-- `path/to/file.rs`
-- `path/to/test.rs`
+Root Cause: Unprotected read-modify-write in store.rs:145
+Fix Strategy: Pessimistic locking using existing Lock module
+Target Files: src/storage/store.rs, src/storage/batch.rs
 ```
 
-### Usage Example
+The agent completes all four research stages in one pass. When it finishes, you create a single implementation spec referencing the investigation output:
 
 ```bash
-# Create single investigation spec
-chant add "Investigation: issue #1234 connection leak"
-
-# Edit spec to set type: research, add target_files and template
-# (Use the single-spec template above)
-
-# Work the spec - agent completes all stages in one pass
-chant work <spec-id>
-
-# When investigation is complete, create implementation spec
-chant add "Fix issue #1234: Release connections properly"
-# Edit spec to set type: code, informed_by to reference the investigation spec
-chant work <impl-spec-id>
+$ chant add "Fix issue #1234: add locking to concurrent writes"
+Created spec: 2026-02-08-002-def
 ```
 
-### Benefits vs Trade-offs
+### When to Use Each Mode
 
-**Benefits:**
-- Single document with continuous narrative
-- Less overhead (one spec vs six)
-- Easier to see progression and connections
-- Better for straightforward issues
+**Use the full six-spec workflow when:**
+- Multiple people will work the issue
+- Investigation spans multiple days or sessions
+- The issue is complex enough to benefit from discrete resumable units
 
-**Trade-offs:**
-- Harder to parallelize (one agent at a time)
-- Less granular resumption (can't easily restart from "just root cause")
-- Informal stage boundaries (no separate acceptance criteria per stage)
-- Loses some auditability (no per-stage git commits)
-
-The single-spec mode preserves the research rigor and deliverables of the full workflow while reducing ceremony for solo investigators.
+**Use single-spec mode when:**
+- You're working solo in one session
+- The issue is moderate complexity
+- You want research rigor without multi-spec overhead
 
 ## Investigation Heuristics
 
-During any investigation (whether single-spec or multi-spec), you may encounter dead ends or unproductive paths. These heuristics help you recognize when to pivot rather than dig deeper into a failing approach.
+Across both modes, watch for signs that your investigation approach needs adjustment:
 
-### Recognizing Investigation Dead Ends
+- **Hypotheses aren't converging.** Multiple theories tested, all eliminated, and new ones don't build on previous findings. Broaden your search to adjacent modules.
+- **Stuck in one file.** Re-reading the same code repeatedly. Look at callers, dependencies, and configuration instead.
+- **Reproduction keeps failing.** Your test may not match the actual reported symptoms. Re-read the issue with fresh eyes.
 
-**Pivot signals:**
-
-1. **Hypotheses aren't converging**
-   - Multiple distinct theories tested, all eliminated
-   - New hypotheses don't build on previous findings
-   - Generating theories without clear connection to evidence
-
-2. **Stuck in one location**
-   - Spent multiple hypothesis cycles in a single file/module
-   - Re-reading the same code repeatedly
-   - Hypothesis table shows redundant tests in same area
-
-3. **Fresh perspective reveals missed clues**
-   - Re-read the issue thread - details dismissed initially may be critical
-   - Check for comments added after initial comprehension
-   - Review version numbers, environment specifics, timing details
-   - Look at related/similar issues linked in thread
-
-4. **Reproduction keeps failing**
-   - Can't reproduce reliably after several attempts
-   - Reported symptoms might be side effects of different root cause
-   - Environmental factors more critical than realized
-
-### Pivot Actions
-
-When you recognize a dead end:
-
-- **Update comprehension:** Re-read issue with fresh perspective
-- **Broaden search:** Look at adjacent modules, callers, dependencies
-- **Verify reproduction:** Does your test actually match reported symptoms?
-- **Review hypothesis patterns:** Missing an entire category of causes?
-- **Check environmental factors:** Configuration, platform, timing, concurrency
-
-### What NOT to Do
-
-- Don't abandon hypotheses after single test (some require iteration)
-- Don't pivot just because investigation takes time (complex bugs exist)
-- Don't guess wildly - pivot deliberately, not randomly
-
-The goal is deliberate re-orientation when progress stalls, not premature abandonment or endless persistence on unproductive paths.
+The goal is deliberate re-orientation when progress stalls -- not premature abandonment or endless persistence on an unproductive path.

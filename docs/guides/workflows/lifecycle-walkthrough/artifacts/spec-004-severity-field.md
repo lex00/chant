@@ -41,8 +41,3 @@ The data model was updated to include a `severity` field on log entries. Verific
 
 - 2026-02-08-001-xyz - Original export feature spec
 
-## Notes
-
-This is the follow-up spec created in Phase 10: React.
-Addresses drift detected by `chant verify` in Phase 9.
-After completion, spec 001.3 will verify clean again.

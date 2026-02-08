@@ -1,227 +1,108 @@
-# Impact Map Research
+# Phase 4: Impact Map
 
-Expand the view beyond the immediate root cause to identify all affected areas.
+Root cause analysis found the bug in `store.rs`. But before implementing a fix, you need to look wider. Does the same pattern exist elsewhere? What systems depend on the broken code? What tests and documentation need updating?
 
-## Why Impact Mapping?
-
-After identifying the root cause, you need to expand your understanding:
-
-- **Related code** that uses similar patterns
-- **Dependent systems** that might be affected
-- **Test coverage** that needs updating
-- **Documentation** that needs changes
-- **Similar bugs** elsewhere in the codebase
-
-An impact map research spec takes the root cause findings and expands the view to identify all files that need modification.
-
-## Impact Mapping Workflow
-
-```
-Root Cause      Impact Map         Expanded View      Implementation
-  Output         Research               │                 Input
-    │                 │                 ▼                   │
-    ▼                 ▼           ┌──────────┐              ▼
-┌─────────┐     ┌───────────┐    │ All      │        ┌───────────┐
-│ Primary │────▶│ Expand    │───▶│ affected │───────▶│ informed  │
-│ bug     │     │ from root │    │ files    │        │ by: all   │
-│ location│     │ cause     │    └──────────┘        │ research  │
-└─────────┘     └───────────┘                        └───────────┘
-```
-
-## Creating an Impact Map Research Spec
+## Expanding the View
 
 ```bash
-chant add "Impact Map: issue #1234"
+$ chant add "Impact map: issue #1234 concurrent write pattern"
+Created spec: 2026-02-08-008-j3n
 ```
-
-Edit the spec to reference root cause research:
 
 ```yaml
 ---
 type: research
-status: ready
-depends_on:
-  - 003-root-cause
-target_files:
-  - .chant/research/issue-1234-impact-map.md
-prompt: research
+labels: [impact-map, issue-1234]
+depends_on: [005-k9w]
 informed_by:
   - .chant/research/issue-1234-root-cause.md
+target_files:
+  - .chant/research/issue-1234-impact-map.md
 ---
-
-# Phase 4: Impact Map - Assess impact of Issue #1234 bug pattern
-
-## Context
-
-Phase 3 identified the root cause: [brief summary of the bug]. Before implementing a fix, we need to understand:
-- Is this pattern used elsewhere in the codebase?
-- What other systems might be affected?
-- How big is this fix going to be?
-
-## Research Questions
-
-- [ ] What other code uses the same pattern?
-- [ ] What tests need to be updated or added?
-- [ ] What documentation references this behavior?
-- [ ] Are there similar bugs elsewhere?
-- [ ] What edge cases need consideration?
-
-## Acceptance Criteria
-
-- [ ] All code using similar patterns identified
-- [ ] Test files that need updates listed
-- [ ] Documentation that needs updates listed
-- [ ] Complete file list for implementation phase
-- [ ] Edge cases and risks documented
 ```
 
-## Impact Map Output
+```bash
+$ chant work 008
+Working 008-j3n: Impact map: issue #1234 concurrent write pattern
+> Agent working in worktree /tmp/chant-008-j3n
+...
+Completed in 1m 50s
+```
 
-The spec produces an impact map document with comprehensive target files:
+## What the Agent Finds
+
+The agent searches the codebase for the same unprotected read-modify-write pattern:
 
 ```markdown
-# Impact Map Research: Issue #1234
+# Impact Map: Issue #1234
 
-**Date:** 2026-02-02
-**Informed by:** Root cause research (2026-02-02-003-ghi)
-
-## Root Cause Summary
-
-Bug located in `src/storage/store.rs:145` where optimistic locking
-fails under concurrent writes.
-
-## Impact Analysis
-
-### Similar Patterns Found
+## Similar Patterns Found
 
 | Location | Pattern | Affected? |
 |----------|---------|-----------|
-| `src/storage/store.rs:145` | Read-modify-write without lock | **YES** - Primary bug |
-| `src/storage/batch.rs:89` | Read-modify-write without lock | **YES** - Same bug |
-| `src/cache/update.rs:203` | Read-modify-write with lock | **NO** - Already safe |
+| src/storage/store.rs:145 | Read-modify-write without lock | YES - primary bug |
+| src/storage/batch.rs:89 | Read-modify-write without lock | YES - same bug |
+| src/cache/update.rs:203 | Read-modify-write with lock | NO - already safe |
 
-### Dependent Systems
+## Dependent Systems
 
 | System | File | Impact |
 |--------|------|--------|
-| CLI write command | `src/cli/write.rs` | Calls affected store.write() |
-| Batch operations | `src/storage/batch.rs` | Has same bug, needs fix |
-| API endpoint | `src/api/write.rs` | Calls affected store.write() |
+| CLI write command | src/cli/write.rs | Calls affected store.write() |
+| Batch operations | src/storage/batch.rs | Has same unprotected pattern |
+| API endpoint | src/api/write.rs | Calls affected store.write() |
 
-### Test Coverage
+## Test Coverage Gaps
 
-**Existing tests:**
-- `tests/storage/basic_test.rs` - Basic write tests (no concurrency)
-- `tests/storage/concurrent_test.rs` - Has tests but incomplete
-
-**Tests to add:**
+Existing tests cover basic writes but no concurrency scenarios.
+Tests to add:
 - Concurrent write stress test
 - Batch operation concurrency test
 - Cross-process write test
 
-**Test files needing updates:**
-- `tests/storage/concurrent_test.rs` - Add comprehensive tests
-- `tests/cli/write_test.rs` - Add concurrent CLI test
+## Documentation Updates Needed
 
-### Documentation
-
-**Documentation needing updates:**
-- `docs/architecture/storage.md` - Update concurrency model
-- `README.md` - Note about concurrent write safety
-- `CHANGELOG.md` - Document breaking change if any
-
-## Target Files for Implementation
-
-Implementation spec should modify:
-
-**Primary fixes:**
-- `src/storage/store.rs` - Add locking to write()
-- `src/storage/batch.rs` - Add locking to batch operations
-
-**Tests:**
-- `tests/storage/concurrent_test.rs` - Add comprehensive tests
-- `tests/regression/issue_1234_test.rs` - Already exists from repro
-
-**Documentation:**
-- `docs/architecture/storage.md` - Update concurrency model
-
-## Edge Cases
-
-1. **Nested writes:** What if write() calls write()?
-   - Need reentrant locking or document limitation
-
-2. **Batch atomicity:** Should batch operations be atomic?
-   - Current: No atomicity
-   - Proposed: Add transaction support
-
-3. **Cross-process locking:** CLI invocations are separate processes
-   - Need file-based locking mechanism
-
-## Recommendations for Implementation
-
-1. **Phase 1:** Fix primary bug in store.rs
-2. **Phase 2:** Fix similar bug in batch.rs
-3. **Phase 3:** Add comprehensive tests
-4. **Phase 4:** Update documentation
-
-Alternative: Create separate specs for each phase if complex.
+- docs/architecture/storage.md - Update concurrency model
+- CHANGELOG.md - Document the fix
 ```
 
-## Using informed_by Chain
+The impact map found a second instance of the same bug in `batch.rs` and identified three test gaps. Without this phase, the fix would have addressed `store.rs` but left `batch.rs` vulnerable to the same race condition.
 
-Impact map research is informed by root cause research:
+## Feeding the Implementation
 
-```yaml
-# Root cause research (003) finds the bug
-type: research
-depends_on:
-  - 002-reproduction
-informed_by:
-  - .chant/research/issue-1234-comprehension.md
-target_files:
-  - .chant/research/issue-1234-root-cause.md
-
-# Impact map research (004) expands the view
-type: research
-depends_on:
-  - 003-root-cause
-informed_by:
-  - .chant/research/issue-1234-root-cause.md
-target_files:
-  - .chant/research/issue-1234-impact-map.md
-
-# Implementation (005) uses both research outputs
-type: code
-depends_on:
-  - 004-impact-map
-informed_by:
-  - .chant/research/issue-1234-root-cause.md
-  - .chant/research/issue-1234-impact-map.md
-```
-
-## When Impact Mapping Reveals Complexity
-
-Sometimes impact map research reveals the fix is more complex than expected:
+The impact map produces the complete file list for the implementation spec:
 
 ```markdown
-## Impact Findings
+## Target Files for Implementation
 
-Analysis revealed 15 locations with the same pattern across 8 files.
-Fixing all instances is too large for a single implementation spec.
+Primary fixes:
+- src/storage/store.rs - Add locking to write()
+- src/storage/batch.rs - Add locking to batch operations
 
-## Recommendation
+Tests:
+- tests/storage/concurrent_test.rs - Add concurrency tests
+- tests/regression/issue_1234_test.rs - Already exists from reproduction
 
-Create a driver spec to coordinate fixes:
-
-1. **Core fix:** Fix primary bug location
-2. **Similar bugs:** Fix 14 other locations
-3. **Tests:** Add comprehensive test coverage
-4. **Documentation:** Update architecture docs
-
-Each phase should be a separate spec with dependencies.
+Documentation:
+- docs/architecture/storage.md - Update concurrency model
 ```
 
-## See Also
+## When Impact Mapping Reveals Too Much
 
-- [Root Cause Research](03-root-cause.md) — Previous step: find the bug
-- [Fork Fix](05-fork-fix.md) — Next step: implement the fix
+If the agent finds the pattern in 15 locations across 8 files, a single implementation spec is too large. Create a driver spec to coordinate multiple focused fixes:
+
+```bash
+$ chant add "Fix concurrent write bugs across storage layer"
+Created spec: 2026-02-08-009-xyz
+
+$ chant split 009
+Analyzing spec 009...
+Created 3 member specs:
+  009.1 - Fix primary write path locking
+  009.2 - Fix batch operation locking
+  009.3 - Add comprehensive concurrency tests
+```
+
+For the kvstore bug, two affected locations is manageable in a single implementation spec.
+
+**Next:** [Fork Fix](05-fork-fix.md)
