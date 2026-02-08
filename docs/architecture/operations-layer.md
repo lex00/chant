@@ -27,6 +27,19 @@ Both CLI commands and MCP handlers route through the same operations functions. 
 
 ## Current Operations
 
+| Module | Description |
+|--------|-------------|
+| `archive.rs` | Move completed specs to archive directory |
+| `cancel.rs` | Cancel specs and mark them as cancelled |
+| `commits.rs` | Auto-detect and associate git commits with specs |
+| `create.rs` | Create new specs with ID generation and template application |
+| `finalize.rs` | Mark specs as completed with validation and state checks |
+| `model.rs` | Update model configuration for specs |
+| `pause.rs` | Pause running work processes for specs |
+| `reset.rs` | Reset failed or in-progress specs back to pending |
+| `update.rs` | Update spec frontmatter fields and append output |
+| `verify.rs` | Verify specs meet their acceptance criteria |
+
 ### `create.rs` — Spec Creation
 
 Creates new specs with ID generation, template application, derivation, and git auto-commit.

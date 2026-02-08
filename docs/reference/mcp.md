@@ -91,7 +91,7 @@ MCP provides a standardized way to expose tools to AI agents.
 
 ## Tools
 
-The MCP server exposes 23 tools organized into query (read-only) and mutating categories.
+The MCP server exposes 24 tools organized into query (read-only) and mutating categories.
 
 ### Query Tools (read-only)
 
@@ -125,7 +125,7 @@ The MCP server exposes 23 tools organized into query (read-only) and mutating ca
 | `chant_watch_status` | Get watch status and active worktrees | (none) |
 | `chant_watch_start` | Start watch in background if not running | (none) |
 | `chant_watch_stop` | Stop running watch process | (none) |
-| `chant_split` | Split a complex spec into smaller member specs | `id` (required), `force`, `recursive`, `max_depth` (optional) |
+| `chant_split` | Split a complex spec into smaller member specs using AI analysis | `id` (required), `force`, `recursive`, `max_depth` (optional) |
 
 ### chant_spec_list
 
