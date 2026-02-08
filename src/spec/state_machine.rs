@@ -57,6 +57,8 @@ pub struct TransitionBuilder<'a> {
     require_no_incomplete_members: bool,
     check_approval: bool,
     force: bool,
+    project_name: Option<String>,
+    specs_dir: Option<std::path::PathBuf>,
 }
 
 impl<'a> TransitionBuilder<'a> {
@@ -71,6 +73,8 @@ impl<'a> TransitionBuilder<'a> {
             require_no_incomplete_members: false,
             check_approval: false,
             force: false,
+            project_name: None,
+            specs_dir: None,
         }
     }
 
@@ -117,6 +121,18 @@ impl<'a> TransitionBuilder<'a> {
         self
     }
 
+    /// Set the project name for worktree path resolution.
+    pub fn with_project_name(mut self, project_name: Option<&str>) -> Self {
+        self.project_name = project_name.map(|s| s.to_string());
+        self
+    }
+
+    /// Set the specs directory path (overrides default .chant/specs).
+    pub fn with_specs_dir(mut self, specs_dir: &Path) -> Self {
+        self.specs_dir = Some(specs_dir.to_path_buf());
+        self
+    }
+
     /// Execute the transition to the target status.
     pub fn to(self, target: SpecStatus) -> Result<(), TransitionError> {
         let current = &self.spec.frontmatter.status;
@@ -145,7 +161,10 @@ impl<'a> TransitionBuilder<'a> {
         }
 
         if self.require_deps {
-            let specs_dir = Path::new(".chant/specs");
+            let specs_dir = self
+                .specs_dir
+                .as_deref()
+                .unwrap_or_else(|| Path::new(".chant/specs"));
             if specs_dir.exists() {
                 let all_specs = super::lifecycle::load_all_specs(specs_dir)
                     .map_err(|e| TransitionError::Other(format!("Failed to load specs: {}", e)))?;
@@ -168,7 +187,10 @@ impl<'a> TransitionBuilder<'a> {
 
         if self.require_no_incomplete_members {
             if let Some(members) = &self.spec.frontmatter.members {
-                let specs_dir = Path::new(".chant/specs");
+                let specs_dir = self
+                    .specs_dir
+                    .as_deref()
+                    .unwrap_or_else(|| Path::new(".chant/specs"));
                 if specs_dir.exists() {
                     let all_specs = super::lifecycle::load_all_specs(specs_dir).map_err(|e| {
                         TransitionError::Other(format!("Failed to load specs: {}", e))
@@ -192,7 +214,9 @@ impl<'a> TransitionBuilder<'a> {
             }
         }
 
-        if self.require_clean && !is_clean(&self.spec.id)? {
+        if self.require_clean
+            && !is_clean(&self.spec.id, self.project_name.as_deref())?
+        {
             return Err(TransitionError::DirtyWorktree(
                 "Worktree has uncommitted changes".to_string(),
             ));
@@ -270,18 +294,21 @@ fn has_commits(spec_id: &str) -> Result<bool, TransitionError> {
 }
 
 /// Check if the worktree is clean (no uncommitted changes).
-fn is_clean(spec_id: &str) -> Result<bool, TransitionError> {
-    let worktree_path = Path::new("/tmp").join(format!("chant-{}", spec_id));
+fn is_clean(spec_id: &str, project_name: Option<&str>) -> Result<bool, TransitionError> {
+    use crate::worktree;
 
-    let check_path = if worktree_path.exists() {
-        &worktree_path
-    } else {
-        Path::new(".")
-    };
+    // Check if there's an active worktree for this spec
+    let check_path =
+        if let Some(worktree_path) = worktree::get_active_worktree(spec_id, project_name) {
+            worktree_path
+        } else {
+            // No worktree, check current directory
+            std::path::PathBuf::from(".")
+        };
 
     let output = Command::new("git")
         .args(["status", "--porcelain"])
-        .current_dir(check_path)
+        .current_dir(&check_path)
         .output()
         .map_err(|e| {
             TransitionError::Other(format!(
@@ -542,5 +569,50 @@ approval:
             Err(TransitionError::ApprovalRequired) => {}
             _ => panic!("Expected ApprovalRequired error"),
         }
+    }
+
+    #[test]
+    fn test_builder_with_project_name() {
+        let mut spec = Spec::parse(
+            "test-007",
+            r#"---
+type: code
+status: pending
+---
+# Test
+"#,
+        )
+        .unwrap();
+
+        // Test that builder accepts project name
+        let result = TransitionBuilder::new(&mut spec)
+            .with_project_name(Some("myproject"))
+            .to(SpecStatus::InProgress);
+
+        assert!(result.is_ok());
+        assert_eq!(spec.frontmatter.status, SpecStatus::InProgress);
+    }
+
+    #[test]
+    fn test_builder_with_specs_dir() {
+        let mut spec = Spec::parse(
+            "test-008",
+            r#"---
+type: code
+status: pending
+---
+# Test
+"#,
+        )
+        .unwrap();
+
+        // Test that builder accepts specs_dir
+        let specs_dir = Path::new("/custom/specs");
+        let result = TransitionBuilder::new(&mut spec)
+            .with_specs_dir(specs_dir)
+            .to(SpecStatus::InProgress);
+
+        assert!(result.is_ok());
+        assert_eq!(spec.frontmatter.status, SpecStatus::InProgress);
     }
 }
