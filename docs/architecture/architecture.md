@@ -30,8 +30,8 @@ The composable primitives that make [self-driving specs](../concepts/autonomy.md
 │  │             │    │             │    │                         │ │
 │  │ .chant/     │    │ .chant/     │    │ .chant/config.md        │ │
 │  │ prompts/    │    │ specs/      │    │                         │ │
-│  │ *.md        │    │ *.md        │    │ defaults, providers,    │ │
-│  │             │    │             │    │ hooks, notifications    │ │
+│  │ *.md        │    │ *.md        │    │ defaults, providers     │ │
+│  │             │    │             │    │                         │ │
 │  └─────────────┘    └─────────────┘    └─────────────────────────┘ │
 │                                                                     │
 │                    MARKDOWN IS THE UI                               │
@@ -81,7 +81,6 @@ The composable primitives that make [self-driving specs](../concepts/autonomy.md
 │    prompts/*.md       (agent behavior)        git-tracked          │
 │    specs/*.md         (work items)            git-tracked          │
 │    .locks/*.pid       (who's working)         gitignored           │
-│    .store/            (tantivy index)         gitignored           │
 └─────────────────────────────────────────────────────────────────────┘
                                │
                                ▼

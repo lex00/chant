@@ -34,7 +34,7 @@ Based on research findings in spec 2026-01-13-001-xyz.
 ## Interventions
 
 1. **Onboarding wizard** — Step-by-step setup flow for new users (P0)
-2. **Slack integration GA** — Promote beta to general availability (P1)
+2. **Integration GA** — Promote beta to general availability (P1)
 3. **Team invite UX** — Surface invite flow in onboarding and sidebar (P1)
 
 ## Acceptance Criteria
@@ -92,16 +92,16 @@ Add a multi-step onboarding wizard that appears on first login:
 - [ ] Wizard appears on first login for new accounts
 - [ ] Step 1: Template selection with 3 starter templates
 - [ ] Step 2: Team invite with email input
-- [ ] Step 3: Integration connection (Slack, GitHub)
+- [ ] Step 3: Integration connection
 - [ ] "Skip" option available on each step
 - [ ] Wizard state persisted (resume if closed early)
 - [ ] Tests passing
 ```
 
-### Member 2: Slack Integration GA
+### Member 2: Integration GA
 
 ```bash
-chant add "Promote Slack integration from beta to GA"
+chant add "Promote integration from beta to GA"
 ```
 
 **File: `.chant/specs/2026-01-16-002-abc-2.md`**
@@ -116,27 +116,27 @@ labels:
   - integrations
 parent: 2026-01-16-002-abc
 target_files:
-  - src/integrations/slack/config.ts
-  - src/integrations/slack/feature-flag.ts
-  - tests/integrations/slack.test.ts
+  - src/integrations/config.ts
+  - src/integrations/feature-flag.ts
+  - tests/integrations/integration.test.ts
 ---
 
-# Promote Slack integration from beta to GA
+# Promote integration from beta to GA
 
 ## Problem
 
-Slack beta users show 4.5% churn vs 10.8% control. Integration exists
+Integration beta users show 4.5% churn vs 10.8% control. Integration exists
 but is gated behind a beta flag.
 
 ## Solution
 
-Remove the beta feature flag and enable Slack integration for all users.
+Remove the beta feature flag and enable integration for all users.
 Add integration card to the onboarding wizard and settings page.
 
 ## Acceptance Criteria
 
 - [ ] Beta feature flag removed
-- [ ] Slack integration visible to all users in settings
+- [ ] Integration visible to all users in settings
 - [ ] Integration card added to integrations page
 - [ ] Existing beta users unaffected (no re-setup required)
 - [ ] Tests passing
@@ -198,7 +198,7 @@ chant work --parallel --label kpi-churn
 Starting parallel execution (3 specs, label: kpi-churn)
 
 [002-abc-1] Starting: Add onboarding wizard...
-[002-abc-2] Starting: Promote Slack integration...
+[002-abc-2] Starting: Promote integration...
 [002-abc-3] Starting: Surface team invite...
 
 [002-abc-3] Completed (4 files changed)
@@ -238,7 +238,7 @@ chant merge --all --rebase --auto
 Merging 3 completed specs...
 
   002-abc-1 (onboarding wizard): Merged ✓
-  002-abc-2 (slack integration): Merged ✓
+  002-abc-2 (integration):       Merged ✓
   002-abc-3 (team invite UX):    Merged ✓
 
 All specs merged to main.

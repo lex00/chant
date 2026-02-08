@@ -29,18 +29,6 @@ Chant:       Spec → Work → Done → Verify → Drift? → Re-work → ...
 
 **The spec is the decision point.** Decisions happen when writing the spec, not during execution.
 
-```yaml
-# Spec frontmatter
-decisions: autonomous   # autonomous | document | pause | fail
-```
-
-| Level | Behavior |
-|-------|----------|
-| `autonomous` | Decide and continue |
-| `document` | Decide, document reasoning, continue |
-| `pause` | Stop and request human input |
-| `fail` | Mark failed if any ambiguity |
-
 ## Manual Intervention
 
 You can interrupt and take control of running work:

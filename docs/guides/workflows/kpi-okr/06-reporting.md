@@ -90,12 +90,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run KPI report
         run: chant work --parallel --label reporting
-      - name: Post to Slack
+      - name: Post update
         run: |
-          chant activity --since 1d --format json | \
-            jq -r '.[] | "• \(.title): \(.status)"' | \
-            curl -X POST "$SLACK_WEBHOOK" \
-              -d "{\"text\": \"Daily KPI Update:\n$(cat -)\"}"
+          chant activity --since 1d --format json
 ```
 
 ## Example Daily Report
@@ -120,7 +117,7 @@ After the first daily run, the agent produces:
 | Intervention | Metric | Value |
 |-------------|--------|-------|
 | Onboarding wizard | Completion rate | 71% of new signups |
-| Slack integration | GA activations | 312 new connections |
+| Integration | GA activations | 312 new connections |
 | Team invite | Invites sent via sidebar | 189 teams |
 
 ## Trend

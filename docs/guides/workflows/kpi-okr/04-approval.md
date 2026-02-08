@@ -34,16 +34,16 @@ After discussion, Sarah rejects the spec. The integration estimates seem optimis
 ```bash
 chant reject 2026-01-13-001-xyz --by sarah \
   --reason "Integration impact estimate (1.5pp) needs validation. \
-We have Slack usage data from the beta program — agent should \
-factor that in. Also need cost estimate for Trello/Asana import."
+We have integration usage data from the beta program — agent should \
+factor that in. Also need cost estimate for import work."
 ```
 
 ```
 Spec 2026-01-13-001-xyz REJECTED by sarah
 
 Reason: Integration impact estimate (1.5pp) needs validation.
-We have Slack usage data from the beta program — agent should
-factor that in. Also need cost estimate for Trello/Asana import.
+We have integration usage data from the beta program — agent should
+factor that in. Also need cost estimate for import work.
 ```
 
 The spec file now shows the rejection in the discussion section:
@@ -52,45 +52,45 @@ The spec file now shows the rejection in the discussion section:
 ## Approval Discussion
 
 **sarah** - 2026-01-15 09:30 - REJECTED
-Integration impact estimate (1.5pp) needs validation. We have Slack
+Integration impact estimate (1.5pp) needs validation. We have integration
 usage data from the beta program — agent should factor that in. Also
-need cost estimate for Trello/Asana import.
+need cost estimate for import work.
 ```
 
 ## Adding More Context
 
-Mike adds the Slack beta data to the context directory:
+Mike adds the integration beta data to the context directory:
 
 ```bash
-vim .chant/context/kpi-churn-q1/slack-beta-usage.md
-git add .chant/context/kpi-churn-q1/slack-beta-usage.md
-git commit -m "Add Slack beta usage data for churn research"
+vim .chant/context/kpi-churn-q1/integration-beta-usage.md
+git add .chant/context/kpi-churn-q1/integration-beta-usage.md
+git commit -m "Add integration beta usage data for churn research"
 ```
 
-**File: `.chant/context/kpi-churn-q1/slack-beta-usage.md`**
+**File: `.chant/context/kpi-churn-q1/integration-beta-usage.md`**
 
 ```markdown
-# Slack Integration Beta - Usage Data
+# Integration Beta - Usage Data
 
 Source: Internal beta program (n=200 customers, Oct-Dec 2025)
 
 ## Adoption
 
 - 200 customers invited to beta
-- 134 enabled Slack integration (67% adoption)
+- 134 enabled integration (67% adoption)
 - 98 still active after 30 days (73% retention of adopters)
 
 ## Churn Comparison (Beta Period)
 
 | Group | Churn Rate | n |
 |-------|-----------|---|
-| Slack beta (enabled) | 4.5% | 134 |
-| Slack beta (not enabled) | 9.2% | 66 |
+| Integration beta (enabled) | 4.5% | 134 |
+| Integration beta (not enabled) | 9.2% | 66 |
 | Non-beta (control) | 10.8% | 3,000 |
 
 ## Key Insight
 
-Slack integration correlates with 6.3pp lower churn, but self-selection
+Integration correlates with 6.3pp lower churn, but self-selection
 bias is likely. Conservative estimate: 2-3pp attributable to integration.
 ```
 
@@ -102,23 +102,23 @@ Sarah resumes the spec with the new context:
 chant resume 2026-01-13-001-xyz --work
 ```
 
-The agent re-reads all context files (including the new Slack beta data) and updates the findings. The integration section now reflects validated data:
+The agent re-reads all context files (including the new integration beta data) and updates the findings. The integration section now reflects validated data:
 
 ```markdown
 ### 2. Missing Integrations (Impact: ~2.0pp, revised)
 
-**Updated with Slack beta data:**
-- Beta users with Slack enabled: 4.5% churn vs 10.8% control
+**Updated with integration beta data:**
+- Beta users with integration enabled: 4.5% churn vs 10.8% control
 - Conservative attributable impact: 2-3pp (accounting for self-selection)
 - Revised estimate: ~2.0pp (midpoint of conservative range)
 
-**Cost note:** Trello/Asana import requires API integration work.
-Slack integration already exists in beta — promotion to GA is low effort.
+**Cost note:** Additional integrations require API integration work.
+Existing integration already exists in beta — promotion to GA is low effort.
 ```
 
 ## Second Review: Approval
 
-Sarah reviews the updated findings. The Slack data validates the integration thesis, and the revised estimates are more credible:
+Sarah reviews the updated findings. The integration data validates the thesis, and the revised estimates are more credible:
 
 ```bash
 chant approve 2026-01-13-001-xyz --by sarah

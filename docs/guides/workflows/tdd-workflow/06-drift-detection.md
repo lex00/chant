@@ -152,9 +152,7 @@ jobs:
       - name: Notify on drift
         if: ${{ steps.drift.outputs.drift_count > 0 }}
         run: |
-          cat drift-report.json | jq -r '.issues[] | "• \(.type): \(.description)"' | \
-            curl -X POST "$SLACK_WEBHOOK" \
-              -d "{\"text\": \"Test Drift Detected:\n$(cat -)\"}"
+          echo "Test drift detected - see drift-report.json for details"
 ```
 
 ## Fixing Drift with Update Specs

@@ -152,8 +152,6 @@ Found 2 checkpoints. Resume from latest? [y/N]
 # config.md
 recovery:
   stale_lock_timeout: 4h
-  preserve_clones: true
-  clone_retention: 7d
 
   post_work_checks:
     untracked_files: warn
@@ -175,5 +173,4 @@ conflicts:
 1. **Small specs** - Easier to recover, less work lost
 2. **Frequent commits** - Agent should commit incrementally
 3. **Target files** - Declare expected files to detect missing work
-4. **Post-work hooks** - Verify completion before marking done
-5. **Checkpoints** - Enable for long specs
+4. **Checkpoints** - Enable for long specs

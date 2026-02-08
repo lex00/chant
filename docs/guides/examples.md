@@ -327,7 +327,7 @@ panels:
 
 # Add specs (from CI or developer)
 chant add "Implement new auth flow" --project auth
-chant add "Fix payment webhook" --project payments
+chant add "Fix payment processing" --project payments
 
 # Workers automatically pick up and execute
 # Monitor in Grafana dashboard

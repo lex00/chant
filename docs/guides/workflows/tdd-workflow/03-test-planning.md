@@ -152,7 +152,6 @@ processing) have 72% coverage, but error handling paths have only 18%.
 | refund.py | 38% | Critical | P0 |
 | transaction.py | 72% | Critical | P1 |
 | subscription.py | 51% | High | P1 |
-| webhooks.py | 28% | Medium | P2 |
 | reporting.py | 89% | Low | P3 |
 
 ## Critical Gaps (P0)
