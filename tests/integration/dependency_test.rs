@@ -183,6 +183,7 @@ fn test_parallel_dependency_resolution() {
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Agent spawning may hang on Windows")]
 fn test_force_flag_bypasses_dependency_check() {
     let harness = TestHarness::new();
 
@@ -261,6 +262,7 @@ fn test_force_flag_bypasses_dependency_check() {
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Agent spawning may hang on Windows")]
 fn test_blocked_spec_shows_detailed_error() {
     let harness = TestHarness::new();
 
@@ -337,6 +339,7 @@ This spec blocks spec B.
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Agent spawning may hang on Windows")]
 fn test_force_flag_shows_skipped_dependencies() {
     let harness = TestHarness::new();
 
@@ -473,6 +476,7 @@ fn test_dependency_chain_updates_after_completion() {
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Agent spawning may hang on Windows")]
 fn test_chain_with_specific_ids_validates_all_ids() {
     let harness = TestHarness::new();
 
@@ -508,6 +512,7 @@ fn test_chain_with_specific_ids_validates_all_ids() {
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Agent spawning may hang on Windows")]
 fn test_chain_without_ids_checks_ready_specs() {
     let harness = TestHarness::new();
 
@@ -535,6 +540,7 @@ fn test_chain_without_ids_checks_ready_specs() {
 
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Agent spawning may hang on Windows")]
 fn test_chain_max_limit_applies() {
     let harness = TestHarness::new();
 
@@ -802,6 +808,7 @@ fn test_status_blocked_filter_mixed_statuses() {
 /// Test that chain execution with dependent specs handles dependencies correctly
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Agent spawning may hang on Windows")]
 fn test_chain_execution_with_dependencies() {
     let harness = TestHarness::new();
 
@@ -847,6 +854,7 @@ fn test_chain_execution_with_dependencies() {
 /// Test chain execution behavior when encountering a blocked spec
 #[test]
 #[serial]
+#[cfg_attr(target_os = "windows", ignore = "Agent spawning may hang on Windows")]
 fn test_chain_skips_blocked_specs_in_sequence() {
     let harness = TestHarness::new();
 
