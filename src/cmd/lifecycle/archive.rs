@@ -366,6 +366,14 @@ pub fn cmd_archive(
     if let Some(id) = spec_id {
         // Archive specific spec
         if let Some(spec) = specs.iter().find(|s| s.id.starts_with(id)) {
+            // Check status unless force/allow_non_completed is set
+            let is_archivable = spec.frontmatter.status == SpecStatus::Completed
+                || spec.frontmatter.status == SpecStatus::Cancelled;
+            if !is_archivable && !force {
+                println!("No specs to archive.");
+                return Ok(());
+            }
+
             // Check if this is a member spec
             if spec::extract_driver_id(&spec.id).is_some() {
                 // This is a member spec - always allow archiving members directly
@@ -548,7 +556,7 @@ pub fn cmd_archive(
     // Move specs to archive
     let count = to_archive.len();
     let mut archived_spec_ids = Vec::new();
-    let options = chant::operations::ArchiveOptions { no_stage };
+    let options = chant::operations::ArchiveOptions { no_stage, allow_non_completed: force };
     for spec in to_archive {
         chant::operations::archive_spec(&specs_dir, &spec.id, &options)?;
         archived_spec_ids.push(spec.id.clone());

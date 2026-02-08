@@ -46,6 +46,7 @@ silent: false
 
         let prompt_content = "You are implementing a task for chant.";
         fs::write(prompts_dir.join("standard.md"), prompt_content).expect("Failed to write prompt");
+        fs::write(prompts_dir.join("bootstrap.md"), prompt_content).expect("Failed to write bootstrap prompt");
 
         // Initialize git repo
         Self::init_git_repo(base_path);

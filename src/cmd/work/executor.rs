@@ -73,6 +73,18 @@ pub fn validate_spec(
     // Dependency check
     if !opts.skip_deps {
         validate_dependencies(spec, specs_dir)?;
+    } else {
+        let all_specs = spec::load_all_specs(specs_dir)?;
+        if !spec.is_ready(&all_specs) {
+            let blockers = spec.get_blocking_dependencies(&all_specs, specs_dir);
+            let blocker_ids: Vec<&str> = blockers.iter().map(|s| s.spec_id.as_str()).collect();
+            eprintln!(
+                "{} Skipping dependencies for spec '{}': {}",
+                "⚠".yellow(),
+                spec.id,
+                blocker_ids.join(", ")
+            );
+        }
     }
 
     // Quality check (optional in chain/parallel)

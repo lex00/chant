@@ -13,6 +13,8 @@ use crate::spec::SpecStatus;
 pub struct ArchiveOptions {
     /// Whether to skip git staging (use fs::rename instead of git mv).
     pub no_stage: bool,
+    /// Whether to allow archiving non-completed specs.
+    pub allow_non_completed: bool,
 }
 
 /// Check if we're in a git repository.
@@ -71,8 +73,8 @@ pub fn archive_spec(specs_dir: &Path, spec_id: &str, options: &ArchiveOptions) -
     // Resolve and load the spec
     let spec = spec::resolve_spec(specs_dir, spec_id)?;
 
-    // Check if completed
-    if spec.frontmatter.status != SpecStatus::Completed {
+    // Check if completed (unless allow_non_completed is set)
+    if spec.frontmatter.status != SpecStatus::Completed && !options.allow_non_completed {
         anyhow::bail!(
             "Spec '{}' must be completed to archive (current: {:?})",
             spec.id,
