@@ -37,6 +37,7 @@
 - [Research Workflows](guides/research.md)
 - [Example Configurations](guides/examples.md)
 - [Recovery](guides/recovery.md)
+- [Troubleshooting](guides/troubleshooting.md)
 - [Approval Workflow](guides/approval-workflow.md)
 - [OSS Maintainer Workflow](guides/oss-maintainer-workflow/index.md)
   - [Setup for OSS Maintainers](guides/oss-maintainer-workflow/00-setup.md)
