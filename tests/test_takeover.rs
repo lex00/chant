@@ -1,8 +1,5 @@
 //! Integration tests for chant takeover command
 
-#[path = "common.rs"]
-mod common;
-
 #[path = "support/mod.rs"]
 mod support;
 

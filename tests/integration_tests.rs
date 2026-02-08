@@ -1,8 +1,5 @@
 //! Integration tests runner
 
-#[path = "common.rs"]
-mod common;
-
 #[path = "support/mod.rs"]
 mod support;
 
