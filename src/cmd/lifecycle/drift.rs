@@ -3,7 +3,7 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
 
-use chant::spec::{self, Spec, SpecStatus};
+use chant::spec::{self, SpecStatus};
 
 #[derive(Debug)]
 struct DriftReport {

@@ -548,7 +548,7 @@ impl DriftCheckState {
 fn check_drift_and_verify(
     logger: &mut WatchLogger,
     dry_run: bool,
-    specs_dir: &PathBuf,
+    specs_dir: &Path,
     drift_state: &mut DriftCheckState,
 ) -> Result<()> {
     // Load all completed specs

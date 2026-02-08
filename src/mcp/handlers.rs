@@ -1443,13 +1443,51 @@ fn tool_chant_add(arguments: Option<&Value>) -> Result<Value> {
         }
     };
 
-    let response_text = format!("Created spec: {}", spec.id);
+    // Load all specs for scoring (needed for isolation)
+    let all_specs = match load_all_specs(&specs_dir) {
+        Ok(specs) => specs,
+        Err(e) => {
+            return Ok(json!({
+                "content": [{ "type": "text", "text": format!("Failed to load specs: {}", e) }],
+                "isError": true
+            }));
+        }
+    };
+
+    // Calculate lint score for the newly created spec
+    use crate::score::traffic_light;
+    use crate::scoring::calculate_spec_score;
+
+    let score = calculate_spec_score(&spec, &all_specs, &config);
+    let suggestions = traffic_light::generate_suggestions(&score);
+
+    // Convert traffic light to string
+    let traffic_light_str = match score.traffic_light {
+        crate::scoring::TrafficLight::Ready => "green",
+        crate::scoring::TrafficLight::Review => "yellow",
+        crate::scoring::TrafficLight::Refine => "red",
+    };
+
+    // Build response JSON with lint results
+    let response = json!({
+        "spec_id": spec.id,
+        "message": format!("Created spec: {}", spec.id),
+        "lint": {
+            "traffic_light": traffic_light_str,
+            "complexity": score.complexity.to_string(),
+            "confidence": score.confidence.to_string(),
+            "splittability": score.splittability.to_string(),
+            "ac_quality": score.ac_quality.to_string(),
+            "isolation": score.isolation.map(|i| i.to_string()),
+            "suggestions": suggestions
+        }
+    });
 
     Ok(json!({
         "content": [
             {
                 "type": "text",
-                "text": response_text
+                "text": serde_json::to_string_pretty(&response)?
             }
         ]
     }))
