@@ -847,6 +847,7 @@ fn tool_chant_spec_update(arguments: Option<&Value>) -> Result<Value> {
         target_files,
         model,
         output,
+        force: true, // MCP updates bypass validation for backwards compatibility
     };
 
     match crate::operations::update::update_spec(&mut spec, &spec_path, options) {

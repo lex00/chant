@@ -5,7 +5,7 @@
 use anyhow::Result;
 use std::path::Path;
 
-use crate::spec::{Spec, SpecStatus};
+use crate::spec::{Spec, SpecStatus, TransitionBuilder};
 
 /// Options for spec update
 #[derive(Debug, Clone, Default)]
@@ -22,6 +22,8 @@ pub struct UpdateOptions {
     pub model: Option<String>,
     /// Output text to append to body
     pub output: Option<String>,
+    /// Force status transition (bypass validation)
+    pub force: bool,
 }
 
 /// Update spec fields with validation.
@@ -31,9 +33,13 @@ pub struct UpdateOptions {
 pub fn update_spec(spec: &mut Spec, spec_path: &Path, options: UpdateOptions) -> Result<()> {
     let mut updated = false;
 
-    // Update status if provided (use force_status for MCP compatibility)
+    // Update status if provided (use TransitionBuilder with optional force)
     if let Some(new_status) = options.status {
-        spec.force_status(new_status);
+        let mut builder = TransitionBuilder::new(spec);
+        if options.force {
+            builder = builder.force();
+        }
+        builder.to(new_status)?;
         updated = true;
     }
 

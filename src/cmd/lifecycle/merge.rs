@@ -733,24 +733,24 @@ fn execute_merge(
     let mut finalize_errors: Vec<(String, String)> = Vec::new();
 
     if finalize && !dry_run {
+        use chant::operations::finalize::{finalize_spec, FinalizeOptions};
+        use chant::repository::spec_repository::FileSpecRepository;
+
         println!("\n{} Finalizing merged specs...", "→".cyan());
+        let spec_repo = FileSpecRepository::new(specs_dir.to_path_buf());
+
         for result in &merge_results {
             if result.success {
                 // Reload the spec from disk (it may have changed during merge)
                 match spec::resolve_spec(specs_dir, &result.spec_id) {
                     Ok(mut spec) => {
-                        // Update spec status to completed
-                        spec.force_status(SpecStatus::Completed);
+                        let finalize_opts = FinalizeOptions {
+                            allow_no_commits: false,
+                            commits: None,
+                        };
 
-                        // Add completed_at if not present
-                        if spec.frontmatter.completed_at.is_none() {
-                            spec.frontmatter.completed_at =
-                                Some(chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string());
-                        }
-
-                        // Save the spec
-                        let spec_path = specs_dir.join(format!("{}.md", result.spec_id));
-                        match spec.save(&spec_path) {
+                        match finalize_spec(&mut spec, &spec_repo, config, all_specs, finalize_opts)
+                        {
                             Ok(_) => {
                                 finalized_count += 1;
                                 println!("  {} {} finalized", "✓".green(), result.spec_id);
@@ -758,7 +758,7 @@ fn execute_merge(
                             Err(e) => {
                                 finalize_errors.push((
                                     result.spec_id.clone(),
-                                    format!("Failed to save: {}", e),
+                                    format!("Failed to finalize: {}", e),
                                 ));
                             }
                         }

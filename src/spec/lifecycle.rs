@@ -42,10 +42,12 @@ pub fn apply_blocked_status_with_repos(
 
         if is_blocked_locally || is_blocked_cross_repo {
             // Has unmet dependencies - mark as blocked
-            spec.force_status(SpecStatus::Blocked);
+            // This is a valid Pending→Blocked transition, so it should always succeed
+            let _ = spec.set_status(SpecStatus::Blocked);
         } else if spec.frontmatter.status == SpecStatus::Blocked {
             // No unmet dependencies and was previously blocked - revert to pending
-            spec.force_status(SpecStatus::Pending);
+            // This is a valid Blocked→Pending transition, so it should always succeed
+            let _ = spec.set_status(SpecStatus::Pending);
         }
     }
 }

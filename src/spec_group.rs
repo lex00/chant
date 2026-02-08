@@ -379,6 +379,8 @@ pub fn mark_driver_in_progress_conditional(
     member_id: &str,
     skip: bool,
 ) -> Result<()> {
+    use crate::spec::TransitionBuilder;
+
     if skip {
         return Ok(());
     }
@@ -389,7 +391,7 @@ pub fn mark_driver_in_progress_conditional(
         if driver_path.exists() {
             let mut driver = Spec::load(&driver_path)?;
             if driver.frontmatter.status == SpecStatus::Pending {
-                driver.force_status(SpecStatus::InProgress);
+                TransitionBuilder::new(&mut driver).to(SpecStatus::InProgress)?;
                 driver.save(&driver_path)?;
             }
         }
@@ -462,7 +464,11 @@ pub fn auto_complete_driver_if_ready(
     let driver_path = specs_dir.join(format!("{}.md", driver_id));
     let mut driver = Spec::load(&driver_path)?;
 
-    driver.force_status(SpecStatus::Completed);
+    use crate::spec::TransitionBuilder;
+    // Use force() to allow Pending→Completed transition in chain mode
+    TransitionBuilder::new(&mut driver)
+        .force()
+        .to(SpecStatus::Completed)?;
     driver.frontmatter.completed_at = Some(crate::utc_now_iso());
     driver.frontmatter.model = Some("auto-completed".to_string());
 
