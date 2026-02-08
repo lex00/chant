@@ -204,17 +204,6 @@ lifecycle:
 
 Automatic cleanup runs periodically. Use `chant cleanup` for manual cleanup when needed.
 
-### Log Rotation
-
-```yaml
-lifecycle:
-  logs:
-    rotate: daily              # daily | weekly | size
-    retain: 30                 # Keep 30 rotations
-    compress: true
-    max_size: 100M             # Per file (if rotate: size)
-```
-
 ## Data Flow Diagram
 
 ```
@@ -423,14 +412,6 @@ lifecycle:
   branches:
     delete_after_merge: true
     retain_unmerged: 30d
-
-  logs:
-    rotate: daily
-    retain: 30
-    compress: true
-
-  index:
-    rebuild_on_startup: false  # Rebuild index on daemon start
 ```
 
 ---

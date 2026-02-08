@@ -117,18 +117,6 @@ Options:
   - Break into smaller specs
 ```
 
-**EXEC_HOOK_FAILED**
-```
-Error: Pre-work hook failed
-Spec: 2026-01-22-001-x7m
-Hook: prompts/setup.md
-
-Output:
-  Uncommitted changes detected. Commit or stash first.
-
-Spec not started.
-```
-
 ### Git Errors
 
 **GIT_DIRTY**

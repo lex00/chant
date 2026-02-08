@@ -51,7 +51,6 @@ The composable primitives that make [self-driving specs](../concepts/autonomy.md
 │  6. Agent works    ─→  reads, edits, tests, commits                │
 │  7. Update spec    ─→  status: completed, commit: abc123           │
 │  8. Release lock   ─→  remove .locks/001.pid                       │
-│  9. Notify         ─→  webhook/slack (optional)                    │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -104,7 +103,6 @@ The composable primitives that make [self-driving specs](../concepts/autonomy.md
 |----------|-------|---------|
 | Parsing | `pulldown-cmark` | Markdown parsing |
 | | `serde`, `serde_yaml` | YAML frontmatter |
-| Search | `tantivy` | Full-text search |
 | CLI | `clap` | Argument parsing |
 | Async | `rayon` | Parallel parsing |
 
@@ -181,7 +179,6 @@ Agent output goes to:
 │   └── 2026-01-22-002-q2n.md
 ├── .locks/               # PID files (gitignored)
 └── .store/               # Index cache (gitignored)
-    └── tantivy/
 ```
 
 ### No Archive Folder
@@ -192,7 +189,6 @@ Why:
 - Git history preserves everything
 - Moving files changes IDs (breaks references)
 - Simpler mental model
-- Search works on all specs regardless
 
 Filter by status instead:
 ```bash
@@ -204,10 +200,6 @@ chant list --completed      # Just completed
 ### Active Specs: In-Memory
 
 For <50 active specs, parse files in parallel on each CLI invocation (~50-100ms).
-
-### Full-Text Search: Tantivy
-
-Search across all specs using Tantivy. Index stored in `.chant/.store/tantivy/`, gitignored, rebuilt on demand.
 
 ---
 

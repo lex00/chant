@@ -86,14 +86,9 @@ team-project/
 ├── .chant/
 │   ├── config.md
 │   ├── specs/
-│   ├── prompts/
-│   │   ├── standard.md
-│   │   └── tdd.md
-│   ├── hooks/
-│   │   └── post_work.md
-│   └── notifications/
-│       ├── on_complete.md
-│       └── on_fail.md
+│   └── prompts/
+│       ├── standard.md
+│       └── tdd.md
 └── src/
 ```
 
@@ -107,51 +102,11 @@ project:
 
 defaults:
   prompt: standard
-
-notifications:
-  on_complete: .chant/notifications/on_complete.md
-  on_fail: .chant/notifications/on_fail.md
-
-hooks:
-  post_work: .chant/hooks/post_work.md
 ---
 
 # Team Project
 
-Slack notifications on completion. Worktrees for isolation.
-```
-
-### Post-Work Hook
-
-```markdown
-# .chant/hooks/post_work.md
----
-name: post_work
----
-
-Before completing, ensure:
-
-1. All tests pass: `npm test`
-2. Linting passes: `npm run lint`
-3. Build succeeds: `npm run build`
-
-If any fail, fix the issues before marking complete.
-```
-
-### Notification Template
-
-```markdown
-# .chant/notifications/on_complete.md
----
-channel: slack
-webhook: ${SLACK_WEBHOOK_URL}
----
-
-:white_check_mark: *{{spec.id}}* completed
-
-> {{spec.title}}
-
-_{{duration}} · {{prompt}} prompt_
+Worktrees for isolation.
 ```
 
 ### Workflow
@@ -164,8 +119,6 @@ chant add "Implement OAuth login"
 chant work 2026-01-22-001-x7m
 
 # Team reviews changes
-# Merge triggers spec completion
-# Slack notification sent
 ```
 
 ---
