@@ -172,7 +172,9 @@ impl Spec {
     pub fn save(&self, path: &Path) -> Result<()> {
         let frontmatter = serde_yaml::to_string(&self.frontmatter)?;
         let content = format!("---\n{}---\n{}", frontmatter, self.body);
-        fs::write(path, content)?;
+        let tmp_path = path.with_extension("md.tmp");
+        fs::write(&tmp_path, &content)?;
+        fs::rename(&tmp_path, path)?;
         Ok(())
     }
 
