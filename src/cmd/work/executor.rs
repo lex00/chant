@@ -33,7 +33,8 @@ pub fn validate_spec(
 ) -> Result<()> {
     // Lint validation
     eprintln!("{} Validating spec {}...", "→".cyan(), spec.id);
-    let lint_result = crate::cmd::spec::lint_specific_specs(specs_dir, &[spec.id.clone()])?;
+    let lint_result =
+        crate::cmd::spec::lint_specific_specs(specs_dir, std::slice::from_ref(&spec.id))?;
 
     if lint_result.failed > 0 {
         anyhow::bail!(

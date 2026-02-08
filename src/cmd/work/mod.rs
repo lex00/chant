@@ -26,7 +26,7 @@ pub mod wizard;
 pub use chain::{cmd_work_chain, ChainOptions};
 pub use parallel::{cmd_work_parallel, ParallelOptions};
 pub use single::cmd_work;
-pub use wizard::{auto_select_prompt_for_type, run_wizard, WizardSelection};
+pub use wizard::{run_wizard, WizardSelection};
 
 // ============================================================================
 // SHARED HELPER FUNCTIONS

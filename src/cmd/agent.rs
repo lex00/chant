@@ -454,9 +454,7 @@ impl StreamingLogWriter {
                 .append(true)
                 .open(&log_path)?
         } else {
-            let timestamp = chrono::Local::now()
-                .format("%Y-%m-%dT%H:%M:%SZ")
-                .to_string();
+            let timestamp = chant::utc_now_iso();
 
             let mut file = std::fs::File::create(&log_path)?;
 
@@ -472,9 +470,7 @@ impl StreamingLogWriter {
 
         // For existing files, add a visual run separator
         if file_exists {
-            let timestamp = chrono::Local::now()
-                .format("%Y-%m-%dT%H:%M:%SZ")
-                .to_string();
+            let timestamp = chant::utc_now_iso();
             writeln!(file)?;
             writeln!(file, "{}", "=".repeat(80))?;
             writeln!(file, "# New Run: {}", timestamp)?;
@@ -542,9 +538,7 @@ pub fn create_log_file_if_not_exists_at(
 
     // Only create if it doesn't exist
     if !log_path.exists() {
-        let timestamp = chrono::Local::now()
-            .format("%Y-%m-%dT%H:%M:%SZ")
-            .to_string();
+        let timestamp = chant::utc_now_iso();
 
         let mut file = std::fs::File::create(&log_path)?;
 

@@ -92,11 +92,7 @@ pub fn finalize_spec(
     } else {
         Some(commits)
     };
-    spec.frontmatter.completed_at = Some(
-        chrono::Local::now()
-            .format("%Y-%m-%dT%H:%M:%SZ")
-            .to_string(),
-    );
+    spec.frontmatter.completed_at = Some(chant::utc_now_iso());
     spec.frontmatter.model = get_model_name(Some(config));
 
     eprintln!(
@@ -136,19 +132,13 @@ pub fn finalize_spec(
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("completed_at timestamp was not set"))?;
 
-    // Validate ISO 8601 format: YYYY-MM-DDTHH:MM:SSZ
-    if !completed_at.ends_with('Z') {
-        anyhow::bail!(
-            "completed_at must end with 'Z' (UTC format), got: {}",
+    // Parse timestamp to validate ISO 8601 format
+    chrono::DateTime::parse_from_rfc3339(completed_at).with_context(|| {
+        format!(
+            "completed_at must be valid ISO 8601 format, got: {}",
             completed_at
-        );
-    }
-    if !completed_at.contains('T') {
-        anyhow::bail!(
-            "completed_at must contain 'T' separator (ISO format), got: {}",
-            completed_at
-        );
-    }
+        )
+    })?;
 
     // Validation 3: Verify that spec was actually saved (reload and check)
     let saved_spec = spec_repo
@@ -244,11 +234,7 @@ pub fn re_finalize_spec(
     };
 
     // Update the timestamp to now
-    spec.frontmatter.completed_at = Some(
-        chrono::Local::now()
-            .format("%Y-%m-%dT%H:%M:%SZ")
-            .to_string(),
-    );
+    spec.frontmatter.completed_at = Some(chant::utc_now_iso());
 
     // Update model name
     spec.frontmatter.model = get_model_name(Some(config));
@@ -274,18 +260,13 @@ pub fn re_finalize_spec(
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("completed_at timestamp was not set"))?;
 
-    if !completed_at.ends_with('Z') {
-        anyhow::bail!(
-            "completed_at must end with 'Z' (UTC format), got: {}",
+    // Parse timestamp to validate ISO 8601 format
+    chrono::DateTime::parse_from_rfc3339(completed_at).with_context(|| {
+        format!(
+            "completed_at must be valid ISO 8601 format, got: {}",
             completed_at
-        );
-    }
-    if !completed_at.contains('T') {
-        anyhow::bail!(
-            "completed_at must contain 'T' separator (ISO format), got: {}",
-            completed_at
-        );
-    }
+        )
+    })?;
 
     // Validation 3: Verify spec was saved (reload and check)
     let saved_spec = spec_repo
@@ -402,9 +383,7 @@ fn check_and_set_agent_approval(
 
 /// Append agent output to the spec body, truncating if too long.
 pub fn append_agent_output(spec: &mut Spec, output: &str) {
-    let timestamp = chrono::Local::now()
-        .format("%Y-%m-%dT%H:%M:%SZ")
-        .to_string();
+    let timestamp = chant::utc_now_iso();
 
     let formatted_output = if output.len() > MAX_AGENT_OUTPUT_CHARS {
         let truncated = &output[..MAX_AGENT_OUTPUT_CHARS];
@@ -503,11 +482,7 @@ fn auto_complete_parent_group(parent_id: &str, specs_dir: &Path, out: &Output) -
 
     // Set parent as completed (groups don't have commits of their own)
     parent.force_status(SpecStatus::Completed);
-    parent.frontmatter.completed_at = Some(
-        chrono::Local::now()
-            .format("%Y-%m-%dT%H:%M:%SZ")
-            .to_string(),
-    );
+    parent.frontmatter.completed_at = Some(chant::utc_now_iso());
 
     parent.save(&parent_path)?;
 

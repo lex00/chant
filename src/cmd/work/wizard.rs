@@ -88,6 +88,7 @@ pub fn run_wizard(specs_dir: &Path, prompts_dir: &Path) -> Result<Option<WizardS
 
 /// Auto-select a prompt based on spec type if the prompt file exists.
 /// Returns None if no auto-selected prompt is appropriate or available.
+#[allow(dead_code)]
 pub fn auto_select_prompt_for_type(spec: &Spec, prompts_dir: &Path) -> Option<String> {
     let auto_prompt = match spec.frontmatter.r#type.as_str() {
         "documentation" => Some("documentation"),

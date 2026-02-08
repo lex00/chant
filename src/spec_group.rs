@@ -463,11 +463,7 @@ pub fn auto_complete_driver_if_ready(
     let mut driver = Spec::load(&driver_path)?;
 
     driver.force_status(SpecStatus::Completed);
-    driver.frontmatter.completed_at = Some(
-        chrono::Local::now()
-            .format("%Y-%m-%dT%H:%M:%SZ")
-            .to_string(),
-    );
+    driver.frontmatter.completed_at = Some(crate::utc_now_iso());
     driver.frontmatter.model = Some("auto-completed".to_string());
 
     driver.save(&driver_path)?;
