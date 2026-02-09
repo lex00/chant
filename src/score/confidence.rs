@@ -49,10 +49,10 @@ const IMPERATIVE_VERBS: &[&str] = &[
 /// Calculate confidence grade based on spec structure, bullet quality, and vague language.
 ///
 /// Grading rules:
-/// - Grade A: High bullet ratio (>80%), verbs in >80% bullets, no vague patterns
-/// - Grade B: Medium bullet ratio (>50%), verbs in >50% bullets, <3 vague patterns
-/// - Grade C: Low bullet ratio (>20%), verbs in >30% bullets, 3-5 vague patterns
-/// - Grade D: Very low bullet ratio (<20%) OR >5 vague patterns
+/// - Grade A: High bullet ratio (>60%), verbs in >80% bullets, no vague patterns
+/// - Grade B: Medium bullet ratio (>30%), verbs in >50% bullets, <3 vague patterns
+/// - Grade C: Fallthrough between B and D
+/// - Grade D: Very low bullet ratio (<10%) OR >8 vague patterns
 ///
 /// Edge cases:
 /// - Specs with no body text default to Grade D
@@ -94,24 +94,19 @@ pub fn calculate_confidence(spec: &Spec, _config: &Config) -> ConfidenceGrade {
     let vague_count = count_all_vague_instances(&spec.body);
 
     // Apply grading logic (check from best to worst grade)
-    // Grade D: Very low bullet ratio (<20%) OR >5 vague patterns
-    if bullet_ratio < 0.20 || vague_count > 5 {
+    // Grade D: Very low bullet ratio (<10%) OR >8 vague patterns
+    if bullet_ratio < 0.10 || vague_count > 8 {
         return ConfidenceGrade::D;
     }
 
-    // Grade A: High bullet ratio (>80%), verbs in >80% bullets, no vague patterns
-    if bullet_ratio > 0.80 && verb_ratio > 0.80 && vague_count == 0 {
+    // Grade A: High bullet ratio (>60%), verbs in >80% bullets, no vague patterns
+    if bullet_ratio > 0.60 && verb_ratio > 0.80 && vague_count == 0 {
         return ConfidenceGrade::A;
     }
 
-    // Grade B: Medium bullet ratio (>50%), verbs in >50% bullets, <3 vague patterns
-    if bullet_ratio > 0.50 && verb_ratio > 0.50 && vague_count < 3 {
+    // Grade B: Medium bullet ratio (>30%), verbs in >50% bullets, <3 vague patterns
+    if bullet_ratio > 0.30 && verb_ratio > 0.50 && vague_count < 3 {
         return ConfidenceGrade::B;
-    }
-
-    // Grade C: Low bullet ratio (>20%), verbs in >30% bullets, 3-5 vague patterns
-    if bullet_ratio > 0.20 && verb_ratio > 0.30 && (3..=5).contains(&vague_count) {
-        return ConfidenceGrade::C;
     }
 
     // Default to C for specs that don't fit clear patterns
@@ -122,6 +117,7 @@ pub fn calculate_confidence(spec: &Spec, _config: &Config) -> ConfidenceGrade {
 ///
 /// Bullet lines start with `-` or `*` (after trimming).
 /// Paragraph lines are non-empty lines that aren't bullets, headings, or code fences.
+/// Markdown headings are excluded from paragraph count as they are structural.
 /// Empty bullets (just `-` or `*` with no content) don't count.
 fn count_bullets_and_paragraphs(body: &str) -> (usize, usize) {
     let mut bullet_count = 0;
@@ -137,7 +133,7 @@ fn count_bullets_and_paragraphs(body: &str) -> (usize, usize) {
             continue;
         }
 
-        // Skip empty lines, code blocks, and headings
+        // Skip empty lines, code blocks, and headings (headings are structural, not prose)
         if trimmed.is_empty() || in_code_fence || trimmed.starts_with('#') {
             continue;
         }
@@ -288,7 +284,7 @@ mod tests {
 
     #[test]
     fn test_grade_a_high_bullet_ratio_no_vague() {
-        // 10 bullets, 2 paragraphs = 83% bullet ratio
+        // 10 bullets, 2 paragraphs = 83% bullet ratio (>60% needed)
         // All bullets have imperative verbs
         // No vague language
         let spec = Spec {
@@ -321,8 +317,9 @@ Another paragraph here.
 
     #[test]
     fn test_grade_b_medium_bullet_ratio_few_vague() {
-        // 5 bullets, 5 paragraphs = 50% bullet ratio (need >50%)
-        // Actually 6 bullets, 4 paragraphs = 60%
+        // 6 bullets, 4 paragraphs = 60% bullet ratio (>30% needed)
+        // All bullets have imperative verbs (>50% needed)
+        // 1 vague pattern (<3 needed)
         let spec = Spec {
             id: "test".to_string(),
             frontmatter: SpecFrontmatter::default(),
@@ -351,7 +348,7 @@ Fourth paragraph with improve here.
 
     #[test]
     fn test_grade_d_low_bullet_ratio() {
-        // 1 bullet, 10 paragraphs = ~9% bullet ratio (< 20%)
+        // 1 bullet, 10 paragraphs = ~9% bullet ratio (< 10%)
         let spec = Spec {
             id: "test".to_string(),
             frontmatter: SpecFrontmatter::default(),
@@ -379,7 +376,8 @@ It will get a low grade.
 
     #[test]
     fn test_grade_d_many_vague_patterns() {
-        // Even with good structure, >5 vague patterns → Grade D
+        // Even with good structure, >8 vague patterns → Grade D
+        // Vague instances: improve(2), as needed(3), etc(2), and related(2), similar(1) = 10 total
         let spec = Spec {
             id: "test".to_string(),
             frontmatter: SpecFrontmatter::default(),
@@ -388,8 +386,8 @@ It will get a low grade.
 ## Acceptance Criteria
 
 - [ ] Improve performance as needed
-- [ ] Add features and related functionality
-- [ ] Create tests etc
+- [ ] Add features and related functionality, etc
+- [ ] Create tests etc as needed
 - [ ] Update components as needed
 - [ ] Fix bugs and related issues
 - [ ] Similar improvements needed
@@ -480,8 +478,10 @@ Final paragraph.
     }
 
     #[test]
-    fn test_grade_c_with_some_vague_patterns() {
-        // Low-medium bullet ratio, some verbs, 3-5 vague patterns
+    fn test_grade_c_fallthrough() {
+        // Doesn't meet B criteria (bullet ratio <30% or verb ratio <50% or vague >= 3)
+        // Doesn't meet D criteria (bullet ratio >=10% and vague <= 8)
+        // Falls through to C
         let spec = Spec {
             id: "test".to_string(),
             frontmatter: SpecFrontmatter::default(),
