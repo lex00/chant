@@ -1891,9 +1891,8 @@ fn tool_chant_work_start(arguments: Option<&Value>) -> Result<Value> {
 
     let spec_id = spec.id.clone();
 
-    // Pre-validate spec quality unless skip_criteria is true
-    // This prevents silent failures in non-interactive mode
-    if !skip_criteria {
+    // Calculate spec quality for advisory feedback (not a gate)
+    let quality_warning = if !skip_criteria {
         use crate::config::Config;
         use crate::scoring::{calculate_spec_score, TrafficLight};
 
@@ -1933,43 +1932,47 @@ fn tool_chant_work_start(arguments: Option<&Value>) -> Result<Value> {
             use crate::score::traffic_light;
 
             let suggestions = traffic_light::generate_suggestions(&quality_score);
-            let mut error_message = format!(
-                "Spec '{}' has quality issues (status: Red/Refine) that may cause problems:\n\n",
-                spec_id
-            );
+            let mut warning_message =
+                "Quality advisory (Red/Refine) - work will start but spec may need improvement:\n\n"
+                    .to_string();
 
-            error_message.push_str("Quality Assessment:\n");
-            error_message.push_str(&format!("  Complexity:    {}\n", quality_score.complexity));
-            error_message.push_str(&format!("  Confidence:    {}\n", quality_score.confidence));
-            error_message.push_str(&format!(
+            warning_message.push_str("Quality Assessment:\n");
+            warning_message.push_str(&format!("  Complexity:    {}\n", quality_score.complexity));
+            warning_message.push_str(&format!("  Confidence:    {}\n", quality_score.confidence));
+            warning_message.push_str(&format!(
                 "  Splittability: {}\n",
                 quality_score.splittability
             ));
-            error_message.push_str(&format!("  AC Quality:    {}\n", quality_score.ac_quality));
+            warning_message.push_str(&format!("  AC Quality:    {}\n", quality_score.ac_quality));
             if let Some(iso) = quality_score.isolation {
-                error_message.push_str(&format!("  Isolation:     {}\n", iso));
+                warning_message.push_str(&format!("  Isolation:     {}\n", iso));
             }
 
             if !suggestions.is_empty() {
-                error_message.push_str("\nSuggestions:\n");
+                warning_message.push_str("\nSuggestions:\n");
                 for suggestion in &suggestions {
-                    error_message.push_str(&format!("  • {}\n", suggestion));
+                    warning_message.push_str(&format!("  • {}\n", suggestion));
                 }
             }
 
-            error_message.push_str("\nTo bypass quality checks, use skip_criteria: true\n");
-
-            return Ok(json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": error_message
-                    }
-                ],
-                "isError": true
-            }));
+            Some(json!({
+                "status": "refine",
+                "scores": {
+                    "complexity": quality_score.complexity.to_string(),
+                    "confidence": quality_score.confidence.to_string(),
+                    "splittability": quality_score.splittability.to_string(),
+                    "ac_quality": quality_score.ac_quality.to_string(),
+                    "isolation": quality_score.isolation.map(|i| i.to_string())
+                },
+                "suggestions": suggestions,
+                "message": warning_message
+            }))
+        } else {
+            None
         }
-    }
+    } else {
+        None
+    };
 
     // Note: Do NOT transition to InProgress here. The spawned `chant work`
     // handles that transition itself (single.rs line 179). Setting it here
@@ -2017,13 +2020,19 @@ fn tool_chant_work_start(arguments: Option<&Value>) -> Result<Value> {
     let processes_dir = project_root.join(".chant/processes");
     std::fs::create_dir_all(&processes_dir)?;
 
-    let process_info = json!({
+    let mut process_info = json!({
         "process_id": process_id,
         "spec_id": spec_id,
         "pid": pid,
         "started_at": started_at,
-        "mode": mode
+        "mode": mode,
+        "started": true
     });
+
+    // Include quality warning if present
+    if let Some(warning) = quality_warning {
+        process_info["quality_warning"] = warning;
+    }
 
     let process_file = processes_dir.join(format!("{}.json", process_id));
     std::fs::write(&process_file, serde_json::to_string_pretty(&process_info)?)?;
