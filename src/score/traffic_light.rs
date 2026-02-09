@@ -12,19 +12,18 @@ use crate::scoring::{
 ///
 /// Traffic light logic:
 /// - Ready (green): Complexity ≤ B AND Confidence ≥ B AND AC Quality ≥ B
-/// - Refine (red): Any dimension is D OR Confidence is D
-/// - Review (yellow): All other cases (any dimension is C)
+/// - Refine (red): Complexity is D OR Confidence is D OR AC Quality is D
+/// - Review (yellow): All other cases (Complexity/Confidence/AC Quality is C)
 ///
-/// Note: Isolation grade (optional) does not affect traffic light status
+/// Note: Splittability and Isolation do not affect traffic light status.
+/// Splittability C is good (focused spec), not a problem.
+/// Isolation is only for group analysis, not gating work.
 pub fn determine_status(score: &SpecScore) -> TrafficLight {
-    // Check for Refine conditions: any dimension is D
+    // Check for Refine conditions: core dimensions are D
+    // Splittability and Isolation do NOT contribute to traffic light
     if matches!(score.complexity, ComplexityGrade::D)
         || matches!(score.confidence, ConfidenceGrade::D)
         || matches!(score.ac_quality, ACQualityGrade::D)
-        || matches!(score.splittability, SplittabilityGrade::D)
-        || score
-            .isolation
-            .is_some_and(|iso| matches!(iso, IsolationGrade::D))
     {
         return TrafficLight::Refine;
     }
@@ -38,7 +37,7 @@ pub fn determine_status(score: &SpecScore) -> TrafficLight {
         return TrafficLight::Ready;
     }
 
-    // All other cases: Review (any dimension is C)
+    // All other cases: Review (any core dimension is C)
     TrafficLight::Review
 }
 
@@ -61,38 +60,44 @@ pub fn generate_suggestions(score: &SpecScore) -> Vec<String> {
         _ => {}
     }
 
-    // Confidence suggestions
+    // Confidence suggestions - match what the scorer actually checks
     match score.confidence {
         ConfidenceGrade::D => {
-            suggestions.push("Improve spec structure and clarify vague requirements".to_string());
+            suggestions.push("Use bullet points instead of prose paragraphs; avoid vague words like 'improve', 'as needed', 'etc', 'similar'".to_string());
         }
         ConfidenceGrade::C => {
-            suggestions.push("Add more specific details and improve organization".to_string());
+            suggestions.push("Increase bullet-to-prose ratio (>50%); start bullets with imperative verbs; reduce vague language".to_string());
         }
         _ => {}
     }
 
-    // AC Quality suggestions
+    // AC Quality suggestions - match what the scorer actually checks (count-based)
     match score.ac_quality {
         ACQualityGrade::D => {
-            suggestions.push(
-                "Rewrite acceptance criteria to be imperative, valuable, and testable".to_string(),
-            );
+            suggestions.push("Add at least 1 acceptance criteria checkbox".to_string());
         }
         ACQualityGrade::C => {
-            suggestions.push("Improve acceptance criteria phrasing and specificity".to_string());
+            suggestions.push("Add at least 2 acceptance criteria checkboxes".to_string());
+        }
+        ACQualityGrade::B => {
+            suggestions
+                .push("Add at least 4 acceptance criteria checkboxes for Grade A".to_string());
         }
         _ => {}
     }
 
-    // Splittability suggestions
+    // Splittability suggestions - match what the scorer actually checks
     match score.splittability {
         SplittabilityGrade::D => {
-            suggestions
-                .push("Refactor to reduce tight coupling and circular dependencies".to_string());
+            suggestions.push(
+                "Remove coupling keywords ('tightly coupled', 'depends on each other')".to_string(),
+            );
         }
         SplittabilityGrade::C => {
-            suggestions.push("Consider breaking into more independent subsections".to_string());
+            suggestions.push(
+                "Add target_files and organize with ## section headers to improve splittability"
+                    .to_string(),
+            );
         }
         _ => {}
     }
@@ -307,17 +312,48 @@ mod tests {
     }
 
     #[test]
-    fn test_determine_status_isolation_d_refine() {
+    fn test_determine_status_isolation_d_still_ready() {
+        // Isolation D does not affect traffic light anymore
         let score = SpecScore {
             complexity: ComplexityGrade::A,
             confidence: ConfidenceGrade::A,
             splittability: SplittabilityGrade::A,
             isolation: Some(IsolationGrade::D),
             ac_quality: ACQualityGrade::A,
-            traffic_light: TrafficLight::Refine,
+            traffic_light: TrafficLight::Ready,
         };
 
-        assert_eq!(determine_status(&score), TrafficLight::Refine);
+        assert_eq!(determine_status(&score), TrafficLight::Ready);
+    }
+
+    #[test]
+    fn test_determine_status_splittability_d_still_ready() {
+        // Splittability D does not affect traffic light anymore
+        let score = SpecScore {
+            complexity: ComplexityGrade::A,
+            confidence: ConfidenceGrade::A,
+            splittability: SplittabilityGrade::D,
+            isolation: None,
+            ac_quality: ACQualityGrade::A,
+            traffic_light: TrafficLight::Ready,
+        };
+
+        assert_eq!(determine_status(&score), TrafficLight::Ready);
+    }
+
+    #[test]
+    fn test_determine_status_splittability_c_still_ready() {
+        // Splittability C is good (focused spec), should not prevent Ready
+        let score = SpecScore {
+            complexity: ComplexityGrade::B,
+            confidence: ConfidenceGrade::B,
+            splittability: SplittabilityGrade::C,
+            isolation: None,
+            ac_quality: ACQualityGrade::B,
+            traffic_light: TrafficLight::Ready,
+        };
+
+        assert_eq!(determine_status(&score), TrafficLight::Ready);
     }
 
     #[test]
@@ -364,7 +400,7 @@ mod tests {
 
         let suggestions = generate_suggestions(&score);
         assert_eq!(suggestions.len(), 1);
-        assert!(suggestions[0].contains("Add more specific details"));
+        assert!(suggestions[0].contains("bullet-to-prose ratio"));
     }
 
     #[test]
@@ -386,14 +422,12 @@ mod tests {
             .any(|s| s.contains("Reduce criteria count")));
         assert!(suggestions
             .iter()
-            .any(|s| s.contains("Add more specific details")));
-        assert!(suggestions
-            .iter()
-            .any(|s| s.contains("breaking into more independent")));
+            .any(|s| s.contains("bullet-to-prose ratio")));
+        assert!(suggestions.iter().any(|s| s.contains("target_files")));
         assert!(suggestions
             .iter()
             .any(|s| s.contains("reducing coupling between group")));
-        assert!(suggestions.iter().any(|s| s.contains("imperative")));
+        assert!(suggestions.iter().any(|s| s.contains("checkbox")));
     }
 
     #[test]
