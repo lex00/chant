@@ -1971,16 +1971,10 @@ fn tool_chant_work_start(arguments: Option<&Value>) -> Result<Value> {
         }
     }
 
-    // Update status to in_progress after quality validation passes (matches CLI behavior)
-    use crate::spec::TransitionBuilder;
-    let mut spec = spec;
-    let spec_path = specs_dir.join(format!("{}.md", spec_id));
-
-    TransitionBuilder::new(&mut spec)
-        .to(SpecStatus::InProgress)
-        .map_err(|e| anyhow::anyhow!("Failed to transition spec to in_progress: {}", e))?;
-
-    spec.save(&spec_path)?;
+    // Note: Do NOT transition to InProgress here. The spawned `chant work`
+    // handles that transition itself (single.rs line 179). Setting it here
+    // causes `chant work` to reject the spec with "already in progress",
+    // leaving it stuck as in_progress forever (the error goes to /dev/null).
 
     // Build command based on mode
     let mut cmd = Command::new("chant");
