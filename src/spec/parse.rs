@@ -429,12 +429,28 @@ impl Spec {
 
     /// Check if this spec has unmet dependencies or approval requirements that would block it.
     pub fn is_blocked(&self, all_specs: &[Spec]) -> bool {
+        // Check the spec's own dependencies
         if let Some(deps) = &self.frontmatter.depends_on {
             for dep_id in deps {
                 let dep = all_specs.iter().find(|s| s.id == *dep_id);
                 match dep {
                     Some(d) if d.frontmatter.status == SpecStatus::Completed => continue,
                     _ => return true,
+                }
+            }
+        }
+
+        // If this is a member spec, also check the driver's dependencies
+        if let Some(driver_id) = crate::spec_group::extract_driver_id(&self.id) {
+            if let Some(driver_spec) = all_specs.iter().find(|s| s.id == driver_id) {
+                if let Some(driver_deps) = &driver_spec.frontmatter.depends_on {
+                    for dep_id in driver_deps {
+                        let dep = all_specs.iter().find(|s| s.id == *dep_id);
+                        match dep {
+                            Some(d) if d.frontmatter.status == SpecStatus::Completed => continue,
+                            _ => return true,
+                        }
+                    }
                 }
             }
         }
