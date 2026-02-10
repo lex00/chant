@@ -215,6 +215,9 @@ fn cmd_split_impl(
         anyhow::bail!("Agent did not propose any member specs. Check the agent output in the log.");
     }
 
+    // Detect stub member specs
+    detect_stub_members(&members)?;
+
     // Display dependency analysis if present
     if let Some(ref analysis) = dep_analysis {
         println!("\n{} Dependency Analysis:", "→".cyan());
@@ -1144,6 +1147,89 @@ fn display_split_quality_report(
     }
 
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+}
+
+/// Detect stub member specs and bail if found
+fn detect_stub_members(members: &[MemberSpec]) -> Result<()> {
+    const MIN_BODY_WORDS: usize = 50;
+
+    let generic_phrases = [
+        "implement as described",
+        "all tests pass",
+        "code compiles",
+        "no warnings",
+        "no errors",
+    ];
+
+    let mut stub_members = Vec::new();
+
+    for (index, member) in members.iter().enumerate() {
+        let member_number = index + 1;
+        let word_count = member.description.split_whitespace().count();
+
+        // Check for very short body (excluding frontmatter)
+        let is_too_short = word_count < MIN_BODY_WORDS;
+
+        // Check for only generic acceptance criteria
+        let has_only_generic_ac = {
+            // Extract acceptance criteria section
+            let ac_section =
+                if let Some(ac_start) = member.description.find("### Acceptance Criteria") {
+                    &member.description[ac_start..]
+                } else if let Some(ac_start) = member.description.find("## Acceptance Criteria") {
+                    &member.description[ac_start..]
+                } else {
+                    ""
+                };
+
+            // Count checkbox items in AC section
+            let checkbox_count = ac_section.matches("- [ ]").count()
+                + ac_section.matches("- [x]").count()
+                + ac_section.matches("- [X]").count();
+
+            // If there are checkboxes, check if they're all generic
+            if checkbox_count > 0 {
+                let generic_count = generic_phrases
+                    .iter()
+                    .filter(|phrase| ac_section.to_lowercase().contains(*phrase))
+                    .count();
+
+                // If all checkboxes are generic phrases (with some tolerance)
+                generic_count >= checkbox_count
+            } else {
+                false
+            }
+        };
+
+        if is_too_short || has_only_generic_ac {
+            stub_members.push((
+                member_number,
+                member.title.clone(),
+                word_count,
+                has_only_generic_ac,
+            ));
+        }
+    }
+
+    if !stub_members.is_empty() {
+        eprintln!("\n{} Detected stub member specs:", "⚠".yellow());
+        for (num, title, word_count, has_generic) in &stub_members {
+            let reason = if *has_generic {
+                "generic acceptance criteria"
+            } else {
+                &format!("very short body ({} words)", word_count)
+            };
+            eprintln!("  • Member {}: {} ({})", num, title, reason);
+        }
+
+        anyhow::bail!(
+            "Split produced {} stub member spec{}. Agent should flesh out all members with specific acceptance criteria and detailed descriptions.",
+            stub_members.len(),
+            if stub_members.len() == 1 { "" } else { "s" }
+        );
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

@@ -278,6 +278,9 @@ pub fn invoke_agent_with_model(
     override_model: Option<&str>,
     cwd: Option<&Path>,
 ) -> Result<String> {
+    use std::io::{BufRead, BufReader};
+    use std::process::{Command, Stdio};
+
     // Create streaming log writer before spawning agent (writes header immediately)
     let mut log_writer = match StreamingLogWriter::new(&spec.id, prompt_name) {
         Ok(writer) => Some(writer),
@@ -297,37 +300,132 @@ pub fn invoke_agent_with_model(
         get_model_for_invocation(config.defaults.model.as_deref())
     };
 
-    // Get the appropriate provider
-    let provider_type = config.defaults.provider;
-    let model_provider = get_model_provider(provider_type, config)?;
-
     // Set CHANT_SPEC_ID and CHANT_SPEC_FILE env vars
     std::env::set_var("CHANT_SPEC_ID", &spec.id);
     std::env::set_var("CHANT_SPEC_FILE", &spec_file);
 
-    // Change to working directory if provided
-    let original_cwd = std::env::current_dir().ok();
-    if let Some(path) = cwd {
-        std::env::set_current_dir(path)?;
-    }
+    // Check if provider is Claude CLI (for subprocess invocation)
+    let provider_type = config.defaults.provider;
 
-    // Invoke the model provider with streaming callback
-    let captured_output = model_provider.invoke(message, &model, &mut |text_line: &str| {
-        println!("{}", text_line);
-        if let Some(ref mut writer) = log_writer {
-            if let Err(e) = writer.write_line(text_line) {
-                eprintln!("{} Failed to write to agent log: {}", "⚠".yellow(), e);
+    if provider_type == provider::ProviderType::Claude
+        || provider_type == provider::ProviderType::Kirocli
+    {
+        // Use subprocess invocation for Claude CLI
+        let command = if provider_type == provider::ProviderType::Claude {
+            "claude"
+        } else {
+            "kiro"
+        };
+
+        let mut cmd = Command::new(command);
+        cmd.arg("--print")
+            .arg("--output-format")
+            .arg("stream-json")
+            .arg("--verbose")
+            .arg("--model")
+            .arg(&model)
+            .arg("--dangerously-skip-permissions")
+            .arg(message)
+            .env("CHANT_SPEC_ID", &spec.id)
+            .env("CHANT_SPEC_FILE", &spec_file)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+
+        // Set working directory if provided
+        if let Some(path) = cwd {
+            cmd.current_dir(path);
+        }
+
+        let mut child = cmd.spawn().with_context(|| {
+            format!(
+                "Failed to invoke agent '{}'. Is it installed and in PATH?",
+                command
+            )
+        })?;
+
+        // Write PID file for tracking
+        if let Err(e) = chant::pid::write_pid_file(&spec.id, child.id()) {
+            eprintln!("{} Failed to write PID file: {}", "⚠".yellow(), e);
+        }
+
+        // Collect output while streaming to terminal and log
+        let mut captured_output = String::new();
+        let mut stderr_output = String::new();
+
+        // Stream stdout to both terminal and log file
+        if let Some(stdout) = child.stdout.take() {
+            let reader = BufReader::new(stdout);
+            for line in reader.lines().map_while(Result::ok) {
+                for text in extract_text_from_stream_json(&line) {
+                    for text_line in text.lines() {
+                        println!("{}", text_line);
+                        captured_output.push_str(text_line);
+                        captured_output.push('\n');
+                        if let Some(ref mut writer) = log_writer {
+                            if let Err(e) = writer.write_line(text_line) {
+                                eprintln!("{} Failed to write to agent log: {}", "⚠".yellow(), e);
+                            }
+                        }
+                    }
+                }
             }
         }
-        Ok(())
-    })?;
 
-    // Restore original working directory
-    if let Some(original_cwd) = original_cwd {
-        std::env::set_current_dir(original_cwd)?;
+        // Capture stderr for diagnostics
+        if let Some(stderr) = child.stderr.take() {
+            use std::io::Read;
+            let mut stderr_reader = BufReader::new(stderr);
+            let _ = stderr_reader.read_to_string(&mut stderr_output);
+        }
+
+        let status = child.wait()?;
+
+        // Clean up PID file
+        if let Err(e) = chant::pid::remove_pid_file(&spec.id) {
+            eprintln!("{} Failed to remove PID file: {}", "⚠".yellow(), e);
+        }
+
+        if !status.success() {
+            // Include stderr output in error message for diagnostics
+            let mut error_msg = format!("Agent exited with status: {}", status);
+            if !stderr_output.is_empty() {
+                error_msg.push_str(&format!("\n\nStderr:\n{}", stderr_output.trim()));
+            }
+            if captured_output.is_empty() && stderr_output.is_empty() {
+                error_msg.push_str("\n\nNo output captured - agent may have died immediately after starting. Check working directory and CLAUDE.md configuration.");
+            }
+            anyhow::bail!(error_msg);
+        }
+
+        Ok(captured_output)
+    } else {
+        // Use provider interface for other providers (Ollama, OpenAI, etc.)
+        let model_provider = get_model_provider(provider_type, config)?;
+
+        // Change to working directory if provided
+        let original_cwd = std::env::current_dir().ok();
+        if let Some(path) = cwd {
+            std::env::set_current_dir(path)?;
+        }
+
+        // Invoke the model provider with streaming callback
+        let captured_output = model_provider.invoke(message, &model, &mut |text_line: &str| {
+            println!("{}", text_line);
+            if let Some(ref mut writer) = log_writer {
+                if let Err(e) = writer.write_line(text_line) {
+                    eprintln!("{} Failed to write to agent log: {}", "⚠".yellow(), e);
+                }
+            }
+            Ok(())
+        })?;
+
+        // Restore original working directory
+        if let Some(original_cwd) = original_cwd {
+            std::env::set_current_dir(original_cwd)?;
+        }
+
+        Ok(captured_output)
     }
-
-    Ok(captured_output)
 }
 
 /// Get the appropriate model provider based on configuration
