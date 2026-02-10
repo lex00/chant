@@ -254,6 +254,7 @@ fn prepare_spec_for_parallel(
 
     execution_state.register_worktree(&spec.id, worktree_path.clone());
     worktree::copy_spec_to_worktree(&spec.id, &worktree_path)?;
+    worktree::isolate_worktree_specs(&spec.id, &worktree_path)?;
 
     // Assemble prompt with worktree context
     let worktree_ctx = chant::prompt::WorktreeContext {

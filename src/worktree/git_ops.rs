@@ -293,6 +293,72 @@ pub fn copy_spec_to_worktree(spec_id: &str, worktree_path: &Path) -> Result<()> 
     Ok(())
 }
 
+/// Isolates the worktree environment by removing all specs except the working spec.
+///
+/// This prevents agents from seeing sibling specs and getting confused about their task,
+/// especially in group scenarios where many related specs exist.
+///
+/// # Arguments
+///
+/// * `spec_id` - The specification ID (the only spec to keep)
+/// * `worktree_path` - The path to the worktree
+///
+/// # Returns
+///
+/// Ok(()) if the isolation was successful.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Directory operations fail
+/// - The working spec doesn't exist in the worktree
+pub fn isolate_worktree_specs(spec_id: &str, worktree_path: &Path) -> Result<()> {
+    let worktree_specs_dir = worktree_path.join(".chant/specs");
+    let worktree_archive_dir = worktree_path.join(".chant/archive");
+    let working_spec_filename = format!("{}.md", spec_id);
+
+    // Remove the archive directory entirely (agents don't need it)
+    if worktree_archive_dir.exists() {
+        std::fs::remove_dir_all(&worktree_archive_dir).context(format!(
+            "Failed to remove archive directory in worktree: {:?}",
+            worktree_archive_dir
+        ))?;
+    }
+
+    // Remove all specs except the working spec
+    if worktree_specs_dir.exists() {
+        let entries = std::fs::read_dir(&worktree_specs_dir).context(format!(
+            "Failed to read specs directory in worktree: {:?}",
+            worktree_specs_dir
+        ))?;
+
+        for entry in entries {
+            let entry = entry.context("Failed to read directory entry")?;
+            let path = entry.path();
+
+            // Skip if it's not a file
+            if !path.is_file() {
+                continue;
+            }
+
+            // Skip the working spec
+            if let Some(filename) = path.file_name() {
+                if filename == working_spec_filename.as_str() {
+                    continue;
+                }
+            }
+
+            // Remove all other spec files
+            std::fs::remove_file(&path).context(format!(
+                "Failed to remove spec file in worktree: {:?}",
+                path
+            ))?;
+        }
+    }
+
+    Ok(())
+}
+
 /// Removes a git worktree and cleans up its directory.
 ///
 /// This function is idempotent - it does not error if the worktree is already gone.

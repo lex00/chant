@@ -203,6 +203,7 @@ pub fn cmd_work(
 
     let worktree_path = worktree::create_worktree(&spec.id, &branch_name, project_name)?;
     worktree::copy_spec_to_worktree(&spec.id, &worktree_path)?;
+    worktree::isolate_worktree_specs(&spec.id, &worktree_path)?;
     out.step(&format!("Worktree: {}", worktree_path.display()));
 
     // Resolve prompt: CLI > wizard > frontmatter > auto-select by type > default
