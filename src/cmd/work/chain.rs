@@ -50,11 +50,12 @@ fn is_driver_or_group_spec(spec: &Spec, all_specs: &[Spec]) -> bool {
     !spec_group::get_members(&spec.id, all_specs).is_empty()
 }
 
-/// Find the next ready spec respecting filters
+/// Find the next ready spec respecting filters and group boundaries
 fn find_next_ready_spec(
     specs_dir: &Path,
     labels: &[String],
     skip_spec_id: Option<&str>,
+    active_group: Option<&str>,
 ) -> Result<Option<Spec>> {
     let all_specs = spec::load_all_specs(specs_dir)?;
 
@@ -87,6 +88,17 @@ fn find_next_ready_spec(
 
     // Sort by spec ID to ensure chronological order (IDs are date-based: YYYY-MM-DD-NNN-xxx)
     ready_specs.sort_by(|a, b| spec_group::compare_spec_ids(&a.id, &b.id));
+
+    // If there's an active group, prefer members of that group
+    if let Some(driver_id) = active_group {
+        // Check if there are any ready members of the active group
+        if let Some(group_member) = ready_specs
+            .iter()
+            .find(|s| spec_group::extract_driver_id(&s.id).as_deref() == Some(driver_id))
+        {
+            return Ok(Some(group_member.clone()));
+        }
+    }
 
     // Return the first (oldest) ready spec
     Ok(ready_specs.into_iter().next())
@@ -228,6 +240,7 @@ pub fn cmd_work_chain(
     let mut failed_spec: Option<(String, String)> = None;
     let start_time = Instant::now();
     let mut all_specs = spec::load_all_specs(specs_dir)?;
+    let mut active_group: Option<String> = None;
 
     loop {
         if is_chain_interrupted() || failed_spec.is_some() {
@@ -256,7 +269,7 @@ pub fn cmd_work_chain(
                 .cloned()
                 .unwrap_or_else(|| resolved_specs[idx].clone())
         } else {
-            match find_next_ready_spec(specs_dir, options.labels, None)? {
+            match find_next_ready_spec(specs_dir, options.labels, None, active_group.as_deref())? {
                 Some(s) => s,
                 None => break,
             }
@@ -267,6 +280,15 @@ pub fn cmd_work_chain(
             print_skip_reason(&spec, &all_specs, &options);
             skipped += 1;
             continue;
+        }
+
+        // Track group membership for group-aware sequencing
+        if let Some(driver_id) = spec_group::extract_driver_id(&spec.id) {
+            // This is a member spec - set or maintain the active group
+            active_group = Some(driver_id);
+        } else {
+            // This is a standalone spec - clear the active group
+            active_group = None;
         }
 
         pb.set_message(format!(
@@ -298,6 +320,14 @@ pub fn cmd_work_chain(
                 ));
                 completed += 1;
                 all_specs = spec::load_all_specs(specs_dir)?;
+
+                // Check if the active group is now complete
+                if let Some(ref driver_id) = active_group {
+                    if spec_group::all_members_completed(driver_id, &all_specs) {
+                        // All members of this group are done - clear the active group
+                        active_group = None;
+                    }
+                }
             }
             Err(e) => {
                 pb.println(format!("{} Failed {}: {}", "✗".red(), spec.id, e));
