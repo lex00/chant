@@ -328,6 +328,16 @@ fn execute_single_spec_in_chain(
     }
 }
 
+/// Track progress within a group
+struct GroupProgress {
+    driver_id: String,
+    group_index: usize,
+    total_groups: usize,
+    completed_members: usize,
+    failed_members: usize,
+    total_members: usize,
+}
+
 /// Chain execution mode: loop through ready specs until none remain or failure
 pub fn cmd_work_chain(
     specs_dir: &Path,
@@ -383,6 +393,7 @@ pub fn cmd_work_chain(
     let start_time = Instant::now();
     let mut all_specs = spec::load_all_specs(specs_dir)?;
     let mut active_group: Option<String> = None;
+    let mut current_group_progress: Option<GroupProgress> = None;
 
     // Compute topological order of groups at startup
     let group_order = topological_sort_groups(&all_specs)?;
@@ -433,13 +444,46 @@ pub fn cmd_work_chain(
             continue;
         }
 
-        // Track group membership for group-aware sequencing
+        // Track group membership for group-aware sequencing and progress reporting
         if let Some(driver_id) = spec_group::extract_driver_id(&spec.id) {
-            // This is a member spec - set or maintain the active group
-            active_group = Some(driver_id);
+            // This is a member spec - check if we're entering a new group
+            if active_group.as_deref() != Some(&driver_id) {
+                // Starting a new group - print group header
+                let group_index = group_order
+                    .iter()
+                    .position(|g| g == &driver_id)
+                    .unwrap_or(0);
+                let driver_spec = all_specs.iter().find(|s| s.id == driver_id);
+                let driver_title = driver_spec
+                    .and_then(|s| s.title.as_deref())
+                    .unwrap_or("Untitled");
+                let total_members = spec_group::get_members(&driver_id, &all_specs).len();
+
+                pb.println(format!(
+                    "\n{} Starting group {} ({}) — {} member{}",
+                    "→".cyan(),
+                    driver_id,
+                    driver_title,
+                    total_members,
+                    if total_members == 1 { "" } else { "s" }
+                ));
+
+                current_group_progress = Some(GroupProgress {
+                    driver_id: driver_id.clone(),
+                    group_index: group_index + 1,
+                    total_groups: group_order.len(),
+                    completed_members: 0,
+                    failed_members: 0,
+                    total_members,
+                });
+                active_group = Some(driver_id);
+            }
         } else {
-            // This is a standalone spec - clear the active group
-            active_group = None;
+            // Standalone spec - print standalone context if we were in a group
+            if active_group.is_some() {
+                active_group = None;
+                current_group_progress = None;
+            }
         }
 
         pb.set_message(format!(
@@ -463,30 +507,90 @@ pub fn cmd_work_chain(
             Ok(()) => {
                 let elapsed = spec_start.elapsed();
                 pb.inc(1);
-                pb.println(format!(
-                    "{} Completed {} in {:.1}s",
-                    "✓".green(),
-                    spec.id,
-                    elapsed.as_secs_f64()
-                ));
+
+                // Print per-member progress with group context
+                if let Some(ref mut gp) = current_group_progress {
+                    gp.completed_members += 1;
+                    pb.println(format!(
+                        "{} [group {}/{}] [member {}/{}] {} completed {} in {:.1}s",
+                        "✓".green(),
+                        gp.group_index,
+                        gp.total_groups,
+                        gp.completed_members + gp.failed_members,
+                        gp.total_members,
+                        "✓".green(),
+                        spec.id,
+                        elapsed.as_secs_f64()
+                    ));
+                } else {
+                    pb.println(format!(
+                        "{} [standalone] {} completed {} in {:.1}s",
+                        "✓".green(),
+                        "✓".green(),
+                        spec.id,
+                        elapsed.as_secs_f64()
+                    ));
+                }
+
                 completed += 1;
                 all_specs = spec::load_all_specs(specs_dir)?;
+
+                // Print running tally
+                let remaining = total.saturating_sub(completed + skipped);
+                pb.println(format!(
+                    "  {} [{}/{}] completed, {} failed, {} remaining",
+                    "→".dimmed(),
+                    completed,
+                    total,
+                    failed_specs.len(),
+                    remaining
+                ));
 
                 // Check if the active group is now complete
                 if let Some(ref driver_id) = active_group {
                     if spec_group::all_members_completed(driver_id, &all_specs) {
-                        // All members of this group are done - clear the active group
+                        // All members of this group are done - print group completion
+                        if let Some(ref gp) = current_group_progress {
+                            pb.println(format!(
+                                "{} Group {} completed ({}/{} members)\n",
+                                "✓".green(),
+                                gp.driver_id,
+                                gp.completed_members,
+                                gp.total_members
+                            ));
+                        }
                         active_group = None;
+                        current_group_progress = None;
                     }
                 }
             }
             Err(e) => {
                 pb.println(format!("{} Failed {}: {}", "✗".red(), spec.id, e));
                 failed_specs.push((spec.id.clone(), e.to_string()));
-                // Mark the group as failed so dependent members/groups are skipped
+
+                // Mark the group as failed and print summary
                 if let Some(driver_id) = spec_group::extract_driver_id(&spec.id) {
+                    if let Some(ref mut gp) = current_group_progress {
+                        gp.failed_members += 1;
+
+                        // Print group failure summary
+                        let completed_members = gp.completed_members;
+                        let failed_members = gp.failed_members;
+                        let skipped_members = gp.total_members - completed_members - failed_members;
+
+                        pb.println(format!(
+                            "{} Group {} partially failed: {} completed, {} failed, {} skipped\n",
+                            "✗".red(),
+                            gp.driver_id,
+                            completed_members,
+                            failed_members,
+                            skipped_members
+                        ));
+                    }
+
                     failed_groups.insert(driver_id);
                     active_group = None;
+                    current_group_progress = None;
                 }
                 all_specs = spec::load_all_specs(specs_dir)?;
             }

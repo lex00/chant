@@ -966,32 +966,120 @@ pub fn cmd_work_parallel(
     )?;
     drop(tx); // Signal completion
 
-    // Collect results from threads
+    // Collect results from threads with group-aware progress reporting
     let mut completed = 0;
     let mut failed = 0;
     let mut all_results = Vec::new();
     let mut branch_mode_branches = Vec::new();
     let mut direct_mode_results = Vec::new();
 
+    // Track group progress for reporting
+    let mut group_stats: HashMap<String, (usize, usize, usize)> = HashMap::new(); // driver_id -> (completed, failed, total)
+
+    // Pre-compute group memberships and totals
+    let current_specs = spec::load_all_specs(specs_dir)?;
+    let mut group_totals: HashMap<String, usize> = HashMap::new();
+    for spec in &ready_specs {
+        if let Some(driver_id) = chant::spec_group::extract_driver_id(&spec.id) {
+            *group_totals.entry(driver_id.clone()).or_insert(0) += 1;
+        }
+    }
+
+    // Initialize group stats
+    for (driver_id, total) in &group_totals {
+        group_stats.insert(driver_id.clone(), (0, 0, *total));
+    }
+
+    // Compute group order for indexing
+    let group_order: Vec<String> = {
+        let driver_specs: Vec<&Spec> = current_specs
+            .iter()
+            .filter(|s| {
+                s.frontmatter.r#type == "group"
+                    || s.frontmatter.r#type == "driver"
+                    || !chant::spec_group::get_members(&s.id, &current_specs).is_empty()
+            })
+            .collect();
+        driver_specs.iter().map(|s| s.id.clone()).collect()
+    };
+
     for result in rx {
         main_pb.inc(1);
+
+        // Update group stats if this is a member spec
+        let group_context =
+            if let Some(driver_id) = chant::spec_group::extract_driver_id(&result.spec_id) {
+                if let Some(stats) = group_stats.get_mut(&driver_id) {
+                    if result.success {
+                        stats.0 += 1; // completed
+                    } else {
+                        stats.1 += 1; // failed
+                    }
+
+                    let group_index = group_order
+                        .iter()
+                        .position(|g| g == &driver_id)
+                        .unwrap_or(0)
+                        + 1;
+                    let total_groups = group_order.len();
+                    let completed_in_group = stats.0;
+                    let failed_in_group = stats.1;
+                    let total_in_group = stats.2;
+
+                    Some((
+                        group_index,
+                        total_groups,
+                        completed_in_group + failed_in_group,
+                        total_in_group,
+                    ))
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
         if result.success {
             completed += 1;
+
+            // Print with group context
+            let prefix =
+                if let Some((group_idx, total_groups, member_idx, total_members)) = group_context {
+                    format!(
+                        "[group {}/{}] [member {}/{}]",
+                        group_idx, total_groups, member_idx, total_members
+                    )
+                } else {
+                    "[standalone]".to_string()
+                };
+
             if let Some(ref commits) = result.commits {
                 let commits_str = commits.join(", ");
                 main_pb.println(format!(
-                    "[{}] {} Completed (commits: {})",
+                    "{} [{}] {} Completed (commits: {})",
+                    prefix,
                     result.spec_id.cyan(),
                     "✓".green(),
                     commits_str
                 ));
             } else {
                 main_pb.println(format!(
-                    "[{}] {} Completed",
+                    "{} [{}] {} Completed",
+                    prefix,
                     result.spec_id.cyan(),
                     "✓".green()
                 ));
             }
+
+            // Print running tally
+            main_pb.println(format!(
+                "  {} [{}/{}] completed, {} failed, {} remaining",
+                "→".dimmed(),
+                completed,
+                assignments.len(),
+                failed,
+                assignments.len().saturating_sub(completed + failed)
+            ));
 
             // Collect branch info
             if result.is_direct_mode {
@@ -1002,14 +1090,51 @@ pub fn cmd_work_parallel(
         } else {
             failed += 1;
             let error_msg = result.error.as_deref().unwrap_or("Unknown error");
+
+            let prefix =
+                if let Some((group_idx, total_groups, member_idx, total_members)) = group_context {
+                    format!(
+                        "[group {}/{}] [member {}/{}]",
+                        group_idx, total_groups, member_idx, total_members
+                    )
+                } else {
+                    "[standalone]".to_string()
+                };
+
             main_pb.println(format!(
-                "[{}] {} Failed: {}",
+                "{} [{}] {} Failed: {}",
+                prefix,
                 result.spec_id.cyan(),
                 "✗".red(),
                 error_msg
             ));
         }
         all_results.push(result);
+    }
+
+    // Print group completion summaries
+    for (driver_id, (completed_members, failed_members, total_members)) in &group_stats {
+        if *completed_members > 0 || *failed_members > 0 {
+            if *failed_members == 0 && completed_members == total_members {
+                main_pb.println(format!(
+                    "{} Group {} completed ({}/{} members)",
+                    "✓".green(),
+                    driver_id,
+                    completed_members,
+                    total_members
+                ));
+            } else if *failed_members > 0 {
+                let skipped_members = total_members - completed_members - failed_members;
+                main_pb.println(format!(
+                    "{} Group {} partially failed: {} completed, {} failed, {} skipped",
+                    "⚠".yellow(),
+                    driver_id,
+                    completed_members,
+                    failed_members,
+                    skipped_members
+                ));
+            }
+        }
     }
 
     // Finish progress bar
