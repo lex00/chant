@@ -237,13 +237,14 @@ pub fn cmd_work_chain(
 
     let mut completed = 0;
     let mut skipped = 0;
-    let mut failed_spec: Option<(String, String)> = None;
+    let mut failed_specs: Vec<(String, String)> = Vec::new();
+    let mut failed_groups: std::collections::HashSet<String> = std::collections::HashSet::new();
     let start_time = Instant::now();
     let mut all_specs = spec::load_all_specs(specs_dir)?;
     let mut active_group: Option<String> = None;
 
     loop {
-        if is_chain_interrupted() || failed_spec.is_some() {
+        if is_chain_interrupted() {
             break;
         }
 
@@ -275,9 +276,9 @@ pub fn cmd_work_chain(
             }
         };
 
-        // Skip if not ready or already completed
-        if should_skip_spec(&spec, &all_specs, &options) {
-            print_skip_reason(&spec, &all_specs, &options);
+        // Skip if not ready, already completed, or blocked by failure
+        if should_skip_spec(&spec, &all_specs, &options, &failed_groups) {
+            print_skip_reason(&spec, &all_specs, &options, &failed_groups);
             skipped += 1;
             continue;
         }
@@ -331,15 +332,21 @@ pub fn cmd_work_chain(
             }
             Err(e) => {
                 pb.println(format!("{} Failed {}: {}", "✗".red(), spec.id, e));
-                failed_spec = Some((spec.id.clone(), e.to_string()));
+                failed_specs.push((spec.id.clone(), e.to_string()));
+                // Mark the group as failed so dependent members/groups are skipped
+                if let Some(driver_id) = spec_group::extract_driver_id(&spec.id) {
+                    failed_groups.insert(driver_id);
+                    active_group = None;
+                }
+                all_specs = spec::load_all_specs(specs_dir)?;
             }
         }
     }
 
     pb.finish_and_clear();
-    print_chain_summary(completed, skipped, &failed_spec, start_time.elapsed());
+    print_chain_summary(completed, skipped, &failed_specs, &failed_groups, start_time.elapsed());
 
-    if failed_spec.is_some() {
+    if !failed_specs.is_empty() {
         std::process::exit(1);
     }
 
@@ -347,7 +354,12 @@ pub fn cmd_work_chain(
 }
 
 /// Check if a spec should be skipped
-fn should_skip_spec(spec: &Spec, all_specs: &[Spec], options: &ChainOptions) -> bool {
+fn should_skip_spec(
+    spec: &Spec,
+    all_specs: &[Spec],
+    options: &ChainOptions,
+    failed_groups: &std::collections::HashSet<String>,
+) -> bool {
     if spec.frontmatter.status == SpecStatus::Cancelled {
         return true;
     }
@@ -363,15 +375,43 @@ fn should_skip_spec(spec: &Spec, all_specs: &[Spec], options: &ChainOptions) -> 
     if is_driver_or_group_spec(spec, all_specs) {
         return true;
     }
+    // Skip specs whose group has failed
+    if let Some(driver_id) = spec_group::extract_driver_id(&spec.id) {
+        if failed_groups.contains(&driver_id) {
+            return true;
+        }
+    }
+    // Skip specs that depend on a failed group's driver
+    if let Some(deps) = &spec.frontmatter.depends_on {
+        for dep in deps {
+            if failed_groups.contains(dep) {
+                return true;
+            }
+        }
+    }
     false
 }
 
 /// Print reason for skipping a spec
-fn print_skip_reason(spec: &Spec, all_specs: &[Spec], options: &ChainOptions) {
+fn print_skip_reason(
+    spec: &Spec,
+    all_specs: &[Spec],
+    options: &ChainOptions,
+    failed_groups: &std::collections::HashSet<String>,
+) {
     if spec.frontmatter.status == SpecStatus::Cancelled {
         println!("{} Skipping {}: cancelled", "⚠".yellow(), spec.id);
     } else if spec.frontmatter.status == SpecStatus::Completed {
         println!("{} Skipping {}: already completed", "⚠".yellow(), spec.id);
+    } else if let Some(driver_id) = spec_group::extract_driver_id(&spec.id) {
+        if failed_groups.contains(&driver_id) {
+            println!(
+                "{} Skipping {}: group {} has failures",
+                "⚠".yellow(),
+                spec.id,
+                driver_id
+            );
+        }
     } else if !spec.is_ready(all_specs) && !options.skip_deps {
         println!(
             "{} Skipping {}: not ready (dependencies not satisfied)",
@@ -391,13 +431,14 @@ fn print_skip_reason(spec: &Spec, all_specs: &[Spec], options: &ChainOptions) {
 fn print_chain_summary(
     completed: usize,
     skipped: usize,
-    failed_spec: &Option<(String, String)>,
+    failed_specs: &[(String, String)],
+    failed_groups: &std::collections::HashSet<String>,
     elapsed: std::time::Duration,
 ) {
     println!("{}", "═".repeat(60).dimmed());
     println!("{}", "Chain execution complete:".bold());
     println!(
-        "  {} Chained through {} spec(s) in {:.1}s",
+        "  {} Completed {} spec(s) in {:.1}s",
         "✓".green(),
         completed,
         elapsed.as_secs_f64()
@@ -407,9 +448,23 @@ fn print_chain_summary(
         println!("  {} Skipped {} spec(s)", "→".yellow(), skipped);
     }
 
-    if let Some((spec_id, error)) = failed_spec {
-        println!("  {} Stopped due to failure in {}", "✗".red(), spec_id);
-        println!("    Error: {}", error);
+    if !failed_specs.is_empty() {
+        println!(
+            "  {} Failed {} spec(s):",
+            "✗".red(),
+            failed_specs.len()
+        );
+        for (spec_id, error) in failed_specs {
+            println!("    {} {}: {}", "✗".red(), spec_id, error);
+        }
+    }
+
+    if !failed_groups.is_empty() {
+        println!(
+            "  {} Affected groups: {}",
+            "⚠".yellow(),
+            failed_groups.iter().cloned().collect::<Vec<_>>().join(", ")
+        );
     }
 
     if is_chain_interrupted() {

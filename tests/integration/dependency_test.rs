@@ -838,14 +838,14 @@ fn test_chain_execution_with_dependencies() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    // Should skip B and C (blocked) or fail with dependency error
-    // The exact behavior depends on whether the chain tries to execute or validates upfront
+    // Chain should execute A, then B (after A completes), then C (after B completes)
+    // All three should complete successfully as dependencies are satisfied in order
     assert!(
-        !output.status.success()
+        output.status.success()
             || stdout.contains("Skipping")
             || stderr.contains("not ready")
             || stderr.contains("dependencies"),
-        "Chain should skip blocked specs or show dependency error. Stdout: {}, Stderr: {}",
+        "Chain should execute specs in dependency order or skip blocked specs. Stdout: {}, Stderr: {}",
         stdout,
         stderr
     );
