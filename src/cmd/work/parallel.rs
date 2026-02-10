@@ -126,6 +126,13 @@ fn should_warn_model_override_in_parallel(
 
     // If not using agent rotation, no warning needed
     if !uses_agent_rotation {
+        // Warn if agents are configured but rotation strategy is "none"
+        if !config.parallel.agents.is_empty() && config.defaults.rotation_strategy == "none" {
+            eprintln!(
+                "{} parallel.agents configured but rotation_strategy is 'none' — agents will not be used in parallel mode. Set rotation_strategy: round-robin to enable.",
+                "Warning:".yellow()
+            );
+        }
         return false;
     }
 

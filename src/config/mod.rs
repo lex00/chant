@@ -6,6 +6,7 @@
 //! - ignore: false
 
 use anyhow::{Context, Result};
+use colored::Colorize;
 use serde::Deserialize;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -127,6 +128,14 @@ impl Config {
                     config.parallel.agents = parallel.agents;
                 }
             }
+        }
+
+        // Warn if agents are configured but rotation strategy is "none"
+        if !config.parallel.agents.is_empty() && config.defaults.rotation_strategy == "none" {
+            eprintln!(
+                "{} parallel.agents configured but rotation_strategy is 'none' — agents will not be used. Set rotation_strategy: round-robin to enable.",
+                "Warning:".yellow()
+            );
         }
 
         Ok(config)
