@@ -17,6 +17,7 @@ use chant::output::{Output, OutputMode};
 use chant::paths::PROMPTS_DIR;
 use chant::repository::spec_repository::FileSpecRepository;
 use chant::spec::{self, Spec, SpecStatus};
+use chant::spec_group;
 use chant::worktree;
 
 use super::{executor, ui};
@@ -136,8 +137,27 @@ pub fn cmd_work(
     let out = Output::new(OutputMode::Human);
 
     // Resolve spec
-    let mut spec = spec::resolve_spec(&specs_dir, id)?;
+    let spec = spec::resolve_spec(&specs_dir, id)?;
     let spec_path = specs_dir.join(format!("{}.md", spec.id));
+
+    // Check if this is a driver/group spec - if so, execute members as a chain
+    let all_specs = spec::load_all_specs(&specs_dir)?;
+    if is_driver_or_group_spec(&spec, &all_specs) {
+        return execute_driver_as_chain(
+            &spec,
+            &specs_dir,
+            &prompts_dir,
+            &config,
+            prompt_name,
+            skip_deps,
+            skip_criteria,
+            allow_no_commits,
+            skip_approval,
+        );
+    }
+
+    // Not a driver - continue with normal single spec execution
+    let mut spec = spec;
 
     // Run validation through executor
     let validation_opts = executor::ValidationOptions {
@@ -441,4 +461,81 @@ fn auto_select_prompt_for_type(spec: &Spec, prompts_dir: &Path) -> Option<String
     }
 
     None
+}
+
+/// Check if a spec is a driver/group spec
+fn is_driver_or_group_spec(spec: &Spec, all_specs: &[Spec]) -> bool {
+    // Check if spec has type "group" or "driver"
+    if spec.frontmatter.r#type == "group" || spec.frontmatter.r#type == "driver" {
+        return true;
+    }
+    // Check if spec has members (i.e., other specs that are children of this spec)
+    !spec_group::get_members(&spec.id, all_specs).is_empty()
+}
+
+/// Execute a driver spec by chaining through its member specs
+#[allow(clippy::too_many_arguments)]
+fn execute_driver_as_chain(
+    driver: &Spec,
+    specs_dir: &Path,
+    prompts_dir: &Path,
+    config: &Config,
+    prompt_name: Option<&str>,
+    skip_deps: bool,
+    skip_criteria: bool,
+    allow_no_commits: bool,
+    skip_approval: bool,
+) -> Result<()> {
+    // Collect member specs sorted by sequence number (.1, .2, .3, ...)
+    let all_specs = spec::load_all_specs(specs_dir)?;
+    let mut members = spec_group::get_members(&driver.id, &all_specs);
+
+    if members.is_empty() {
+        anyhow::bail!(
+            "Driver spec '{}' has no member specs. Cannot execute an empty driver.",
+            driver.id
+        );
+    }
+
+    // Sort members by spec ID to ensure sequence order
+    members.sort_by(|a, b| spec_group::compare_spec_ids(&a.id, &b.id));
+
+    // Check if all members are already completed
+    if members
+        .iter()
+        .all(|m| m.frontmatter.status == SpecStatus::Completed)
+    {
+        println!(
+            "{} Driver spec '{}' - all {} member(s) already completed",
+            "✓".green(),
+            driver.id,
+            members.len()
+        );
+        return Ok(());
+    }
+
+    // Print message about chaining through members
+    println!(
+        "\n{} Executing driver spec '{}' by chaining through {} member spec(s)...\n",
+        "→".cyan(),
+        driver.id,
+        members.len()
+    );
+
+    // Collect member IDs
+    let member_ids: Vec<String> = members.iter().map(|m| m.id.clone()).collect();
+
+    // Execute members as a chain
+    let chain_options = super::ChainOptions {
+        max_specs: 0, // No limit
+        labels: &[],
+        prompt_name,
+        skip_deps,
+        skip_criteria,
+        allow_no_commits,
+        skip_approval,
+        specific_ids: &member_ids,
+    };
+
+    super::cmd_work_chain(specs_dir, prompts_dir, config, chain_options)
 }
