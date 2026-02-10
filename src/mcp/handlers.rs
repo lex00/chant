@@ -201,7 +201,11 @@ fn handle_tools_list() -> Result<Value> {
                         },
                         "output": {
                             "type": "string",
-                            "description": "Output text to append to spec body"
+                            "description": "Output text to append to spec body (or replace if replace_body is true)"
+                        },
+                        "replace_body": {
+                            "type": "boolean",
+                            "description": "Replace spec body with output instead of appending (default: false)"
                         },
                         "depends_on": {
                             "type": "array",
@@ -824,6 +828,11 @@ fn tool_chant_spec_update(arguments: Option<&Value>) -> Result<Value> {
         .and_then(|v| v.as_str())
         .map(String::from);
 
+    let replace_body = args
+        .get("replace_body")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
     // Use operations module for update
     let options = crate::operations::update::UpdateOptions {
         status,
@@ -832,6 +841,7 @@ fn tool_chant_spec_update(arguments: Option<&Value>) -> Result<Value> {
         target_files,
         model,
         output,
+        replace_body,
         force: true, // MCP updates bypass validation for backwards compatibility
     };
 

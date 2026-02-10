@@ -22,6 +22,8 @@ pub struct UpdateOptions {
     pub model: Option<String>,
     /// Output text to append to body
     pub output: Option<String>,
+    /// Replace body content instead of appending (default: false)
+    pub replace_body: bool,
     /// Force status transition (bypass validation)
     pub force: bool,
 }
@@ -67,15 +69,24 @@ pub fn update_spec(spec: &mut Spec, spec_path: &Path, options: UpdateOptions) ->
         updated = true;
     }
 
-    // Append output if provided
+    // Append or replace output if provided
     if let Some(output) = options.output {
         if !output.is_empty() {
-            if !spec.body.ends_with('\n') && !spec.body.is_empty() {
+            if options.replace_body {
+                // Replace body content
+                spec.body = output.clone();
+                if !spec.body.ends_with('\n') {
+                    spec.body.push('\n');
+                }
+            } else {
+                // Append output (backward-compatible default)
+                if !spec.body.ends_with('\n') && !spec.body.is_empty() {
+                    spec.body.push('\n');
+                }
+                spec.body.push_str("\n## Output\n\n");
+                spec.body.push_str(&output);
                 spec.body.push('\n');
             }
-            spec.body.push_str("\n## Output\n\n");
-            spec.body.push_str(&output);
-            spec.body.push('\n');
             updated = true;
         }
     }
