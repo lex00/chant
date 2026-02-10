@@ -40,6 +40,16 @@ fn is_chain_interrupted() -> bool {
 
 // SPEC DISCOVERY AND FILTERING
 
+/// Check if a spec is a driver/group spec
+fn is_driver_or_group_spec(spec: &Spec, all_specs: &[Spec]) -> bool {
+    // Check if spec has type "group" or "driver"
+    if spec.frontmatter.r#type == "group" || spec.frontmatter.r#type == "driver" {
+        return true;
+    }
+    // Check if spec has members (i.e., other specs that are children of this spec)
+    !spec_group::get_members(&spec.id, all_specs).is_empty()
+}
+
 /// Find the next ready spec respecting filters
 fn find_next_ready_spec(
     specs_dir: &Path,
@@ -58,6 +68,8 @@ fn find_next_ready_spec(
                 && s.is_ready(&all_specs)
                 // Skip the specified spec (if any - used when a specific starting spec was provided)
                 && skip_spec_id.is_none_or(|id| s.id != id)
+                // Skip driver/group specs - they should not be executed directly
+                && !is_driver_or_group_spec(s, &all_specs)
         })
         .cloned()
         .collect();
@@ -317,6 +329,10 @@ fn should_skip_spec(spec: &Spec, all_specs: &[Spec], options: &ChainOptions) -> 
     if !spec.is_ready(all_specs) && !options.skip_deps {
         return true;
     }
+    // Skip driver/group specs - they should not be executed directly
+    if is_driver_or_group_spec(spec, all_specs) {
+        return true;
+    }
     false
 }
 
@@ -329,6 +345,12 @@ fn print_skip_reason(spec: &Spec, all_specs: &[Spec], options: &ChainOptions) {
     } else if !spec.is_ready(all_specs) && !options.skip_deps {
         println!(
             "{} Skipping {}: not ready (dependencies not satisfied)",
+            "⚠".yellow(),
+            spec.id
+        );
+    } else if is_driver_or_group_spec(spec, all_specs) {
+        println!(
+            "{} Skipping {}: driver/group spec (execute members instead)",
             "⚠".yellow(),
             spec.id
         );
