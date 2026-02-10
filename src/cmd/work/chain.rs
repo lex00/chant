@@ -1,8 +1,9 @@
 //! Chain execution mode for specs
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::Path;
 
 use chant::config::Config;
@@ -50,12 +51,99 @@ fn is_driver_or_group_spec(spec: &Spec, all_specs: &[Spec]) -> bool {
     !spec_group::get_members(&spec.id, all_specs).is_empty()
 }
 
-/// Find the next ready spec respecting filters and group boundaries
+// TOPOLOGICAL SORTING FOR GROUPS
+
+/// Topologically sort groups by their driver `depends_on` fields.
+/// Returns groups in execution order (IDs of driver specs).
+/// Uses Kahn's algorithm for topological sort with cycle detection.
+fn topological_sort_groups(all_specs: &[Spec]) -> Result<Vec<String>> {
+    // Identify all driver/group specs
+    let driver_specs: Vec<&Spec> = all_specs
+        .iter()
+        .filter(|s| is_driver_or_group_spec(s, all_specs))
+        .collect();
+
+    // Build dependency graph: driver_id -> set of drivers it depends on
+    let mut graph: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut in_degree: HashMap<String, usize> = HashMap::new();
+    let mut all_drivers: HashSet<String> = HashSet::new();
+
+    for driver in &driver_specs {
+        all_drivers.insert(driver.id.clone());
+        graph.entry(driver.id.clone()).or_default();
+        in_degree.entry(driver.id.clone()).or_insert(0);
+
+        if let Some(deps) = &driver.frontmatter.depends_on {
+            for dep in deps {
+                // Only consider dependencies on other drivers (not member specs)
+                if all_drivers.contains(dep) || driver_specs.iter().any(|d| &d.id == dep) {
+                    graph
+                        .entry(dep.clone())
+                        .or_default()
+                        .insert(driver.id.clone());
+                    *in_degree.entry(driver.id.clone()).or_insert(0) += 1;
+                }
+            }
+        }
+    }
+
+    // Kahn's algorithm: start with nodes that have no incoming edges
+    let queue: VecDeque<String> = in_degree
+        .iter()
+        .filter(|(_, &degree)| degree == 0)
+        .map(|(id, _)| id.clone())
+        .collect();
+
+    // Sort initial queue by spec ID for consistent ordering
+    let mut queue_vec: Vec<String> = queue.into_iter().collect();
+    queue_vec.sort_by(|a, b| spec_group::compare_spec_ids(a, b));
+    let mut queue: VecDeque<String> = queue_vec.into();
+
+    let mut sorted: Vec<String> = Vec::new();
+
+    while let Some(node) = queue.pop_front() {
+        sorted.push(node.clone());
+
+        // Reduce in-degree for all dependent nodes
+        if let Some(dependents) = graph.get(&node) {
+            let mut ready_nodes = Vec::new();
+            for dependent in dependents {
+                if let Some(degree) = in_degree.get_mut(dependent) {
+                    *degree -= 1;
+                    if *degree == 0 {
+                        ready_nodes.push(dependent.clone());
+                    }
+                }
+            }
+            // Sort ready nodes by ID before adding to queue
+            ready_nodes.sort_by(|a, b| spec_group::compare_spec_ids(a, b));
+            queue.extend(ready_nodes);
+        }
+    }
+
+    // Check for cycles: if sorted length < all drivers, there's a cycle
+    if sorted.len() < all_drivers.len() {
+        let remaining: Vec<String> = all_drivers
+            .iter()
+            .filter(|id| !sorted.contains(id))
+            .cloned()
+            .collect();
+        bail!(
+            "Circular dependency detected in driver specs: {}",
+            remaining.join(", ")
+        );
+    }
+
+    Ok(sorted)
+}
+
+/// Find the next ready spec respecting filters, group boundaries, and topological order
 fn find_next_ready_spec(
     specs_dir: &Path,
     labels: &[String],
     skip_spec_id: Option<&str>,
     active_group: Option<&str>,
+    group_order: &[String],
 ) -> Result<Option<Spec>> {
     let all_specs = spec::load_all_specs(specs_dir)?;
 
@@ -86,21 +174,74 @@ fn find_next_ready_spec(
         });
     }
 
-    // Sort by spec ID to ensure chronological order (IDs are date-based: YYYY-MM-DD-NNN-xxx)
-    ready_specs.sort_by(|a, b| spec_group::compare_spec_ids(&a.id, &b.id));
-
     // If there's an active group, prefer members of that group
     if let Some(driver_id) = active_group {
-        // Check if there are any ready members of the active group
-        if let Some(group_member) = ready_specs
+        // Find ready members of the active group and sort by ID
+        let mut group_members: Vec<Spec> = ready_specs
             .iter()
-            .find(|s| spec_group::extract_driver_id(&s.id).as_deref() == Some(driver_id))
-        {
-            return Ok(Some(group_member.clone()));
+            .filter(|s| spec_group::extract_driver_id(&s.id).as_deref() == Some(driver_id))
+            .cloned()
+            .collect();
+
+        if !group_members.is_empty() {
+            group_members.sort_by(|a, b| spec_group::compare_spec_ids(&a.id, &b.id));
+            return Ok(Some(group_members.into_iter().next().unwrap()));
         }
     }
 
-    // Return the first (oldest) ready spec
+    // Sort ready specs by topological group order, then by spec ID within each group
+    ready_specs.sort_by(|a, b| {
+        let a_driver = spec_group::extract_driver_id(&a.id);
+        let b_driver = spec_group::extract_driver_id(&b.id);
+
+        match (a_driver, b_driver) {
+            (Some(ref a_grp), Some(ref b_grp)) => {
+                // Both are members: compare by group position in topological order
+                let a_pos = group_order.iter().position(|g| g == a_grp);
+                let b_pos = group_order.iter().position(|g| g == b_grp);
+                match (a_pos, b_pos) {
+                    (Some(ap), Some(bp)) => {
+                        if ap != bp {
+                            ap.cmp(&bp)
+                        } else {
+                            // Same group: use spec ID order
+                            spec_group::compare_spec_ids(&a.id, &b.id)
+                        }
+                    }
+                    (Some(_), None) => std::cmp::Ordering::Greater, // a in topo order, b not
+                    (None, Some(_)) => std::cmp::Ordering::Less,    // b in topo order, a not
+                    (None, None) => spec_group::compare_spec_ids(&a.id, &b.id),
+                }
+            }
+            (Some(ref a_grp), None) => {
+                // a is a member, b is standalone
+                // Compare a's group position with b's position in standalone specs
+                let a_pos = group_order.iter().position(|g| g == a_grp);
+                match a_pos {
+                    Some(_) => {
+                        // Both exist: compare group order position vs spec's own dependency order
+                        // For simplicity, interleave by using spec ID as tiebreaker
+                        spec_group::compare_spec_ids(&a.id, &b.id)
+                    }
+                    None => spec_group::compare_spec_ids(&a.id, &b.id),
+                }
+            }
+            (None, Some(ref b_grp)) => {
+                // a is standalone, b is a member
+                let b_pos = group_order.iter().position(|g| g == b_grp);
+                match b_pos {
+                    Some(_) => spec_group::compare_spec_ids(&a.id, &b.id),
+                    None => spec_group::compare_spec_ids(&a.id, &b.id),
+                }
+            }
+            (None, None) => {
+                // Both are standalone: use spec ID order
+                spec_group::compare_spec_ids(&a.id, &b.id)
+            }
+        }
+    });
+
+    // Return the first ready spec
     Ok(ready_specs.into_iter().next())
 }
 
@@ -243,6 +384,9 @@ pub fn cmd_work_chain(
     let mut all_specs = spec::load_all_specs(specs_dir)?;
     let mut active_group: Option<String> = None;
 
+    // Compute topological order of groups at startup
+    let group_order = topological_sort_groups(&all_specs)?;
+
     loop {
         if is_chain_interrupted() {
             break;
@@ -270,7 +414,13 @@ pub fn cmd_work_chain(
                 .cloned()
                 .unwrap_or_else(|| resolved_specs[idx].clone())
         } else {
-            match find_next_ready_spec(specs_dir, options.labels, None, active_group.as_deref())? {
+            match find_next_ready_spec(
+                specs_dir,
+                options.labels,
+                None,
+                active_group.as_deref(),
+                &group_order,
+            )? {
                 Some(s) => s,
                 None => break,
             }
@@ -344,7 +494,13 @@ pub fn cmd_work_chain(
     }
 
     pb.finish_and_clear();
-    print_chain_summary(completed, skipped, &failed_specs, &failed_groups, start_time.elapsed());
+    print_chain_summary(
+        completed,
+        skipped,
+        &failed_specs,
+        &failed_groups,
+        start_time.elapsed(),
+    );
 
     if !failed_specs.is_empty() {
         std::process::exit(1);
@@ -449,11 +605,7 @@ fn print_chain_summary(
     }
 
     if !failed_specs.is_empty() {
-        println!(
-            "  {} Failed {} spec(s):",
-            "✗".red(),
-            failed_specs.len()
-        );
+        println!("  {} Failed {} spec(s):", "✗".red(), failed_specs.len());
         for (spec_id, error) in failed_specs {
             println!("    {} {}: {}", "✗".red(), spec_id, error);
         }
