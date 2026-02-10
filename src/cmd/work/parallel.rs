@@ -765,28 +765,53 @@ fn auto_select_prompt_for_type(_spec: &Spec, _prompts_dir: &Path) -> Option<Stri
     None
 }
 
-pub fn cmd_work_parallel(
+/// Check if a spec is a driver/group spec
+fn is_driver_spec(spec: &Spec, all_specs: &[Spec]) -> bool {
+    spec.frontmatter.r#type == "group"
+        || spec.frontmatter.r#type == "driver"
+        || !chant::spec_group::get_members(&spec.id, all_specs).is_empty()
+}
+
+/// Check if a spec's group (if any) has all upstream driver dependencies satisfied
+fn group_upstream_deps_satisfied(spec: &Spec, all_specs: &[Spec]) -> bool {
+    // Standalone specs have no group dependencies
+    let Some(driver_id) = chant::spec_group::extract_driver_id(&spec.id) else {
+        return true;
+    };
+
+    // Find the driver spec for this member
+    let Some(driver) = all_specs.iter().find(|s| s.id == driver_id) else {
+        return true; // No driver found, allow execution
+    };
+
+    // Check if all of the driver's dependencies are completed
+    let Some(deps) = &driver.frontmatter.depends_on else {
+        return true; // No dependencies, always satisfied
+    };
+
+    deps.iter().all(|dep_id| {
+        all_specs
+            .iter()
+            .find(|s| &s.id == dep_id)
+            .map(|dep| dep.frontmatter.status == SpecStatus::Completed)
+            .unwrap_or(true) // If dependency doesn't exist, don't block
+    })
+}
+
+/// Get ready specs for parallel execution, excluding drivers and filtering by group readiness
+fn get_ready_specs_for_parallel(
     specs_dir: &Path,
-    prompts_dir: &Path,
-    config: &Config,
-    options: ParallelOptions,
-) -> Result<()> {
-    // Initialize parallel execution state for cleanup on interrupt
-    let execution_state = Arc::new(ParallelExecutionState::new(&config.defaults.branch_prefix));
-    setup_parallel_cleanup_handlers(execution_state.clone());
+    specific_ids: &[String],
+    labels: &[String],
+) -> Result<Vec<Spec>> {
+    let all_specs = spec::load_all_specs(specs_dir)?;
 
-    // Create output handler
-    let out = Output::new(OutputMode::Human);
-
-    // Load specs: either specific IDs or all ready specs
-    let ready_specs: Vec<Spec> = if !options.specific_ids.is_empty() {
-        // Resolve specific IDs and validate their status
-        let all_specs = spec::load_all_specs(specs_dir)?;
+    let ready_specs: Vec<Spec> = if !specific_ids.is_empty() {
+        // Resolve specific IDs and validate
         let mut specs = Vec::new();
-        for id in options.specific_ids {
+        for id in specific_ids {
             match spec::resolve_spec(specs_dir, id) {
                 Ok(s) => {
-                    // Validate that the spec is actually ready to execute
                     if s.frontmatter.status != SpecStatus::Pending {
                         println!(
                             "{} Spec '{}' has status {:?}, expected pending",
@@ -804,6 +829,15 @@ pub fn cmd_work_parallel(
                         );
                         return Err(anyhow::anyhow!("Spec '{}' has unmet dependencies", s.id));
                     }
+                    // Exclude driver specs
+                    if is_driver_spec(&s, &all_specs) {
+                        println!(
+                            "{} Spec '{}' is a driver spec (will execute members instead)",
+                            "→".yellow(),
+                            s.id
+                        );
+                        continue;
+                    }
                     specs.push(s);
                 }
                 Err(e) => {
@@ -814,26 +848,50 @@ pub fn cmd_work_parallel(
         }
         specs
     } else {
-        // Load all ready specs
-        let all_specs = spec::load_all_specs(specs_dir)?;
+        // Load all ready specs, excluding drivers, and checking group dependencies
         let mut specs: Vec<Spec> = all_specs
             .iter()
-            .filter(|s| s.is_ready(&all_specs))
+            .filter(|s| {
+                s.is_ready(&all_specs)
+                    && !is_driver_spec(s, &all_specs)
+                    && group_upstream_deps_satisfied(s, &all_specs)
+            })
             .cloned()
             .collect();
 
         // Filter by labels if specified
-        if !options.labels.is_empty() {
+        if !labels.is_empty() {
             specs.retain(|s| {
                 if let Some(spec_labels) = &s.frontmatter.labels {
-                    options.labels.iter().any(|l| spec_labels.contains(l))
+                    labels.iter().any(|l| spec_labels.contains(l))
                 } else {
                     false
                 }
             });
         }
+
         specs
     };
+
+    Ok(ready_specs)
+}
+
+pub fn cmd_work_parallel(
+    specs_dir: &Path,
+    prompts_dir: &Path,
+    config: &Config,
+    options: ParallelOptions,
+) -> Result<()> {
+    // Initialize parallel execution state for cleanup on interrupt
+    let execution_state = Arc::new(ParallelExecutionState::new(&config.defaults.branch_prefix));
+    setup_parallel_cleanup_handlers(execution_state.clone());
+
+    // Create output handler
+    let out = Output::new(OutputMode::Human);
+
+    // Load ready specs (group-aware, excluding drivers)
+    let ready_specs =
+        get_ready_specs_for_parallel(specs_dir, options.specific_ids, options.labels)?;
 
     if ready_specs.is_empty() {
         if !options.specific_ids.is_empty() {
