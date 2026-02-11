@@ -361,11 +361,15 @@ pub fn cmd_work_chain(
         Vec::new()
     };
 
-    let total = if !resolved_specs.is_empty() {
-        resolved_specs.len()
-    } else {
-        count_ready_specs(specs_dir, options.labels)?
-    };
+    // Count all pending specs (not just currently ready) since chain will unblock more
+    let all_specs_snapshot = spec::load_all_specs(specs_dir)?;
+    let total = all_specs_snapshot
+        .iter()
+        .filter(|s| {
+            s.frontmatter.status == SpecStatus::Pending
+                && s.frontmatter.status != SpecStatus::Cancelled
+        })
+        .count();
 
     if total == 0 {
         println!("No ready specs to execute.");
@@ -412,18 +416,30 @@ pub fn cmd_work_chain(
             break;
         }
 
-        // Get next spec: from list or find next ready
+        // Get next spec: run specific IDs first, then discover newly-ready specs
         let spec = if !resolved_specs.is_empty() {
             let idx = completed + skipped;
-            if idx >= resolved_specs.len() {
-                break;
+            if idx < resolved_specs.len() {
+                let spec_id = &resolved_specs[idx].id;
+                all_specs
+                    .iter()
+                    .find(|s| &s.id == spec_id)
+                    .cloned()
+                    .unwrap_or_else(|| resolved_specs[idx].clone())
+            } else {
+                // Exhausted specific IDs — fall through to discovery
+                // to pick up specs that were unblocked by completions
+                match find_next_ready_spec(
+                    specs_dir,
+                    options.labels,
+                    None,
+                    active_group.as_deref(),
+                    &group_order,
+                )? {
+                    Some(s) => s,
+                    None => break,
+                }
             }
-            let spec_id = &resolved_specs[idx].id;
-            all_specs
-                .iter()
-                .find(|s| &s.id == spec_id)
-                .cloned()
-                .unwrap_or_else(|| resolved_specs[idx].clone())
         } else {
             match find_next_ready_spec(
                 specs_dir,
@@ -598,12 +614,14 @@ pub fn cmd_work_chain(
     }
 
     pb.finish_and_clear();
+    let remaining_ready = count_ready_specs(specs_dir, options.labels).unwrap_or(0);
     print_chain_summary(
         completed,
         skipped,
         &failed_specs,
         &failed_groups,
         start_time.elapsed(),
+        remaining_ready,
     );
 
     if !failed_specs.is_empty() {
@@ -694,9 +712,22 @@ fn print_chain_summary(
     failed_specs: &[(String, String)],
     failed_groups: &std::collections::HashSet<String>,
     elapsed: std::time::Duration,
+    remaining_ready: usize,
 ) {
     println!("{}", "═".repeat(60).dimmed());
-    println!("{}", "Chain execution complete:".bold());
+
+    // Choose header based on why execution stopped
+    let header = if is_chain_interrupted() {
+        "Chain interrupted by user:"
+    } else if !failed_specs.is_empty() {
+        "Chain stopped (spec failure):"
+    } else if remaining_ready > 0 {
+        "Chain paused (max limit reached):"
+    } else {
+        "Chain finished — all specs complete:"
+    };
+    println!("{}", header.bold());
+
     println!(
         "  {} Completed {} spec(s) in {:.1}s",
         "✓".green(),
@@ -723,8 +754,12 @@ fn print_chain_summary(
         );
     }
 
-    if is_chain_interrupted() {
-        println!("  {} Interrupted by user", "→".yellow());
+    if remaining_ready > 0 {
+        println!(
+            "  {} {} spec(s) still ready to work",
+            "→".cyan(),
+            remaining_ready
+        );
     }
 
     println!("{}", "═".repeat(60).dimmed());

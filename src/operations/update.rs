@@ -73,8 +73,17 @@ pub fn update_spec(spec: &mut Spec, spec_path: &Path, options: UpdateOptions) ->
     if let Some(output) = options.output {
         if !output.is_empty() {
             if options.replace_body {
-                // Replace body content
-                spec.body = output.clone();
+                // Replace body content, preserving title heading if not in new output
+                let has_title_in_output = output.lines().any(|l| l.trim().starts_with("# "));
+                if !has_title_in_output {
+                    if let Some(ref title) = spec.title {
+                        spec.body = format!("# {}\n\n{}", title, output);
+                    } else {
+                        spec.body = output.clone();
+                    }
+                } else {
+                    spec.body = output.clone();
+                }
                 if !spec.body.ends_with('\n') {
                     spec.body.push('\n');
                 }
