@@ -484,7 +484,10 @@ Execute specs sequentially, one after another:
 # Chain through all ready specs until none remain or failure
 chant work --chain
 
-# Chain through specific specs in order (ONLY these specs)
+# Start from a specific spec, then continue through unblocked specs
+chant work --chain spec1
+
+# Chain through specific specs in order, then continue through unblocked specs
 chant work --chain spec1 spec2 spec3
 
 # Limit number of specs to chain
@@ -499,15 +502,17 @@ chant work --chain --label auth
 | Command | Behavior |
 |---------|----------|
 | `chant work --chain` | Chain through ALL ready specs |
-| `chant work --chain spec1 spec2 spec3` | Chain through ONLY the specified specs |
+| `chant work --chain spec1` | Start from spec1, then continue through any specs unblocked by completions |
+| `chant work --chain spec1 spec2 spec3` | Run specified specs first, then continue through unblocked specs |
 
 **Specific ID Behavior:**
 
 When spec IDs are provided:
-- Chains through only those IDs in the order given
+- Runs the specified IDs first in the order given
+- After exhausting the list, continues discovering newly-ready specs (e.g., specs unblocked by completions)
 - Invalid spec IDs fail fast with clear error before execution starts
 - Non-ready specs are skipped with warning, chain continues
-- `--label` filter is ignored (IDs take precedence)
+- `--label` filter is ignored for the specified IDs but applies to discovery
 - `--chain-max` limit still applies
 
 **Example output:**
@@ -527,11 +532,12 @@ When spec IDs are provided:
 [4/?] ✗ Failed: Tests did not pass
 
 ════════════════════════════════════════════════════════════
-Chain execution stopped:
-  ✓ 3 specs completed
-  ✗ 1 spec failed: 005-mno
-  ⚠ 1 spec skipped
-  Total time: 2m 15s
+Chain stopped (spec failure):
+  ✓ Completed 3 spec(s) in 135.0s
+  ⚠ Skipped 1 spec(s)
+  ✗ Failed 1 spec(s):
+    ✗ 005-mno: Tests did not pass
+  → 2 spec(s) still ready to work
 ════════════════════════════════════════════════════════════
 ```
 

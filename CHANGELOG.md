@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Chain with specific IDs stops early**: `chant work --chain <id>` now continues discovering newly-ready specs after exhausting the explicit list, instead of stopping immediately
+- **`replace_body` erases spec title**: `chant_spec_update` with `replace_body: true` now preserves the original `# Title` heading when the replacement output doesn't include one
+- **Ambiguous chain summary**: Chain completion message now distinguishes between finished/interrupted/failed/paused states and reports remaining ready spec count
+
 ## [0.18.2] - 2026-02-07
 
 ### Fixed

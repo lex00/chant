@@ -343,7 +343,8 @@ Update a chant spec status or append output.
 **Parameters:**
 - `id` (required): Spec ID (full or partial match)
 - `status` (optional): New status - `pending`, `in_progress`, `completed`, `failed`
-- `output` (optional): Output text to append to spec body
+- `output` (optional): Output text to append to spec body (or replace if `replace_body` is true)
+- `replace_body` (optional, boolean): Replace spec body with `output` instead of appending. The original title heading (`# Title`) is preserved automatically if the new output doesn't include one.
 - `depends_on` (optional): Array of spec IDs this spec depends on
 - `labels` (optional): Array of labels to assign to the spec
 - `target_files` (optional): Array of target file paths for the spec
@@ -771,7 +772,7 @@ Start working on a spec asynchronously (spawns background process and returns im
 
 **Parameters:**
 - `id` (required): Spec ID (full or partial match)
-- `chain` (optional, boolean): Continue to next ready spec after completion
+- `chain` (optional, boolean): After completing the specified spec, continue discovering and executing newly-ready specs unblocked by completions
 - `parallel` (optional, integer): Number of parallel workers (requires multiple ready specs)
 - `skip_criteria` (optional, boolean): Skip acceptance criteria validation before starting work
 
