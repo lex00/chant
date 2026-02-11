@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.1] - 2026-02-11
+
 ### Fixed
 
 - **Chain with specific IDs stops early**: `chant work --chain <id>` now continues discovering newly-ready specs after exhausting the explicit list, instead of stopping immediately
