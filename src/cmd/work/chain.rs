@@ -153,8 +153,8 @@ fn find_next_ready_spec(
         .filter(|s| {
             // Exclude cancelled specs
             s.frontmatter.status != SpecStatus::Cancelled
-                // Must be ready (dependencies satisfied)
-                && s.is_ready(&all_specs)
+                // Must be ready (dependencies satisfied) or failed with met dependencies
+                && (s.is_ready(&all_specs) || (s.frontmatter.status == SpecStatus::Failed && !s.is_blocked(&all_specs)))
                 // Skip the specified spec (if any - used when a specific starting spec was provided)
                 && skip_spec_id.is_none_or(|id| s.id != id)
                 // Skip driver/group specs - they should not be executed directly
