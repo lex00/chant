@@ -328,37 +328,6 @@ The `documentation` and `research` spec types are implemented with:
 - Lint validation warnings for missing fields
 - Prompts: `documentation`, `research-analysis`, `research-synthesis`
 
-### TBD: Drift Detection Storage
-
-Where do we store baseline file state for drift comparison?
-
-| Option | Description | Trade-offs |
-|--------|-------------|------------|
-| A: Frontmatter | Store hashes in spec (`tracks_hashes:`) | Clutters spec, but self-contained |
-| B: Separate files | `.chant/drift/<spec-id>.json` | Clean specs, extra files |
-| C: Git-based | Compare to files at `commit:` time | No extra storage, requires git history |
-
-**Decision:** TBD
-
-### TBD: URL Handling in `informed_by:`
-
-Can `informed_by:` reference URLs and external identifiers?
-
-```yaml
-informed_by:
-  - papers/local.pdf          # Local file
-  - https://docs.rs/serde     # URL
-  - arxiv:2401.12345          # External identifier
-```
-
-| Option | Description | Trade-offs |
-|--------|-------------|------------|
-| A: Local only | Only local file paths | Simple, defer URLs to future |
-| B: URLs fetched | Agent fetches URLs at execution | Need caching, auth handling |
-| C: Full external | Support `arxiv:`, `doi:`, etc. | Complex resolution logic |
-
-**Decision:** TBD (recommend A for v0.2.0)
-
 ### Prompts
 
 These prompts are available in `.chant/prompts/`:

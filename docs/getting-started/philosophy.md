@@ -47,53 +47,15 @@ Specs that:
 
 See [how it works →](../concepts/autonomy.md)
 
-## Self Bootstrapping
+## Development Workflow
 
-Chant built itself.
+Chant's development follows the same pattern available to all users:
 
-The first commit was a Claude Code skill that read specs and executed them. Every feature after that was a spec the skill implemented. The binary is convenience. The model is the product.
+1. Write specs in `.chant/specs/`
+2. Execute with `chant work`
+3. Changes are committed and tracked
 
-```
-skills/bootstrap/SKILL.md     # The skill that built chant
-.chant/specs/                 # Specs it executed
-```
-
-The same skill works for any project. The same prompts work for chant and customers. This isn't bootstrapping as a one-time trick—it's proof that the model works.
-
-### The Bootstrap Pattern
-
-```
-┌─────────────────────────────────────────────────────────┐
-│  1. Write a spec                                        │
-│     .chant/specs/001-add-feature.md                     │
-├─────────────────────────────────────────────────────────┤
-│  2. Execute it                                          │
-│     /bootstrap 001  (skill)                             │
-│     chant work 001  (binary)                            │
-├─────────────────────────────────────────────────────────┤
-│  3. Spec status updates, work commits                   │
-│     status: completed                                   │
-│     commit: abc123                                      │
-└─────────────────────────────────────────────────────────┘
-```
-
-Same flow whether you use the skill or the binary. The binary adds:
-- Better CLI ergonomics
-- Parallel execution
-- Search and filtering
-
-But the model—specs in, work out—is identical.
-
-### For Customers
-
-Customers can bootstrap their projects the same way:
-
-1. Copy the skill and prompts
-2. Write specs
-3. Run `/bootstrap`
-4. Install binary when they want better UX
-
-No binary required to validate the model works for their project.
+The CLI binary is built on the same spec execution model used for any project.
 
 ## Intent-First Development
 
@@ -315,9 +277,3 @@ enterprise:
 | Hope for the best | Acceptance criteria + linting |
 | Lost work on crash | PID locks + recovery |
 
-## The Pitch
-
-> Specs are markdown files. Agents execute them.
-> Everything is git-tracked. Nothing is lost.
->
-> `chant add "Fix the bug"` → `chant work` → done.

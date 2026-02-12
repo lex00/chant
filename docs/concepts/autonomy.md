@@ -8,9 +8,9 @@ Specs that execute, verify, and correct themselves:
 - **Verify**: `chant verify` re-checks acceptance criteria
 - **Detect Drift**: Find when reality diverges from intent
 
-## The Vision: Intent Durability
+## Intent Durability
 
-Specs aren't just todos—they're specifications that persist, verify themselves, and self-correct.
+Specs persist after completion and can be re-verified. When reality diverges from the specification (code changes, tests fail, files deleted), the spec detects this drift and can be re-executed.
 
 ```
 Traditional: Spec → Work → Done → Forget
