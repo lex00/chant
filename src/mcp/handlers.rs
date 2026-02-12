@@ -2036,7 +2036,13 @@ fn tool_chant_work_start(arguments: Option<&Value>) -> Result<Value> {
         "pid": pid,
         "started_at": started_at,
         "mode": mode,
-        "started": true
+        "started": true,
+        "monitor": {
+            "instruction": "Poll spec status every 60 seconds using chant_spec_get until status changes to completed or failed. Use chant_log with the since parameter to check progress.",
+            "poll_tool": "chant_spec_get",
+            "poll_interval_seconds": 60,
+            "done_statuses": ["completed", "failed"]
+        }
     });
 
     // Include quality warning if present
