@@ -390,6 +390,19 @@ pub fn handle_spec_failure(spec_id: &str, specs_dir: &Path, error: &anyhow::Erro
 
     // Update spec to Failed
     let mut spec = spec::resolve_spec(specs_dir, spec_id)?;
+
+    // Don't overwrite Completed — agent may have finalized via MCP
+    // before subprocess exited with error (e.g. context exhaustion)
+    if spec.frontmatter.status == SpecStatus::Completed {
+        eprintln!(
+            "{} Spec {} already completed — ignoring subprocess failure: {}",
+            "⚠".yellow(),
+            spec_id,
+            error
+        );
+        return Ok(());
+    }
+
     if let Err(transition_err) = spec.set_status(SpecStatus::Failed) {
         eprintln!(
             "{} Failed to transition spec to failed: {}",
