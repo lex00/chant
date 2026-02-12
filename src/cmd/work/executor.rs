@@ -213,8 +213,18 @@ pub fn invoke_agent_for_spec(
         prompt_name
     );
 
-    // Assemble prompt
-    let message = chant::prompt::assemble(spec, &prompt_path, config)?;
+    // Assemble prompt with worktree context if running in a worktree
+    let message = if let Some(wt_path) = worktree_path {
+        let branch_name = spec.frontmatter.branch.clone();
+        let ctx = chant::prompt::WorktreeContext {
+            worktree_path: Some(wt_path.to_path_buf()),
+            branch_name,
+            is_isolated: true,
+        };
+        chant::prompt::assemble_with_context(spec, &prompt_path, config, &ctx)?
+    } else {
+        chant::prompt::assemble(spec, &prompt_path, config)?
+    };
 
     // Select agent based on rotation strategy
     let agent_command = if config.defaults.rotation_strategy != "none"
