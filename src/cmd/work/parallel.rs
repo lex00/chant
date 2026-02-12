@@ -216,6 +216,11 @@ fn prepare_spec_for_parallel(
     spec_clone.set_status(SpecStatus::InProgress)?;
     spec_clone.save(&spec_path)?;
 
+    // Create lock file to signal agent is running
+    let lock_path = PathBuf::from(chant::paths::LOCKS_DIR).join(format!("{}.lock", spec.id));
+    std::fs::create_dir_all(chant::paths::LOCKS_DIR)?;
+    std::fs::write(&lock_path, format!("{}", std::process::id()))?;
+
     // Create log file and agent status
     cmd::agent::create_log_file_if_not_exists(&spec.id, spec_prompt)?;
     let status_path = specs_dir.join(format!(".chant-status-{}.json", spec.id));
@@ -1252,6 +1257,10 @@ fn execute_spec_in_thread(
         &agent_command,
         branch_name.as_deref(),
     );
+
+    // Remove lock file after agent completes (both success and failure)
+    let lock_path = PathBuf::from(chant::paths::LOCKS_DIR).join(format!("{}.lock", spec_id));
+    let _ = std::fs::remove_file(&lock_path);
 
     let (success, commits, error, agent_completed) = match result {
         Ok(_) => {

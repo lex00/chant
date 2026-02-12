@@ -201,6 +201,11 @@ pub fn cmd_work(
     spec.frontmatter.branch = Some(branch_name.clone());
     spec.save(&spec_path)?;
 
+    // Create lock file to signal agent is running
+    let lock_path = PathBuf::from(chant::paths::LOCKS_DIR).join(format!("{}.lock", spec.id));
+    std::fs::create_dir_all(chant::paths::LOCKS_DIR)?;
+    std::fs::write(&lock_path, format!("{}", std::process::id()))?;
+
     let worktree_path = worktree::create_worktree(&spec.id, &branch_name, project_name)?;
     worktree::copy_spec_to_worktree(&spec.id, &worktree_path)?;
     worktree::isolate_worktree_specs(&spec.id, &worktree_path)?;
@@ -282,9 +287,16 @@ pub fn cmd_work(
 
             // Cleanup: append output and create transcript
             executor::cleanup_completed_spec(&mut spec, &spec_path, &agent_output)?;
+
+            // Remove lock file after successful completion
+            let _ = std::fs::remove_file(&lock_path);
         }
         Err(e) => {
             executor::handle_spec_failure(&spec.id, &specs_dir, &e)?;
+
+            // Remove lock file after failure
+            let _ = std::fs::remove_file(&lock_path);
+
             let _ = chant::git::ensure_on_main_branch(&config.defaults.main_branch);
             println!("\n{} Spec failed: {}", "✗".red(), e);
             return Err(e);
