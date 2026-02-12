@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 
 use crate::config::Config;
 use crate::operations::commits::{
-    detect_agent_in_commit, get_commits_for_spec_allow_no_commits,
+    detect_agent_in_commit, get_commits_for_spec, get_commits_for_spec_allow_no_commits,
     get_commits_for_spec_with_branch, get_commits_for_spec_with_branch_allow_no_commits,
 };
 use crate::operations::model::get_model_name;
@@ -77,10 +77,18 @@ pub fn finalize_spec(
             } else if let Some(branch) = spec_branch {
                 get_commits_for_spec_with_branch_allow_no_commits(&spec.id, Some(branch))?
             } else {
-                get_commits_for_spec_allow_no_commits(&spec.id)?
+                get_commits_for_spec(&spec.id)?
             }
         }
     };
+
+    // Guard: ensure commits exist when allow_no_commits is false
+    if !options.allow_no_commits && commits.is_empty() {
+        anyhow::bail!(
+            "Cannot finalize spec '{}': no commits found. Create commits or use --allow-no-commits",
+            spec.id
+        );
+    }
 
     // Check for agent co-authorship if config requires approval for agent work
     if config.approval.require_approval_for_agent_work {
