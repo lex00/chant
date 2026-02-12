@@ -8,6 +8,7 @@ use std::fs;
 use std::path::PathBuf;
 
 const PIDS_DIR: &str = ".chant/pids";
+const PROCESSES_DIR: &str = ".chant/processes";
 
 /// Ensure the PIDs directory exists
 pub fn ensure_pids_dir() -> Result<PathBuf> {
@@ -166,4 +167,24 @@ pub fn cleanup_stale_pids() -> Result<usize> {
     }
 
     Ok(cleaned)
+}
+
+/// Remove process JSON files for a spec
+/// Matches files like `.chant/processes/{spec_id}-{pid}.json`
+pub fn remove_process_files(spec_id: &str) -> Result<()> {
+    let processes_dir = PathBuf::from(PROCESSES_DIR);
+    if !processes_dir.exists() {
+        return Ok(());
+    }
+    let prefix = format!("{}-", spec_id);
+    for entry in fs::read_dir(&processes_dir)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        if let Some(name_str) = name.to_str() {
+            if name_str.starts_with(&prefix) && name_str.ends_with(".json") {
+                fs::remove_file(entry.path())?;
+            }
+        }
+    }
+    Ok(())
 }

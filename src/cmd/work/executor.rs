@@ -352,6 +352,10 @@ pub fn finalize_completed_spec(
         commits_to_pass,
     )?;
 
+    // Clean up tracking files
+    let _ = chant::pid::remove_pid_file(&spec.id);
+    let _ = chant::pid::remove_process_files(&spec.id);
+
     // Auto-complete driver if ready
     let all_specs = spec::load_all_specs(specs_dir)?;
     if spec::auto_complete_driver_if_ready(&spec.id, &all_specs, specs_dir)? {
@@ -414,6 +418,10 @@ pub fn handle_spec_failure(spec_id: &str, specs_dir: &Path, error: &anyhow::Erro
             .to(SpecStatus::Failed);
     }
     spec.save(&spec_path)?;
+
+    // Clean up tracking files (defense-in-depth; agent.rs also cleans PID on normal exit)
+    let _ = chant::pid::remove_pid_file(spec_id);
+    let _ = chant::pid::remove_process_files(spec_id);
 
     Ok(())
 }

@@ -2091,6 +2091,9 @@ fn tool_chant_work_list(arguments: Option<&Value>) -> Result<Value> {
     // Report processes with active PIDs
     for (spec_id, pid, is_running) in &active_pids {
         if !is_running {
+            // Self-healing: clean up stale PID and process files
+            let _ = crate::pid::remove_pid_file(spec_id);
+            let _ = crate::pid::remove_process_files(spec_id);
             stale_count += 1;
             if !include_completed {
                 continue;
