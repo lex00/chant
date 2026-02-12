@@ -148,16 +148,15 @@ fn validate_approval(spec: &Spec) -> Result<()> {
 
 fn validate_dependencies(spec: &Spec, specs_dir: &Path) -> Result<()> {
     let all_specs = spec::load_all_specs(specs_dir)?;
-    if !spec.is_ready(&all_specs) {
-        let blockers = spec.get_blocking_dependencies(&all_specs, specs_dir);
-        if !blockers.is_empty() {
-            let blocking_ids: Vec<String> = blockers.iter().map(|b| b.spec_id.clone()).collect();
-            anyhow::bail!(
-                "Spec '{}' is blocked by dependencies: {}",
-                spec.id,
-                blocking_ids.join(", ")
-            );
-        }
+    // Check actual dependency state instead of using is_ready() as a proxy
+    let blockers = spec.get_blocking_dependencies(&all_specs, specs_dir);
+    if !blockers.is_empty() {
+        let blocking_ids: Vec<String> = blockers.iter().map(|b| b.spec_id.clone()).collect();
+        anyhow::bail!(
+            "Spec '{}' is blocked by dependencies: {}",
+            spec.id,
+            blocking_ids.join(", ")
+        );
     }
     Ok(())
 }

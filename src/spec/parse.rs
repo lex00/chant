@@ -466,7 +466,11 @@ impl Spec {
     pub fn is_ready(&self, all_specs: &[Spec]) -> bool {
         use crate::spec_group::{all_prior_siblings_completed, is_member_of};
 
-        if self.frontmatter.status != SpecStatus::Pending {
+        // Allow both Pending and Failed specs to be considered "ready"
+        // Failed specs can be retried if their dependencies are met
+        if self.frontmatter.status != SpecStatus::Pending
+            && self.frontmatter.status != SpecStatus::Failed
+        {
             return false;
         }
 
