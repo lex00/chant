@@ -109,3 +109,93 @@ pub fn update_spec(spec: &mut Spec, spec_path: &Path, options: UpdateOptions) ->
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::spec::Spec;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_replace_body_preserves_title() {
+        let temp_dir = TempDir::new().unwrap();
+        let spec_path = temp_dir.path().join("test-spec.md");
+
+        // Create a spec with a title (matching what chant_add creates)
+        let initial_content = r#"---
+type: code
+status: pending
+---
+
+# Some title
+"#;
+        fs::write(&spec_path, initial_content).unwrap();
+
+        // Load the spec
+        let mut spec = Spec::load(&spec_path).unwrap();
+        assert_eq!(spec.title, Some("Some title".to_string()));
+
+        // Update with replace_body but no title in output (exact repro from spec)
+        let options = UpdateOptions {
+            output: Some(
+                "\n\n## Details\n\nBody text\n\n## Acceptance Criteria\n\n- [ ] test".to_string(),
+            ),
+            replace_body: true,
+            ..Default::default()
+        };
+
+        update_spec(&mut spec, &spec_path, options).unwrap();
+
+        // Reload the spec from disk
+        let reloaded_spec = Spec::load(&spec_path).unwrap();
+
+        // Verify title is preserved
+        assert_eq!(
+            reloaded_spec.title,
+            Some("Some title".to_string()),
+            "Title should be preserved after replace_body"
+        );
+        assert!(
+            reloaded_spec.body.contains("# Some title"),
+            "Body should contain title heading"
+        );
+    }
+
+    #[test]
+    fn test_replace_body_when_spec_has_no_title_initially() {
+        let temp_dir = TempDir::new().unwrap();
+        let spec_path = temp_dir.path().join("test-spec-no-title.md");
+
+        // Create a spec WITHOUT a title in the body
+        let initial_content = r#"---
+type: code
+status: pending
+---
+
+Some body content without a heading
+"#;
+        fs::write(&spec_path, initial_content).unwrap();
+
+        // Load the spec
+        let mut spec = Spec::load(&spec_path).unwrap();
+        assert_eq!(spec.title, None, "Spec should have no title");
+
+        // Update with replace_body
+        let options = UpdateOptions {
+            output: Some(
+                "\n\n## Details\n\nBody text\n\n## Acceptance Criteria\n\n- [ ] test".to_string(),
+            ),
+            replace_body: true,
+            ..Default::default()
+        };
+
+        update_spec(&mut spec, &spec_path, options).unwrap();
+
+        // Reload the spec from disk
+        let reloaded_spec = Spec::load(&spec_path).unwrap();
+
+        // In this case, there's no title to preserve, so it should still be None
+        assert_eq!(reloaded_spec.title, None, "Spec should still have no title");
+    }
+}
