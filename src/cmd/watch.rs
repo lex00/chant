@@ -896,6 +896,41 @@ pub fn run_watch(once: bool, dry_run: bool, poll_interval: Option<u64>) -> Resul
                         }
                     }
                 }
+
+                // Check for silently-crashed workers (PID dead, spec still InProgress)
+                for spec in &in_progress_specs {
+                    let spec_id = &spec.id;
+                    if let Ok(Some(pid)) = chant::pid::read_pid_file(spec_id) {
+                        if !chant::pid::is_process_running(pid) {
+                            logger.log_event(&format!(
+                                "Spec {} has dead worker (PID {}), marking failed",
+                                spec_id.cyan(),
+                                pid
+                            ))?;
+                            if !dry_run {
+                                let specs_dir = PathBuf::from(".chant/specs");
+                                if let Ok(mut spec) = spec::resolve_spec(&specs_dir, spec_id) {
+                                    let _ = spec::TransitionBuilder::new(&mut spec)
+                                        .force()
+                                        .to(SpecStatus::Failed);
+                                    let spec_path = specs_dir.join(format!("{}.md", spec_id));
+                                    if let Err(e) = spec.save(&spec_path) {
+                                        logger.log_event(&format!(
+                                            "  {} failed to mark spec failed: {}",
+                                            "✗".red(),
+                                            e
+                                        ))?;
+                                    } else {
+                                        logger.log_event(&format!(
+                                            "  {} marked spec as failed",
+                                            "✓".green()
+                                        ))?;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             // Check worktree status files

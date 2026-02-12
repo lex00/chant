@@ -2105,6 +2105,7 @@ fn tool_chant_work_list(arguments: Option<&Value>) -> Result<Value> {
         let spec = spec_map.get(spec_id);
         let title = spec.and_then(|s| s.title.as_deref());
         let branch = spec.and_then(|s| s.frontmatter.branch.as_deref());
+        let spec_status = spec.map(|s| &s.frontmatter.status);
 
         let log_path = logs_dir.join(format!("{}.log", spec_id));
         let log_mtime = if log_path.exists() {
@@ -2120,14 +2121,22 @@ fn tool_chant_work_list(arguments: Option<&Value>) -> Result<Value> {
             None
         };
 
-        processes.push(json!({
+        let is_dead_worker = !is_running && matches!(spec_status, Some(SpecStatus::InProgress));
+
+        let mut entry = json!({
             "spec_id": spec_id,
             "title": title,
             "pid": pid,
             "status": if *is_running { "running" } else { "stale" },
             "log_modified": log_mtime,
             "branch": branch
-        }));
+        });
+
+        if is_dead_worker {
+            entry["warning"] = json!("process_dead");
+        }
+
+        processes.push(entry);
     }
 
     let summary = json!({
