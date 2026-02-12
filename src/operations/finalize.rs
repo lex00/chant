@@ -87,8 +87,10 @@ pub fn finalize_spec(
         check_and_set_agent_approval(spec, &commits, config)?;
     }
 
-    // Update spec to completed using state machine
+    // Update spec to completed using state machine with force transition
+    // This allows finalization from any state (e.g. failed specs whose agent completed work)
     TransitionBuilder::new(spec)
+        .force()
         .to(SpecStatus::Completed)
         .context("Failed to transition spec to Completed status")?;
 
