@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.1] - 2026-02-12
+
+### Fixed
+
+- **Watch daemon race condition with chain execution**: Chain mode (`chant work --chain`) never created lock files, causing the watch daemon to immediately mark running specs as failed. Lock files are now created in the shared `prepare_spec_for_execution()` path used by chain mode
+- **Lock file race window**: Lock file is now created **before** transitioning spec to InProgress (previously after), eliminating the window where watch could see InProgress + no lock and falsely mark specs as failed
+- **Stale lock files on early failure**: If `prepare_spec_for_execution()` fails after creating the lock file (e.g., log creation, status write), the lock file is now cleaned up before returning the error
+
 ## [0.21.0] - 2026-02-12
 
 ### Fixed

@@ -7,7 +7,7 @@
 | Specs | `.chant/specs/*.md` | Git | Forever (git history) |
 | Prompts | `.chant/prompts/*.md` | Git | Forever |
 | Config | `.chant/config.md` | Git | Forever |
-| Locks | `.chant/.locks/*.pid` | No | Until released |
+| Locks | `.chant/.locks/*.lock` | No | Until released |
 | Index | `.chant/.store/` | No | Rebuilt on demand |
 | Logs | `.chant/logs/` | Optional | Configurable |
 
@@ -101,7 +101,9 @@ When a spec is created with `--needs-approval`, it must be approved before work 
 
 ### In Progress
 - Spec is currently being executed by an agent
-- Lock file created in `.chant/.locks/{spec-id}.pid`
+- Lock file created in `.chant/.locks/{spec-id}.lock` **before** status transitions to InProgress (prevents race with watch daemon)
+- Lock file contains the PID of the managing process
+- Lock file removed on completion or failure
 - Agent writes status to `.chant-status.json` in worktree (parallel mode)
 
 ### Completed
@@ -217,8 +219,8 @@ lifecycle:
 ┌─────────────────────────────────────────────────────────────┐
 │                     Execution                                │
 │                                                              │
-│  Worktree created: /tmp/chant-{spec-id}/ (parallel only)    │
-│  Lock created:  .chant/.locks/{spec-id}.pid                 │
+│  Lock created:  .chant/.locks/{spec-id}.lock                │
+│  Worktree created: /tmp/chant-{spec-id}/                    │
 └──────────────────────────┬──────────────────────────────────┘
                            │
                            │ completion
