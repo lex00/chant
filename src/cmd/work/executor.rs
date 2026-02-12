@@ -506,19 +506,19 @@ pub fn prepare_spec_for_execution(
         let _ = std::fs::remove_file(&lock_path);
         anyhow::anyhow!("Failed to transition spec to InProgress: {}", e)
     })?;
-    spec.save(spec_path).map_err(|e| {
+    spec.save(spec_path).inspect_err(|_| {
         // Clean up lock file if save fails
         let _ = std::fs::remove_file(&lock_path);
-        e
     })?;
     eprintln!("{} Set {} to InProgress", "→".cyan(), spec.id);
 
     // Create log file
-    cmd::agent::create_log_file_if_not_exists(&spec.id, &resolved_prompt_name).map_err(|e| {
-        // Clean up lock file if log creation fails
-        let _ = std::fs::remove_file(&lock_path);
-        e
-    })?;
+    cmd::agent::create_log_file_if_not_exists(&spec.id, &resolved_prompt_name).inspect_err(
+        |_| {
+            // Clean up lock file if log creation fails
+            let _ = std::fs::remove_file(&lock_path);
+        },
+    )?;
 
     // Write agent status: working
     let status_path = specs_dir.join(format!(".chant-status-{}.json", spec.id));
@@ -529,17 +529,15 @@ pub fn prepare_spec_for_execution(
         error: None,
         commits: vec![],
     };
-    chant::worktree::status::write_status(&status_path, &agent_status).map_err(|e| {
+    chant::worktree::status::write_status(&status_path, &agent_status).inspect_err(|_| {
         // Clean up lock file if status write fails
         let _ = std::fs::remove_file(&lock_path);
-        e
     })?;
 
     // Mark driver as in_progress if needed (conditional for chain mode)
-    spec::mark_driver_in_progress_conditional(specs_dir, &spec.id, true).map_err(|e| {
+    spec::mark_driver_in_progress_conditional(specs_dir, &spec.id, true).inspect_err(|_| {
         // Clean up lock file if driver marking fails
         let _ = std::fs::remove_file(&lock_path);
-        e
     })?;
 
     Ok(resolved_prompt_name)
