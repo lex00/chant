@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-02-12
+
+### Fixed
+
+- **Watch falsely marks specs as failed**: `is_failed()` checked for lock files that were never created, causing watch to mark running specs as failed within seconds. Lock files are now created when agents start and removed on completion
+- **Completed specs overwritten to failed**: `handle_spec_failure` now guards against overwriting specs that already completed successfully
+- **Stale PID and process files after agent exit**: PID files and process tracking files are now cleaned up on both success and failure paths
+- **Silently-crashed workers undetected**: Watch now detects workers that crashed without cleanup (stale PID files with dead processes) and recovers them
+
+### Added
+
+- **Worktree context in agent prompts**: Single-mode `chant work` now passes worktree path, branch name, and isolation context to agents, matching parallel mode behavior. Agents receive an "Execution Environment" section explaining they're in an isolated worktree
+- **Failed spec retry via MCP**: Failed specs can now be retried through `chant_reset` without manual intervention
+- **MCP finalize force transition**: Finalize operation now force-transitions spec status to handle edge cases
+- **Monitoring guidance in work_start**: `chant_work_start` MCP response now includes guidance on monitoring running specs
+
+### Changed
+
+- **Documentation cleanup**: Removed pitch language, origin stories, and TBD placeholders from docs
+- **Commit requirement enforced in finalize**: Finalize now validates that at least one commit exists before completing a spec
+
 ## [0.20.1] - 2026-02-11
 
 ### Fixed
