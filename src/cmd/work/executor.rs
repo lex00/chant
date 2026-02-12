@@ -366,6 +366,11 @@ pub fn finalize_completed_spec(
     let _ = chant::pid::remove_pid_file(&spec.id);
     let _ = chant::pid::remove_process_files(&spec.id);
 
+    // Remove lock file
+    let lock_path =
+        std::path::PathBuf::from(chant::paths::LOCKS_DIR).join(format!("{}.lock", spec.id));
+    let _ = std::fs::remove_file(&lock_path);
+
     // Auto-complete driver if ready
     let all_specs = spec::load_all_specs(specs_dir)?;
     if spec::auto_complete_driver_if_ready(&spec.id, &all_specs, specs_dir)? {
@@ -433,6 +438,11 @@ pub fn handle_spec_failure(spec_id: &str, specs_dir: &Path, error: &anyhow::Erro
     let _ = chant::pid::remove_pid_file(spec_id);
     let _ = chant::pid::remove_process_files(spec_id);
 
+    // Remove lock file
+    let lock_path =
+        std::path::PathBuf::from(chant::paths::LOCKS_DIR).join(format!("{}.lock", spec_id));
+    let _ = std::fs::remove_file(&lock_path);
+
     Ok(())
 }
 
@@ -489,6 +499,12 @@ pub fn prepare_spec_for_execution(
         .map_err(|e| anyhow::anyhow!("Failed to transition spec to InProgress: {}", e))?;
     spec.save(spec_path)?;
     eprintln!("{} Set {} to InProgress", "→".cyan(), spec.id);
+
+    // Create lock file to signal agent is running
+    let lock_path =
+        std::path::PathBuf::from(chant::paths::LOCKS_DIR).join(format!("{}.lock", spec.id));
+    std::fs::create_dir_all(chant::paths::LOCKS_DIR)?;
+    std::fs::write(&lock_path, format!("{}", std::process::id()))?;
 
     // Create log file
     cmd::agent::create_log_file_if_not_exists(&spec.id, &resolved_prompt_name)?;
