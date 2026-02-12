@@ -194,17 +194,17 @@ pub fn cmd_work(
     let branch_name = format!("{}{}", config.defaults.branch_prefix, spec.id);
     let project_name = Some(config.project.name.as_str()).filter(|n| !n.is_empty());
 
+    // Create lock file BEFORE updating status to avoid race with watch daemon
+    let lock_path = PathBuf::from(chant::paths::LOCKS_DIR).join(format!("{}.lock", spec.id));
+    std::fs::create_dir_all(chant::paths::LOCKS_DIR)?;
+    std::fs::write(&lock_path, format!("{}", std::process::id()))?;
+
     // Update status to in_progress BEFORE creating worktree
     // so copy_spec_to_worktree picks up the correct status.
     spec.set_status(SpecStatus::InProgress)
         .map_err(|e| anyhow::anyhow!("Failed to transition spec to InProgress: {}", e))?;
     spec.frontmatter.branch = Some(branch_name.clone());
     spec.save(&spec_path)?;
-
-    // Create lock file to signal agent is running
-    let lock_path = PathBuf::from(chant::paths::LOCKS_DIR).join(format!("{}.lock", spec.id));
-    std::fs::create_dir_all(chant::paths::LOCKS_DIR)?;
-    std::fs::write(&lock_path, format!("{}", std::process::id()))?;
 
     let worktree_path = worktree::create_worktree(&spec.id, &branch_name, project_name)?;
     worktree::copy_spec_to_worktree(&spec.id, &worktree_path)?;
