@@ -11,6 +11,7 @@ use crate::spec::{load_all_specs, resolve_spec, SpecStatus};
 use super::super::handlers::{
     check_for_running_work_processes, find_project_root, mcp_ensure_initialized,
 };
+use super::super::response::{mcp_error_response, mcp_text_response};
 
 pub fn tool_chant_work_start(arguments: Option<&Value>) -> Result<Value> {
     let specs_dir = match mcp_ensure_initialized() {
@@ -36,21 +37,13 @@ pub fn tool_chant_work_start(arguments: Option<&Value>) -> Result<Value> {
     if parallel.is_none() {
         match check_for_running_work_processes() {
             Ok(Some((running_spec, pid))) => {
-                return Ok(json!({
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": format!(
-                                "Another work process is already running (spec: {}, PID: {}).\n\
+                return Ok(mcp_error_response(format!(
+                    "Another work process is already running (spec: {}, PID: {}).\n\
                                  Only one single or chain work process can run at a time.\n\
                                  To run specs concurrently, use the parallel parameter:\n  \
                                  chant_work_start(id=\"<spec>\", parallel=<N>)",
-                                running_spec, pid
-                            )
-                        }
-                    ],
-                    "isError": true
-                }));
+                    running_spec, pid
+                )));
             }
             Ok(None) => {
                 // No running processes, proceed
@@ -66,15 +59,7 @@ pub fn tool_chant_work_start(arguments: Option<&Value>) -> Result<Value> {
     let spec = match resolve_spec(&specs_dir, id) {
         Ok(s) => s,
         Err(e) => {
-            return Ok(json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": e.to_string()
-                    }
-                ],
-                "isError": true
-            }));
+            return Ok(mcp_error_response(e.to_string()));
         }
     };
 
@@ -83,62 +68,30 @@ pub fn tool_chant_work_start(arguments: Option<&Value>) -> Result<Value> {
     // Gate: reject specs in invalid states
     match spec.frontmatter.status {
         SpecStatus::Paused => {
-            return Ok(json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": format!(
-                            "Spec '{}' is paused. Cannot start work on a paused spec.\n\
+            return Ok(mcp_error_response(format!(
+                "Spec '{}' is paused. Cannot start work on a paused spec.\n\
                              Resume the spec first or use `chant reset {}` to reset it to pending.",
-                            spec_id, spec_id
-                        )
-                    }
-                ],
-                "isError": true
-            }));
+                spec_id, spec_id
+            )));
         }
         SpecStatus::InProgress => {
-            return Ok(json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": format!(
+            return Ok(mcp_error_response(format!(
                             "Spec '{}' is already in progress. Cannot start work on a spec that is already being worked on.\n\
                              Use `chant takeover {}` to take over the running work.",
                             spec_id, spec_id
-                        )
-                    }
-                ],
-                "isError": true
-            }));
+                        )));
         }
         SpecStatus::Completed => {
-            return Ok(json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": format!(
-                            "Spec '{}' is already completed. Cannot start work on a completed spec.",
-                            spec_id
-                        )
-                    }
-                ],
-                "isError": true
-            }));
+            return Ok(mcp_error_response(format!(
+                "Spec '{}' is already completed. Cannot start work on a completed spec.",
+                spec_id
+            )));
         }
         SpecStatus::Cancelled => {
-            return Ok(json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": format!(
-                            "Spec '{}' is cancelled. Cannot start work on a cancelled spec.",
-                            spec_id
-                        )
-                    }
-                ],
-                "isError": true
-            }));
+            return Ok(mcp_error_response(format!(
+                "Spec '{}' is cancelled. Cannot start work on a cancelled spec.",
+                spec_id
+            )));
         }
         _ => {
             // Valid states: Pending, Ready, Failed, NeedsAttention, Blocked
@@ -153,30 +106,14 @@ pub fn tool_chant_work_start(arguments: Option<&Value>) -> Result<Value> {
         let config = match Config::load() {
             Ok(c) => c,
             Err(e) => {
-                return Ok(json!({
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": format!("Failed to load config: {}", e)
-                        }
-                    ],
-                    "isError": true
-                }));
+                return Ok(mcp_error_response(format!("Failed to load config: {}", e)));
             }
         };
 
         let all_specs = match load_all_specs(&specs_dir) {
             Ok(specs) => specs,
             Err(e) => {
-                return Ok(json!({
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": format!("Failed to load specs: {}", e)
-                        }
-                    ],
-                    "isError": true
-                }));
+                return Ok(mcp_error_response(format!("Failed to load specs: {}", e)));
             }
         };
 
@@ -297,14 +234,9 @@ pub fn tool_chant_work_start(arguments: Option<&Value>) -> Result<Value> {
     let process_file = processes_dir.join(format!("{}.json", process_id));
     std::fs::write(&process_file, serde_json::to_string_pretty(&process_info)?)?;
 
-    Ok(json!({
-        "content": [
-            {
-                "type": "text",
-                "text": serde_json::to_string_pretty(&process_info)?
-            }
-        ]
-    }))
+    Ok(mcp_text_response(serde_json::to_string_pretty(
+        &process_info,
+    )?))
 }
 
 pub fn tool_chant_work_list(arguments: Option<&Value>) -> Result<Value> {
@@ -393,14 +325,7 @@ pub fn tool_chant_work_list(arguments: Option<&Value>) -> Result<Value> {
         "summary": summary
     });
 
-    Ok(json!({
-        "content": [
-            {
-                "type": "text",
-                "text": serde_json::to_string_pretty(&response)?
-            }
-        ]
-    }))
+    Ok(mcp_text_response(serde_json::to_string_pretty(&response)?))
 }
 
 pub fn tool_chant_pause(arguments: Option<&Value>) -> Result<Value> {
@@ -420,15 +345,7 @@ pub fn tool_chant_pause(arguments: Option<&Value>) -> Result<Value> {
     let mut spec = match resolve_spec(&specs_dir, id) {
         Ok(s) => s,
         Err(e) => {
-            return Ok(json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": e.to_string()
-                    }
-                ],
-                "isError": true
-            }));
+            return Ok(mcp_error_response(e.to_string()));
         }
     };
 
@@ -439,14 +356,10 @@ pub fn tool_chant_pause(arguments: Option<&Value>) -> Result<Value> {
     let options = crate::operations::PauseOptions { force: true };
     crate::operations::pause_spec(&mut spec, &spec_path, options)?;
 
-    Ok(json!({
-        "content": [
-            {
-                "type": "text",
-                "text": format!("Successfully paused work for spec '{}'", spec_id)
-            }
-        ]
-    }))
+    Ok(mcp_text_response(format!(
+        "Successfully paused work for spec '{}'",
+        spec_id
+    )))
 }
 
 pub fn tool_chant_takeover(arguments: Option<&Value>) -> Result<Value> {
@@ -468,15 +381,7 @@ pub fn tool_chant_takeover(arguments: Option<&Value>) -> Result<Value> {
     let spec = match resolve_spec(&specs_dir, id) {
         Ok(s) => s,
         Err(e) => {
-            return Ok(json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": e.to_string()
-                    }
-                ],
-                "isError": true
-            }));
+            return Ok(mcp_error_response(e.to_string()));
         }
     };
 
@@ -491,24 +396,12 @@ pub fn tool_chant_takeover(arguments: Option<&Value>) -> Result<Value> {
                 "worktree_path": result.worktree_path
             });
 
-            Ok(json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": serde_json::to_string_pretty(&response)?
-                    }
-                ]
-            }))
+            Ok(mcp_text_response(serde_json::to_string_pretty(&response)?))
         }
-        Err(e) => Ok(json!({
-            "content": [
-                {
-                    "type": "text",
-                    "text": format!("Failed to take over spec '{}': {}", spec.id, e)
-                }
-            ],
-            "isError": true
-        })),
+        Err(e) => Ok(mcp_error_response(format!(
+            "Failed to take over spec '{}': {}",
+            spec.id, e
+        ))),
     }
 }
 
@@ -536,15 +429,7 @@ pub fn tool_chant_split(arguments: Option<&Value>) -> Result<Value> {
     let spec = match resolve_spec(&specs_dir, id) {
         Ok(s) => s,
         Err(e) => {
-            return Ok(json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": e.to_string()
-                    }
-                ],
-                "isError": true
-            }));
+            return Ok(mcp_error_response(e.to_string()));
         }
     };
 
@@ -556,15 +441,10 @@ pub fn tool_chant_split(arguments: Option<&Value>) -> Result<Value> {
             // Valid for splitting
         }
         _ => {
-            return Ok(json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": format!("Spec '{}' must be in pending status to split. Current status: {:?}", spec_id, spec.frontmatter.status)
-                    }
-                ],
-                "isError": true
-            }));
+            return Ok(mcp_error_response(format!(
+                "Spec '{}' must be in pending status to split. Current status: {:?}",
+                spec_id, spec.frontmatter.status
+            )));
         }
     }
 
@@ -621,12 +501,7 @@ pub fn tool_chant_split(arguments: Option<&Value>) -> Result<Value> {
     let process_file = processes_dir.join(format!("{}.json", process_id));
     std::fs::write(&process_file, serde_json::to_string_pretty(&process_info)?)?;
 
-    Ok(json!({
-        "content": [
-            {
-                "type": "text",
-                "text": serde_json::to_string_pretty(&process_info)?
-            }
-        ]
-    }))
+    Ok(mcp_text_response(serde_json::to_string_pretty(
+        &process_info,
+    )?))
 }

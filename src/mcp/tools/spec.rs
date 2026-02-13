@@ -11,6 +11,7 @@ use crate::spec::{load_all_specs, resolve_spec, SpecStatus, SpecType};
 use crate::spec_group;
 
 use super::super::handlers::mcp_ensure_initialized;
+use super::super::response::{mcp_error_response, mcp_text_response};
 
 pub fn tool_chant_spec_list(arguments: Option<&Value>) -> Result<Value> {
     let specs_dir = match mcp_ensure_initialized() {
@@ -68,14 +69,7 @@ pub fn tool_chant_spec_list(arguments: Option<&Value>) -> Result<Value> {
         "returned": limited_specs.len()
     });
 
-    Ok(json!({
-        "content": [
-            {
-                "type": "text",
-                "text": serde_json::to_string_pretty(&response)?
-            }
-        ]
-    }))
+    Ok(mcp_text_response(serde_json::to_string_pretty(&response)?))
 }
 
 pub fn tool_chant_spec_get(arguments: Option<&Value>) -> Result<Value> {
@@ -92,15 +86,7 @@ pub fn tool_chant_spec_get(arguments: Option<&Value>) -> Result<Value> {
     let spec = match resolve_spec(&specs_dir, id) {
         Ok(s) => s,
         Err(e) => {
-            return Ok(json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": e.to_string()
-                    }
-                ],
-                "isError": true
-            }));
+            return Ok(mcp_error_response(e.to_string()));
         }
     };
 
@@ -121,14 +107,7 @@ pub fn tool_chant_spec_get(arguments: Option<&Value>) -> Result<Value> {
         "body": spec.body
     });
 
-    Ok(json!({
-        "content": [
-            {
-                "type": "text",
-                "text": serde_json::to_string_pretty(&spec_json)?
-            }
-        ]
-    }))
+    Ok(mcp_text_response(serde_json::to_string_pretty(&spec_json)?))
 }
 
 pub fn tool_chant_ready(arguments: Option<&Value>) -> Result<Value> {
@@ -176,14 +155,7 @@ pub fn tool_chant_ready(arguments: Option<&Value>) -> Result<Value> {
         "returned": limited_specs.len()
     });
 
-    Ok(json!({
-        "content": [
-            {
-                "type": "text",
-                "text": serde_json::to_string_pretty(&response)?
-            }
-        ]
-    }))
+    Ok(mcp_text_response(serde_json::to_string_pretty(&response)?))
 }
 
 pub fn tool_chant_spec_update(arguments: Option<&Value>) -> Result<Value> {
@@ -202,15 +174,7 @@ pub fn tool_chant_spec_update(arguments: Option<&Value>) -> Result<Value> {
     let mut spec = match resolve_spec(&specs_dir, id) {
         Ok(s) => s,
         Err(e) => {
-            return Ok(json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": e.to_string()
-                    }
-                ],
-                "isError": true
-            }));
+            return Ok(mcp_error_response(e.to_string()));
         }
     };
 
@@ -222,15 +186,7 @@ pub fn tool_chant_spec_update(arguments: Option<&Value>) -> Result<Value> {
         match SpecStatus::from_str(status_str) {
             Ok(s) => Some(s),
             Err(e) => {
-                return Ok(json!({
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": format!("{}", e)
-                        }
-                    ],
-                    "isError": true
-                }));
+                return Ok(mcp_error_response(format!("{}", e)));
             }
         }
     } else {
@@ -290,23 +246,8 @@ pub fn tool_chant_spec_update(arguments: Option<&Value>) -> Result<Value> {
     };
 
     match crate::operations::update::update_spec(&mut spec, &spec_path, options) {
-        Ok(_) => Ok(json!({
-            "content": [
-                {
-                    "type": "text",
-                    "text": format!("Updated spec: {}", spec_id)
-                }
-            ]
-        })),
-        Err(e) => Ok(json!({
-            "content": [
-                {
-                    "type": "text",
-                    "text": format!("Failed to update spec: {}", e)
-                }
-            ],
-            "isError": true
-        })),
+        Ok(_) => Ok(mcp_text_response(format!("Updated spec: {}", spec_id))),
+        Err(e) => Ok(mcp_error_response(format!("Failed to update spec: {}", e))),
     }
 }
 
@@ -380,14 +321,7 @@ pub fn tool_chant_status(arguments: Option<&Value>) -> Result<Value> {
         } else {
             parts.join(" | ")
         };
-        return Ok(json!({
-            "content": [
-                {
-                    "type": "text",
-                    "text": brief_text
-                }
-            ]
-        }));
+        return Ok(mcp_text_response(brief_text));
     }
 
     // Build status response
@@ -450,14 +384,9 @@ pub fn tool_chant_status(arguments: Option<&Value>) -> Result<Value> {
         status_json["in_progress_activity"] = json!(activity);
     }
 
-    Ok(json!({
-        "content": [
-            {
-                "type": "text",
-                "text": serde_json::to_string_pretty(&status_json)?
-            }
-        ]
-    }))
+    Ok(mcp_text_response(serde_json::to_string_pretty(
+        &status_json,
+    )?))
 }
 
 pub fn tool_chant_log(arguments: Option<&Value>) -> Result<Value> {
@@ -484,15 +413,7 @@ pub fn tool_chant_log(arguments: Option<&Value>) -> Result<Value> {
     let spec = match resolve_spec(&specs_dir, id) {
         Ok(s) => s,
         Err(e) => {
-            return Ok(json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": e.to_string()
-                    }
-                ],
-                "isError": true
-            }));
+            return Ok(mcp_error_response(e.to_string()));
         }
     };
 
@@ -500,15 +421,7 @@ pub fn tool_chant_log(arguments: Option<&Value>) -> Result<Value> {
     let log_path = logs_dir.join(format!("{}.log", spec.id));
 
     if !log_path.exists() {
-        return Ok(json!({
-            "content": [
-                {
-                    "type": "text",
-                    "text": format!("No log file found for spec '{}'. Logs are created when a spec is executed with `chant work`.", spec.id)
-                }
-            ],
-            "isError": true
-        }));
+        return Ok(mcp_error_response(format!("No log file found for spec '{}'. Logs are created when a spec is executed with `chant work`.", spec.id)));
     }
 
     // Read log file
@@ -578,14 +491,7 @@ pub fn tool_chant_log(arguments: Option<&Value>) -> Result<Value> {
         "has_more": has_more
     });
 
-    Ok(json!({
-        "content": [
-            {
-                "type": "text",
-                "text": serde_json::to_string_pretty(&response)?
-            }
-        ]
-    }))
+    Ok(mcp_text_response(serde_json::to_string_pretty(&response)?))
 }
 
 pub fn tool_chant_search(arguments: Option<&Value>) -> Result<Value> {
@@ -639,14 +545,9 @@ pub fn tool_chant_search(arguments: Option<&Value>) -> Result<Value> {
         })
         .collect();
 
-    Ok(json!({
-        "content": [
-            {
-                "type": "text",
-                "text": serde_json::to_string_pretty(&specs_json)?
-            }
-        ]
-    }))
+    Ok(mcp_text_response(serde_json::to_string_pretty(
+        &specs_json,
+    )?))
 }
 
 pub fn tool_chant_diagnose(arguments: Option<&Value>) -> Result<Value> {
@@ -666,15 +567,7 @@ pub fn tool_chant_diagnose(arguments: Option<&Value>) -> Result<Value> {
     let spec = match resolve_spec(&specs_dir, id) {
         Ok(s) => s,
         Err(e) => {
-            return Ok(json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": e.to_string()
-                    }
-                ],
-                "isError": true
-            }));
+            return Ok(mcp_error_response(e.to_string()));
         }
     };
 
@@ -682,15 +575,10 @@ pub fn tool_chant_diagnose(arguments: Option<&Value>) -> Result<Value> {
     let report = match diagnose::diagnose_spec(&spec.id) {
         Ok(r) => r,
         Err(e) => {
-            return Ok(json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": format!("Failed to diagnose spec: {}", e)
-                    }
-                ],
-                "isError": true
-            }));
+            return Ok(mcp_error_response(format!(
+                "Failed to diagnose spec: {}",
+                e
+            )));
         }
     };
 
@@ -716,14 +604,9 @@ pub fn tool_chant_diagnose(arguments: Option<&Value>) -> Result<Value> {
         "suggestion": report.suggestion
     });
 
-    Ok(json!({
-        "content": [
-            {
-                "type": "text",
-                "text": serde_json::to_string_pretty(&report_json)?
-            }
-        ]
-    }))
+    Ok(mcp_text_response(serde_json::to_string_pretty(
+        &report_json,
+    )?))
 }
 
 pub fn tool_chant_lint(arguments: Option<&Value>) -> Result<Value> {
@@ -745,10 +628,7 @@ pub fn tool_chant_lint(arguments: Option<&Value>) -> Result<Value> {
     let config = match Config::load() {
         Ok(c) => c,
         Err(e) => {
-            return Ok(json!({
-                "content": [{ "type": "text", "text": format!("Failed to load config: {}", e) }],
-                "isError": true
-            }));
+            return Ok(mcp_error_response(format!("Failed to load config: {}", e)));
         }
     };
 
@@ -760,10 +640,7 @@ pub fn tool_chant_lint(arguments: Option<&Value>) -> Result<Value> {
         match resolve_spec(&specs_dir, id) {
             Ok(spec) => vec![spec],
             Err(e) => {
-                return Ok(json!({
-                    "content": [{ "type": "text", "text": e.to_string() }],
-                    "isError": true
-                }));
+                return Ok(mcp_error_response(e.to_string()));
             }
         }
     } else {
@@ -816,14 +693,7 @@ pub fn tool_chant_lint(arguments: Option<&Value>) -> Result<Value> {
         "results": results
     });
 
-    Ok(json!({
-        "content": [
-            {
-                "type": "text",
-                "text": serde_json::to_string_pretty(&summary)?
-            }
-        ]
-    }))
+    Ok(mcp_text_response(serde_json::to_string_pretty(&summary)?))
 }
 
 pub fn tool_chant_add(arguments: Option<&Value>) -> Result<Value> {
@@ -845,10 +715,7 @@ pub fn tool_chant_add(arguments: Option<&Value>) -> Result<Value> {
     let config = match crate::config::Config::load() {
         Ok(c) => c,
         Err(e) => {
-            return Ok(json!({
-                "content": [{ "type": "text", "text": format!("Failed to load config: {}", e) }],
-                "isError": true
-            }));
+            return Ok(mcp_error_response(format!("Failed to load config: {}", e)));
         }
     };
 
@@ -859,29 +726,19 @@ pub fn tool_chant_add(arguments: Option<&Value>) -> Result<Value> {
         auto_commit: false, // MCP doesn't auto-commit
     };
 
-    let (spec, _filepath) = match crate::operations::create::create_spec(
-        description,
-        &specs_dir,
-        &config,
-        options,
-    ) {
-        Ok(result) => result,
-        Err(e) => {
-            return Ok(json!({
-                "content": [{ "type": "text", "text": format!("Failed to create spec: {}", e) }],
-                "isError": true
-            }));
-        }
-    };
+    let (spec, _filepath) =
+        match crate::operations::create::create_spec(description, &specs_dir, &config, options) {
+            Ok(result) => result,
+            Err(e) => {
+                return Ok(mcp_error_response(format!("Failed to create spec: {}", e)));
+            }
+        };
 
     // Load all specs for scoring (needed for isolation)
     let all_specs = match load_all_specs(&specs_dir) {
         Ok(specs) => specs,
         Err(e) => {
-            return Ok(json!({
-                "content": [{ "type": "text", "text": format!("Failed to load specs: {}", e) }],
-                "isError": true
-            }));
+            return Ok(mcp_error_response(format!("Failed to load specs: {}", e)));
         }
     };
 
@@ -914,14 +771,7 @@ pub fn tool_chant_add(arguments: Option<&Value>) -> Result<Value> {
         }
     });
 
-    Ok(json!({
-        "content": [
-            {
-                "type": "text",
-                "text": serde_json::to_string_pretty(&response)?
-            }
-        ]
-    }))
+    Ok(mcp_text_response(serde_json::to_string_pretty(&response)?))
 }
 
 pub fn tool_chant_verify(arguments: Option<&Value>) -> Result<Value> {
@@ -940,15 +790,7 @@ pub fn tool_chant_verify(arguments: Option<&Value>) -> Result<Value> {
     let spec = match resolve_spec(&specs_dir, id) {
         Ok(s) => s,
         Err(e) => {
-            return Ok(json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": e.to_string()
-                    }
-                ],
-                "isError": true
-            }));
+            return Ok(mcp_error_response(e.to_string()));
         }
     };
 
@@ -1049,12 +891,5 @@ pub fn tool_chant_verify(arguments: Option<&Value>) -> Result<Value> {
         "verification_notes": verification_notes
     });
 
-    Ok(json!({
-        "content": [
-            {
-                "type": "text",
-                "text": serde_json::to_string_pretty(&result)?
-            }
-        ]
-    }))
+    Ok(mcp_text_response(serde_json::to_string_pretty(&result)?))
 }

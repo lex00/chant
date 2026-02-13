@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use crate::paths::SPECS_DIR;
 
 use super::protocol::{PROTOCOL_VERSION, SERVER_NAME, SERVER_VERSION};
+use super::response::mcp_error_response;
 use super::tools::{
     tool_chant_add, tool_chant_archive, tool_chant_cancel, tool_chant_diagnose,
     tool_chant_finalize, tool_chant_lint, tool_chant_log, tool_chant_pause, tool_chant_ready,
@@ -603,28 +604,14 @@ pub fn find_project_root() -> Option<PathBuf> {
 /// - This allows tools to return meaningful errors while maintaining valid JSON-RPC responses
 pub fn mcp_ensure_initialized() -> Result<PathBuf, Value> {
     let project_root = find_project_root().ok_or_else(|| {
-        json!({
-            "content": [
-                {
-                    "type": "text",
-                    "text": "Not in a chant project directory. Run `chant init` first or navigate to a directory containing `.chant/`."
-                }
-            ],
-            "isError": true
-        })
+        mcp_error_response("Not in a chant project directory. Run `chant init` first or navigate to a directory containing `.chant/`.")
     })?;
 
     let specs_dir = project_root.join(SPECS_DIR);
     if !specs_dir.exists() {
-        return Err(json!({
-            "content": [
-                {
-                    "type": "text",
-                    "text": "Chant not initialized. Run `chant init` first."
-                }
-            ],
-            "isError": true
-        }));
+        return Err(mcp_error_response(
+            "Chant not initialized. Run `chant init` first.",
+        ));
     }
     Ok(specs_dir)
 }

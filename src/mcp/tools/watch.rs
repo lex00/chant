@@ -5,6 +5,8 @@ use serde_json::{json, Value};
 
 use crate::worktree::status::read_status;
 
+use super::super::response::{mcp_error_response, mcp_text_response};
+
 /// Information about an active worktree
 #[derive(Debug, Clone)]
 struct WorktreeInfo {
@@ -122,15 +124,10 @@ pub fn tool_chant_watch_status(_arguments: Option<&Value>) -> Result<Value> {
     let worktrees = match find_active_worktrees(&branch_prefix) {
         Ok(wts) => wts,
         Err(e) => {
-            return Ok(json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": format!("Failed to list worktrees: {}", e)
-                    }
-                ],
-                "isError": true
-            }));
+            return Ok(mcp_error_response(format!(
+                "Failed to list worktrees: {}",
+                e
+            )));
         }
     };
 
@@ -165,14 +162,7 @@ pub fn tool_chant_watch_status(_arguments: Option<&Value>) -> Result<Value> {
         "worktree_count": worktrees.len()
     });
 
-    Ok(json!({
-        "content": [
-            {
-                "type": "text",
-                "text": serde_json::to_string_pretty(&response)?
-            }
-        ]
-    }))
+    Ok(mcp_text_response(serde_json::to_string_pretty(&response)?))
 }
 
 /// Handle chant_watch_start tool call
@@ -181,15 +171,7 @@ pub fn tool_chant_watch_start(_arguments: Option<&Value>) -> Result<Value> {
 
     // Check if already running
     if is_watch_running() {
-        return Ok(json!({
-            "content": [
-                {
-                    "type": "text",
-                    "text": "Watch is already running"
-                }
-            ],
-            "isError": true
-        }));
+        return Ok(mcp_error_response("Watch is already running"));
     }
 
     // Spawn watch in background
@@ -203,24 +185,12 @@ pub fn tool_chant_watch_start(_arguments: Option<&Value>) -> Result<Value> {
     match child {
         Ok(child) => {
             let pid = child.id();
-            Ok(json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": format!("Started watch process (PID: {})", pid)
-                    }
-                ]
-            }))
+            Ok(mcp_text_response(format!(
+                "Started watch process (PID: {})",
+                pid
+            )))
         }
-        Err(e) => Ok(json!({
-            "content": [
-                {
-                    "type": "text",
-                    "text": format!("Failed to start watch: {}", e)
-                }
-            ],
-            "isError": true
-        })),
+        Err(e) => Ok(mcp_error_response(format!("Failed to start watch: {}", e))),
     }
 }
 
@@ -231,15 +201,7 @@ pub fn tool_chant_watch_stop(_arguments: Option<&Value>) -> Result<Value> {
 
     // Check if watch is running
     if !is_watch_running() {
-        return Ok(json!({
-            "content": [
-                {
-                    "type": "text",
-                    "text": "Watch is not running"
-                }
-            ],
-            "isError": true
-        }));
+        return Ok(mcp_error_response("Watch is not running"));
     }
 
     // Read PID
@@ -247,30 +209,17 @@ pub fn tool_chant_watch_stop(_arguments: Option<&Value>) -> Result<Value> {
     let pid_str = match fs::read_to_string(&pid_path) {
         Ok(s) => s,
         Err(e) => {
-            return Ok(json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": format!("Failed to read PID file: {}", e)
-                    }
-                ],
-                "isError": true
-            }));
+            return Ok(mcp_error_response(format!(
+                "Failed to read PID file: {}",
+                e
+            )));
         }
     };
 
     let pid: u32 = match pid_str.trim().parse() {
         Ok(p) => p,
         Err(e) => {
-            return Ok(json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": format!("Invalid PID in file: {}", e)
-                    }
-                ],
-                "isError": true
-            }));
+            return Ok(mcp_error_response(format!("Invalid PID in file: {}", e)));
         }
     };
 
@@ -281,23 +230,11 @@ pub fn tool_chant_watch_stop(_arguments: Option<&Value>) -> Result<Value> {
         use nix::unistd::Pid;
 
         match kill(Pid::from_raw(pid as i32), Signal::SIGTERM) {
-            Ok(()) => Ok(json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": format!("Sent stop signal to watch process (PID: {})", pid)
-                    }
-                ]
-            })),
-            Err(e) => Ok(json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": format!("Failed to stop watch: {}", e)
-                    }
-                ],
-                "isError": true
-            })),
+            Ok(()) => Ok(mcp_text_response(format!(
+                "Sent stop signal to watch process (PID: {})",
+                pid
+            ))),
+            Err(e) => Ok(mcp_error_response(format!("Failed to stop watch: {}", e))),
         }
     }
 
@@ -309,32 +246,12 @@ pub fn tool_chant_watch_stop(_arguments: Option<&Value>) -> Result<Value> {
             .args(["/PID", &pid.to_string(), "/F"])
             .output()
         {
-            Ok(output) if output.status.success() => Ok(json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": format!("Stopped watch process (PID: {})", pid)
-                    }
-                ]
-            })),
-            Ok(_) => Ok(json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": "Failed to stop watch process"
-                    }
-                ],
-                "isError": true
-            })),
-            Err(e) => Ok(json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": format!("Failed to stop watch: {}", e)
-                    }
-                ],
-                "isError": true
-            })),
+            Ok(output) if output.status.success() => Ok(mcp_text_response(format!(
+                "Stopped watch process (PID: {})",
+                pid
+            ))),
+            Ok(_) => Ok(mcp_error_response("Failed to stop watch process")),
+            Err(e) => Ok(mcp_error_response(format!("Failed to stop watch: {}", e))),
         }
     }
 }

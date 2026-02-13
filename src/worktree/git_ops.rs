@@ -14,6 +14,30 @@ use std::process::Command;
 use std::sync::Mutex;
 use std::time::Duration;
 
+/// Run a git command with arguments in a specific directory and return stdout on success.
+///
+/// # Errors
+///
+/// Returns an error if the command fails to execute or exits with non-zero status.
+fn run_git_in_dir(args: &[&str], work_dir: Option<&Path>) -> Result<String> {
+    let mut cmd = Command::new("git");
+    cmd.args(args);
+    if let Some(dir) = work_dir {
+        cmd.current_dir(dir);
+    }
+
+    let output = cmd
+        .output()
+        .context(format!("Failed to run git {}", args.join(" ")))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("git {} failed: {}", args.join(" "), stderr);
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
 /// Global mutex to serialize worktree creation operations.
 ///
 /// This prevents race conditions when multiple concurrent `git worktree add` calls
@@ -52,18 +76,7 @@ pub fn get_active_worktree(spec_id: &str, project_name: Option<&str>) -> Option<
 ///
 /// Ok(true) if there are uncommitted changes (staged or unstaged), Ok(false) if clean.
 pub fn has_uncommitted_changes(worktree_path: &Path) -> Result<bool> {
-    let output = Command::new("git")
-        .args(["status", "--porcelain"])
-        .current_dir(worktree_path)
-        .output()
-        .context("Failed to check git status in worktree")?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("Failed to run git status: {}", stderr);
-    }
-
-    let status_output = String::from_utf8_lossy(&output.stdout);
+    let status_output = run_git_in_dir(&["status", "--porcelain"], Some(worktree_path))?;
     Ok(!status_output.trim().is_empty())
 }
 
@@ -79,58 +92,24 @@ pub fn has_uncommitted_changes(worktree_path: &Path) -> Result<bool> {
 /// Ok(commit_hash) if commit was successful, Err if failed.
 pub fn commit_in_worktree(worktree_path: &Path, message: &str) -> Result<String> {
     // Stage all changes
-    let output = Command::new("git")
-        .args(["add", "-A"])
-        .current_dir(worktree_path)
-        .output()
+    run_git_in_dir(&["add", "-A"], Some(worktree_path))
         .context("Failed to stage changes in worktree")?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("Failed to stage changes: {}", stderr);
-    }
-
     // Check if there are any changes to commit
-    let output = Command::new("git")
-        .args(["status", "--porcelain"])
-        .current_dir(worktree_path)
-        .output()
-        .context("Failed to check git status in worktree")?;
-
-    let status_output = String::from_utf8_lossy(&output.stdout);
+    let status_output = run_git_in_dir(&["status", "--porcelain"], Some(worktree_path))?;
     if status_output.trim().is_empty() {
         // No changes to commit, return the current HEAD
-        let output = Command::new("git")
-            .args(["rev-parse", "HEAD"])
-            .current_dir(worktree_path)
-            .output()
-            .context("Failed to get HEAD commit")?;
-
-        let hash = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        return Ok(hash);
+        let hash = run_git_in_dir(&["rev-parse", "HEAD"], Some(worktree_path))?;
+        return Ok(hash.trim().to_string());
     }
 
     // Commit the changes
-    let output = Command::new("git")
-        .args(["commit", "-m", message])
-        .current_dir(worktree_path)
-        .output()
+    run_git_in_dir(&["commit", "-m", message], Some(worktree_path))
         .context("Failed to commit changes in worktree")?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("Failed to commit: {}", stderr);
-    }
-
     // Get the commit hash
-    let output = Command::new("git")
-        .args(["rev-parse", "HEAD"])
-        .current_dir(worktree_path)
-        .output()
-        .context("Failed to get commit hash")?;
-
-    let hash = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    Ok(hash)
+    let hash = run_git_in_dir(&["rev-parse", "HEAD"], Some(worktree_path))?;
+    Ok(hash.trim().to_string())
 }
 
 /// Creates a new git worktree for the given spec.

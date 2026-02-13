@@ -7,10 +7,12 @@
 
 pub mod handlers;
 pub mod protocol;
+pub mod response;
 pub mod server;
 pub mod tools;
 
 pub use handlers::{handle_method, handle_notification};
+pub use response::{mcp_error_response, mcp_text_response};
 pub use server::run_server;
 
 #[cfg(test)]

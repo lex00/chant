@@ -8,6 +8,25 @@ use anyhow::{Context, Result};
 use std::fmt;
 use std::process::Command;
 
+/// Run a git command with arguments and return stdout on success.
+///
+/// # Errors
+///
+/// Returns an error if the command fails to execute or exits with non-zero status.
+fn run_git(args: &[&str]) -> Result<String> {
+    let output = Command::new("git")
+        .args(args)
+        .output()
+        .context(format!("Failed to run git {}", args.join(" ")))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("git {} failed: {}", args.join(" "), stderr);
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
 /// Get a git config value by key.
 ///
 /// Returns `Some(value)` if the config key exists and has a non-empty value,
@@ -37,31 +56,13 @@ pub fn get_git_user_info() -> (Option<String>, Option<String>) {
 /// Get the current branch name.
 /// Returns the branch name for the current HEAD, including "HEAD" for detached HEAD state.
 pub fn get_current_branch() -> Result<String> {
-    let output = Command::new("git")
-        .args(["rev-parse", "--abbrev-ref", "HEAD"])
-        .output()
-        .context("Failed to run git rev-parse")?;
-
-    if !output.status.success() {
-        anyhow::bail!("Failed to get current branch");
-    }
-
-    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    Ok(branch)
+    let branch = run_git(&["rev-parse", "--abbrev-ref", "HEAD"])?;
+    Ok(branch.trim().to_string())
 }
 
 /// Check if a branch exists in the repository.
 pub fn branch_exists(branch_name: &str) -> Result<bool> {
-    let output = Command::new("git")
-        .args(["branch", "--list", branch_name])
-        .output()
-        .context("Failed to check if branch exists")?;
-
-    if !output.status.success() {
-        anyhow::bail!("Failed to check if branch exists");
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stdout = run_git(&["branch", "--list", branch_name])?;
     Ok(!stdout.trim().is_empty())
 }
 
@@ -77,16 +78,7 @@ pub fn branch_exists(branch_name: &str) -> Result<bool> {
 /// * `Err(_)` if git operations fail
 pub fn is_branch_merged(branch_name: &str, target_branch: &str) -> Result<bool> {
     // Use git branch --merged to check if the branch is in the list of merged branches
-    let output = Command::new("git")
-        .args(["branch", "--merged", target_branch, "--list", branch_name])
-        .output()
-        .context("Failed to check if branch is merged")?;
-
-    if !output.status.success() {
-        anyhow::bail!("Failed to check if branch is merged");
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stdout = run_git(&["branch", "--merged", target_branch, "--list", branch_name])?;
     Ok(!stdout.trim().is_empty())
 }
 
@@ -97,15 +89,7 @@ pub fn checkout_branch(branch: &str, dry_run: bool) -> Result<()> {
         return Ok(());
     }
 
-    let output = Command::new("git")
-        .args(["checkout", branch])
-        .output()
-        .context("Failed to run git checkout")?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("Failed to checkout {}: {}", branch, stderr);
-    }
+    run_git(&["checkout", branch]).with_context(|| format!("Failed to checkout {}", branch))?;
 
     Ok(())
 }
@@ -355,15 +339,8 @@ pub fn delete_branch(branch_name: &str, dry_run: bool) -> Result<()> {
     // Remove any worktrees associated with this branch before deleting it
     remove_worktrees_for_branch(branch_name)?;
 
-    let output = Command::new("git")
-        .args(["branch", "-d", branch_name])
-        .output()
-        .context("Failed to run git branch -d")?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("Failed to delete branch {}: {}", branch_name, stderr);
-    }
+    run_git(&["branch", "-d", branch_name])
+        .with_context(|| format!("Failed to delete branch {}", branch_name))?;
 
     Ok(())
 }
@@ -459,16 +436,7 @@ pub fn rebase_abort() -> Result<()> {
 
 /// Stage a file for commit
 pub fn stage_file(file_path: &str) -> Result<()> {
-    let output = Command::new("git")
-        .args(["add", file_path])
-        .output()
-        .context("Failed to run git add")?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("Failed to stage file {}: {}", file_path, stderr);
-    }
-
+    run_git(&["add", file_path]).with_context(|| format!("Failed to stage file {}", file_path))?;
     Ok(())
 }
 
