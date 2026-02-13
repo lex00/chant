@@ -195,9 +195,7 @@ pub fn cmd_work(
     let project_name = Some(config.project.name.as_str()).filter(|n| !n.is_empty());
 
     // Create lock file BEFORE updating status to avoid race with watch daemon
-    let lock_path = PathBuf::from(chant::paths::LOCKS_DIR).join(format!("{}.lock", spec.id));
-    std::fs::create_dir_all(chant::paths::LOCKS_DIR)?;
-    std::fs::write(&lock_path, format!("{}", std::process::id()))?;
+    chant::lock::create_lock(&spec.id)?;
 
     // Update status to in_progress BEFORE creating worktree
     // so copy_spec_to_worktree picks up the correct status.
@@ -289,13 +287,13 @@ pub fn cmd_work(
             executor::cleanup_completed_spec(&mut spec, &spec_path, &agent_output)?;
 
             // Remove lock file after successful completion
-            let _ = std::fs::remove_file(&lock_path);
+            let _ = chant::lock::remove_lock(&spec.id);
         }
         Err(e) => {
             executor::handle_spec_failure(&spec.id, &specs_dir, &e)?;
 
             // Remove lock file after failure
-            let _ = std::fs::remove_file(&lock_path);
+            let _ = chant::lock::remove_lock(&spec.id);
 
             let _ = chant::git::ensure_on_main_branch(&config.defaults.main_branch);
             println!("\n{} Spec failed: {}", "✗".red(), e);

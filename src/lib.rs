@@ -60,6 +60,7 @@ pub mod domain;
 pub mod formatters;
 pub mod git;
 pub mod id;
+pub mod lock;
 pub mod mcp;
 pub mod merge;
 pub mod merge_driver;
