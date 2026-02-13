@@ -56,6 +56,9 @@ pub fn invoke_agent_with_command_override(
     std::env::set_var("CHANT_SPEC_ID", &spec.id);
     std::env::set_var("CHANT_SPEC_FILE", &spec_file);
 
+    // Write prompt to temp file and create stub message
+    let (stub_message, temp_file_path) = write_prompt_to_temp_file(&spec.id, message)?;
+
     let mut cmd = Command::new(command);
     cmd.arg("--print")
         .arg("--output-format")
@@ -64,7 +67,7 @@ pub fn invoke_agent_with_command_override(
         .arg("--model")
         .arg(&model)
         .arg("--dangerously-skip-permissions")
-        .arg(message)
+        .arg(&stub_message)
         .env("CHANT_SPEC_ID", &spec.id)
         .env("CHANT_SPEC_FILE", &spec_file)
         .stdout(Stdio::piped())
@@ -118,6 +121,9 @@ pub fn invoke_agent_with_command_override(
     }
 
     let status = child.wait()?;
+
+    // Clean up temp prompt file
+    let _ = std::fs::remove_file(&temp_file_path);
 
     // Clean up PID file
     if let Err(e) = chant::pid::remove_pid_file(&spec.id) {
@@ -173,6 +179,9 @@ pub fn invoke_agent_with_command(
     // Get the model to use
     let model = get_model_for_invocation(config_model);
 
+    // Write prompt to temp file and create stub message
+    let (stub_message, temp_file_path) = write_prompt_to_temp_file(spec_id, message)?;
+
     let mut cmd = Command::new(agent_command);
     cmd.arg("--print")
         .arg("--output-format")
@@ -181,7 +190,7 @@ pub fn invoke_agent_with_command(
         .arg("--model")
         .arg(&model)
         .arg("--dangerously-skip-permissions")
-        .arg(message)
+        .arg(&stub_message)
         .env("CHANT_SPEC_ID", spec_id)
         .env("CHANT_SPEC_FILE", &spec_file)
         .stdout(Stdio::piped())
@@ -247,6 +256,9 @@ pub fn invoke_agent_with_command(
     }
 
     let status = child.wait()?;
+
+    // Clean up temp prompt file
+    let _ = std::fs::remove_file(&temp_file_path);
 
     // Clean up PID file
     if let Err(e) = chant::pid::remove_pid_file(spec_id) {
@@ -317,6 +329,9 @@ pub fn invoke_agent_with_model(
             "kiro"
         };
 
+        // Write prompt to temp file and create stub message
+        let (stub_message, temp_file_path) = write_prompt_to_temp_file(&spec.id, message)?;
+
         let mut cmd = Command::new(command);
         cmd.arg("--print")
             .arg("--output-format")
@@ -325,7 +340,7 @@ pub fn invoke_agent_with_model(
             .arg("--model")
             .arg(&model)
             .arg("--dangerously-skip-permissions")
-            .arg(message)
+            .arg(&stub_message)
             .env("CHANT_SPEC_ID", &spec.id)
             .env("CHANT_SPEC_FILE", &spec_file)
             .stdout(Stdio::piped())
@@ -379,6 +394,9 @@ pub fn invoke_agent_with_model(
         }
 
         let status = child.wait()?;
+
+        // Clean up temp prompt file
+        let _ = std::fs::remove_file(&temp_file_path);
 
         // Clean up PID file
         if let Err(e) = chant::pid::remove_pid_file(&spec.id) {
@@ -680,6 +698,31 @@ pub fn ensure_logs_dir_at(base_path: &Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Write the assembled prompt to a temp file and return a stub message pointing to it.
+/// Returns (stub_message, temp_file_path) tuple.
+///
+/// This avoids passing very large prompts as CLI arguments which can hit OS argument length limits.
+fn write_prompt_to_temp_file(spec_id: &str, prompt: &str) -> Result<(String, PathBuf)> {
+    // Ensure tmp directory exists
+    let tmp_dir = PathBuf::from(".chant/tmp");
+    if !tmp_dir.exists() {
+        std::fs::create_dir_all(&tmp_dir)?;
+    }
+
+    // Write prompt to temp file
+    let temp_file_path = tmp_dir.join(format!("{}-prompt.md", spec_id));
+    std::fs::write(&temp_file_path, prompt)
+        .with_context(|| format!("Failed to write prompt to {}", temp_file_path.display()))?;
+
+    // Create stub message pointing to the file
+    let stub_message = format!(
+        "Read and execute the task in .chant/tmp/{}-prompt.md",
+        spec_id
+    );
+
+    Ok((stub_message, temp_file_path))
 }
 
 #[cfg(test)]

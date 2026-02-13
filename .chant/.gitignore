@@ -3,6 +3,7 @@
 .store/
 store/
 logs/
+tmp/
 
 # Agent configuration (contains API keys, not shared)
 agents.md
