@@ -808,7 +808,7 @@ fn test_status_blocked_filter_mixed_statuses() {
 /// Test that chain execution with dependent specs handles dependencies correctly
 #[test]
 #[serial]
-#[cfg_attr(target_os = "windows", ignore = "Agent spawning may hang on Windows")]
+#[ignore = "Spawns real agents - requires AI provider, hangs in CI"]
 fn test_chain_execution_with_dependencies() {
     let harness = TestHarness::new();
 
@@ -854,7 +854,7 @@ fn test_chain_execution_with_dependencies() {
 /// Test chain execution behavior when encountering a blocked spec
 #[test]
 #[serial]
-#[cfg_attr(target_os = "windows", ignore = "Agent spawning may hang on Windows")]
+#[ignore = "Spawns real agents - requires AI provider, hangs in CI"]
 fn test_chain_skips_blocked_specs_in_sequence() {
     let harness = TestHarness::new();
 
