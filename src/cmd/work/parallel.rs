@@ -23,6 +23,7 @@ use chant::spec::{self, Spec, SpecStatus};
 use chant::worktree;
 
 use super::executor;
+use super::merge_helpers;
 use crate::cmd;
 use crate::cmd::finalize::finalize_spec;
 
@@ -434,24 +435,36 @@ fn handle_direct_mode_merges(
     for result in results {
         if let Some(ref branch) = result.branch_name {
             println!("[{}] Merging to main...", result.spec_id.cyan());
-            let merge_result =
-                worktree::merge_and_cleanup(branch, &config.defaults.main_branch, no_rebase);
 
-            if merge_result.success {
+            let merge_result = merge_helpers::merge_and_finalize(
+                &result.spec_id,
+                branch,
+                specs_dir,
+                config,
+                no_rebase,
+                true, // Always finalize in direct mode
+            )?;
+
+            if merge_result.merged && merge_result.finalized {
                 merged_count += 1;
-                println!("[{}] {} Merged to main", result.spec_id.cyan(), "✓".green());
+                println!(
+                    "[{}] {} Merged and finalized",
+                    result.spec_id.cyan(),
+                    "✓".green()
+                );
                 if let Some(ref path) = result.worktree_path {
                     let _ = worktree::remove_worktree(path);
                 }
+            } else if merge_result.merged {
+                eprintln!(
+                    "[{}] {} Merged but finalization failed: {}",
+                    result.spec_id.cyan(),
+                    "⚠".yellow(),
+                    merge_result.error.as_deref().unwrap_or("Unknown error")
+                );
+                merge_failed.push((result.spec_id.clone(), false));
             } else {
                 merge_failed.push((result.spec_id.clone(), merge_result.has_conflict));
-                let spec_path = specs_dir.join(format!("{}.md", result.spec_id));
-                if let Ok(mut spec) = spec::resolve_spec(specs_dir, &result.spec_id) {
-                    let _ = spec::TransitionBuilder::new(&mut spec)
-                        .force()
-                        .to(SpecStatus::NeedsAttention);
-                    let _ = spec.save(&spec_path);
-                }
 
                 let error_msg = merge_result
                     .error
@@ -508,62 +521,27 @@ fn handle_branch_mode_merges(
 
     for (spec_id, branch) in branches {
         println!("[{}] Merging to main...", spec_id.cyan());
-        let merge_result =
-            worktree::merge_and_cleanup(branch, &config.defaults.main_branch, no_rebase);
 
-        if merge_result.success {
-            println!(
-                "[{}] Merge succeeded, finalizing on main...",
-                spec_id.cyan()
+        let result = merge_helpers::merge_and_finalize(
+            spec_id, branch, specs_dir, config, no_rebase,
+            true, // Always finalize in branch mode
+        )?;
+
+        if result.merged && result.finalized {
+            merged_count += 1;
+            println!("[{}] {} Merged and finalized", spec_id.cyan(), "✓".green());
+        } else if result.merged {
+            eprintln!(
+                "[{}] {} Merged but finalization failed: {}",
+                spec_id.cyan(),
+                "⚠".yellow(),
+                result.error.as_deref().unwrap_or("Unknown error")
             );
-
-            let finalize_result = if let Ok(mut spec) = spec::resolve_spec(specs_dir, spec_id) {
-                let all_specs = spec::load_all_specs(specs_dir).unwrap_or_default();
-                let commits = get_commits_for_spec(spec_id).ok();
-                let spec_repo = FileSpecRepository::new(specs_dir.to_path_buf());
-                finalize_spec(&mut spec, &spec_repo, config, &all_specs, false, commits)
-            } else {
-                Err(anyhow::anyhow!("Failed to load spec for finalization"))
-            };
-
-            match finalize_result {
-                Ok(()) => {
-                    merged_count += 1;
-                    println!("[{}] {} Merged and finalized", spec_id.cyan(), "✓".green());
-                }
-                Err(e) => {
-                    eprintln!(
-                        "[{}] {} Merged but finalization failed: {}",
-                        spec_id.cyan(),
-                        "⚠".yellow(),
-                        e
-                    );
-                    let spec_path = specs_dir.join(format!("{}.md", spec_id));
-                    if let Ok(mut spec) = spec::resolve_spec(specs_dir, spec_id) {
-                        let _ = spec::TransitionBuilder::new(&mut spec)
-                            .force()
-                            .to(SpecStatus::Failed);
-                        let _ = spec.save(&spec_path);
-                    }
-                    failed.push((spec_id.clone(), false));
-                }
-            }
+            failed.push((spec_id.clone(), false));
         } else {
-            failed.push((spec_id.clone(), merge_result.has_conflict));
+            failed.push((spec_id.clone(), result.has_conflict));
 
-            // Mark spec as failed since merge didn't succeed
-            let spec_path = specs_dir.join(format!("{}.md", spec_id));
-            if let Ok(mut spec) = spec::resolve_spec(specs_dir, spec_id) {
-                let _ = spec::TransitionBuilder::new(&mut spec)
-                    .force()
-                    .to(SpecStatus::Failed);
-                let _ = spec.save(&spec_path);
-            }
-
-            let error_msg = merge_result
-                .error
-                .as_deref()
-                .unwrap_or("Unknown merge error");
+            let error_msg = result.error.as_deref().unwrap_or("Unknown merge error");
             println!(
                 "[{}] {} Merge failed (branch preserved):\n  {}\n  Next Steps:\n    1. Auto-resolve: chant merge {} --rebase --auto\n    2. Merge manually: chant merge {}\n    3. Inspect: git log {} --oneline -3",
                 spec_id.cyan(),
@@ -574,7 +552,7 @@ fn handle_branch_mode_merges(
                 branch
             );
 
-            if merge_result.has_conflict {
+            if result.has_conflict {
                 handle_merge_conflict(specs_dir, spec_id, branch)?;
             }
         }

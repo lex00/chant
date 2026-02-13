@@ -17,6 +17,7 @@ use chant::spec::Spec;
 // Submodules
 pub mod chain;
 pub mod executor;
+pub mod merge_helpers;
 pub mod parallel;
 pub mod single;
 pub mod ui;

@@ -733,40 +733,30 @@ fn execute_merge(
     let mut finalize_errors: Vec<(String, String)> = Vec::new();
 
     if finalize && !dry_run {
-        use chant::operations::finalize::{finalize_spec, FinalizeOptions};
-        use chant::repository::spec_repository::FileSpecRepository;
+        use crate::cmd::work::merge_helpers;
 
         println!("\n{} Finalizing merged specs...", "→".cyan());
-        let spec_repo = FileSpecRepository::new(specs_dir.to_path_buf());
 
         for result in &merge_results {
             if result.success {
-                // Reload the spec from disk (it may have changed during merge)
-                match spec::resolve_spec(specs_dir, &result.spec_id) {
-                    Ok(mut spec) => {
-                        let finalize_opts = FinalizeOptions {
-                            allow_no_commits: false,
-                            commits: None,
-                        };
-
-                        match finalize_spec(&mut spec, &spec_repo, config, all_specs, finalize_opts)
-                        {
-                            Ok(_) => {
-                                finalized_count += 1;
-                                println!("  {} {} finalized", "✓".green(), result.spec_id);
-                            }
-                            Err(e) => {
-                                finalize_errors.push((
-                                    result.spec_id.clone(),
-                                    format!("Failed to finalize: {}", e),
-                                ));
-                            }
+                match merge_helpers::finalize_after_merge(&result.spec_id, specs_dir, config) {
+                    Ok(finalize_result) => {
+                        if finalize_result.success {
+                            finalized_count += 1;
+                            println!("  {} {} finalized", "✓".green(), result.spec_id);
+                        } else {
+                            finalize_errors.push((
+                                result.spec_id.clone(),
+                                finalize_result
+                                    .error
+                                    .unwrap_or_else(|| "Unknown error".to_string()),
+                            ));
                         }
                     }
                     Err(e) => {
                         finalize_errors.push((
                             result.spec_id.clone(),
-                            format!("Failed to load spec: {}", e),
+                            format!("Finalization helper error: {}", e),
                         ));
                     }
                 }
