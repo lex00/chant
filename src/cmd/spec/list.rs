@@ -15,7 +15,7 @@ use chant::id;
 use chant::spec::{self, ApprovalStatus, Spec, SpecStatus};
 use chant::spec_group;
 
-use crate::render;
+use crate::cmd::ui::render;
 
 // ============================================================================
 // MULTI-REPO HELPERS
@@ -541,7 +541,7 @@ pub fn cmd_list(
     }
 
     if specs.is_empty() {
-        if !chant::ui::is_quiet() {
+        if !crate::cmd::ui::is_quiet() {
             if ready_only && !labels.is_empty() {
                 println!("No ready specs with specified labels.");
             } else if ready_only {
@@ -621,7 +621,7 @@ pub fn cmd_list(
             format!(" {}", indicators.join(" "))
         };
 
-        if !chant::ui::is_quiet() {
+        if !crate::cmd::ui::is_quiet() {
             println!(
                 "{} {} {}{}{}",
                 spec.id.cyan(),
@@ -685,7 +685,7 @@ fn cmd_status_once(global: bool, repo_filter: Option<&str>, brief: bool, json: b
             }
         }
 
-        if !chant::ui::is_quiet() {
+        if !crate::cmd::ui::is_quiet() {
             println!("{}", "Chant Status (Global)".bold());
             println!("====================");
         }
@@ -700,7 +700,7 @@ fn cmd_status_once(global: bool, repo_filter: Option<&str>, brief: bool, json: b
         let mut total_failed = 0;
 
         for (repo_name, (pending, in_progress, completed, failed)) in repos {
-            if !chant::ui::is_quiet() {
+            if !crate::cmd::ui::is_quiet() {
                 println!("\n{}: {}", "Repository".bold(), repo_name.cyan());
                 println!(
                     "  {:<18} {} | {:<18} {} | {:<18} {} | {:<18} {}",
@@ -722,7 +722,7 @@ fn cmd_status_once(global: bool, repo_filter: Option<&str>, brief: bool, json: b
         }
 
         let total = total_pending + total_in_progress + total_completed + total_failed;
-        if !chant::ui::is_quiet() {
+        if !crate::cmd::ui::is_quiet() {
             println!("\n{}", "Total".bold());
             println!("─────");
             println!(
@@ -743,7 +743,7 @@ fn cmd_status_once(global: bool, repo_filter: Option<&str>, brief: bool, json: b
         let specs_dir = crate::cmd::ensure_initialized()?;
         let status_data = chant::status::aggregate_status(&specs_dir)?;
 
-        if !chant::ui::is_quiet() {
+        if !crate::cmd::ui::is_quiet() {
             if json {
                 let output = chant::status::format_status_as_json(&status_data)?;
                 println!("{}", output);
@@ -751,7 +751,7 @@ fn cmd_status_once(global: bool, repo_filter: Option<&str>, brief: bool, json: b
                 let output = status_data.format_brief();
                 println!("{}", output);
             } else {
-                let output = chant::formatters::format_regular_status(&status_data);
+                let output = crate::cmd::ui::formatters::format_regular_status(&status_data);
                 println!("{}", output);
 
                 // Show silent mode indicator if enabled

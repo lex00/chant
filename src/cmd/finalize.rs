@@ -7,8 +7,8 @@ use anyhow::{Context, Result};
 use colored::Colorize;
 use std::path::Path;
 
+use crate::cmd::ui::{Output, OutputMode};
 use chant::config::Config;
-use chant::output::{Output, OutputMode};
 use chant::repository::spec_repository::{FileSpecRepository, SpecRepository};
 use chant::spec::{self, load_all_specs, Spec, SpecStatus, TransitionBuilder};
 use chant::worktree;

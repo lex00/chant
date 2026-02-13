@@ -6,10 +6,10 @@
 use colored::Colorize;
 use pulldown_cmark::{Event, Parser, Tag, TagEnd};
 
-use chant::ui;
+use super::icons as ui;
 
-/// Re-export status_icon from ui module for backward compatibility
-pub use chant::ui::status_icon;
+/// Re-export status_icon from icons module for backward compatibility
+pub use super::icons::status_icon;
 
 /// Renders markdown text to the terminal with ANSI formatting
 pub fn render_markdown(markdown: &str) {

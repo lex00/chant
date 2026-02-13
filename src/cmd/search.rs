@@ -12,7 +12,7 @@ use colored::Colorize;
 use chant::paths::ARCHIVE_DIR;
 use chant::spec::{self, Spec};
 
-use crate::render;
+use crate::cmd::ui::render;
 
 /// Print usage hint for search command in non-TTY contexts
 fn print_search_usage_hint() {

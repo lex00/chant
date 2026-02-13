@@ -14,10 +14,10 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+use crate::cmd::ui::{Output, OutputMode};
 use chant::config::Config;
 use chant::conflict;
 use chant::operations::get_commits_for_spec;
-use chant::output::{Output, OutputMode};
 use chant::repository::spec_repository::FileSpecRepository;
 use chant::spec::{self, Spec, SpecStatus};
 use chant::worktree;

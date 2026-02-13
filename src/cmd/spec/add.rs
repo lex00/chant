@@ -27,7 +27,7 @@ pub fn cmd_add(description: &str, prompt: Option<&str>, needs_approval: bool) ->
     let (spec, filepath) =
         chant::operations::create::create_spec(description, &specs_dir, &config, options)?;
 
-    if !chant::ui::is_quiet() {
+    if !crate::cmd::ui::is_quiet() {
         println!("{} {}", "Created".green(), spec.id.cyan());
         if needs_approval {
             println!("{} Requires approval before work can begin", "ℹ".cyan());

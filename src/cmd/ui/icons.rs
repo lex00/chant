@@ -5,7 +5,7 @@
 
 use colored::{ColoredString, Colorize};
 
-use crate::spec::SpecStatus;
+use chant::spec::SpecStatus;
 
 /// Check if quiet mode is enabled via environment variable, --quiet flag, or silent mode
 pub fn is_quiet() -> bool {
@@ -24,7 +24,7 @@ pub fn is_quiet() -> bool {
 /// Check if silent mode is enabled in project or global config
 pub fn is_silent_mode() -> bool {
     // Try to load config and check silent flag
-    crate::config::Config::load()
+    chant::config::Config::load()
         .ok()
         .map(|config| config.project.silent)
         .unwrap_or(false)

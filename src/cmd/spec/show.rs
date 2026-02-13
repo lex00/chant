@@ -11,7 +11,7 @@ use chant::config::Config;
 use chant::spec;
 
 use crate::cmd::prep::strip_agent_conversation;
-use crate::render;
+use crate::cmd::ui::render;
 
 // ============================================================================
 // DISPLAY HELPERS

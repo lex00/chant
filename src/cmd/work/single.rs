@@ -12,8 +12,8 @@ use atty;
 use colored::Colorize;
 use std::path::{Path, PathBuf};
 
+use crate::cmd::ui::{Output, OutputMode};
 use chant::config::Config;
-use chant::output::{Output, OutputMode};
 use chant::paths::PROMPTS_DIR;
 use chant::repository::spec_repository::FileSpecRepository;
 use chant::spec::{self, Spec, SpecStatus};

@@ -2,8 +2,9 @@
 //!
 //! Provides formatters that transform StatusData into different output formats.
 
-use crate::status::{AttentionItem, InProgressItem, ReadyItem, StatusData, TodayActivity};
-use crate::ui;
+use chant::status::{AttentionItem, InProgressItem, ReadyItem, StatusData, TodayActivity};
+
+use super::icons as ui;
 
 /// Format StatusData as regular multi-section text output
 pub fn format_regular_status(data: &StatusData) -> String {

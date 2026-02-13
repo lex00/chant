@@ -8,7 +8,6 @@
 // Internal modules not exposed via library
 mod cli;
 mod cmd;
-mod render;
 mod templates;
 
 use anyhow::Result;

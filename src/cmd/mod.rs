@@ -29,6 +29,7 @@ pub mod site;
 pub mod spec;
 pub mod takeover;
 pub mod template;
+pub mod ui;
 pub mod util;
 pub mod validate;
 pub mod verify;
