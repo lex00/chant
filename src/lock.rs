@@ -76,11 +76,23 @@ pub fn is_locked(spec_id: &str) -> bool {
 
 /// Check if a process with the given PID is alive
 fn is_process_alive(pid: u32) -> bool {
-    use nix::sys::signal::{kill, Signal};
-    use nix::unistd::Pid;
+    #[cfg(unix)]
+    {
+        use nix::sys::signal::{kill, Signal};
+        use nix::unistd::Pid;
 
-    // Signal 0 checks if process exists without sending a signal
-    kill(Pid::from_raw(pid as i32), Signal::try_from(0).ok()).is_ok()
+        // Signal 0 checks if process exists without sending a signal
+        kill(Pid::from_raw(pid as i32), Signal::try_from(0).ok()).is_ok()
+    }
+    #[cfg(not(unix))]
+    {
+        // On Windows, use a basic check via std::process
+        std::process::Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {}", pid), "/NH"])
+            .output()
+            .map(|o| !String::from_utf8_lossy(&o.stdout).contains("No tasks"))
+            .unwrap_or(false)
+    }
 }
 
 /// Get the path to a spec's lock file
