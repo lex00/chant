@@ -1317,6 +1317,82 @@ fn execute_spec_in_thread(
     execution_state: Arc<ParallelExecutionState>,
     tx: mpsc::Sender<ParallelResult>,
 ) {
+    // Re-check that all prior siblings are completed before starting execution
+    // This prevents race conditions where .1 and .2 are both assigned as "ready"
+    // before .1 commits, causing .2 to start before .1 finishes
+    const MAX_WAIT_ATTEMPTS: usize = 60; // 60 attempts = ~5 minutes max wait
+    const INITIAL_BACKOFF_MS: u64 = 1000; // Start with 1 second
+    const MAX_BACKOFF_MS: u64 = 10000; // Cap at 10 seconds
+
+    let mut wait_attempts = 0;
+    let mut backoff_ms = INITIAL_BACKOFF_MS;
+
+    loop {
+        // Load current state of all specs from disk
+        let all_specs = match spec::load_all_specs(&specs_dir) {
+            Ok(specs) => specs,
+            Err(e) => {
+                eprintln!(
+                    "{} [{}] Failed to load specs for sibling check: {}",
+                    "⚠".yellow(),
+                    spec_id,
+                    e
+                );
+                break;
+            }
+        };
+
+        // Check if all prior siblings are now completed
+        if chant::spec_group::all_prior_siblings_completed(&spec_id, &all_specs) {
+            break;
+        }
+
+        // If we've waited too long, fail this spec
+        if wait_attempts >= MAX_WAIT_ATTEMPTS {
+            let error_msg = format!(
+                "Timed out waiting for prior siblings to complete after {} attempts",
+                MAX_WAIT_ATTEMPTS
+            );
+            eprintln!("{} [{}] {}", "✗".red(), spec_id, error_msg);
+
+            let _ = executor::handle_spec_failure(
+                &spec_id,
+                &specs_dir,
+                &anyhow::anyhow!("{}", error_msg),
+            );
+            let _ = chant::lock::remove_lock(&spec_id);
+            let _ = chant::pid::remove_pid_file(&spec_id);
+            if let Some(ref path) = worktree_path {
+                let _ = worktree::remove_worktree(path);
+            }
+
+            let _ = tx.send(ParallelResult {
+                spec_id,
+                success: false,
+                commits: None,
+                error: Some(error_msg),
+                worktree_path,
+                branch_name,
+                is_direct_mode,
+                agent_completed: false,
+            });
+            return;
+        }
+
+        // Wait with exponential backoff
+        if wait_attempts == 0 {
+            eprintln!(
+                "{} [{}] Waiting for prior siblings to complete...",
+                "→".yellow(),
+                spec_id
+            );
+        }
+
+        thread::sleep(Duration::from_millis(backoff_ms));
+        wait_attempts += 1;
+        backoff_ms = (backoff_ms * 2).min(MAX_BACKOFF_MS);
+    }
+
     let result = cmd::agent::invoke_agent_with_command(
         &message,
         &spec_id,
@@ -1708,4 +1784,168 @@ fn detect_parallel_pitfalls(results: &[ParallelResult], specs_dir: &Path) -> Vec
     }
 
     pitfalls
+}
+
+// ============================================================================
+// TESTS
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chant::spec::Spec;
+    use std::sync::mpsc;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_sibling_execution_blocking() {
+        // This test verifies that member .2 will wait for member .1 to complete
+        // before starting execution in parallel mode
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path().join(".chant").join("specs");
+        std::fs::create_dir_all(&specs_dir).unwrap();
+
+        // Create member .1 and .2 specs
+        let spec1 = Spec::parse(
+            "2026-02-12-test-abc.1",
+            r#"---
+status: pending
+---
+# Member 1
+"#,
+        )
+        .unwrap();
+
+        let spec2 = Spec::parse(
+            "2026-02-12-test-abc.2",
+            r#"---
+status: pending
+---
+# Member 2
+"#,
+        )
+        .unwrap();
+
+        // Save specs to disk
+        let spec1_path = specs_dir.join(format!("{}.md", spec1.id));
+        let spec2_path = specs_dir.join(format!("{}.md", spec2.id));
+        spec1.save(&spec1_path).unwrap();
+        spec2.save(&spec2_path).unwrap();
+
+        // Create a channel for testing
+        let (tx, rx) = mpsc::channel::<ParallelResult>();
+
+        // Spawn thread that will try to execute spec2
+        // This should block because spec1 is still pending
+        let specs_dir_clone = specs_dir.clone();
+        let spec2_id = spec2.id.clone();
+        let tx_clone = tx.clone();
+
+        let handle = thread::spawn(move || {
+            // Simulate the sibling check logic from execute_spec_in_thread
+            let all_specs = spec::load_all_specs(&specs_dir_clone).unwrap();
+            let is_ready = chant::spec_group::all_prior_siblings_completed(&spec2_id, &all_specs);
+
+            // Send result
+            tx_clone
+                .send(ParallelResult {
+                    spec_id: spec2_id,
+                    success: is_ready,
+                    commits: None,
+                    error: if is_ready {
+                        None
+                    } else {
+                        Some("Sibling not completed".to_string())
+                    },
+                    worktree_path: None,
+                    branch_name: None,
+                    is_direct_mode: false,
+                    agent_completed: false,
+                })
+                .unwrap();
+        });
+
+        // Initially, spec2 should not be ready
+        let result = rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert!(
+            !result.success,
+            "Spec .2 should not be ready while .1 is pending"
+        );
+
+        handle.join().unwrap();
+
+        // Now mark spec1 as completed
+        let spec1_updated = Spec::parse(
+            "2026-02-12-test-abc.1",
+            r#"---
+status: completed
+---
+# Member 1
+"#,
+        )
+        .unwrap();
+        spec1_updated.save(&spec1_path).unwrap();
+
+        // Check again - now spec2 should be ready
+        let (tx2, rx2) = mpsc::channel::<bool>();
+        let specs_dir_clone2 = specs_dir.clone();
+        let spec2_id2 = spec2.id.clone();
+
+        thread::spawn(move || {
+            let all_specs = spec::load_all_specs(&specs_dir_clone2).unwrap();
+            let is_ready = chant::spec_group::all_prior_siblings_completed(&spec2_id2, &all_specs);
+            tx2.send(is_ready).unwrap();
+        });
+
+        let is_ready = rx2.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert!(is_ready, "Spec .2 should be ready after .1 is completed");
+    }
+
+    #[test]
+    fn test_non_sequential_members_concurrent() {
+        // This test verifies that members of different groups can execute concurrently
+
+        let temp_dir = TempDir::new().unwrap();
+        let specs_dir = temp_dir.path().join(".chant").join("specs");
+        std::fs::create_dir_all(&specs_dir).unwrap();
+
+        // Create members from different groups
+        let spec_a1 = Spec::parse(
+            "2026-02-12-test-aaa.1",
+            r#"---
+status: pending
+---
+# Group A Member 1
+"#,
+        )
+        .unwrap();
+
+        let spec_b1 = Spec::parse(
+            "2026-02-12-test-bbb.1",
+            r#"---
+status: pending
+---
+# Group B Member 1
+"#,
+        )
+        .unwrap();
+
+        // Save specs
+        spec_a1
+            .save(&specs_dir.join(format!("{}.md", spec_a1.id)))
+            .unwrap();
+        spec_b1
+            .save(&specs_dir.join(format!("{}.md", spec_b1.id)))
+            .unwrap();
+
+        // Both should be ready since they're from different groups
+        let all_specs = spec::load_all_specs(&specs_dir).unwrap();
+
+        let a1_ready = chant::spec_group::all_prior_siblings_completed(&spec_a1.id, &all_specs);
+        let b1_ready = chant::spec_group::all_prior_siblings_completed(&spec_b1.id, &all_specs);
+
+        assert!(a1_ready, "Group A Member 1 should be ready");
+        assert!(b1_ready, "Group B Member 1 should be ready");
+    }
 }
