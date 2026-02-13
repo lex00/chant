@@ -72,7 +72,31 @@ pub fn load_all_specs_with_options(
     // Apply blocked status to specs with unmet dependencies
     apply_blocked_status(&mut specs);
 
+    // Check for orphaned members and warn
+    check_for_orphaned_members(&specs);
+
     Ok(specs)
+}
+
+/// Check for orphaned member specs (members without a driver) and log warnings.
+fn check_for_orphaned_members(specs: &[Spec]) {
+    use crate::spec_group::extract_driver_id;
+    use std::collections::HashSet;
+
+    // Build a set of all driver IDs
+    let driver_ids: HashSet<String> = specs.iter().map(|s| s.id.clone()).collect();
+
+    // Check each spec to see if it's a member without a driver
+    for spec in specs {
+        if let Some(driver_id) = extract_driver_id(&spec.id) {
+            if !driver_ids.contains(&driver_id) {
+                eprintln!(
+                    "Warning: Orphaned member spec {} — driver {} not found",
+                    spec.id, driver_id
+                );
+            }
+        }
+    }
 }
 
 /// Recursively load specs from a directory and its subdirectories.

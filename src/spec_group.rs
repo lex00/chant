@@ -57,7 +57,7 @@ pub fn get_members<'a>(driver_id: &str, specs: &'a [Spec]) -> Vec<&'a Spec> {
 ///
 /// Returns true if:
 /// - The driver has no members, or
-/// - All members have status `Completed`
+/// - All members have status `Completed` or `Cancelled`
 ///
 /// # Arguments
 ///
@@ -76,9 +76,10 @@ pub fn all_members_completed(driver_id: &str, specs: &[Spec]) -> bool {
     if members.is_empty() {
         return true; // No members, so all are "completed"
     }
-    members
-        .iter()
-        .all(|m| m.frontmatter.status == SpecStatus::Completed)
+    members.iter().all(|m| {
+        m.frontmatter.status == SpecStatus::Completed
+            || m.frontmatter.status == SpecStatus::Cancelled
+    })
 }
 
 /// Get list of incomplete member spec IDs for a driver spec.
@@ -471,6 +472,54 @@ pub fn auto_complete_driver_if_ready(
         .to(SpecStatus::Completed)?;
     driver.frontmatter.completed_at = Some(crate::utc_now_iso());
     driver.frontmatter.model = Some("auto-completed".to_string());
+
+    driver.save(&driver_path)?;
+
+    Ok(true)
+}
+
+/// Mark a driver spec as failed when one of its members fails.
+///
+/// When a member spec fails during chain execution, the driver spec should be marked
+/// as `Failed` to indicate partial group failure and prevent it from appearing ready.
+///
+/// # Arguments
+///
+/// * `member_id` - The ID of the member spec that failed
+/// * `specs_dir` - Path to the specs directory
+///
+/// # Returns
+///
+/// Returns `Ok(true)` if the driver was marked as failed.
+/// Returns `Ok(false)` if there is no driver or driver doesn't need updating.
+/// Returns `Err` if file I/O fails.
+pub fn mark_driver_failed_on_member_failure(member_id: &str, specs_dir: &Path) -> Result<bool> {
+    // Only member specs can trigger driver failure
+    let Some(driver_id) = extract_driver_id(member_id) else {
+        return Ok(false);
+    };
+
+    // Try to load the driver spec
+    let driver_path = specs_dir.join(format!("{}.md", driver_id));
+    if !driver_path.exists() {
+        return Ok(false);
+    }
+
+    let mut driver = Spec::load(&driver_path)?;
+
+    // Only mark as failed if driver is InProgress or Pending
+    // (already failed drivers should stay failed)
+    if driver.frontmatter.status != SpecStatus::InProgress
+        && driver.frontmatter.status != SpecStatus::Pending
+    {
+        return Ok(false);
+    }
+
+    // Mark driver as failed
+    use crate::spec::TransitionBuilder;
+    TransitionBuilder::new(&mut driver)
+        .force()
+        .to(SpecStatus::Failed)?;
 
     driver.save(&driver_path)?;
 

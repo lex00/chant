@@ -5,7 +5,8 @@
 use anyhow::Result;
 use std::path::Path;
 
-use crate::spec::{Spec, SpecStatus, TransitionBuilder};
+use crate::domain::dependency;
+use crate::spec::{load_all_specs, Spec, SpecStatus, TransitionBuilder};
 
 /// Options for spec update
 #[derive(Debug, Clone, Default)]
@@ -47,6 +48,31 @@ pub fn update_spec(spec: &mut Spec, spec_path: &Path, options: UpdateOptions) ->
 
     // Update depends_on if provided
     if let Some(depends_on) = options.depends_on {
+        // Check for cycles before applying the dependency change
+        let specs_dir = spec_path
+            .parent()
+            .ok_or_else(|| anyhow::anyhow!("Invalid spec path"))?;
+        let mut all_specs = load_all_specs(specs_dir)?;
+
+        // Create a temporary spec with the new dependencies for cycle detection
+        let mut temp_spec = spec.clone();
+        temp_spec.frontmatter.depends_on = Some(depends_on.clone());
+
+        // Replace the old spec with the temporary one in the list
+        if let Some(idx) = all_specs.iter().position(|s| s.id == spec.id) {
+            all_specs[idx] = temp_spec;
+        } else {
+            // New spec, add it to the list
+            all_specs.push(temp_spec);
+        }
+
+        // Detect cycles with the updated dependencies
+        let cycles = dependency::detect_cycles(&all_specs);
+        if !cycles.is_empty() {
+            let cycle_str = cycles[0].join(" -> ");
+            anyhow::bail!("Circular dependency detected: {}", cycle_str);
+        }
+
         spec.frontmatter.depends_on = Some(depends_on);
         updated = true;
     }

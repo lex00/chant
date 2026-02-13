@@ -586,6 +586,18 @@ pub fn cmd_work_chain(
 
                 // Mark the group as failed and print summary
                 if let Some(driver_id) = spec_group::extract_driver_id(&spec.id) {
+                    // Mark the driver spec as failed
+                    if let Err(mark_err) =
+                        spec_group::mark_driver_failed_on_member_failure(&spec.id, specs_dir)
+                    {
+                        pb.println(format!(
+                            "{} Warning: Failed to mark driver {} as failed: {}",
+                            "⚠".yellow(),
+                            driver_id,
+                            mark_err
+                        ));
+                    }
+
                     if let Some(ref mut gp) = current_group_progress {
                         gp.failed_members += 1;
 

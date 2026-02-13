@@ -437,6 +437,7 @@ impl Spec {
                 let dep = all_specs.iter().find(|s| s.id == *dep_id);
                 match dep {
                     Some(d) if d.frontmatter.status == SpecStatus::Completed => continue,
+                    Some(d) if d.frontmatter.status == SpecStatus::Cancelled => continue,
                     _ => return true,
                 }
             }
@@ -450,6 +451,7 @@ impl Spec {
                         let dep = all_specs.iter().find(|s| s.id == *dep_id);
                         match dep {
                             Some(d) if d.frontmatter.status == SpecStatus::Completed => continue,
+                            Some(d) if d.frontmatter.status == SpecStatus::Cancelled => continue,
                             _ => return true,
                         }
                     }
