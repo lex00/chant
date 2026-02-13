@@ -18,7 +18,10 @@ pub use lifecycle::{
     load_all_specs_with_options, resolve_spec,
 };
 pub use parse::{split_frontmatter, Spec};
-pub use state_machine::{TransitionBuilder, TransitionError};
+pub use state_machine::{
+    transition_to_blocked, transition_to_failed, transition_to_in_progress, transition_to_paused,
+    TransitionBuilder, TransitionError,
+};
 
 // Re-export group/driver functions from spec_group for backward compatibility
 pub use crate::spec_group::{

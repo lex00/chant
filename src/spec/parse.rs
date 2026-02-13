@@ -80,7 +80,9 @@ fn read_spec_from_branch(spec_id: &str, branch: &str) -> Result<Spec> {
 impl Spec {
     /// Set the spec status using validated transitions.
     /// This method validates the transition through the state machine.
-    pub fn set_status(
+    ///
+    /// INTERNAL USE ONLY: Use transition helpers in state_machine.rs from cmd/ modules.
+    pub(crate) fn set_status(
         &mut self,
         new_status: SpecStatus,
     ) -> Result<(), super::state_machine::TransitionError> {

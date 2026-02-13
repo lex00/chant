@@ -275,6 +275,40 @@ fn is_valid_transition(from: &SpecStatus, to: &SpecStatus) -> bool {
     }
 }
 
+// ============================================================================
+// PUBLIC TRANSITION HELPERS
+// ============================================================================
+
+/// Transition a spec to InProgress with dependency validation.
+pub fn transition_to_in_progress(
+    spec: &mut Spec,
+    specs_dir: Option<&Path>,
+) -> Result<(), TransitionError> {
+    TransitionBuilder::new(spec)
+        .require_dependencies_met()
+        .with_specs_dir(specs_dir.unwrap_or_else(|| Path::new(".chant/specs")))
+        .to(SpecStatus::InProgress)
+}
+
+/// Transition a spec to Failed with cleanup (force transition).
+pub fn transition_to_failed(spec: &mut Spec) -> Result<(), TransitionError> {
+    TransitionBuilder::new(spec).force().to(SpecStatus::Failed)
+}
+
+/// Transition a spec to Paused (used in takeover scenarios).
+pub fn transition_to_paused(spec: &mut Spec) -> Result<(), TransitionError> {
+    TransitionBuilder::new(spec).to(SpecStatus::Paused)
+}
+
+/// Transition a spec to Blocked (used when creating dependency fix specs).
+pub fn transition_to_blocked(spec: &mut Spec) -> Result<(), TransitionError> {
+    TransitionBuilder::new(spec).to(SpecStatus::Blocked)
+}
+
+// ============================================================================
+// INTERNAL HELPERS
+// ============================================================================
+
 /// Check if the spec has commits matching the chant(spec_id): pattern.
 fn has_commits(spec_id: &str) -> Result<bool, TransitionError> {
     let pattern = format!("chant({}):", spec_id);

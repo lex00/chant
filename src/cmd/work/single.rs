@@ -199,7 +199,7 @@ pub fn cmd_work(
 
     // Update status to in_progress BEFORE creating worktree
     // so copy_spec_to_worktree picks up the correct status.
-    spec.set_status(SpecStatus::InProgress)
+    spec::transition_to_in_progress(&mut spec, Some(&specs_dir))
         .map_err(|e| anyhow::anyhow!("Failed to transition spec to InProgress: {}", e))?;
     spec.frontmatter.branch = Some(branch_name.clone());
     spec.save(&spec_path)?;

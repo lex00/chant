@@ -420,16 +420,7 @@ pub fn handle_spec_failure(spec_id: &str, specs_dir: &Path, error: &anyhow::Erro
         return Ok(());
     }
 
-    if let Err(transition_err) = spec.set_status(SpecStatus::Failed) {
-        eprintln!(
-            "{} Failed to transition spec to failed: {}",
-            "⚠".yellow(),
-            transition_err
-        );
-        let _ = spec::TransitionBuilder::new(&mut spec)
-            .force()
-            .to(SpecStatus::Failed);
-    }
+    let _ = spec::transition_to_failed(&mut spec);
     spec.save(&spec_path)?;
 
     // Clean up tracking files (defense-in-depth; agent.rs also cleans PID on normal exit)
@@ -494,7 +485,7 @@ pub fn prepare_spec_for_execution(
     chant::lock::create_lock(&spec.id)?;
 
     // Update status to in_progress
-    spec.set_status(SpecStatus::InProgress).map_err(|e| {
+    spec::transition_to_in_progress(spec, Some(specs_dir)).map_err(|e| {
         // Clean up lock file if status transition fails
         let _ = chant::lock::remove_lock(&spec.id);
         anyhow::anyhow!("Failed to transition spec to InProgress: {}", e)

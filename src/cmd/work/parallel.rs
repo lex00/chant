@@ -214,7 +214,7 @@ fn prepare_spec_for_parallel(
     // Update spec status
     let spec_path = specs_dir.join(format!("{}.md", spec.id));
     let mut spec_clone = spec.clone();
-    spec_clone.set_status(SpecStatus::InProgress)?;
+    spec::transition_to_in_progress(&mut spec_clone, Some(specs_dir))?;
     spec_clone.save(&spec_path)?;
 
     // Create lock file to signal agent is running
@@ -677,9 +677,7 @@ fn spawn_worker_threads(
                 let spec_path = specs_dir.join(format!("{}.md", spec.id));
                 if let Ok(failed_spec) = spec::resolve_spec(specs_dir, &spec.id) {
                     let mut failed_spec = failed_spec;
-                    let _ = spec::TransitionBuilder::new(&mut failed_spec)
-                        .force()
-                        .to(SpecStatus::Failed);
+                    let _ = spec::transition_to_failed(&mut failed_spec);
                     let _ = failed_spec.save(&spec_path);
                 }
 
@@ -1399,9 +1397,7 @@ fn execute_spec_in_thread(
                     Err(e) => {
                         eprintln!("{} [{}] ✗ Cannot finalize spec: {}", "✗".red(), spec_id, e);
                         if let Ok(mut spec) = spec::resolve_spec(&specs_dir, &spec_id) {
-                            let _ = spec::TransitionBuilder::new(&mut spec)
-                                .force()
-                                .to(SpecStatus::Failed);
+                            let _ = spec::transition_to_failed(&mut spec);
                             let _ = spec.save(&specs_dir.join(format!("{}.md", spec_id)));
                         }
                         (false, commits, Some(e.to_string()), false)
