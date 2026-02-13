@@ -128,6 +128,64 @@ impl Spec {
         Self::parse(id, &content)
     }
 
+    /// Load only the frontmatter from a spec file, without parsing the body.
+    /// This is more efficient for operations that only need metadata (status, dependencies, etc.)
+    /// and don't need the full spec body content.
+    pub fn load_frontmatter_only(path: &Path) -> Result<Self> {
+        use std::io::{BufRead, BufReader};
+
+        let file = fs::File::open(path)
+            .with_context(|| format!("Failed to read spec from {}", path.display()))?;
+        let reader = BufReader::new(file);
+
+        let id = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| anyhow::anyhow!("Invalid spec filename"))?;
+
+        let mut frontmatter_str = String::new();
+        let mut in_frontmatter = false;
+        let mut delimiter_count = 0;
+
+        // Read until we find the second "---" delimiter
+        for line in reader.lines() {
+            let line = line?;
+
+            if line.trim() == "---" {
+                delimiter_count += 1;
+                if delimiter_count == 2 {
+                    break;
+                }
+                in_frontmatter = true;
+                continue;
+            }
+
+            if in_frontmatter {
+                frontmatter_str.push_str(&line);
+                frontmatter_str.push('\n');
+            }
+        }
+
+        let mut frontmatter: SpecFrontmatter = if delimiter_count == 2 {
+            serde_yaml::from_str(&frontmatter_str).context("Failed to parse spec frontmatter")?
+        } else {
+            SpecFrontmatter::default()
+        };
+
+        // Normalize model name if present
+        if let Some(model) = &frontmatter.model {
+            frontmatter.model = Some(normalize_model_name(model));
+        }
+
+        // For frontmatter-only loading, we don't need the body or title
+        Ok(Self {
+            id: id.to_string(),
+            frontmatter,
+            title: None,
+            body: String::new(),
+        })
+    }
+
     /// Load a spec, optionally resolving from its working branch.
     ///
     /// If the spec is in_progress and has a branch (frontmatter.branch or chant/{id}),
@@ -506,26 +564,20 @@ impl Spec {
     pub fn get_blocking_dependencies(
         &self,
         all_specs: &[Spec],
-        specs_dir: &Path,
+        _specs_dir: &Path,
     ) -> Vec<super::frontmatter::BlockingDependency> {
         use super::frontmatter::BlockingDependency;
         use crate::spec_group::{extract_driver_id, extract_member_number};
+        use std::collections::HashMap;
 
         let mut blockers = Vec::new();
 
+        // Build a HashMap index from the already-loaded all_specs slice
+        let spec_map: HashMap<&str, &Spec> = all_specs.iter().map(|s| (s.id.as_str(), s)).collect();
+
         if let Some(deps) = &self.frontmatter.depends_on {
             for dep_id in deps {
-                let spec_path = specs_dir.join(format!("{}.md", dep_id));
-                let dep_spec = if spec_path.exists() {
-                    Spec::load(&spec_path).ok()
-                } else {
-                    None
-                };
-
-                let dep_spec =
-                    dep_spec.or_else(|| all_specs.iter().find(|s| s.id == *dep_id).cloned());
-
-                if let Some(spec) = dep_spec {
+                if let Some(&spec) = spec_map.get(dep_id.as_str()) {
                     // Only add if not completed
                     if spec.frontmatter.status != SpecStatus::Completed {
                         blockers.push(BlockingDependency {
@@ -552,17 +604,7 @@ impl Spec {
             if let Some(member_num) = extract_member_number(&self.id) {
                 for i in 1..member_num {
                     let sibling_id = format!("{}.{}", driver_id, i);
-                    let spec_path = specs_dir.join(format!("{}.md", sibling_id));
-                    let sibling_spec = if spec_path.exists() {
-                        Spec::load(&spec_path).ok()
-                    } else {
-                        None
-                    };
-
-                    let sibling_spec = sibling_spec
-                        .or_else(|| all_specs.iter().find(|s| s.id == sibling_id).cloned());
-
-                    if let Some(spec) = sibling_spec {
+                    if let Some(&spec) = spec_map.get(sibling_id.as_str()) {
                         if spec.frontmatter.status != SpecStatus::Completed {
                             blockers.push(BlockingDependency {
                                 spec_id: spec.id.clone(),

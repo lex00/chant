@@ -139,14 +139,12 @@ fn topological_sort_groups(all_specs: &[Spec]) -> Result<Vec<String>> {
 
 /// Find the next ready spec respecting filters, group boundaries, and topological order
 fn find_next_ready_spec(
-    specs_dir: &Path,
+    all_specs: &[Spec],
     labels: &[String],
     skip_spec_id: Option<&str>,
     active_group: Option<&str>,
     group_order: &[String],
 ) -> Result<Option<Spec>> {
-    let all_specs = spec::load_all_specs(specs_dir)?;
-
     // Filter to ready specs
     let mut ready_specs: Vec<Spec> = all_specs
         .iter()
@@ -430,7 +428,7 @@ pub fn cmd_work_chain(
                 // Exhausted specific IDs — fall through to discovery
                 // to pick up specs that were unblocked by completions
                 match find_next_ready_spec(
-                    specs_dir,
+                    &all_specs,
                     options.labels,
                     None,
                     active_group.as_deref(),
@@ -442,7 +440,7 @@ pub fn cmd_work_chain(
             }
         } else {
             match find_next_ready_spec(
-                specs_dir,
+                &all_specs,
                 options.labels,
                 None,
                 active_group.as_deref(),
@@ -549,7 +547,12 @@ pub fn cmd_work_chain(
                 }
 
                 completed += 1;
-                all_specs = spec::load_all_specs(specs_dir)?;
+                // Reload only the completed spec instead of all specs
+                if let Ok(updated_spec) = spec::resolve_spec(specs_dir, &spec.id) {
+                    if let Some(idx) = all_specs.iter().position(|s| s.id == spec.id) {
+                        all_specs[idx] = updated_spec;
+                    }
+                }
 
                 // Print running tally
                 let remaining = total.saturating_sub(completed + skipped);
@@ -620,7 +623,12 @@ pub fn cmd_work_chain(
                     active_group = None;
                     current_group_progress = None;
                 }
-                all_specs = spec::load_all_specs(specs_dir)?;
+                // Reload only the failed spec instead of all specs
+                if let Ok(updated_spec) = spec::resolve_spec(specs_dir, &spec.id) {
+                    if let Some(idx) = all_specs.iter().position(|s| s.id == spec.id) {
+                        all_specs[idx] = updated_spec;
+                    }
+                }
             }
         }
     }
