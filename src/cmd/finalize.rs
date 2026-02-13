@@ -10,7 +10,7 @@ use std::path::Path;
 use crate::cmd::ui::{Output, OutputMode};
 use chant::config::Config;
 use chant::lock::LockGuard;
-use chant::repository::spec_repository::{FileSpecRepository, SpecRepository};
+use chant::repository::spec_repository::FileSpecRepository;
 use chant::spec::{self, load_all_specs, Spec, SpecStatus, TransitionBuilder};
 use chant::worktree;
 
@@ -325,9 +325,15 @@ fn auto_complete_parent_group(parent_id: &str, specs_dir: &Path, out: &Output) -
     ));
 
     // Set parent as completed (groups don't have commits of their own)
-    let _ = spec::TransitionBuilder::new(&mut parent)
+    if let Err(e) = spec::TransitionBuilder::new(&mut parent)
         .force()
-        .to(SpecStatus::Completed);
+        .to(SpecStatus::Completed)
+    {
+        eprintln!(
+            "Warning: Failed to transition parent group {} to Completed: {}",
+            parent_id, e
+        );
+    }
     parent.frontmatter.completed_at = Some(chant::utc_now_iso());
 
     parent.save(&parent_path)?;

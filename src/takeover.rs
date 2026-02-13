@@ -68,9 +68,12 @@ pub fn cmd_takeover(id: &str, force: bool) -> Result<TakeoverResult> {
                 #[cfg(unix)]
                 {
                     use std::process::Command;
-                    let _ = Command::new("kill")
+                    if let Err(e) = Command::new("kill")
                         .args(["-KILL", &pid.to_string()])
-                        .output();
+                        .output()
+                    {
+                        eprintln!("Warning: Failed to send SIGKILL to process {}: {}", pid, e);
+                    }
                 }
                 // Wait a bit more for SIGKILL to take effect
                 std::thread::sleep(std::time::Duration::from_millis(500));

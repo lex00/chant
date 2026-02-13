@@ -26,7 +26,12 @@ impl LockGuard {
 
 impl Drop for LockGuard {
     fn drop(&mut self) {
-        let _ = remove_lock(&self.spec_id);
+        if let Err(e) = remove_lock(&self.spec_id) {
+            eprintln!(
+                "Warning: Failed to remove lock file for spec {}: {}",
+                self.spec_id, e
+            );
+        }
     }
 }
 

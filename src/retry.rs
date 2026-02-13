@@ -28,7 +28,7 @@ impl RetryState {
     pub fn new() -> Self {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_millis() as u64;
 
         Self {
@@ -42,7 +42,7 @@ impl RetryState {
     pub fn record_attempt(&mut self, next_delay_ms: u64) {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_millis() as u64;
 
         self.attempts += 1;
