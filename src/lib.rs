@@ -59,6 +59,7 @@ pub mod diagnose;
 pub mod domain;
 pub mod formatters;
 pub mod git;
+pub mod git_ops;
 pub mod id;
 pub mod lock;
 pub mod mcp;

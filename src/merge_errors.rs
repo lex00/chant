@@ -5,6 +5,9 @@
 
 use std::fmt;
 
+// Re-export git_ops types and functions for backward compatibility
+pub use crate::git_ops::{classify_conflict_type, parse_conflicting_files, ConflictType};
+
 /// Merge error kind - the type of merge failure
 #[derive(Debug, Clone, PartialEq)]
 pub enum MergeErrorKind {
@@ -607,26 +610,6 @@ pub fn rebase_stopped(spec_id: &str) -> String {
     MergeError::rebase_stopped(spec_id).to_string()
 }
 
-/// Conflict type classification for merge operations.
-#[derive(Debug, Clone, PartialEq)]
-pub enum ConflictType {
-    FastForward,
-    Content,
-    Tree,
-    Unknown,
-}
-
-impl fmt::Display for ConflictType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ConflictType::FastForward => write!(f, "fast-forward"),
-            ConflictType::Content => write!(f, "content"),
-            ConflictType::Tree => write!(f, "tree"),
-            ConflictType::Unknown => write!(f, "unknown"),
-        }
-    }
-}
-
 /// Detailed merge conflict error with file list and recovery steps.
 pub fn merge_conflict_detailed(
     spec_id: &str,
@@ -692,66 +675,6 @@ pub fn merge_conflict_detailed(
         files_section,
         recovery_steps
     )
-}
-
-/// Classify merge conflict type from git output.
-pub fn classify_conflict_type(stderr: &str, status_output: Option<&str>) -> ConflictType {
-    let stderr_lower = stderr.to_lowercase();
-
-    if stderr_lower.contains("not possible to fast-forward")
-        || stderr_lower.contains("cannot fast-forward")
-        || stderr_lower.contains("refusing to merge unrelated histories")
-    {
-        return ConflictType::FastForward;
-    }
-
-    if stderr_lower.contains("conflict (rename/delete)")
-        || stderr_lower.contains("conflict (modify/delete)")
-        || stderr_lower.contains("deleted in")
-        || stderr_lower.contains("renamed in")
-        || stderr_lower.contains("conflict (add/add)")
-    {
-        return ConflictType::Tree;
-    }
-
-    if let Some(status) = status_output {
-        if status.lines().any(|line| {
-            let prefix = line.get(..2).unwrap_or("");
-            matches!(prefix, "DD" | "AU" | "UD" | "UA" | "DU")
-        }) {
-            return ConflictType::Tree;
-        }
-
-        if status.lines().any(|line| {
-            let prefix = line.get(..2).unwrap_or("");
-            matches!(prefix, "UU" | "AA")
-        }) {
-            return ConflictType::Content;
-        }
-    }
-
-    if stderr_lower.contains("conflict") || stderr_lower.contains("merge conflict") {
-        return ConflictType::Content;
-    }
-
-    ConflictType::Unknown
-}
-
-/// Parse conflicting files from git status --porcelain output.
-pub fn parse_conflicting_files(status_output: &str) -> Vec<String> {
-    let mut files = Vec::new();
-
-    for line in status_output.lines() {
-        if line.len() >= 3 {
-            let status = &line[0..2];
-            if status.contains('U') || status == "AA" || status == "DD" {
-                let file = line[3..].trim();
-                files.push(file.to_string());
-            }
-        }
-    }
-
-    files
 }
 
 #[cfg(test)]
