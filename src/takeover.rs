@@ -42,6 +42,40 @@ pub fn cmd_takeover(id: &str, force: bool) -> Result<TakeoverResult> {
         if pid::is_process_running(pid) {
             println!("  {} Stopping running process (PID: {})", "•".cyan(), pid);
             pid::stop_process(pid)?;
+
+            // Wait for process to exit (up to 5 seconds)
+            let max_wait_secs = 5;
+            let mut waited_secs = 0;
+            while waited_secs < max_wait_secs && pid::is_process_running(pid) {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                waited_secs += 1;
+                if waited_secs % 10 == 0 {
+                    println!(
+                        "  {} Waiting for process to exit... ({}/{}s)",
+                        "•".cyan(),
+                        waited_secs / 10,
+                        max_wait_secs
+                    );
+                }
+            }
+
+            // If process still running after 5s, send SIGKILL
+            if pid::is_process_running(pid) {
+                println!(
+                    "  {} Process did not exit gracefully, sending SIGKILL",
+                    "⚠".yellow()
+                );
+                #[cfg(unix)]
+                {
+                    use std::process::Command;
+                    let _ = Command::new("kill")
+                        .args(["-KILL", &pid.to_string()])
+                        .output();
+                }
+                // Wait a bit more for SIGKILL to take effect
+                std::thread::sleep(std::time::Duration::from_millis(500));
+            }
+
             pid::remove_pid_file(&spec_id)?;
             println!("  {} Process stopped", "✓".green());
             true

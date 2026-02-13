@@ -35,6 +35,37 @@ pub fn reset_spec(spec: &mut Spec, spec_path: &Path, _options: ResetOptions) -> 
         );
     }
 
+    let spec_id = &spec.id;
+
+    // Clean up resources: lock file, PID file, worktree, branch
+    // Use best-effort cleanup - don't fail if resources don't exist
+
+    // Remove lock file
+    let _ = crate::lock::remove_lock(spec_id);
+
+    // Remove PID file
+    let _ = crate::pid::remove_pid_file(spec_id);
+
+    // Remove process files
+    let _ = crate::pid::remove_process_files(spec_id);
+
+    // Remove worktree if it exists
+    if let Ok(config) = crate::config::Config::load() {
+        let project_name = Some(config.project.name.as_str());
+        if let Some(worktree_path) = crate::worktree::get_active_worktree(spec_id, project_name) {
+            let _ = crate::worktree::remove_worktree(&worktree_path);
+        }
+    }
+
+    // Remove branch if it exists
+    if let Ok(config) = crate::config::Config::load() {
+        let branch_prefix = &config.defaults.branch_prefix;
+        let branch = format!("{}{}", branch_prefix, spec_id);
+        let _ = std::process::Command::new("git")
+            .args(["branch", "-D", &branch])
+            .output();
+    }
+
     // Reset to pending using state machine
     spec.set_status(SpecStatus::Pending)
         .map_err(|e| anyhow::anyhow!("Failed to transition spec to Pending: {}", e))?;

@@ -80,6 +80,71 @@ pub fn tool_chant_work_start(arguments: Option<&Value>) -> Result<Value> {
 
     let spec_id = spec.id.clone();
 
+    // Gate: reject specs in invalid states
+    match spec.frontmatter.status {
+        SpecStatus::Paused => {
+            return Ok(json!({
+                "content": [
+                    {
+                        "type": "text",
+                        "text": format!(
+                            "Spec '{}' is paused. Cannot start work on a paused spec.\n\
+                             Resume the spec first or use `chant reset {}` to reset it to pending.",
+                            spec_id, spec_id
+                        )
+                    }
+                ],
+                "isError": true
+            }));
+        }
+        SpecStatus::InProgress => {
+            return Ok(json!({
+                "content": [
+                    {
+                        "type": "text",
+                        "text": format!(
+                            "Spec '{}' is already in progress. Cannot start work on a spec that is already being worked on.\n\
+                             Use `chant takeover {}` to take over the running work.",
+                            spec_id, spec_id
+                        )
+                    }
+                ],
+                "isError": true
+            }));
+        }
+        SpecStatus::Completed => {
+            return Ok(json!({
+                "content": [
+                    {
+                        "type": "text",
+                        "text": format!(
+                            "Spec '{}' is already completed. Cannot start work on a completed spec.",
+                            spec_id
+                        )
+                    }
+                ],
+                "isError": true
+            }));
+        }
+        SpecStatus::Cancelled => {
+            return Ok(json!({
+                "content": [
+                    {
+                        "type": "text",
+                        "text": format!(
+                            "Spec '{}' is cancelled. Cannot start work on a cancelled spec.",
+                            spec_id
+                        )
+                    }
+                ],
+                "isError": true
+            }));
+        }
+        _ => {
+            // Valid states: Pending, Ready, Failed, NeedsAttention, Blocked
+        }
+    }
+
     // Calculate spec quality for advisory feedback (not a gate)
     let quality_warning = if !skip_criteria {
         use crate::config::Config;
