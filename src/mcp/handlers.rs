@@ -496,6 +496,25 @@ fn handle_tools_call(params: Option<&Value>) -> Result<Value> {
     }
 }
 
+/// Check for running single or chain work processes.
+///
+/// Returns:
+/// - `Ok(Some((spec_id, pid)))` if a running non-parallel process is found
+/// - `Ok(None)` if no running processes
+/// - `Err(...)` if unable to check (should fail open)
+fn check_for_running_work_processes() -> Result<Option<(String, u32)>> {
+    let active_pids = crate::pid::list_active_pids()?;
+
+    // Filter to only running processes (ignore stale PIDs)
+    for (spec_id, pid, is_running) in active_pids {
+        if is_running {
+            return Ok(Some((spec_id, pid)));
+        }
+    }
+
+    Ok(None)
+}
+
 /// Find the project root by walking up from cwd looking for `.chant/` directory.
 ///
 /// # Returns
@@ -1882,6 +1901,36 @@ fn tool_chant_work_start(arguments: Option<&Value>) -> Result<Value> {
         .get("skip_criteria")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
+
+    // Guard: prevent concurrent single/chain execution when not in parallel mode
+    if parallel.is_none() {
+        match check_for_running_work_processes() {
+            Ok(Some((running_spec, pid))) => {
+                return Ok(json!({
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": format!(
+                                "Another work process is already running (spec: {}, PID: {}).\n\
+                                 Only one single or chain work process can run at a time.\n\
+                                 To run specs concurrently, use the parallel parameter:\n  \
+                                 chant_work_start(id=\"<spec>\", parallel=<N>)",
+                                running_spec, pid
+                            )
+                        }
+                    ],
+                    "isError": true
+                }));
+            }
+            Ok(None) => {
+                // No running processes, proceed
+            }
+            Err(e) => {
+                // Log warning but don't block - fail open if we can't check
+                eprintln!("Warning: failed to check for running processes: {}", e);
+            }
+        }
+    }
 
     // Resolve spec to get full ID
     let spec = match resolve_spec(&specs_dir, id) {
