@@ -439,9 +439,9 @@ impl cmd::dispatch::Execute for Commands {
                 cmd::prep::cmd_prep(&id, clean, &specs_dir)
             }
             Commands::Derive { id, all, dry_run } => cmd::derive::cmd_derive(id, all, dry_run),
-            Commands::Finalize { id } => {
+            Commands::Finalize { id, merge } => {
                 let specs_dir = cmd::ensure_initialized()?;
-                cmd::lifecycle::cmd_finalize(&id, &specs_dir)
+                cmd::lifecycle::cmd_finalize(&id, &specs_dir, merge)
             }
             Commands::MergeDriver {
                 base,

@@ -15,7 +15,8 @@ use chant::spec::{self, load_all_specs, Spec, SpecStatus, TransitionBuilder};
 use chant::worktree;
 
 use chant::operations::{
-    detect_agent_in_commit, get_commits_for_spec_allow_no_commits, get_commits_for_spec_with_branch,
+    detect_agent_in_commit, get_commits_for_spec, get_commits_for_spec_allow_no_commits,
+    get_commits_for_spec_with_branch,
 };
 
 /// Maximum characters to store in agent output section

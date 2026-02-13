@@ -599,6 +599,9 @@ pub enum Commands {
     Finalize {
         /// Spec ID (full or partial)
         id: String,
+        /// Merge the spec's feature branch into current branch before finalizing
+        #[arg(long)]
+        merge: bool,
     },
     /// Git merge driver for spec files (called by git, not directly by users)
     #[command(name = "merge-driver", hide = true)]

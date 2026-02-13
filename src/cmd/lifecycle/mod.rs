@@ -491,7 +491,7 @@ fn is_spec_on_branch(spec_id: &str, branch_name: &str) -> Result<bool> {
 }
 
 /// Finalize a completed spec by verifying all criteria are checked
-pub fn cmd_finalize(id: &str, specs_dir: &std::path::Path) -> Result<()> {
+pub fn cmd_finalize(id: &str, specs_dir: &std::path::Path, merge: bool) -> Result<()> {
     use crate::cmd::finalize;
     use chant::spec;
     use chant::validation;
@@ -688,6 +688,80 @@ pub fn cmd_finalize(id: &str, specs_dir: &std::path::Path) -> Result<()> {
                 commits.len(),
                 if commits.len() == 1 { "" } else { "s" }
             );
+        }
+    }
+
+    // Check for unmerged feature branch and warn/merge
+    if let Some(ref branch_name) = spec.frontmatter.branch {
+        use chant::git_ops;
+
+        // Load config to get main branch name
+        let main_branch = {
+            let config = Config::load()?;
+            chant::merge::load_main_branch(&config)
+        };
+
+        // Only check if this is not the main branch
+        if branch_name != &main_branch {
+            // Check if the branch exists and is merged
+            let branch_exists = git_ops::branch_exists(branch_name)?;
+
+            if branch_exists {
+                let is_merged = git_ops::is_branch_merged(branch_name, &main_branch)?;
+
+                if !is_merged {
+                    if merge {
+                        // Merge the branch into current branch
+                        println!(
+                            "{} Merging branch {} into current branch",
+                            "→".cyan(),
+                            branch_name.cyan()
+                        );
+
+                        let current_branch = git_ops::get_current_branch()?;
+
+                        // Run git merge
+                        let merge_result = std::process::Command::new("git")
+                            .args(["merge", "--no-ff", branch_name])
+                            .output()
+                            .context("Failed to execute git merge")?;
+
+                        if !merge_result.status.success() {
+                            let stderr = String::from_utf8_lossy(&merge_result.stderr);
+                            anyhow::bail!(
+                                "Failed to merge branch {} into {}: {}",
+                                branch_name,
+                                current_branch,
+                                stderr
+                            );
+                        }
+
+                        println!(
+                            "{} Successfully merged {} into {}",
+                            "✓".green(),
+                            branch_name,
+                            current_branch
+                        );
+                    } else {
+                        // Warn about unmerged branch
+                        println!(
+                            "\n{} Warning: Spec has unmerged feature branch: {}",
+                            "⚠".yellow(),
+                            branch_name.yellow()
+                        );
+                        println!(
+                            "  {} Use 'chant finalize {} --merge' to merge into current branch",
+                            "→".cyan(),
+                            spec_id
+                        );
+                        println!(
+                            "  {} Or use 'chant merge {}' to merge into main branch",
+                            "→".cyan(),
+                            spec_id
+                        );
+                    }
+                }
+            }
         }
     }
 

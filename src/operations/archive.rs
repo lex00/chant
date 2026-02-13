@@ -65,6 +65,7 @@ pub fn move_spec_file(src: &PathBuf, dst: &PathBuf, no_stage: bool) -> Result<()
 ///
 /// This operation:
 /// - Verifies the spec is completed
+/// - Checks for unmerged feature branches (unless allow_non_completed is set)
 /// - Creates date-based subdirectory in archive (YYYY-MM-DD)
 /// - Moves the spec file using git mv (or fs::rename if no_stage is true)
 ///
@@ -89,6 +90,45 @@ pub fn archive_spec(specs_dir: &Path, spec_id: &str, options: &ArchiveOptions) -
             spec.id,
             spec.frontmatter.status
         );
+    }
+
+    // Check for unmerged feature branch (unless allow_non_completed is set as force flag)
+    if !options.allow_non_completed {
+        if let Some(ref branch_name) = spec.frontmatter.branch {
+            use crate::git_ops;
+
+            // Load config to get main branch name
+            let main_branch = {
+                let config = crate::config::Config::load()?;
+                crate::merge::load_main_branch(&config)
+            };
+
+            // Only check if this is not the main branch
+            if branch_name != &main_branch {
+                // Check if the branch exists and is merged
+                let branch_exists = git_ops::branch_exists(branch_name)?;
+
+                if branch_exists {
+                    let is_merged = git_ops::is_branch_merged(branch_name, &main_branch)?;
+
+                    if !is_merged {
+                        anyhow::bail!(
+                            "Cannot archive spec '{}': feature branch '{}' has not been merged to {}\n\
+                             \n\
+                             Options:\n\
+                             - Merge the branch: chant merge {} or chant finalize {} --merge\n\
+                             - Force archive anyway: chant archive {} --force",
+                            spec.id,
+                            branch_name,
+                            main_branch,
+                            spec.id,
+                            spec.id,
+                            spec.id
+                        );
+                    }
+                }
+            }
+        }
     }
 
     let archive_dir = PathBuf::from(ARCHIVE_DIR);
