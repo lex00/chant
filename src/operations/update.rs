@@ -25,7 +25,7 @@ pub struct UpdateOptions {
     pub output: Option<String>,
     /// Replace body content instead of appending (default: false)
     pub replace_body: bool,
-    /// Force status transition (bypass validation)
+    /// Force status transition (bypass validation and agent log gate)
     pub force: bool,
 }
 
@@ -38,6 +38,14 @@ pub fn update_spec(spec: &mut Spec, spec_path: &Path, options: UpdateOptions) ->
 
     // Update status if provided (use TransitionBuilder with optional force)
     if let Some(new_status) = options.status {
+        // Guard: reject status=completed without agent log (unless force is true)
+        if new_status == SpecStatus::Completed && !options.force && !has_agent_log(&spec.id) {
+            anyhow::bail!(
+                "Cannot mark spec as completed: no agent execution log found. \
+                 Use force parameter to override."
+            );
+        }
+
         let mut builder = TransitionBuilder::new(spec);
         if options.force {
             builder = builder.force();
@@ -134,6 +142,40 @@ pub fn update_spec(spec: &mut Spec, spec_path: &Path, options: UpdateOptions) ->
     spec.save(spec_path)?;
 
     Ok(())
+}
+
+/// Check if agent log exists for a spec
+fn has_agent_log(spec_id: &str) -> bool {
+    use crate::paths::LOGS_DIR;
+    use std::path::PathBuf;
+
+    let logs_dir = PathBuf::from(LOGS_DIR);
+
+    // Check for current-generation log file (spec_id.log)
+    let log_path = logs_dir.join(format!("{}.log", spec_id));
+    if log_path.exists() {
+        return true;
+    }
+
+    // Check for versioned log files (spec_id.N.log)
+    if let Ok(entries) = std::fs::read_dir(&logs_dir) {
+        for entry in entries.flatten() {
+            let filename = entry.file_name();
+            let filename_str = filename.to_string_lossy();
+
+            // Match pattern: spec_id.N.log where N is a number
+            if filename_str.starts_with(&format!("{}.", spec_id)) && filename_str.ends_with(".log")
+            {
+                // Extract middle part to check if it's a number
+                let middle = &filename_str[spec_id.len() + 1..filename_str.len() - 4];
+                if middle.parse::<u32>().is_ok() {
+                    return true;
+                }
+            }
+        }
+    }
+
+    false
 }
 
 #[cfg(test)]

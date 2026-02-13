@@ -233,6 +233,10 @@ fn handle_tools_list() -> Result<Value> {
                         "model": {
                             "type": "string",
                             "description": "Model to use for this spec (e.g., 'sonnet', 'opus', 'haiku')"
+                        },
+                        "force": {
+                            "type": "boolean",
+                            "description": "Force update (bypass agent log gate for status=completed, default: false)"
                         }
                     },
                     "required": ["id"]
@@ -265,6 +269,10 @@ fn handle_tools_list() -> Result<Value> {
                         "id": {
                             "type": "string",
                             "description": "Spec ID (full or partial)"
+                        },
+                        "force": {
+                            "type": "boolean",
+                            "description": "Force finalization (bypass agent log gate, default: false)"
                         }
                     },
                     "required": ["id"]
@@ -466,7 +474,7 @@ fn handle_tools_call(params: Option<&Value>) -> Result<Value> {
 
     let arguments = params.get("arguments");
 
-    match name {
+    let mut result = match name {
         // Query tools (read-only)
         "chant_spec_list" => tool_chant_spec_list(arguments),
         "chant_spec_get" => tool_chant_spec_get(arguments),
@@ -495,6 +503,46 @@ fn handle_tools_call(params: Option<&Value>) -> Result<Value> {
         // AI-powered tools
         "chant_split" => tool_chant_split(arguments),
         _ => anyhow::bail!("Unknown tool: {}", name),
+    }?;
+
+    // Append anti-bypass reminder to all tool responses
+    append_anti_bypass_reminder(&mut result);
+
+    // Add branded banner for action tools
+    if matches!(
+        name,
+        "chant_ready" | "chant_work_start" | "chant_verify" | "chant_finalize"
+    ) {
+        wrap_in_banner(&mut result);
+    }
+
+    Ok(result)
+}
+
+/// Append anti-bypass reminder to all MCP tool responses
+fn append_anti_bypass_reminder(result: &mut Value) {
+    if let Some(content_array) = result.get_mut("content").and_then(|v| v.as_array_mut()) {
+        if let Some(last_item) = content_array.last_mut() {
+            if let Some(text) = last_item.get_mut("text").and_then(|v| v.as_str()) {
+                let reminder = "\n\n⚠ Orchestrator: do not edit target files directly. Route changes through specs and `chant work`.";
+                let new_text = format!("{}{}", text, reminder);
+                last_item["text"] = json!(new_text);
+            }
+        }
+    }
+}
+
+/// Wrap response text in branded banner
+fn wrap_in_banner(result: &mut Value) {
+    if let Some(content_array) = result.get_mut("content").and_then(|v| v.as_array_mut()) {
+        if let Some(last_item) = content_array.last_mut() {
+            if let Some(text) = last_item.get_mut("text").and_then(|v| v.as_str()) {
+                let banner_top = "── chant ─────────────────────────";
+                let banner_bottom = "──────────────────────────────────";
+                let new_text = format!("{}\n{}\n{}", banner_top, text, banner_bottom);
+                last_item["text"] = json!(new_text);
+            }
+        }
     }
 }
 

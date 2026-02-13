@@ -284,6 +284,9 @@ pub fn tool_chant_spec_update(arguments: Option<&Value>) -> Result<Value> {
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
+    // Parse force parameter if provided
+    let force = args.get("force").and_then(|v| v.as_bool()).unwrap_or(false);
+
     // Use operations module for update
     let options = crate::operations::update::UpdateOptions {
         status,
@@ -293,7 +296,7 @@ pub fn tool_chant_spec_update(arguments: Option<&Value>) -> Result<Value> {
         model,
         output,
         replace_body,
-        force: true, // MCP updates bypass validation for backwards compatibility
+        force,
     };
 
     match crate::operations::update::update_spec(&mut spec, &spec_path, options) {

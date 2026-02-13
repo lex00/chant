@@ -21,6 +21,8 @@ pub struct FinalizeOptions {
     pub allow_no_commits: bool,
     /// Pre-fetched commits (if None, will auto-detect)
     pub commits: Option<Vec<String>>,
+    /// Force finalization (bypass agent log gate)
+    pub force: bool,
 }
 
 /// Finalize a spec after successful completion.
@@ -61,6 +63,14 @@ pub fn finalize_spec(
             spec.id,
             incomplete_members.len(),
             incomplete_members.join(", ")
+        );
+    }
+
+    // Guard: ensure agent log exists (unless force is true)
+    if !options.force && !has_agent_log(&spec.id) {
+        anyhow::bail!(
+            "Cannot mark spec as completed: no agent execution log found. \
+             Use force parameter to override."
         );
     }
 
@@ -220,4 +230,38 @@ fn check_and_set_agent_approval(
     }
 
     Ok(())
+}
+
+/// Check if agent log exists for a spec
+fn has_agent_log(spec_id: &str) -> bool {
+    use crate::paths::LOGS_DIR;
+    use std::path::PathBuf;
+
+    let logs_dir = PathBuf::from(LOGS_DIR);
+
+    // Check for current-generation log file (spec_id.log)
+    let log_path = logs_dir.join(format!("{}.log", spec_id));
+    if log_path.exists() {
+        return true;
+    }
+
+    // Check for versioned log files (spec_id.N.log)
+    if let Ok(entries) = std::fs::read_dir(&logs_dir) {
+        for entry in entries.flatten() {
+            let filename = entry.file_name();
+            let filename_str = filename.to_string_lossy();
+
+            // Match pattern: spec_id.N.log where N is a number
+            if filename_str.starts_with(&format!("{}.", spec_id)) && filename_str.ends_with(".log")
+            {
+                // Extract middle part to check if it's a number
+                let middle = &filename_str[spec_id.len() + 1..filename_str.len() - 4];
+                if middle.parse::<u32>().is_ok() {
+                    return true;
+                }
+            }
+        }
+    }
+
+    false
 }

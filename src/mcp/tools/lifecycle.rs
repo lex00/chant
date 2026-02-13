@@ -21,6 +21,8 @@ pub fn tool_chant_finalize(arguments: Option<&Value>) -> Result<Value> {
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("Missing required parameter: id"))?;
 
+    let force = args.get("force").and_then(|v| v.as_bool()).unwrap_or(false);
+
     let mut spec = match resolve_spec(&specs_dir, id) {
         Ok(s) => s,
         Err(e) => {
@@ -96,6 +98,7 @@ pub fn tool_chant_finalize(arguments: Option<&Value>) -> Result<Value> {
     let options = crate::operations::finalize::FinalizeOptions {
         allow_no_commits: false,
         commits: None, // Auto-detect commits
+        force,
     };
 
     match crate::operations::finalize::finalize_spec(
