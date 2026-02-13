@@ -15,6 +15,7 @@ use std::sync::{Arc, Mutex};
 
 /// Output mode selection
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum OutputMode {
     /// Human-readable colored output with emoji prefixes
     Human,
@@ -32,6 +33,7 @@ pub struct Output {
     is_tty: bool,
 }
 
+#[allow(dead_code)]
 impl Output {
     /// Create a new Output writing to stdout
     pub fn new(mode: OutputMode) -> Self {

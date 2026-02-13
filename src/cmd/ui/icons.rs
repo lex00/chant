@@ -84,6 +84,7 @@ pub mod colors {
     }
 
     /// Red for errors/failures
+    #[allow(dead_code)]
     pub fn error(text: &str) -> ColoredString {
         text.red()
     }
@@ -120,6 +121,7 @@ pub mod colors {
     }
 
     /// Generic colored text
+    #[allow(dead_code)]
     pub fn colored(text: &str, color: Color) -> ColoredString {
         text.color(color)
     }

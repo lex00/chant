@@ -11,7 +11,7 @@ use std::process::Command;
 
 use chant::config::{Config, RejectionAction};
 use chant::id;
-use chant::spec::{self, ApprovalStatus, Spec, SpecStatus};
+use chant::spec::{self, ApprovalStatus, Spec};
 
 // ============================================================================
 // VALIDATION HELPERS

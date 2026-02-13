@@ -1,7 +1,6 @@
 //! Shared merge and finalize operations for parallel work execution
 
 use anyhow::Result;
-use colored::Colorize;
 use std::path::Path;
 
 use chant::config::Config;
