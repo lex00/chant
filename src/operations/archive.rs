@@ -27,18 +27,27 @@ fn is_git_repo() -> bool {
 }
 
 /// Move a file using git mv, falling back to fs::rename if not in a git repo or if no_stage is true.
-fn move_spec_file(src: &PathBuf, dst: &PathBuf, no_stage: bool) -> Result<()> {
+pub fn move_spec_file(src: &PathBuf, dst: &PathBuf, no_stage: bool) -> Result<()> {
     let use_git = !no_stage && is_git_repo();
 
     if use_git {
-        // Use git mv to stage the move
+        // Try git mv to stage the move
         let status = std::process::Command::new("git")
             .args(["mv", &src.to_string_lossy(), &dst.to_string_lossy()])
             .status()
             .context("Failed to run git mv")?;
 
         if !status.success() {
-            anyhow::bail!("git mv failed for {}", src.display());
+            // git mv failed (likely untracked file) - fall back to filesystem rename
+            eprintln!(
+                "Warning: git mv failed for {} (file may be untracked), using filesystem move",
+                src.display()
+            );
+            std::fs::rename(src, dst).context(format!(
+                "Failed to move file from {} to {}",
+                src.display(),
+                dst.display()
+            ))?;
         }
     } else {
         // Fall back to filesystem rename

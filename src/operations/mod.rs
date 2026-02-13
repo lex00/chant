@@ -14,7 +14,7 @@ pub mod reset;
 pub mod update;
 pub mod verify;
 
-pub use archive::{archive_spec, ArchiveOptions};
+pub use archive::{archive_spec, move_spec_file, ArchiveOptions};
 pub use cancel::{cancel_spec, CancelOptions};
 pub use commits::{
     detect_agent_in_commit, get_commits_for_spec, get_commits_for_spec_allow_no_commits,

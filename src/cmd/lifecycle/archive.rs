@@ -319,32 +319,6 @@ pub(crate) fn print_condensed_warnings(
     }
 }
 
-/// Move a file using git mv, falling back to fs::rename if not in a git repo or if no_stage is true
-pub(crate) fn move_spec_file(src: &PathBuf, dst: &PathBuf, no_stage: bool) -> Result<()> {
-    let use_git = !no_stage && is_git_repo();
-
-    if use_git {
-        // Use git mv to stage the move
-        let status = std::process::Command::new("git")
-            .args(["mv", &src.to_string_lossy(), &dst.to_string_lossy()])
-            .status()
-            .context("Failed to run git mv")?;
-
-        if !status.success() {
-            anyhow::bail!("git mv failed for {}", src.display());
-        }
-    } else {
-        // Fall back to filesystem rename
-        std::fs::rename(src, dst).context(format!(
-            "Failed to move file from {} to {}",
-            src.display(),
-            dst.display()
-        ))?;
-    }
-
-    Ok(())
-}
-
 /// Archive completed specs (move from specs to archive directory)
 pub fn cmd_archive(
     spec_id: Option<&str>,
@@ -659,7 +633,7 @@ fn migrate_flat_archive(archive_dir: &std::path::PathBuf) -> anyhow::Result<()> 
                         let dst = date_dir.join(file_name);
 
                         // Move the file to the date subdirectory using git mv when possible
-                        if let Err(e) = move_spec_file(&file_path, &dst, false) {
+                        if let Err(e) = chant::operations::move_spec_file(&file_path, &dst, false) {
                             eprintln!(
                                 "Warning: Failed to migrate archive file {:?}: {}",
                                 file_path, e
