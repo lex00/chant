@@ -357,6 +357,9 @@ pub enum Commands {
         /// Allow archiving of non-completed specs
         #[arg(long)]
         allow_non_completed: bool,
+        /// Force archive even if branch is unmerged (implies --allow-non-completed)
+        #[arg(long)]
+        force: bool,
         /// Create a commit after archiving (only in git repos)
         #[arg(long, default_value = "true", action = clap::ArgAction::SetTrue)]
         commit: bool,

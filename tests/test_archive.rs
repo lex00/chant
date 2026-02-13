@@ -17,6 +17,7 @@ fn cmd_archive_wrapper(
     dry_run: bool,
     older_than: Option<u64>,
     allow_non_completed: bool,
+    force: bool,
     commit: bool,
     no_stage: bool,
 ) -> anyhow::Result<()> {
@@ -38,6 +39,10 @@ fn cmd_archive_wrapper(
 
     if allow_non_completed {
         args.push("--allow-non-completed".to_string());
+    }
+
+    if force {
+        args.push("--force".to_string());
     }
 
     if commit {
@@ -137,6 +142,7 @@ fn test_archive_completed_spec() {
         Some("2026-02-03-001-abc"),
         false, // dry_run
         None,  // older_than
+        false, // allow_non_completed
         false, // force
         false, // commit
         false, // no_stage
@@ -182,6 +188,7 @@ fn test_archive_with_date_directories() {
         false,
         false,
         false,
+        false,
     )
     .unwrap();
     cmd_archive_wrapper(
@@ -189,6 +196,7 @@ fn test_archive_with_date_directories() {
         Some("2026-02-04-001-def"),
         false,
         None,
+        false,
         false,
         false,
         false,
@@ -237,6 +245,7 @@ fn test_archive_non_completed_spec() {
         Some("2026-02-03-002-xyz"),
         false,
         None,
+        false, // allow_non_completed
         false, // force = false
         false,
         false,
@@ -263,7 +272,8 @@ fn test_archive_with_allow_non_completed() {
         Some("2026-02-03-003-pen"),
         false,
         None,
-        true, // force = true (allows non-completed)
+        true, // allow_non_completed
+        false, // force = false
         false,
         false,
     );
@@ -300,6 +310,7 @@ fn test_archive_dry_run() {
         Some("2026-02-03-004-dry"),
         true, // dry_run = true
         None,
+        false,
         false,
         false,
         false,
@@ -437,6 +448,7 @@ fn test_archive_all() {
         None,  // archive all
         false, // dry_run
         None,  // older_than
+        false, // allow_non_completed
         false, // force
         false, // commit
         false, // no_stage
@@ -475,6 +487,8 @@ fn test_archive_directory_structure() {
         false,
         false,
         false,
+        false,
+        false,
     )
     .unwrap();
 
@@ -508,6 +522,7 @@ fn test_archive_with_commit() {
         false, // dry_run
         None,  // older_than
         false, // allow_non_completed
+        false, // force
         true,  // commit = true
         false, // no_stage
     );
@@ -527,4 +542,200 @@ fn test_archive_with_commit() {
     // Verify the spec was moved (no longer in specs dir)
     let src = harness.specs_dir.join(format!("{}.md", spec_id));
     assert!(!src.exists(), "Source spec should be removed after archive");
+}
+
+#[test]
+#[serial]
+fn test_archive_with_unmerged_branch() {
+    let harness = setup_test_env();
+    let spec_id = "2026-02-03-010-ubr";
+
+    // Create a feature branch
+    Command::new("git")
+        .args(["checkout", "-b", "feature-branch"])
+        .current_dir(harness.path())
+        .output()
+        .unwrap();
+
+    // Create completed spec with branch field
+    let content = r#"---
+type: code
+status: completed
+branch: feature-branch
+---
+
+# Test unmerged branch
+
+## Acceptance Criteria
+
+- [x] Test
+"#;
+    let spec_path = harness.specs_dir.join(format!("{}.md", spec_id));
+    fs::write(&spec_path, content).unwrap();
+    Command::new("git")
+        .args(["add", &format!(".chant/specs/{}.md", spec_id)])
+        .current_dir(harness.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", &format!("Add spec {}", spec_id)])
+        .current_dir(harness.path())
+        .output()
+        .unwrap();
+
+    // Switch back to main
+    Command::new("git")
+        .args(["checkout", "main"])
+        .current_dir(harness.path())
+        .output()
+        .unwrap();
+
+    // Try to archive without force - should fail
+    let result = cmd_archive_wrapper(
+        &harness.specs_dir,
+        Some(spec_id),
+        false, // dry_run
+        None,  // older_than
+        false, // allow_non_completed
+        false, // force
+        false, // commit
+        false, // no_stage
+    );
+    assert!(result.is_err(), "Archive should fail for unmerged branch");
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("feature-branch"),
+        "Error should mention the branch name"
+    );
+    assert!(
+        err_msg.contains("not been merged") || err_msg.contains("merge"),
+        "Error should mention merging"
+    );
+
+    // Verify spec was NOT archived
+    let src = harness.specs_dir.join(format!("{}.md", spec_id));
+    assert!(src.exists(), "Spec should not be archived");
+
+    // Try again with --force - should succeed
+    let result = cmd_archive_wrapper(
+        &harness.specs_dir,
+        Some(spec_id),
+        false, // dry_run
+        None,  // older_than
+        false, // allow_non_completed
+        true,  // force = true
+        false, // commit
+        false, // no_stage
+    );
+    assert!(result.is_ok(), "Archive with --force should succeed");
+
+    // Verify spec was archived
+    let archive_dir = harness.path().join(".chant/archive");
+    let dst = archive_dir
+        .join("2026-02-03")
+        .join(format!("{}.md", spec_id));
+    assert!(dst.exists(), "Spec should be archived with --force");
+    assert!(!src.exists(), "Source spec should be removed");
+}
+
+#[test]
+#[serial]
+fn test_archive_with_merged_branch() {
+    let harness = setup_test_env();
+    let spec_id = "2026-02-03-011-mbr";
+
+    // Create a feature branch
+    Command::new("git")
+        .args(["checkout", "-b", "merged-branch"])
+        .current_dir(harness.path())
+        .output()
+        .unwrap();
+
+    // Create completed spec with branch field
+    let content = r#"---
+type: code
+status: completed
+branch: merged-branch
+---
+
+# Test merged branch
+
+## Acceptance Criteria
+
+- [x] Test
+"#;
+    let spec_path = harness.specs_dir.join(format!("{}.md", spec_id));
+    fs::write(&spec_path, content).unwrap();
+    Command::new("git")
+        .args(["add", &format!(".chant/specs/{}.md", spec_id)])
+        .current_dir(harness.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", &format!("Add spec {}", spec_id)])
+        .current_dir(harness.path())
+        .output()
+        .unwrap();
+
+    // Switch back to main and merge
+    Command::new("git")
+        .args(["checkout", "main"])
+        .current_dir(harness.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["merge", "merged-branch", "--no-edit"])
+        .current_dir(harness.path())
+        .output()
+        .unwrap();
+
+    // Archive should succeed for merged branch
+    let result = cmd_archive_wrapper(
+        &harness.specs_dir,
+        Some(spec_id),
+        false, // dry_run
+        None,  // older_than
+        false, // allow_non_completed
+        false, // force
+        false, // commit
+        false, // no_stage
+    );
+    assert!(result.is_ok(), "Archive should succeed for merged branch");
+
+    // Verify spec was archived
+    let archive_dir = harness.path().join(".chant/archive");
+    let dst = archive_dir
+        .join("2026-02-03")
+        .join(format!("{}.md", spec_id));
+    assert!(dst.exists(), "Spec should be archived");
+}
+
+#[test]
+#[serial]
+fn test_archive_without_branch_field() {
+    let harness = setup_test_env();
+    let spec_id = "2026-02-03-012-nbr";
+
+    // Create completed spec without branch field
+    create_spec(&harness, spec_id, "No branch field", SpecStatus::Completed);
+
+    // Archive should succeed for spec without branch field
+    let result = cmd_archive_wrapper(
+        &harness.specs_dir,
+        Some(spec_id),
+        false, // dry_run
+        None,  // older_than
+        false, // allow_non_completed
+        false, // force
+        false, // commit
+        false, // no_stage
+    );
+    assert!(result.is_ok(), "Archive should succeed without branch field");
+
+    // Verify spec was archived
+    let archive_dir = harness.path().join(".chant/archive");
+    let dst = archive_dir
+        .join("2026-02-03")
+        .join(format!("{}.md", spec_id));
+    assert!(dst.exists(), "Spec should be archived");
 }

@@ -291,11 +291,13 @@ impl cmd::dispatch::Execute for Commands {
                 dry_run,
                 older_than,
                 allow_non_completed,
+                force,
                 commit,
                 no_commit,
                 no_stage,
             } => {
                 let should_commit = commit && !no_commit;
+                let allow_non_completed = allow_non_completed || force;
                 cmd::lifecycle::cmd_archive(
                     id.as_deref(),
                     dry_run,
