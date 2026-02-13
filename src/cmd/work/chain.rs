@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::Path;
 
 use chant::config::Config;
-use chant::spec::{self, Spec, SpecStatus};
+use chant::spec::{self, Spec, SpecStatus, SpecType};
 use chant::spec_group;
 
 use super::executor;
@@ -44,7 +44,7 @@ fn is_chain_interrupted() -> bool {
 /// Check if a spec is a driver/group spec
 fn is_driver_or_group_spec(spec: &Spec, all_specs: &[Spec]) -> bool {
     // Check if spec has type "group" or "driver"
-    if spec.frontmatter.r#type == "group" || spec.frontmatter.r#type == "driver" {
+    if matches!(spec.frontmatter.r#type, SpecType::Group | SpecType::Driver) {
         return true;
     }
     // Check if spec has members (i.e., other specs that are children of this spec)
@@ -152,11 +152,11 @@ fn find_next_ready_spec(
             // Exclude cancelled specs
             s.frontmatter.status != SpecStatus::Cancelled
                 // Must be ready (dependencies satisfied) or failed with met dependencies
-                && (s.is_ready(&all_specs) || (s.frontmatter.status == SpecStatus::Failed && !s.is_blocked(&all_specs)))
+                && (s.is_ready(all_specs) || (s.frontmatter.status == SpecStatus::Failed && !s.is_blocked(all_specs)))
                 // Skip the specified spec (if any - used when a specific starting spec was provided)
                 && skip_spec_id.is_none_or(|id| s.id != id)
                 // Skip driver/group specs - they should not be executed directly
-                && !is_driver_or_group_spec(s, &all_specs)
+                && !is_driver_or_group_spec(s, all_specs)
         })
         .cloned()
         .collect();

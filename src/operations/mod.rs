@@ -29,6 +29,6 @@ pub use reset::{reset_spec, ResetOptions};
 pub use update::{update_spec, UpdateOptions};
 pub use verify::{
     extract_acceptance_criteria, parse_verification_response,
-    update_spec_with_verification_results, verify_spec, CriterionResult, VerificationStatus,
-    VerifyOptions,
+    update_spec_with_verification_results, verify_spec, CriterionResult, CriterionStatus,
+    VerificationStatus, VerifyOptions,
 };

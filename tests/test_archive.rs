@@ -272,7 +272,7 @@ fn test_archive_with_allow_non_completed() {
         Some("2026-02-03-003-pen"),
         false,
         None,
-        true, // allow_non_completed
+        true,  // allow_non_completed
         false, // force = false
         false,
         false,
@@ -401,6 +401,7 @@ completed_at: {}
         None,     // archive all
         false,    // dry_run
         Some(14), // older_than = 14 days
+        false,    // allow_non_completed
         false,    // force
         false,    // commit
         false,    // no_stage
@@ -488,7 +489,6 @@ fn test_archive_directory_structure() {
         false,
         false,
         false,
-        false,
     )
     .unwrap();
 
@@ -550,14 +550,7 @@ fn test_archive_with_unmerged_branch() {
     let harness = setup_test_env();
     let spec_id = "2026-02-03-010-ubr";
 
-    // Create a feature branch
-    Command::new("git")
-        .args(["checkout", "-b", "feature-branch"])
-        .current_dir(harness.path())
-        .output()
-        .unwrap();
-
-    // Create completed spec with branch field
+    // Create completed spec with branch field on main
     let content = r#"---
 type: code
 status: completed
@@ -579,6 +572,25 @@ branch: feature-branch
         .unwrap();
     Command::new("git")
         .args(["commit", "-m", &format!("Add spec {}", spec_id)])
+        .current_dir(harness.path())
+        .output()
+        .unwrap();
+
+    // Create a feature branch with an extra commit (making it unmerged)
+    Command::new("git")
+        .args(["checkout", "-b", "feature-branch"])
+        .current_dir(harness.path())
+        .output()
+        .unwrap();
+    let dummy = harness.path().join("feature-work.txt");
+    fs::write(&dummy, "unmerged work").unwrap();
+    Command::new("git")
+        .args(["add", "feature-work.txt"])
+        .current_dir(harness.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "Unmerged feature work"])
         .current_dir(harness.path())
         .output()
         .unwrap();
@@ -730,7 +742,10 @@ fn test_archive_without_branch_field() {
         false, // commit
         false, // no_stage
     );
-    assert!(result.is_ok(), "Archive should succeed without branch field");
+    assert!(
+        result.is_ok(),
+        "Archive should succeed without branch field"
+    );
 
     // Verify spec was archived
     let archive_dir = harness.path().join(".chant/archive");

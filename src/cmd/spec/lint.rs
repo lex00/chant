@@ -18,7 +18,7 @@ use chant::score::isolation::calculate_isolation;
 use chant::score::splittability::calculate_splittability;
 use chant::score::traffic_light::{determine_status, generate_suggestions};
 use chant::scoring::{calculate_complexity, SpecScore};
-use chant::spec::{self, ApprovalStatus, Spec, SpecStatus};
+use chant::spec::{self, ApprovalStatus, Spec, SpecStatus, SpecType};
 use chant::validation;
 
 use std::path::PathBuf;
@@ -353,7 +353,7 @@ pub fn validate_spec_coupling(spec: &Spec) -> Vec<LintDiagnostic> {
     let mut diagnostics = Vec::new();
 
     // Drivers are allowed to reference their members - skip check entirely
-    if spec.frontmatter.r#type == "driver" || spec.frontmatter.r#type == "group" {
+    if spec.frontmatter.r#type == SpecType::Driver || spec.frontmatter.r#type == SpecType::Group {
         return diagnostics;
     }
 
@@ -575,8 +575,10 @@ pub fn validate_model_waste(
     }
 
     // Don't warn on driver/research specs - they benefit from smarter models
-    let spec_type = spec.frontmatter.r#type.as_str();
-    if spec_type == "driver" || spec_type == "group" || spec_type == "research" {
+    if matches!(
+        spec.frontmatter.r#type,
+        SpecType::Driver | SpecType::Group | SpecType::Research
+    ) {
         return diagnostics;
     }
 
@@ -619,8 +621,8 @@ pub fn validate_model_waste(
 pub fn validate_spec_type(spec: &Spec) -> Vec<LintDiagnostic> {
     let mut diagnostics = Vec::new();
 
-    match spec.frontmatter.r#type.as_str() {
-        "documentation" => {
+    match spec.frontmatter.r#type {
+        SpecType::Documentation => {
             if spec.frontmatter.tracks.is_none() {
                 diagnostics.push(LintDiagnostic::warning(
                     &spec.id,
@@ -636,7 +638,7 @@ pub fn validate_spec_type(spec: &Spec) -> Vec<LintDiagnostic> {
                 ));
             }
         }
-        "research" => {
+        SpecType::Research => {
             if spec.frontmatter.informed_by.is_none() && spec.frontmatter.origin.is_none() {
                 diagnostics.push(LintDiagnostic::warning(
                     &spec.id,
@@ -652,7 +654,7 @@ pub fn validate_spec_type(spec: &Spec) -> Vec<LintDiagnostic> {
                 ));
             }
         }
-        "driver" | "group" => {
+        SpecType::Driver | SpecType::Group => {
             // Validate members field if present
             if let Some(ref members) = spec.frontmatter.members {
                 if members.is_empty() {
@@ -1396,7 +1398,7 @@ mod tests {
         let spec = Spec {
             id: "2026-01-30-001-abc".to_string(),
             frontmatter: SpecFrontmatter {
-                r#type: "code".to_string(),
+                r#type: SpecType::Code,
                 ..Default::default()
             },
             title: Some("Test Spec".to_string()),
@@ -1418,7 +1420,7 @@ mod tests {
         let spec = Spec {
             id: "2026-01-30-002-def".to_string(),
             frontmatter: SpecFrontmatter {
-                r#type: "driver".to_string(),
+                r#type: SpecType::Driver,
                 ..Default::default()
             },
             title: Some("Test Driver".to_string()),
@@ -1441,7 +1443,7 @@ mod tests {
         let spec = Spec {
             id: "2026-01-30-003-ghi".to_string(),
             frontmatter: SpecFrontmatter {
-                r#type: "group".to_string(),
+                r#type: SpecType::Group,
                 ..Default::default()
             },
             title: Some("Test Group".to_string()),
@@ -1463,7 +1465,7 @@ mod tests {
         let spec = Spec {
             id: "2026-01-30-004-jkl".to_string(),
             frontmatter: SpecFrontmatter {
-                r#type: "code".to_string(),
+                r#type: SpecType::Code,
                 ..Default::default()
             },
             title: Some("Test Spec".to_string()),
@@ -1495,7 +1497,7 @@ mod tests {
         let spec = Spec {
             id: "2026-01-30-005-mno".to_string(),
             frontmatter: SpecFrontmatter {
-                r#type: "code".to_string(),
+                r#type: SpecType::Code,
                 ..Default::default()
             },
             title: Some("Test Spec".to_string()),
@@ -1517,7 +1519,7 @@ mod tests {
         let spec = Spec {
             id: "2026-01-30-006-pqr".to_string(),
             frontmatter: SpecFrontmatter {
-                r#type: "code".to_string(),
+                r#type: SpecType::Code,
                 ..Default::default()
             },
             title: Some("Test Spec".to_string()),
@@ -1553,7 +1555,7 @@ No coupling issues here.
         let spec = Spec {
             id: "2026-01-30-007-stu.1".to_string(),
             frontmatter: SpecFrontmatter {
-                r#type: "code".to_string(),
+                r#type: SpecType::Code,
                 ..Default::default()
             },
             title: Some("Test Member".to_string()),
@@ -1587,7 +1589,7 @@ No coupling issues here.
         let spec = Spec {
             id: "2026-01-30-008-vwx.1".to_string(),
             frontmatter: SpecFrontmatter {
-                r#type: "code".to_string(),
+                r#type: SpecType::Code,
                 ..Default::default()
             },
             title: Some("Test Member".to_string()),
@@ -1609,7 +1611,7 @@ No coupling issues here.
         let spec = Spec {
             id: "2026-01-30-010-abc".to_string(),
             frontmatter: SpecFrontmatter {
-                r#type: "documentation".to_string(),
+                r#type: SpecType::Documentation,
                 target_files: Some(vec!["README.md".to_string()]),
                 ..Default::default()
             },
@@ -1638,7 +1640,7 @@ No coupling issues here.
         let spec = Spec {
             id: "2026-01-30-011-def".to_string(),
             frontmatter: SpecFrontmatter {
-                r#type: "documentation".to_string(),
+                r#type: SpecType::Documentation,
                 tracks: Some(vec!["2026-01-30-001-abc".to_string()]),
                 ..Default::default()
             },
@@ -1667,7 +1669,7 @@ No coupling issues here.
         let spec = Spec {
             id: "2026-01-30-012-ghi".to_string(),
             frontmatter: SpecFrontmatter {
-                r#type: "research".to_string(),
+                r#type: SpecType::Research,
                 target_files: Some(vec!["analysis.md".to_string()]),
                 ..Default::default()
             },
@@ -1698,7 +1700,7 @@ No coupling issues here.
         let spec = Spec {
             id: "2026-01-30-013-jkl".to_string(),
             frontmatter: SpecFrontmatter {
-                r#type: "driver".to_string(),
+                r#type: SpecType::Driver,
                 members: Some(vec![]),
                 ..Default::default()
             },
@@ -1727,7 +1729,7 @@ No coupling issues here.
         let spec = Spec {
             id: "2026-01-30-014-mno".to_string(),
             frontmatter: SpecFrontmatter {
-                r#type: "driver".to_string(),
+                r#type: SpecType::Driver,
                 members: Some(vec![
                     "2026-01-30-014-mno.1".to_string(),
                     "2026-01-30-014-mno.2".to_string(),
@@ -1840,7 +1842,7 @@ No coupling issues here.
     fn test_validate_model_waste_research_excluded() {
         // Create a simple research spec with opus - should not trigger warning
         let mut spec = create_test_spec("2026-01-30-024-mno", 0, 0, 0);
-        spec.frontmatter.r#type = "research".to_string();
+        spec.frontmatter.r#type = SpecType::Research;
         spec.frontmatter.model = Some("opus".to_string());
         let thresholds = LintThresholds::default();
 
@@ -1857,7 +1859,7 @@ No coupling issues here.
     fn test_validate_model_waste_driver_excluded() {
         // Create a simple driver spec with sonnet - should not trigger warning
         let mut spec = create_test_spec("2026-01-30-025-pqr", 0, 0, 0);
-        spec.frontmatter.r#type = "driver".to_string();
+        spec.frontmatter.r#type = SpecType::Driver;
         spec.frontmatter.model = Some("sonnet".to_string());
         let thresholds = LintThresholds::default();
 

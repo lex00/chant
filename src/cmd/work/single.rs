@@ -16,7 +16,7 @@ use crate::cmd::ui::{Output, OutputMode};
 use chant::config::Config;
 use chant::paths::PROMPTS_DIR;
 use chant::repository::spec_repository::FileSpecRepository;
-use chant::spec::{self, Spec, SpecStatus};
+use chant::spec::{self, Spec, SpecStatus, SpecType};
 use chant::spec_group;
 use chant::worktree;
 
@@ -455,8 +455,8 @@ fn check_quality_interactive(spec: &Spec, specs_dir: &Path, config: &Config) -> 
 /// Auto-select a prompt based on spec type if the prompt file exists.
 /// Returns None if no auto-selected prompt is appropriate or available.
 fn auto_select_prompt_for_type(spec: &Spec, prompts_dir: &Path) -> Option<String> {
-    let auto_prompt = match spec.frontmatter.r#type.as_str() {
-        "documentation" => Some("documentation"),
+    let auto_prompt = match spec.frontmatter.r#type {
+        SpecType::Documentation => Some("documentation"),
         _ => None,
     };
 
@@ -474,7 +474,7 @@ fn auto_select_prompt_for_type(spec: &Spec, prompts_dir: &Path) -> Option<String
 /// Check if a spec is a driver/group spec
 fn is_driver_or_group_spec(spec: &Spec, all_specs: &[Spec]) -> bool {
     // Check if spec has type "group" or "driver"
-    if spec.frontmatter.r#type == "group" || spec.frontmatter.r#type == "driver" {
+    if matches!(spec.frontmatter.r#type, SpecType::Group | SpecType::Driver) {
         return true;
     }
     // Check if spec has members (i.e., other specs that are children of this spec)

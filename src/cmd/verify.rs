@@ -212,11 +212,10 @@ fn verify_spec_cmd(
         println!("  {} No criteria to verify", "⚠".yellow());
     } else {
         for (i, criterion) in criteria.iter().enumerate() {
-            let status_icon = match criterion.status.as_str() {
-                "PASS" => "✓".green(),
-                "FAIL" => "✗".red(),
-                "SKIP" => "~".yellow(),
-                _ => "?".bright_yellow(),
+            let status_icon = match criterion.status {
+                chant::operations::CriterionStatus::Pass => "✓".green(),
+                chant::operations::CriterionStatus::Fail => "✗".red(),
+                chant::operations::CriterionStatus::Skip => "~".yellow(),
             };
 
             print!("  {} {}: {}", status_icon, i + 1, criterion.criterion);
@@ -561,8 +560,8 @@ Overall status: PASS"#;
         let (status, criteria) = chant::operations::parse_verification_response(response).unwrap();
         assert_eq!(status, VerificationStatus::Pass);
         assert_eq!(criteria.len(), 2);
-        assert_eq!(criteria[0].status, "PASS");
-        assert_eq!(criteria[1].status, "PASS");
+        assert_eq!(criteria[0].status, chant::operations::CriterionStatus::Pass);
+        assert_eq!(criteria[1].status, chant::operations::CriterionStatus::Pass);
     }
 
     #[test]
@@ -578,9 +577,9 @@ Overall status: FAIL"#;
         let (status, criteria) = chant::operations::parse_verification_response(response).unwrap();
         assert_eq!(status, VerificationStatus::Fail);
         assert_eq!(criteria.len(), 3);
-        assert_eq!(criteria[0].status, "PASS");
-        assert_eq!(criteria[1].status, "FAIL");
-        assert_eq!(criteria[2].status, "PASS");
+        assert_eq!(criteria[0].status, chant::operations::CriterionStatus::Pass);
+        assert_eq!(criteria[1].status, chant::operations::CriterionStatus::Fail);
+        assert_eq!(criteria[2].status, chant::operations::CriterionStatus::Pass);
     }
 
     #[test]
@@ -596,7 +595,7 @@ Overall status: MIXED"#;
         let (status, criteria) = chant::operations::parse_verification_response(response).unwrap();
         assert_eq!(status, VerificationStatus::Mixed);
         assert_eq!(criteria.len(), 3);
-        assert_eq!(criteria[1].status, "SKIP");
+        assert_eq!(criteria[1].status, chant::operations::CriterionStatus::Skip);
         assert_eq!(
             criteria[1].note,
             Some("Unable to verify manually".to_string())
@@ -629,10 +628,10 @@ Done."#;
         let (status, criteria) = chant::operations::parse_verification_response(response).unwrap();
         assert_eq!(status, VerificationStatus::Fail);
         assert_eq!(criteria.len(), 3);
-        assert_eq!(criteria[0].status, "PASS");
-        assert_eq!(criteria[1].status, "FAIL");
+        assert_eq!(criteria[0].status, chant::operations::CriterionStatus::Pass);
+        assert_eq!(criteria[1].status, chant::operations::CriterionStatus::Fail);
         assert_eq!(criteria[1].note, Some("Missing implementation".to_string()));
-        assert_eq!(criteria[2].status, "SKIP");
+        assert_eq!(criteria[2].status, chant::operations::CriterionStatus::Skip);
         assert_eq!(
             criteria[2].note,
             Some("Requires manual testing".to_string())
@@ -654,12 +653,12 @@ Done."#;
         let criteria = [
             CriterionResult {
                 criterion: "Feature X".to_string(),
-                status: "PASS".to_string(),
+                status: chant::operations::CriterionStatus::Pass,
                 note: None,
             },
             CriterionResult {
                 criterion: "Tests passing".to_string(),
-                status: "PASS".to_string(),
+                status: chant::operations::CriterionStatus::Pass,
                 note: None,
             },
         ];
@@ -675,7 +674,7 @@ Done."#;
         let verification_failures: Option<Vec<String>> = {
             let failures: Vec<String> = criteria
                 .iter()
-                .filter(|c| c.status == "FAIL")
+                .filter(|c| c.status == chant::operations::CriterionStatus::Fail)
                 .map(|c| c.criterion.clone())
                 .collect();
             if failures.is_empty() {
@@ -696,12 +695,12 @@ Done."#;
         let criteria = [
             CriterionResult {
                 criterion: "Feature X".to_string(),
-                status: "PASS".to_string(),
+                status: chant::operations::CriterionStatus::Pass,
                 note: None,
             },
             CriterionResult {
                 criterion: "Tests passing".to_string(),
-                status: "FAIL".to_string(),
+                status: chant::operations::CriterionStatus::Fail,
                 note: Some("Some tests failed".to_string()),
             },
         ];
@@ -717,7 +716,7 @@ Done."#;
         let verification_failures: Option<Vec<String>> = {
             let failures: Vec<String> = criteria
                 .iter()
-                .filter(|c| c.status == "FAIL")
+                .filter(|c| c.status == chant::operations::CriterionStatus::Fail)
                 .map(|c| {
                     if let Some(note) = &c.note {
                         format!("{} — {}", c.criterion, note)
@@ -747,12 +746,12 @@ Done."#;
         let criteria = [
             CriterionResult {
                 criterion: "Feature X".to_string(),
-                status: "PASS".to_string(),
+                status: chant::operations::CriterionStatus::Pass,
                 note: None,
             },
             CriterionResult {
                 criterion: "Manual verification".to_string(),
-                status: "SKIP".to_string(),
+                status: chant::operations::CriterionStatus::Skip,
                 note: Some("Could not verify in CI".to_string()),
             },
         ];
@@ -768,7 +767,7 @@ Done."#;
         let verification_failures: Option<Vec<String>> = {
             let failures: Vec<String> = criteria
                 .iter()
-                .filter(|c| c.status == "FAIL")
+                .filter(|c| c.status == chant::operations::CriterionStatus::Fail)
                 .map(|c| c.criterion.clone())
                 .collect();
             if failures.is_empty() {

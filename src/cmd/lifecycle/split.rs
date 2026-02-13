@@ -11,7 +11,7 @@ use chant::score::isolation::calculate_isolation;
 use chant::score::splittability::calculate_splittability;
 use chant::score::traffic_light::{determine_status, generate_suggestions};
 use chant::scoring::{SpecScore, SplittabilityGrade};
-use chant::spec::{self, Spec, SpecFrontmatter, SpecStatus};
+use chant::spec::{self, Spec, SpecFrontmatter, SpecStatus, SpecType};
 
 use crate::cmd;
 
@@ -133,7 +133,7 @@ fn cmd_split_impl(
     }
 
     // Check if already a group
-    if spec.frontmatter.r#type == "group" {
+    if spec.frontmatter.r#type == SpecType::Group {
         anyhow::bail!("Spec is already split");
     }
 
@@ -297,7 +297,7 @@ fn cmd_split_impl(
         );
 
         let member_frontmatter = SpecFrontmatter {
-            r#type: "code".to_string(),
+            r#type: SpecType::Code,
             status: SpecStatus::Pending,
             depends_on,
             target_files: member.target_files.clone(),
@@ -329,7 +329,7 @@ fn cmd_split_impl(
     }
 
     // Update driver spec to type: group with depends_on all members
-    spec.frontmatter.r#type = "group".to_string();
+    spec.frontmatter.r#type = SpecType::Group;
     let member_ids: Vec<String> = (1..=members.len())
         .map(|i| format!("{}.{}", driver_id, i))
         .collect();

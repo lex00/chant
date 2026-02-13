@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-02-13
+
+### Fixed
+
+- **Completed specs on feature branches never merged**: `chant finalize` now warns when a spec has an unmerged feature branch; `chant finalize --merge` merges the branch into the current branch before completing
+- **Archive allows orphaned branches**: `chant archive` now refuses to archive specs with unmerged feature branches unless `--force` is passed
+- **Temp file leak on agent spawn failure**: Prompt temp files are now cleaned up via RAII guard when `cmd.spawn()` fails, preventing `.chant/tmp/` file accumulation
+- **Silently swallowed errors in critical paths**: `let _ =` calls in takeover, finalize, lock, and reset now log warnings on failure; `retry.rs` SystemTime usage no longer panics on incorrect system clocks
+
+### Added
+
+- **Config-driven wizard bypass**: `chant work` wizard skips prompt selection when `defaults.prompt` is configured, and branch confirmation when `defaults.create_branch` is set
+- **`defaults.create_branch` config option**: New boolean option to control branch creation without interactive prompting
+- **`chant finalize --merge`**: Merges the spec's feature branch into the current branch during finalization
+- **`chant archive --force`**: Bypasses the unmerged branch check when archiving
+- **`Spec::load_frontmatter_only`**: Parses only YAML metadata for commands that don't need the body, improving list/status performance
+- **MCP response helpers**: `mcp_text_response()` and `mcp_error_response()` replace verbose inline JSON construction across 75+ call sites
+- **Git command helpers**: `run_git()` and `run_git_in_dir()` replace repeated 5-line inline git command patterns
+
+### Changed
+
+- **Stringly-typed fields converted to enums**: `frontmatter.type` → `SpecType`, `rotation_strategy` → `RotationStrategy`, `CriterionResult.status` → `CriterionStatus`, `verification_status` → `VerificationStatus`; unknown values now fail at parse time
+- **Operations layer deduplication**: CLI finalize, cross-repo spec parsing, and MCP verify now delegate to the operations layer instead of reimplementing logic
+- **Context structs for long parameter lists**: `prepare_spec_for_execution` (7 params) and `invoke_agent_for_spec` (5 params) now use `SpecPreparationContext` and `AgentInvocationRequest` structs
+- **Chain execution performance**: Loop no longer reloads all specs on every iteration; only the completed spec is refreshed
+- **Dependency resolution performance**: `get_blocking_dependencies` uses a HashMap index instead of per-dependency file I/O
+- **Parallel git metadata loading**: `batch_load_spec_git_metadata` runs independent git commands concurrently
+
 ## [0.22.0] - 2026-02-13
 
 ### Fixed

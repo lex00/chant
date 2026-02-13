@@ -238,7 +238,7 @@ fn apply_filters(
 
     // Filter by type
     if let Some(type_str) = type_filter {
-        specs.retain(|s| s.frontmatter.r#type == type_str);
+        specs.retain(|s| s.frontmatter.r#type.to_string() == type_str);
     }
 
     // Filter by labels (OR logic)

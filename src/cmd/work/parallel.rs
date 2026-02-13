@@ -16,10 +16,11 @@ use std::time::Duration;
 
 use crate::cmd::ui::{Output, OutputMode};
 use chant::config::Config;
+use chant::config::RotationStrategy;
 use chant::conflict;
 use chant::operations::get_commits_for_spec;
 use chant::repository::spec_repository::FileSpecRepository;
-use chant::spec::{self, Spec, SpecStatus};
+use chant::spec::{self, Spec, SpecStatus, SpecType};
 use chant::worktree;
 
 use super::executor;
@@ -122,13 +123,15 @@ fn should_warn_model_override_in_parallel(
     anthropic_model_set: bool,
 ) -> bool {
     // Check if using agent rotation (multiple agents or non-"none" rotation strategy)
-    let uses_agent_rotation =
-        config.parallel.agents.len() > 1 || config.defaults.rotation_strategy != "none";
+    let uses_agent_rotation = config.parallel.agents.len() > 1
+        || config.defaults.rotation_strategy != RotationStrategy::None;
 
     // If not using agent rotation, no warning needed
     if !uses_agent_rotation {
         // Warn if agents are configured but rotation strategy is "none"
-        if !config.parallel.agents.is_empty() && config.defaults.rotation_strategy == "none" {
+        if !config.parallel.agents.is_empty()
+            && config.defaults.rotation_strategy == RotationStrategy::None
+        {
             eprintln!(
                 "{} parallel.agents configured but rotation_strategy is 'none' — agents will not be used in parallel mode. Set rotation_strategy: round-robin to enable.",
                 "Warning:".yellow()
@@ -764,8 +767,7 @@ fn auto_select_prompt_for_type(_spec: &Spec, _prompts_dir: &Path) -> Option<Stri
 
 /// Check if a spec is a driver/group spec
 fn is_driver_spec(spec: &Spec, all_specs: &[Spec]) -> bool {
-    spec.frontmatter.r#type == "group"
-        || spec.frontmatter.r#type == "driver"
+    matches!(spec.frontmatter.r#type, SpecType::Group | SpecType::Driver)
         || !chant::spec_group::get_members(&spec.id, all_specs).is_empty()
 }
 
@@ -1000,8 +1002,7 @@ fn collect_results_from_workers(
         let driver_specs: Vec<&Spec> = current_specs
             .iter()
             .filter(|s| {
-                s.frontmatter.r#type == "group"
-                    || s.frontmatter.r#type == "driver"
+                matches!(s.frontmatter.r#type, SpecType::Group | SpecType::Driver)
                     || !chant::spec_group::get_members(&s.id, &current_specs).is_empty()
             })
             .collect();

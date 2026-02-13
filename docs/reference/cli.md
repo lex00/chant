@@ -291,9 +291,11 @@ When you run `chant work` without a spec ID, an interactive wizard guides you th
 The wizard:
 1. Shows all ready specs with multi-select
 2. Asks whether to use parallel execution
-3. Lets you choose a prompt (defaults to spec's prompt or type-based default)
-4. Asks about branch creation (if `defaults.branch` not set)
+3. Lets you choose a prompt (skipped if `defaults.prompt` is configured and the prompt file exists)
+4. Asks about branch creation (skipped if `defaults.create_branch` is configured)
 5. Executes the selected specs
+
+CLI flags (`--prompt`, `--branch`) override both config defaults and wizard prompts.
 
 ### Split Spec
 
@@ -1168,6 +1170,7 @@ Manually finalize specs that weren't properly completed:
 
 ```bash
 chant finalize 001                    # Finalize spec (records commits, timestamp, model)
+chant finalize 001 --merge            # Finalize and merge feature branch into current branch
 ```
 
 The finalize command:
@@ -1175,6 +1178,17 @@ The finalize command:
 2. Records commit SHAs from git history
 3. Sets `completed_at` timestamp and `model` in frontmatter
 4. Changes status to `completed`
+5. Warns if the spec has an unmerged feature branch
+
+### Merge Flag
+
+When a spec was worked on a feature branch, use `--merge` to merge it into the current branch during finalization:
+
+```bash
+chant finalize 001 --merge
+```
+
+Without `--merge`, finalize will warn if the spec's branch hasn't been merged, but will still complete the spec. This prevents completed work from being left on orphaned branches.
 
 **When to use:**
 - Agent exited without calling finalize
@@ -1182,6 +1196,34 @@ The finalize command:
 - Manual intervention needed after auto-finalize failure
 
 **Note:** `chant work` now auto-finalizes specs when all acceptance criteria are checked. Manual finalize is only needed for recovery scenarios.
+
+## Archive
+
+Move completed specs to the archive directory:
+
+```bash
+chant archive 001                     # Archive a completed spec
+chant archive 001 --force             # Archive even if branch is unmerged
+```
+
+The archive command:
+1. Validates the spec is completed
+2. Checks if the spec has an unmerged feature branch (blocks archive unless `--force`)
+3. Moves the spec file to `.chant/archive/`
+
+### Unmerged Branch Protection
+
+If a spec has a `branch` field pointing to an unmerged branch, `chant archive` will refuse to archive it. This prevents losing work that hasn't been merged to main.
+
+```bash
+$ chant archive 001
+Error: Spec 001 has unmerged branch 'chant/001-abc'.
+Merge the branch first or use --force to archive anyway.
+
+$ chant archive 001 --force           # Override the check
+```
+
+Specs without a `branch` field archive normally.
 
 ## Drift
 

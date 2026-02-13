@@ -70,7 +70,7 @@ pub fn cmd_dag(
 
     // Filter by type if specified
     if let Some(type_val) = type_filter {
-        specs.retain(|s| s.frontmatter.r#type == type_val);
+        specs.retain(|s| s.frontmatter.r#type.to_string() == type_val);
     }
 
     // Filter by labels if specified (OR logic)

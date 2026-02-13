@@ -69,6 +69,19 @@ pub enum SpecType {
     Group,
 }
 
+impl std::fmt::Display for SpecType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Code => write!(f, "code"),
+            Self::Task => write!(f, "task"),
+            Self::Driver => write!(f, "driver"),
+            Self::Documentation => write!(f, "documentation"),
+            Self::Research => write!(f, "research"),
+            Self::Group => write!(f, "group"),
+        }
+    }
+}
+
 pub(crate) fn default_type_enum() -> SpecType {
     SpecType::Code
 }

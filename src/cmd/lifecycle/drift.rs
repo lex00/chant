@@ -128,7 +128,7 @@ pub fn cmd_drift(id: Option<&str>) -> Result<()> {
         // Check for drifts
         let mut drift_report = DriftReport {
             spec_id: spec.id.clone(),
-            spec_type: spec.frontmatter.r#type.clone(),
+            spec_type: spec.frontmatter.r#type.to_string(),
             completed_at: completed_at.clone(),
             drifted_files: Vec::new(),
         };

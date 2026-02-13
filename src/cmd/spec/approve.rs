@@ -11,7 +11,7 @@ use std::process::Command;
 
 use chant::config::{Config, RejectionAction};
 use chant::id;
-use chant::spec::{self, ApprovalStatus, Spec};
+use chant::spec::{self, ApprovalStatus, Spec, SpecType};
 
 // ============================================================================
 // VALIDATION HELPERS
@@ -296,7 +296,7 @@ status: pending
     }
 
     // Update driver spec: change type to driver, add members list
-    spec.frontmatter.r#type = "driver".to_string();
+    spec.frontmatter.r#type = SpecType::Driver;
     spec.frontmatter.members = Some(member_ids.clone());
     spec.save(spec_path)?;
 

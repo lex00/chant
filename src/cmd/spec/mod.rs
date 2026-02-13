@@ -38,7 +38,7 @@ mod tests {
     use chant::config::Config;
     use chant::operations::{get_model_name, get_model_name_with_default, CommitError};
     use chant::repository::spec_repository::FileSpecRepository;
-    use chant::spec::{self, Spec, SpecFrontmatter, SpecStatus};
+    use chant::spec::{self, Spec, SpecFrontmatter, SpecStatus, SpecType};
     use lint::validate_spec_type;
     use serial_test::serial;
     use show::{format_yaml_value, key_to_title_case};
@@ -1009,7 +1009,7 @@ git:
         let spec = Spec {
             id: "test-driver".to_string(),
             frontmatter: SpecFrontmatter {
-                r#type: "driver".to_string(),
+                r#type: SpecType::Driver,
                 members: Some(vec![]),
                 ..Default::default()
             },
@@ -1028,7 +1028,7 @@ git:
         let spec = Spec {
             id: "test-driver".to_string(),
             frontmatter: SpecFrontmatter {
-                r#type: "driver".to_string(),
+                r#type: SpecType::Driver,
                 members: Some(vec!["test-driver.1".to_string()]),
                 ..Default::default()
             },

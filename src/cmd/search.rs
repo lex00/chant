@@ -139,7 +139,7 @@ fn matches_search(spec: &Spec, opts: &SearchOptions) -> bool {
 
     // Type filter
     if let Some(type_filter) = &opts.type_filter {
-        if spec.frontmatter.r#type != *type_filter {
+        if spec.frontmatter.r#type.to_string() != *type_filter {
             return false;
         }
     }
@@ -430,7 +430,7 @@ fn perform_search(opts: &SearchOptions) -> Result<()> {
 
     // Display results
     for (is_archived, spec) in &results {
-        let icon = if spec.frontmatter.r#type == "conflict" {
+        let icon = if spec.frontmatter.r#type.to_string() == "conflict" {
             "⚡".yellow()
         } else {
             render::status_icon(&spec.frontmatter.status)

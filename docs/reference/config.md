@@ -21,6 +21,7 @@ project:
 defaults:
   prompt: bootstrap
   branch_prefix: "chant/"
+  create_branch: true
   model: claude-opus-4
   provider: claude
 
@@ -83,6 +84,7 @@ defaults:
   model: null               # Model name (e.g. "claude-opus-4", "llama2")
   split_model: null         # Model for split operations (defaults to sonnet)
   main_branch: "main"       # Default main branch for merges
+  create_branch: null        # Auto-create feature branches: true/false (skips wizard prompt)
   rotation_strategy: "none" # Agent rotation: none, random, round-robin
 
 # Optional - model provider endpoints

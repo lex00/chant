@@ -12,7 +12,7 @@ use std::process::Command;
 
 use chant::config::Config;
 use chant::id;
-use chant::spec::{self, ApprovalStatus, Spec, SpecStatus};
+use chant::spec::{self, ApprovalStatus, Spec, SpecStatus, SpecType};
 use chant::spec_group;
 
 use crate::cmd::ui::render;
@@ -410,12 +410,12 @@ pub fn cmd_list(
         let all_specs = specs.clone();
         specs.retain(|s| s.is_ready(&all_specs));
         // Filter out group specs - they are containers, not actionable work
-        specs.retain(|s| s.frontmatter.r#type != "group");
+        specs.retain(|s| s.frontmatter.r#type != SpecType::Group);
     }
 
     // Filter by type if specified
     if let Some(type_val) = type_filter {
-        specs.retain(|s| s.frontmatter.r#type == type_val);
+        specs.retain(|s| s.frontmatter.r#type.to_string() == type_val);
     }
 
     // Filter by status if specified
@@ -565,7 +565,7 @@ pub fn cmd_list(
     }
 
     for spec in &specs {
-        let icon = if spec.frontmatter.r#type == "conflict" {
+        let icon = if spec.frontmatter.r#type.to_string() == "conflict" {
             "⚡".yellow()
         } else {
             render::status_icon(&spec.frontmatter.status)
