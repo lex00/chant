@@ -131,9 +131,11 @@ impl Config {
         }
 
         // Warn if agents are configured but rotation strategy is "none"
-        if !config.parallel.agents.is_empty() && config.defaults.rotation_strategy == "none" {
+        if !config.parallel.agents.is_empty()
+            && config.defaults.rotation_strategy == defaults::RotationStrategy::None
+        {
             eprintln!(
-                "{} parallel.agents configured but rotation_strategy is 'none' — agents will not be used. Set rotation_strategy: round-robin to enable.",
+                "{} parallel.agents configured but rotation_strategy is 'none' — agents will not be used. Set rotation_strategy: round_robin to enable.",
                 "Warning:".yellow()
             );
         }
@@ -210,7 +212,7 @@ struct PartialDefaultsConfig {
     pub split_model: Option<String>,
     pub main_branch: Option<String>,
     pub provider: Option<crate::provider::ProviderType>,
-    pub rotation_strategy: Option<String>,
+    pub rotation_strategy: Option<defaults::RotationStrategy>,
     pub prompt_extensions: Option<Vec<String>>,
 }
 
@@ -272,7 +274,7 @@ impl PartialConfig {
                 rotation_strategy: project_defaults
                     .rotation_strategy
                     .or(global_defaults.rotation_strategy)
-                    .unwrap_or_else(defaults::default_rotation_strategy),
+                    .unwrap_or_else(defaults::default_rotation_strategy_enum),
                 prompt_extensions: project_defaults
                     .prompt_extensions
                     .or(global_defaults.prompt_extensions)

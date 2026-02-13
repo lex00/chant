@@ -28,11 +28,29 @@ impl std::fmt::Display for VerificationStatus {
     }
 }
 
+/// Status of an individual criterion
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CriterionStatus {
+    Pass,
+    Fail,
+    Skip,
+}
+
+impl std::fmt::Display for CriterionStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Pass => write!(f, "PASS"),
+            Self::Fail => write!(f, "FAIL"),
+            Self::Skip => write!(f, "SKIP"),
+        }
+    }
+}
+
 /// Result of verifying an individual criterion
 #[derive(Debug, Clone)]
 pub struct CriterionResult {
     pub criterion: String,
-    pub status: String, // "PASS", "FAIL", or "SKIP"
+    pub status: CriterionStatus,
     pub note: Option<String>,
 }
 
@@ -148,10 +166,19 @@ pub fn parse_verification_response(
                             continue;
                         }
 
+                        // Determine criterion status
+                        let criterion_status = if status.contains("PASS") {
+                            CriterionStatus::Pass
+                        } else if status.contains("FAIL") {
+                            CriterionStatus::Fail
+                        } else {
+                            CriterionStatus::Skip
+                        };
+
                         // Update overall status based on individual results
-                        if status.contains("FAIL") {
+                        if criterion_status == CriterionStatus::Fail {
                             overall_status = VerificationStatus::Fail;
-                        } else if status.contains("SKIP")
+                        } else if criterion_status == CriterionStatus::Skip
                             && overall_status == VerificationStatus::Pass
                         {
                             overall_status = VerificationStatus::Mixed;
@@ -159,13 +186,7 @@ pub fn parse_verification_response(
 
                         criteria_results.push(CriterionResult {
                             criterion: criterion_text,
-                            status: if status.contains("PASS") {
-                                "PASS".to_string()
-                            } else if status.contains("FAIL") {
-                                "FAIL".to_string()
-                            } else {
-                                "SKIP".to_string()
-                            },
+                            status: criterion_status,
                             note,
                         });
                     }
@@ -213,18 +234,19 @@ pub fn update_spec_with_verification_results(
     let now = Utc::now();
     let timestamp = now.to_rfc3339();
 
-    // Determine verification status string
+    // Determine verification status enum from frontmatter
+    use crate::spec::VerificationStatus as FrontmatterVerificationStatus;
     let verification_status = match overall_status {
-        VerificationStatus::Pass => "passed".to_string(),
-        VerificationStatus::Fail => "failed".to_string(),
-        VerificationStatus::Mixed => "partial".to_string(),
+        VerificationStatus::Pass => FrontmatterVerificationStatus::Passed,
+        VerificationStatus::Fail => FrontmatterVerificationStatus::Failed,
+        VerificationStatus::Mixed => FrontmatterVerificationStatus::Partial,
     };
 
     // Extract failure reasons from FAIL criteria
     let verification_failures: Option<Vec<String>> = {
         let failures: Vec<String> = criteria
             .iter()
-            .filter(|c| c.status == "FAIL")
+            .filter(|c| c.status == CriterionStatus::Fail)
             .map(|c| {
                 if let Some(note) = &c.note {
                     format!("{} — {}", c.criterion, note)

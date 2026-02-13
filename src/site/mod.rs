@@ -107,7 +107,7 @@ impl SpecTemplateData {
             short_id,
             title: spec.title.clone(),
             status,
-            r#type: spec.frontmatter.r#type.clone(),
+            r#type: format!("{:?}", spec.frontmatter.r#type).to_lowercase(),
             labels: spec.frontmatter.labels.clone().unwrap_or_default(),
             depends_on: if redacted_fields.contains(&"depends_on".to_string()) {
                 vec![]

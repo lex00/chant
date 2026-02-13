@@ -60,7 +60,7 @@ impl SpecFactory {
         Spec {
             id: id.to_string(),
             frontmatter: SpecFrontmatter {
-                r#type: "code".to_string(),
+                r#type: chant::spec::SpecType::Code,
                 status,
                 depends_on: None,
                 labels: None,

@@ -3,10 +3,11 @@
 use anyhow::Result;
 use serde_json::{json, Value};
 use std::path::PathBuf;
+use std::str::FromStr;
 
 use crate::diagnose;
 use crate::paths::LOGS_DIR;
-use crate::spec::{load_all_specs, resolve_spec, SpecStatus};
+use crate::spec::{load_all_specs, resolve_spec, SpecStatus, SpecType};
 use crate::spec_group;
 
 use super::super::handlers::mcp_ensure_initialized;
@@ -23,14 +24,7 @@ pub fn tool_chant_spec_list(arguments: Option<&Value>) -> Result<Value> {
     // Filter by status if provided
     if let Some(args) = arguments {
         if let Some(status_str) = args.get("status").and_then(|v| v.as_str()) {
-            let filter_status = match status_str {
-                "pending" => Some(SpecStatus::Pending),
-                "in_progress" => Some(SpecStatus::InProgress),
-                "completed" => Some(SpecStatus::Completed),
-                "failed" => Some(SpecStatus::Failed),
-                "cancelled" => Some(SpecStatus::Cancelled),
-                _ => None,
-            };
+            let filter_status = SpecStatus::from_str(status_str).ok();
 
             if let Some(status) = filter_status {
                 specs.retain(|s| s.frontmatter.status == status);
@@ -150,7 +144,7 @@ pub fn tool_chant_ready(arguments: Option<&Value>) -> Result<Value> {
     let all_specs = specs.clone();
     specs.retain(|s| s.is_ready(&all_specs));
     // Filter out group specs - they are containers, not actionable work
-    specs.retain(|s| s.frontmatter.r#type != "group");
+    specs.retain(|s| s.frontmatter.r#type != SpecType::Group);
 
     // Get limit (default 50)
     let limit = arguments
@@ -225,24 +219,20 @@ pub fn tool_chant_spec_update(arguments: Option<&Value>) -> Result<Value> {
 
     // Parse status if provided
     let status = if let Some(status_str) = args.get("status").and_then(|v| v.as_str()) {
-        let new_status = match status_str {
-            "pending" => SpecStatus::Pending,
-            "in_progress" => SpecStatus::InProgress,
-            "completed" => SpecStatus::Completed,
-            "failed" => SpecStatus::Failed,
-            _ => {
+        match SpecStatus::from_str(status_str) {
+            Ok(s) => Some(s),
+            Err(e) => {
                 return Ok(json!({
                     "content": [
                         {
                             "type": "text",
-                            "text": format!("Invalid status: {}. Must be one of: pending, in_progress, completed, failed", status_str)
+                            "text": format!("{}", e)
                         }
                     ],
                     "isError": true
                 }));
             }
-        };
-        Some(new_status)
+        }
     } else {
         None
     };
@@ -628,15 +618,7 @@ pub fn tool_chant_search(arguments: Option<&Value>) -> Result<Value> {
 
     // Filter by status if provided
     if let Some(status_str) = status_filter {
-        let filter_status = match status_str {
-            "pending" => Some(SpecStatus::Pending),
-            "in_progress" => Some(SpecStatus::InProgress),
-            "completed" => Some(SpecStatus::Completed),
-            "failed" => Some(SpecStatus::Failed),
-            "blocked" => Some(SpecStatus::Blocked),
-            "cancelled" => Some(SpecStatus::Cancelled),
-            _ => None,
-        };
+        let filter_status = SpecStatus::from_str(status_str).ok();
 
         if let Some(status) = filter_status {
             specs.retain(|s| s.frontmatter.status == status);

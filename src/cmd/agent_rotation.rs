@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
-use chant::config::ParallelConfig;
+use chant::config::{ParallelConfig, RotationStrategy};
 
 /// Rotations state file location
 fn rotation_state_path() -> PathBuf {
@@ -57,7 +57,7 @@ impl RotationState {
 
 /// Select an agent command for single spec execution based on rotation strategy
 pub fn select_agent_for_work(
-    rotation_strategy: &str,
+    rotation_strategy: RotationStrategy,
     parallel_config: &ParallelConfig,
 ) -> Result<String> {
     // If no agents configured, fall back to default "claude" command
@@ -66,16 +66,12 @@ pub fn select_agent_for_work(
     }
 
     match rotation_strategy {
-        "none" => {
+        RotationStrategy::None => {
             // Always use the default (first) agent
             Ok(parallel_config.agents[0].command.clone())
         }
-        "random" => select_random_agent(parallel_config),
-        "round-robin" => select_round_robin_agent(parallel_config),
-        _ => {
-            // Unknown strategy - default to first agent
-            Ok(parallel_config.agents[0].command.clone())
-        }
+        RotationStrategy::Random => select_random_agent(parallel_config),
+        RotationStrategy::RoundRobin => select_round_robin_agent(parallel_config),
     }
 }
 
@@ -163,7 +159,7 @@ mod tests {
             stagger_jitter_ms: 200,
         };
 
-        let result = select_agent_for_work("none", &config).unwrap();
+        let result = select_agent_for_work(RotationStrategy::None, &config).unwrap();
         assert_eq!(result, "claude");
     }
 
@@ -175,7 +171,7 @@ mod tests {
             stagger_jitter_ms: 200,
         };
 
-        let result = select_agent_for_work("none", &config).unwrap();
+        let result = select_agent_for_work(RotationStrategy::None, &config).unwrap();
         assert_eq!(result, "claude");
     }
 
@@ -193,7 +189,7 @@ mod tests {
         // Run multiple times to check that both agents can be selected
         let mut selected_commands = std::collections::HashSet::new();
         for _ in 0..100 {
-            let result = select_agent_for_work("random", &config).unwrap();
+            let result = select_agent_for_work(RotationStrategy::Random, &config).unwrap();
             selected_commands.insert(result);
         }
 
@@ -221,7 +217,7 @@ mod tests {
         };
 
         // Just verify round-robin selection returns valid agents
-        let result = select_agent_for_work("round-robin", &config).unwrap();
+        let result = select_agent_for_work(RotationStrategy::RoundRobin, &config).unwrap();
         assert!(
             result == "claude" || result == "claude-alt1" || result == "claude-alt2",
             "round-robin should return one of the configured agents"
@@ -241,26 +237,11 @@ mod tests {
         };
 
         // Verify round-robin respects weights by returning valid agents
-        let result = select_agent_for_work("round-robin", &config).unwrap();
+        let result = select_agent_for_work(RotationStrategy::RoundRobin, &config).unwrap();
         assert!(
             result == "claude" || result == "claude-alt1",
             "round-robin should return a weighted agent"
         );
-    }
-
-    #[test]
-    fn test_select_agent_unknown_strategy_uses_first_agent() {
-        let config = ParallelConfig {
-            agents: vec![
-                make_agent("main", "claude", 1),
-                make_agent("alt1", "claude-alt1", 1),
-            ],
-            stagger_delay_ms: 1000,
-            stagger_jitter_ms: 200,
-        };
-
-        let result = select_agent_for_work("unknown-strategy", &config).unwrap();
-        assert_eq!(result, "claude");
     }
 
     #[test]
@@ -278,7 +259,7 @@ mod tests {
         };
 
         // Verify the function returns valid results
-        let result = select_agent_for_work("round-robin", &config).unwrap();
+        let result = select_agent_for_work(RotationStrategy::RoundRobin, &config).unwrap();
         assert!(
             result == "claude" || result == "claude-alt1",
             "round-robin should return a valid agent"

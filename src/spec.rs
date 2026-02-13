@@ -12,7 +12,10 @@ mod parse;
 mod state_machine;
 
 // Re-export types from submodules
-pub use frontmatter::{Approval, ApprovalStatus, BlockingDependency, SpecFrontmatter, SpecStatus};
+pub use frontmatter::{
+    Approval, ApprovalStatus, BlockingDependency, SpecFrontmatter, SpecStatus, SpecType,
+    VerificationStatus,
+};
 pub use lifecycle::{
     apply_blocked_status_with_repos, is_completed, is_failed, load_all_specs,
     load_all_specs_with_options, resolve_spec,
@@ -59,13 +62,14 @@ mod tests {
         verification_status: Option<&str>,
         verification_failures: Option<Vec<&str>>,
     ) {
+        use std::str::FromStr;
         assert_eq!(
             spec.frontmatter.last_verified,
             last_verified.map(String::from)
         );
         assert_eq!(
             spec.frontmatter.verification_status,
-            verification_status.map(String::from)
+            verification_status.and_then(|s| VerificationStatus::from_str(s).ok())
         );
         assert_eq!(
             spec.frontmatter.verification_failures,

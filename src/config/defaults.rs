@@ -4,6 +4,20 @@ use serde::{Deserialize, Serialize};
 
 use crate::provider::ProviderType;
 
+/// Agent rotation strategy for single spec execution
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RotationStrategy {
+    #[default]
+    None,
+    Random,
+    RoundRobin,
+}
+
+pub(crate) fn default_rotation_strategy_enum() -> RotationStrategy {
+    RotationStrategy::None
+}
+
 /// Macro to generate default functions for serde attributes
 macro_rules! default_fn {
     ($name:ident, $type:ty, $value:expr) => {
@@ -46,7 +60,6 @@ default_fn!(default_agent_command, String, "claude".to_string());
 default_fn!(default_max_concurrent, usize, 2);
 default_fn!(default_stagger_delay_ms, u64, 1000); // Default 1 second between agent spawns
 default_fn!(default_stagger_jitter_ms, u64, 200); // Default 20% of stagger_delay_ms (200ms is 20% of 1000ms)
-default_fn!(default_rotation_strategy, String, "none".to_string());
 default_fn!(default_prompt, String, "bootstrap".to_string());
 default_fn!(default_branch_prefix, String, "chant/".to_string());
 default_fn!(default_main_branch, String, "main".to_string());
@@ -418,9 +431,9 @@ pub struct DefaultsConfig {
     /// Default provider (claude, ollama, openai)
     #[serde(default)]
     pub provider: ProviderType,
-    /// Agent rotation strategy for single spec execution (none, random, round-robin)
-    #[serde(default = "default_rotation_strategy")]
-    pub rotation_strategy: String,
+    /// Agent rotation strategy for single spec execution
+    #[serde(default = "default_rotation_strategy_enum")]
+    pub rotation_strategy: RotationStrategy,
     /// List of prompt extensions to append to all prompts
     #[serde(default)]
     pub prompt_extensions: Vec<String>,
@@ -435,7 +448,7 @@ impl Default for DefaultsConfig {
             split_model: None,
             main_branch: default_main_branch(),
             provider: ProviderType::Claude,
-            rotation_strategy: default_rotation_strategy(),
+            rotation_strategy: default_rotation_strategy_enum(),
             prompt_extensions: vec![],
         }
     }

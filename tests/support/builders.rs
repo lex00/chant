@@ -1,4 +1,4 @@
-use chant::spec::{Spec, SpecFrontmatter, SpecStatus};
+use chant::spec::{Spec, SpecFrontmatter, SpecStatus, SpecType};
 
 pub struct SpecBuilder {
     id: String,
@@ -29,7 +29,7 @@ impl SpecBuilder {
         Spec {
             id: self.id,
             frontmatter: SpecFrontmatter {
-                r#type: "code".to_string(),
+                r#type: SpecType::Code,
                 status: self.status,
                 depends_on: self.depends_on,
                 labels: None,

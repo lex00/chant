@@ -227,11 +227,12 @@ pub fn invoke_agent_for_spec(
     };
 
     // Select agent based on rotation strategy
-    let agent_command = if config.defaults.rotation_strategy != "none"
+    let agent_command = if config.defaults.rotation_strategy
+        != chant::config::RotationStrategy::None
         && !config.parallel.agents.is_empty()
     {
         match cmd::agent_rotation::select_agent_for_work(
-            &config.defaults.rotation_strategy,
+            config.defaults.rotation_strategy,
             &config.parallel,
         ) {
             Ok(cmd) => Some(cmd),
@@ -242,9 +243,11 @@ pub fn invoke_agent_for_spec(
         }
     } else {
         // Warn if agents are configured but rotation strategy is "none"
-        if !config.parallel.agents.is_empty() && config.defaults.rotation_strategy == "none" {
+        if !config.parallel.agents.is_empty()
+            && config.defaults.rotation_strategy == chant::config::RotationStrategy::None
+        {
             eprintln!(
-                    "{} parallel.agents configured but rotation_strategy is 'none' — using default claude command. Set rotation_strategy: round-robin to enable agent rotation.",
+                    "{} parallel.agents configured but rotation_strategy is 'none' — using default claude command. Set rotation_strategy: round_robin to enable agent rotation.",
                     "Warning:".yellow()
                 );
         }

@@ -1,6 +1,7 @@
 //! Frontmatter types and defaults for specs.
 
 use serde::{Deserialize, Deserializer, Serialize};
+use std::str::FromStr;
 
 /// Deserialize depends_on as either a string or array of strings
 fn deserialize_depends_on<'de, D>(deserializer: D) -> Result<Option<Vec<String>>, D::Error>
@@ -34,6 +35,67 @@ pub enum SpecStatus {
     Ready,
     Blocked,
     Cancelled,
+}
+
+impl FromStr for SpecStatus {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "pending" => Ok(Self::Pending),
+            "in_progress" => Ok(Self::InProgress),
+            "paused" => Ok(Self::Paused),
+            "completed" => Ok(Self::Completed),
+            "failed" => Ok(Self::Failed),
+            "needs_attention" => Ok(Self::NeedsAttention),
+            "ready" => Ok(Self::Ready),
+            "blocked" => Ok(Self::Blocked),
+            "cancelled" => Ok(Self::Cancelled),
+            _ => anyhow::bail!("Invalid status: {}. Must be one of: pending, in_progress, paused, completed, failed, needs_attention, ready, blocked, cancelled", s),
+        }
+    }
+}
+
+/// Spec type enum
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SpecType {
+    #[default]
+    Code,
+    Task,
+    Driver,
+    Documentation,
+    Research,
+    Group,
+}
+
+pub(crate) fn default_type_enum() -> SpecType {
+    SpecType::Code
+}
+
+/// Verification status enum
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum VerificationStatus {
+    Passed,
+    Failed,
+    Partial,
+}
+
+impl FromStr for VerificationStatus {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "passed" => Ok(Self::Passed),
+            "failed" => Ok(Self::Failed),
+            "partial" => Ok(Self::Partial),
+            _ => anyhow::bail!(
+                "Invalid verification status: {}. Must be one of: passed, failed, partial",
+                s
+            ),
+        }
+    }
 }
 
 /// Approval status for a spec
@@ -80,8 +142,8 @@ pub struct BlockingDependency {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpecFrontmatter {
-    #[serde(default = "default_type")]
-    pub r#type: String,
+    #[serde(default = "default_type_enum")]
+    pub r#type: SpecType,
     #[serde(default)]
     pub status: SpecStatus,
     #[serde(
@@ -131,7 +193,7 @@ pub struct SpecFrontmatter {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_verified: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub verification_status: Option<String>,
+    pub verification_status: Option<VerificationStatus>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub verification_failures: Option<Vec<String>>,
     // Replay tracking fields
@@ -161,14 +223,10 @@ pub struct SpecFrontmatter {
     pub retry_state: Option<crate::retry::RetryState>,
 }
 
-pub(crate) fn default_type() -> String {
-    "code".to_string()
-}
-
 impl Default for SpecFrontmatter {
     fn default() -> Self {
         Self {
-            r#type: default_type(),
+            r#type: default_type_enum(),
             status: SpecStatus::Pending,
             depends_on: None,
             labels: None,

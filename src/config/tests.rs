@@ -323,12 +323,15 @@ fn test_parse_rotation_strategy() {
 project:
   name: test-project
 defaults:
-  rotation_strategy: round-robin
+  rotation_strategy: round_robin
 ---
 "#;
     let config = Config::parse(content).unwrap();
 
-    assert_eq!(config.defaults.rotation_strategy, "round-robin");
+    assert_eq!(
+        config.defaults.rotation_strategy,
+        super::RotationStrategy::RoundRobin
+    );
 }
 
 #[test]
@@ -340,7 +343,10 @@ project:
 "#;
     let config = Config::parse(content).unwrap();
 
-    assert_eq!(config.defaults.rotation_strategy, "none");
+    assert_eq!(
+        config.defaults.rotation_strategy,
+        super::RotationStrategy::None
+    );
 }
 
 // =========================================================================
