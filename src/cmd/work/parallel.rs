@@ -552,6 +552,16 @@ fn handle_branch_mode_merges(
             }
         } else {
             failed.push((spec_id.clone(), merge_result.has_conflict));
+
+            // Mark spec as failed since merge didn't succeed
+            let spec_path = specs_dir.join(format!("{}.md", spec_id));
+            if let Ok(mut spec) = spec::resolve_spec(specs_dir, spec_id) {
+                let _ = spec::TransitionBuilder::new(&mut spec)
+                    .force()
+                    .to(SpecStatus::Failed);
+                let _ = spec.save(&spec_path);
+            }
+
             let error_msg = merge_result
                 .error
                 .as_deref()
@@ -1446,7 +1456,27 @@ fn print_parallel_summary(
 ) {
     println!("\n{}", "═".repeat(60).dimmed());
     println!("{}", "Parallel execution complete:".bold());
-    println!("  {} {} specs completed work", "✓".green(), completed);
+
+    // Calculate truly finalized specs (merged + finalized)
+    let finalized_count = merged_count + branch_mode_merged;
+
+    if finalized_count > 0 {
+        println!(
+            "  {} {} specs completed and finalized",
+            "✓".green(),
+            finalized_count
+        );
+    }
+
+    // Show agent work completed but not finalized
+    let agent_done_not_finalized = completed.saturating_sub(finalized_count);
+    if agent_done_not_finalized > 0 {
+        println!(
+            "  {} {} specs completed agent work (finalization pending)",
+            "→".yellow(),
+            agent_done_not_finalized
+        );
+    }
 
     if !direct_mode_results.is_empty() {
         println!("  {} {} branches merged to main", "✓".green(), merged_count);
