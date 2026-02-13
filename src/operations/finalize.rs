@@ -95,6 +95,16 @@ pub fn finalize_spec(
         check_and_set_agent_approval(spec, &commits, config)?;
     }
 
+    // Validate acceptance criteria are all checked
+    let unchecked_count = spec.count_unchecked_checkboxes();
+    if unchecked_count > 0 {
+        anyhow::bail!(
+            "Cannot finalize spec '{}': {} acceptance criteria remain unchecked",
+            spec.id,
+            unchecked_count
+        );
+    }
+
     // Update spec to completed using state machine with force transition
     // This allows finalization from any state (e.g. failed specs whose agent completed work)
     TransitionBuilder::new(spec)

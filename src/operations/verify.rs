@@ -202,7 +202,12 @@ pub fn update_spec_with_verification_results(
     overall_status: VerificationStatus,
     criteria: &[CriterionResult],
 ) -> Result<()> {
+    use crate::lock::LockGuard;
     use crate::spec::TransitionBuilder;
+
+    // Acquire spec-level lock to prevent concurrent writes
+    let _lock =
+        LockGuard::new(&spec.id).context("Failed to acquire lock for verification update")?;
 
     // Get current UTC timestamp in ISO 8601 format
     let now = Utc::now();

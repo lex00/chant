@@ -9,6 +9,7 @@ use std::path::Path;
 
 use crate::cmd::ui::{Output, OutputMode};
 use chant::config::Config;
+use chant::lock::LockGuard;
 use chant::repository::spec_repository::{FileSpecRepository, SpecRepository};
 use chant::spec::{self, load_all_specs, Spec, SpecStatus, TransitionBuilder};
 use chant::worktree;
@@ -38,6 +39,9 @@ pub fn finalize_spec(
     commits: Option<Vec<String>>,
 ) -> Result<()> {
     let out = Output::new(OutputMode::Human);
+
+    // Acquire spec-level lock to prevent concurrent finalization
+    let _lock = LockGuard::new(&spec.id).context("Failed to acquire lock for spec finalization")?;
 
     // Check for uncommitted changes in worktree before finalization
     if let Some(worktree_path) = worktree::get_active_worktree(&spec.id, None) {
@@ -246,6 +250,10 @@ pub fn re_finalize_spec(
     config: &Config,
     allow_no_commits: bool,
 ) -> Result<()> {
+    // Acquire spec-level lock to prevent concurrent finalization
+    let _lock =
+        LockGuard::new(&spec.id).context("Failed to acquire lock for spec re-finalization")?;
+
     // Re-finalization only works on specs that have been started (in_progress or completed)
     // A pending spec has never been started and should use normal work flow
     // Allow failed too - agents often leave specs in failed state when they actually completed the work
