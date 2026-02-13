@@ -290,18 +290,24 @@ fn execute_single_spec_in_chain(
         skip_quality: true,
     };
 
-    let resolved_prompt_name = executor::prepare_spec_for_execution(
-        &mut spec,
-        &spec_path,
-        specs_dir,
+    let resolved_prompt_name =
+        executor::prepare_spec_for_execution(executor::SpecPreparationContext {
+            spec: &mut spec,
+            spec_path: &spec_path,
+            specs_dir,
+            prompts_dir,
+            config,
+            prompt_name,
+            validation_opts: &validation_opts,
+        })?;
+
+    let result = executor::invoke_agent_for_spec(executor::AgentInvocationRequest {
+        spec: &spec,
+        prompt_name: &resolved_prompt_name,
         prompts_dir,
         config,
-        prompt_name,
-        &validation_opts,
-    )?;
-
-    let result =
-        executor::invoke_agent_for_spec(&spec, &resolved_prompt_name, prompts_dir, config, None);
+        worktree_path: None,
+    });
 
     match result {
         Ok(agent_output) => {

@@ -244,13 +244,13 @@ pub fn cmd_work(
     spec::mark_driver_in_progress(&specs_dir, &spec.id)?;
 
     // Invoke agent through executor
-    let result = executor::invoke_agent_for_spec(
-        &spec,
-        final_prompt_name,
-        &prompts_dir,
-        &config,
-        Some(&worktree_path),
-    );
+    let result = executor::invoke_agent_for_spec(executor::AgentInvocationRequest {
+        spec: &spec,
+        prompt_name: final_prompt_name,
+        prompts_dir: &prompts_dir,
+        config: &config,
+        worktree_path: Some(&worktree_path),
+    });
 
     match result {
         Ok(agent_output) => {

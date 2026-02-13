@@ -28,6 +28,26 @@ pub struct ValidationOptions {
     pub skip_quality: bool,
 }
 
+/// Context for preparing spec for execution
+pub struct SpecPreparationContext<'a> {
+    pub spec: &'a mut Spec,
+    pub spec_path: &'a Path,
+    pub specs_dir: &'a Path,
+    pub prompts_dir: &'a Path,
+    pub config: &'a Config,
+    pub prompt_name: Option<&'a str>,
+    pub validation_opts: &'a ValidationOptions,
+}
+
+/// Request for agent invocation
+pub struct AgentInvocationRequest<'a> {
+    pub spec: &'a Spec,
+    pub prompt_name: &'a str,
+    pub prompts_dir: &'a Path,
+    pub config: &'a Config,
+    pub worktree_path: Option<&'a Path>,
+}
+
 /// Run full validation pipeline: lint + approval + dependency + quality
 pub fn validate_spec(
     spec: &Spec,
@@ -197,13 +217,15 @@ fn validate_quality(spec: &Spec, specs_dir: &Path, config: &Config) -> Result<()
 }
 
 /// Select and invoke agent for a spec
-pub fn invoke_agent_for_spec(
-    spec: &Spec,
-    prompt_name: &str,
-    prompts_dir: &Path,
-    config: &Config,
-    worktree_path: Option<&Path>,
-) -> Result<String> {
+pub fn invoke_agent_for_spec(request: AgentInvocationRequest) -> Result<String> {
+    let AgentInvocationRequest {
+        spec,
+        prompt_name,
+        prompts_dir,
+        config,
+        worktree_path,
+    } = request;
+
     let prompt_path = prompts_dir.join(format!("{}.md", prompt_name));
 
     eprintln!(
@@ -464,15 +486,17 @@ pub fn write_agent_status_done(
 }
 
 /// Prepare spec for execution: validate, resolve prompt, update status
-pub fn prepare_spec_for_execution(
-    spec: &mut Spec,
-    spec_path: &Path,
-    specs_dir: &Path,
-    prompts_dir: &Path,
-    config: &Config,
-    prompt_name: Option<&str>,
-    validation_opts: &ValidationOptions,
-) -> Result<String> {
+pub fn prepare_spec_for_execution(ctx: SpecPreparationContext) -> Result<String> {
+    let SpecPreparationContext {
+        spec,
+        spec_path,
+        specs_dir,
+        prompts_dir,
+        config,
+        prompt_name,
+        validation_opts,
+    } = ctx;
+
     validate_spec(spec, specs_dir, config, validation_opts)?;
 
     // Resolve prompt
