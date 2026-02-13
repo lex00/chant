@@ -1,6 +1,6 @@
 # Architecture Patterns
 
-This document maps chant's architecture to well-known software design patterns. Understanding these patterns helps contributors navigate the ~18K LOC codebase and see how different components fit together.
+This document maps chant's architecture to well-known software design patterns. Understanding these patterns helps contributors navigate the ~58K LOC codebase and see how different components fit together.
 
 ---
 
@@ -283,8 +283,8 @@ The watch service polls worktree status files and spec status, triggering lifecy
 │  └─────────────────────────────────────┘         │
 │                                                  │
 │  Crash Recovery:                                 │
-│  • Detects stale worktrees (>1hr working)        │
-│  • Marks specs as failed                         │
+│  • Detects stale locks via PID liveness checks   │
+│  • Marks specs as failed after time + PID check  │
 │  • Cleans up orphaned worktrees                  │
 └──────────────────────────────────────────────────┘
 ```
@@ -449,7 +449,7 @@ The quality scoring system composes multiple independent metrics (complexity, co
 | **Observer** | Watch Service | `cmd/watch.rs` | Polling-based lifecycle orchestration |
 | **Facade/Service Layer** | Operations | `operations/mod.rs` | Shared business logic for CLI and MCP |
 | **Layered Config** | Config Merge | `config/mod.rs` | Global → project → local override semantics |
-| **Strategy + Adapter** | Output | `ui.rs`, `formatters.rs` | Human/JSON/Quiet output modes |
+| **Strategy + Adapter** | Output | `cmd/ui/` | Human/JSON/Quiet output modes |
 | **Composite** | Score/Lint | `scoring.rs`, `score/mod.rs` | Independent metric aggregation, traffic light |
 
 ---

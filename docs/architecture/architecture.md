@@ -45,12 +45,13 @@ The composable primitives that make [self-driving specs](../concepts/autonomy.md
 │                                                                     │
 │  1. Load spec      ─→  .chant/specs/001.md                         │
 │  2. Load prompt    ─→  .chant/prompts/standard.md                  │
-│  3. Acquire lock   ─→  .chant/.locks/001.pid                       │
+│  3. Acquire lock   ─→  RAII LockGuard (.chant/.locks/001.lock)     │
 │  4. Create branch  ─→  git checkout -b chant/001                   │
-│  5. Invoke agent   ─→  configured provider                         │
-│  6. Agent works    ─→  reads, edits, tests, commits                │
-│  7. Update spec    ─→  status: completed, commit: abc123           │
-│  8. Release lock   ─→  remove .locks/001.pid                       │
+│  5. Write stub     ─→  .chant/tmp/{spec_id}_prompt.md              │
+│  6. Invoke agent   ─→  bootstrap message points to prompt file     │
+│  7. Agent works    ─→  reads, edits, tests, commits                │
+│  8. Update spec    ─→  status: completed, commit: abc123           │
+│  9. Release lock   ─→  LockGuard dropped, lock file removed        │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -173,28 +174,26 @@ Agent output goes to:
 ├── prompts/              # Prompt files (git-tracked)
 │   ├── standard.md
 │   └── tdd.md
-├── specs/                # All specs (git-tracked)
+├── specs/                # Active specs
 │   ├── 2026-01-22-001-x7m.md
 │   └── 2026-01-22-002-q2n.md
+├── archive/              # Archived completed specs
+│   └── 2026-01-22/
+├── logs/                 # Agent execution logs (gitignored)
 ├── .locks/               # PID files (gitignored)
 └── .store/               # Index cache (gitignored)
 ```
 
-### No Archive Folder
+### Archive
 
-Specs stay in `specs/` forever. Completed specs have `status: completed`.
+Completed specs can be archived via `chant archive`:
 
-Why:
-- Git history preserves everything
-- Moving files changes IDs (breaks references)
-- Simpler mental model
-
-Filter by status instead:
 ```bash
-chant list                  # Active (pending, in_progress, failed)
-chant list --all            # Everything
-chant list --completed      # Just completed
+chant archive <spec-id>     # Move to .chant/archive/YYYY-MM-DD/
+chant archive --all         # Archive all completed specs
 ```
+
+Archived specs are moved from `specs/` to `archive/<date>/`. If the spec file is git-tracked, `git mv` is used; otherwise a filesystem move is performed.
 
 ### Active Specs: In-Memory
 
@@ -269,6 +268,8 @@ Kubernetes Cluster
 ├── config.md             # Human + Chant
 ├── prompts/*.md          # Human (or community)
 ├── specs/*.md            # Human creates, Chant updates
+├── archive/              # Chant only (completed specs)
+├── logs/                 # Chant only (gitignored)
 ├── .locks/               # Chant only (gitignored)
 └── .store/               # Chant only (gitignored)
 ```

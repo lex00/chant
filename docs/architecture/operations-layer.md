@@ -91,6 +91,7 @@ finalize_spec(
     FinalizeOptions {
         allow_no_commits: false,
         commits: Some(vec!["abc123".to_string()]),
+        force: false,
     },
 )?;
 ```
@@ -183,7 +184,7 @@ When you need a new spec operation (e.g., `archive`, `split`, `merge`):
    - Call operation function
    - Handle errors and output
 
-4. **Add MCP handler in `src/server/handlers/`**
+4. **Add MCP handler in `src/mcp/tools/`**
    - Parse JSON-RPC parameters
    - Load spec and dependencies
    - Call the **same operation function**
@@ -208,7 +209,7 @@ When you need a new spec operation (e.g., `archive`, `split`, `merge`):
 - Interactive prompts
 - Shell-specific concerns (exit codes, colored output)
 
-**MCP layer** (`src/server/handlers/`):
+**MCP layer** (`src/mcp/tools/`):
 - JSON-RPC request/response handling
 - Parameter deserialization
 - Error formatting for MCP protocol
@@ -286,28 +287,23 @@ pub fn run(args: ArchiveArgs, config: &Config) -> Result<()> {
 ### Using from MCP
 
 ```rust
-// src/server/handlers/archive.rs
-use serde::{Deserialize, Serialize};
-use chant::operations::archive::{archive_spec, ArchiveOptions};
+// src/mcp/tools/lifecycle.rs
+pub fn tool_chant_archive(arguments: Option<&Value>) -> Result<Value> {
+    let specs_dir = mcp_ensure_initialized()?;
+    let args = arguments.ok_or_else(|| anyhow::anyhow!("Missing arguments"))?;
+    let id = args.get("id").and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Missing required parameter: id"))?;
 
-#[derive(Deserialize)]
-struct ArchiveRequest {
-    id: String,
-}
-
-pub fn handle_archive(req: ArchiveRequest, config: &Config) -> Result<Value> {
-    let spec = load_spec(&req.id)?;
-    let spec_path = get_spec_path(&req.id)?;
-
-    archive_spec(
-        &spec,
-        &spec_path,
-        ArchiveOptions {
-            archive_dir: config.archive_dir.clone(),
-        },
-    )?;
-
-    Ok(json!({ "success": true, "id": req.id }))
+    let options = operations::ArchiveOptions::default();
+    match operations::archive_spec(&specs_dir, id, &options) {
+        Ok(dest_path) => Ok(json!({
+            "content": [{ "type": "text", "text": format!("Archived spec: {}", id) }]
+        })),
+        Err(e) => Ok(json!({
+            "content": [{ "type": "text", "text": e.to_string() }],
+            "isError": true
+        })),
+    }
 }
 ```
 

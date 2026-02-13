@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-02-13
+
+### Fixed
+
+- **Parallel execution runs without `--parallel` flag**: MCP `chant_work_start` now enforces concurrency guard, preventing multiple single/chain executions from running simultaneously
+- **Parallel mode leaves specs in `in_progress`**: Branch mode now properly reports merge failures and transitions specs to failed status instead of silently leaving them in progress
+- **Parallel sibling race condition**: Fixed race where concurrent workers could interfere with each other's spec status transitions
+- **Dependency lifecycle with cancelled specs**: Cancelled specs no longer block dependents indefinitely; group drivers auto-complete when all non-cancelled members finish
+- **Archive fails on untracked files**: `chant archive` now falls back to filesystem move when `git mv` fails (e.g., when `.chant/` is gitignored), and consolidates duplicate `move_spec_file()` implementations
+
+### Added
+
+- **RAII lock guard**: Lock files are now managed via `LockGuard` that automatically cleans up on drop, preventing orphaned locks on panics or early returns
+- **Stub prompt for agent invocation**: Agent prompts are written to a temporary file and agents receive a short bootstrap message pointing to the file, avoiding large CLI arguments that could cause process hangs
+- **Orchestrator guardrails on MCP**: All MCP tool responses include anti-bypass reminder; action tools (`chant_ready`, `chant_work_start`, `chant_verify`, `chant_finalize`) have branded banners; completion gates require agent execution logs
+- **State gate enforcement**: `pause`, `reset`, and `takeover` commands now validate spec is in appropriate state before acting
+- **Finalization safety**: Finalization acquires a lock and validates acceptance criteria are checked before completing
+
+### Changed
+
+- **Watch daemon PID-based stale detection**: Stale agent detection now checks PID liveness instead of relying solely on time-based heuristics
+- **All status transitions through TransitionBuilder**: Spec status changes are funneled through the validated state machine, eliminating ad-hoc status writes
+- **MCP handlers split into thin adapters**: `handlers.rs` (2,400+ lines) split into focused modules under `src/mcp/tools/` that delegate to the operations layer
+- **git.rs split**: Monolithic `git.rs` split into low-level operations (`git_ops.rs`) and high-level merge orchestration
+- **Lock operations extracted**: Lock file management extracted from scattered call sites into dedicated `lock.rs` module
+- **Merge handlers consolidated**: Duplicate merge logic across single/chain/parallel consolidated into shared helpers
+- **Parallel god function decomposed**: `cmd_work_parallel()` (338 lines) broken into focused phase functions
+- **CLI output modules moved**: CLI-specific formatting moved out of library crate into `src/cmd/ui/`
+
 ## [0.21.1] - 2026-02-12
 
 ### Fixed
