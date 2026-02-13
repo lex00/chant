@@ -9,6 +9,27 @@ use std::path::{Path, PathBuf};
 
 use crate::paths::LOCKS_DIR;
 
+/// RAII guard that automatically removes lock file on drop
+pub struct LockGuard {
+    spec_id: String,
+}
+
+impl LockGuard {
+    /// Create a new lock guard and lock file
+    pub fn new(spec_id: &str) -> Result<Self> {
+        create_lock(spec_id)?;
+        Ok(Self {
+            spec_id: spec_id.to_string(),
+        })
+    }
+}
+
+impl Drop for LockGuard {
+    fn drop(&mut self) {
+        let _ = remove_lock(&self.spec_id);
+    }
+}
+
 /// Create a lock file for a spec with the current process ID
 pub fn create_lock(spec_id: &str) -> Result<PathBuf> {
     let lock_path = get_lock_path(spec_id);
@@ -39,9 +60,27 @@ pub fn read_lock(spec_id: &str) -> Result<Option<u32>> {
     Ok(Some(pid))
 }
 
-/// Check if a spec has an active lock file
+/// Check if a spec has an active lock file with a running process
 pub fn is_locked(spec_id: &str) -> bool {
-    get_lock_path(spec_id).exists()
+    let lock_path = get_lock_path(spec_id);
+    if !lock_path.exists() {
+        return false;
+    }
+
+    // Verify PID is actually running
+    match read_lock(spec_id) {
+        Ok(Some(pid)) => is_process_alive(pid),
+        _ => false,
+    }
+}
+
+/// Check if a process with the given PID is alive
+fn is_process_alive(pid: u32) -> bool {
+    use nix::sys::signal::{kill, Signal};
+    use nix::unistd::Pid;
+
+    // Signal 0 checks if process exists without sending a signal
+    kill(Pid::from_raw(pid as i32), Signal::try_from(0).ok()).is_ok()
 }
 
 /// Get the path to a spec's lock file

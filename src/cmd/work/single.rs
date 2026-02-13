@@ -197,6 +197,9 @@ pub fn cmd_work(
     // Create lock file BEFORE updating status to avoid race with watch daemon
     chant::lock::create_lock(&spec.id)?;
 
+    // Create lock guard BEFORE updating status
+    let _lock = chant::lock::LockGuard::new(&spec.id)?;
+
     // Update status to in_progress BEFORE creating worktree
     // so copy_spec_to_worktree picks up the correct status.
     spec::transition_to_in_progress(&mut spec, Some(&specs_dir))
@@ -285,15 +288,9 @@ pub fn cmd_work(
 
             // Cleanup: append output and create transcript
             executor::cleanup_completed_spec(&mut spec, &spec_path, &agent_output)?;
-
-            // Remove lock file after successful completion
-            let _ = chant::lock::remove_lock(&spec.id);
         }
         Err(e) => {
             executor::handle_spec_failure(&spec.id, &specs_dir, &e)?;
-
-            // Remove lock file after failure
-            let _ = chant::lock::remove_lock(&spec.id);
 
             let _ = chant::git::ensure_on_main_branch(&config.defaults.main_branch);
             println!("\n{} Spec failed: {}", "✗".red(), e);

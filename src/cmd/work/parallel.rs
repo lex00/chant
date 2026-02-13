@@ -1327,9 +1327,6 @@ fn execute_spec_in_thread(
         branch_name.as_deref(),
     );
 
-    // Remove lock file after agent completes (both success and failure)
-    let _ = chant::lock::remove_lock(&spec_id);
-
     let (success, commits, error, agent_completed) = match result {
         Ok(_) => {
             // Write status and get commits
@@ -1344,6 +1341,10 @@ fn execute_spec_in_thread(
 
             let commits = get_commits_for_spec(&spec_id).ok();
             execution_state.mark_completed(&spec_id);
+
+            // Clean up lock and PID files after successful completion
+            let _ = chant::lock::remove_lock(&spec_id);
+            let _ = chant::pid::remove_pid_file(&spec_id);
 
             if !is_direct_mode {
                 // Branch mode: defer finalization to post-merge
@@ -1407,6 +1408,8 @@ fn execute_spec_in_thread(
         }
         Err(e) => {
             let _ = executor::handle_spec_failure(&spec_id, &specs_dir, &e);
+            let _ = chant::pid::remove_pid_file(&spec_id);
+            let _ = chant::lock::remove_lock(&spec_id);
             if let Some(ref path) = worktree_path {
                 if !is_direct_mode {
                     let _ = worktree::remove_worktree(path);

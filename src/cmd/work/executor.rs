@@ -365,9 +365,11 @@ pub fn finalize_completed_spec(
     // Clean up tracking files
     let _ = chant::pid::remove_pid_file(&spec.id);
     let _ = chant::pid::remove_process_files(&spec.id);
-
-    // Remove lock file
     let _ = chant::lock::remove_lock(&spec.id);
+
+    // Clean up status file after successful merge
+    let status_path = specs_dir.join(format!(".chant-status-{}.json", spec.id));
+    let _ = std::fs::remove_file(&status_path);
 
     // Auto-complete driver if ready
     let all_specs = spec::load_all_specs(specs_dir)?;
@@ -481,28 +483,17 @@ pub fn prepare_spec_for_execution(
         anyhow::bail!("Prompt not found: {}", resolved_prompt_name);
     }
 
-    // Create lock file BEFORE updating status to avoid race with watch daemon
-    chant::lock::create_lock(&spec.id)?;
+    // Create lock guard BEFORE updating status to avoid race with watch daemon
+    let _lock = chant::lock::LockGuard::new(&spec.id)?;
 
     // Update status to in_progress
-    spec::transition_to_in_progress(spec, Some(specs_dir)).map_err(|e| {
-        // Clean up lock file if status transition fails
-        let _ = chant::lock::remove_lock(&spec.id);
-        anyhow::anyhow!("Failed to transition spec to InProgress: {}", e)
-    })?;
-    spec.save(spec_path).inspect_err(|_| {
-        // Clean up lock file if save fails
-        let _ = chant::lock::remove_lock(&spec.id);
-    })?;
+    spec::transition_to_in_progress(spec, Some(specs_dir))
+        .map_err(|e| anyhow::anyhow!("Failed to transition spec to InProgress: {}", e))?;
+    spec.save(spec_path)?;
     eprintln!("{} Set {} to InProgress", "→".cyan(), spec.id);
 
     // Create log file
-    cmd::agent::create_log_file_if_not_exists(&spec.id, &resolved_prompt_name).inspect_err(
-        |_| {
-            // Clean up lock file if log creation fails
-            let _ = chant::lock::remove_lock(&spec.id);
-        },
-    )?;
+    cmd::agent::create_log_file_if_not_exists(&spec.id, &resolved_prompt_name)?;
 
     // Write agent status: working
     let status_path = specs_dir.join(format!(".chant-status-{}.json", spec.id));
@@ -513,16 +504,13 @@ pub fn prepare_spec_for_execution(
         error: None,
         commits: vec![],
     };
-    chant::worktree::status::write_status(&status_path, &agent_status).inspect_err(|_| {
-        // Clean up lock file if status write fails
-        let _ = chant::lock::remove_lock(&spec.id);
-    })?;
+    chant::worktree::status::write_status(&status_path, &agent_status)?;
 
     // Mark driver as in_progress if needed (conditional for chain mode)
-    spec::mark_driver_in_progress_conditional(specs_dir, &spec.id, true).inspect_err(|_| {
-        // Clean up lock file if driver marking fails
-        let _ = chant::lock::remove_lock(&spec.id);
-    })?;
+    spec::mark_driver_in_progress_conditional(specs_dir, &spec.id, true)?;
+
+    // Lock guard will be dropped and lock cleaned on function return/error
+    std::mem::forget(_lock);
 
     Ok(resolved_prompt_name)
 }
