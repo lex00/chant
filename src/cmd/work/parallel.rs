@@ -875,17 +875,18 @@ fn get_ready_specs_for_parallel(
     Ok(ready_specs)
 }
 
-pub fn cmd_work_parallel(
-    specs_dir: &Path,
-    prompts_dir: &Path,
-    config: &Config,
-    options: ParallelOptions,
-) -> Result<()> {
-    // Initialize parallel execution state for cleanup on interrupt
-    let execution_state = Arc::new(ParallelExecutionState::new(&config.defaults.branch_prefix));
-    setup_parallel_cleanup_handlers(execution_state.clone());
+/// Validation and assignment phase results
+struct ValidatedAssignments {
+    ready_specs: Vec<Spec>,
+    assignments: Vec<AgentAssignment>,
+}
 
-    // Create output handler
+/// Validate specs and assign to agents
+fn validate_and_assign(
+    specs_dir: &Path,
+    config: &Config,
+    options: &ParallelOptions,
+) -> Result<ValidatedAssignments> {
     let out = Output::new(OutputMode::Human);
 
     // Load ready specs (group-aware, excluding drivers)
@@ -900,7 +901,7 @@ pub fn cmd_work_parallel(
         } else {
             out.info("No ready specs to execute.");
         }
-        return Ok(());
+        anyhow::bail!("No ready specs to execute");
     }
 
     // Run validation on all specs before starting parallel work - fail fast if any have issues
@@ -953,19 +954,29 @@ pub fn cmd_work_parallel(
     }
     println!();
 
-    // Spawn worker threads for all assignments
-    let (tx, rx, handles, main_pb) = spawn_worker_threads(
-        &assignments,
-        &ready_specs,
-        specs_dir,
-        prompts_dir,
-        config,
-        &options,
-        &execution_state,
-    )?;
-    drop(tx); // Signal completion
+    Ok(ValidatedAssignments {
+        ready_specs,
+        assignments,
+    })
+}
 
-    // Collect results from threads with group-aware progress reporting
+/// Collection results from spawn and collect phase
+struct CollectionResults {
+    completed: usize,
+    failed: usize,
+    all_results: Vec<ParallelResult>,
+    branch_mode_branches: Vec<(String, String)>,
+    direct_mode_results: Vec<ParallelResult>,
+}
+
+/// Collect results from workers with group-aware progress reporting
+fn collect_results_from_workers(
+    rx: mpsc::Receiver<ParallelResult>,
+    main_pb: ProgressBar,
+    assignments: &[AgentAssignment],
+    ready_specs: &[Spec],
+    specs_dir: &Path,
+) -> Result<CollectionResults> {
     let mut completed = 0;
     let mut failed = 0;
     let mut all_results = Vec::new();
@@ -973,23 +984,20 @@ pub fn cmd_work_parallel(
     let mut direct_mode_results = Vec::new();
 
     // Track group progress for reporting
-    let mut group_stats: HashMap<String, (usize, usize, usize)> = HashMap::new(); // driver_id -> (completed, failed, total)
-
-    // Pre-compute group memberships and totals
+    let mut group_stats: HashMap<String, (usize, usize, usize)> = HashMap::new();
     let current_specs = spec::load_all_specs(specs_dir)?;
     let mut group_totals: HashMap<String, usize> = HashMap::new();
-    for spec in &ready_specs {
+
+    for spec in ready_specs {
         if let Some(driver_id) = chant::spec_group::extract_driver_id(&spec.id) {
             *group_totals.entry(driver_id.clone()).or_insert(0) += 1;
         }
     }
 
-    // Initialize group stats
     for (driver_id, total) in &group_totals {
         group_stats.insert(driver_id.clone(), (0, 0, *total));
     }
 
-    // Compute group order for indexing
     let group_order: Vec<String> = {
         let driver_specs: Vec<&Spec> = current_specs
             .iter()
@@ -1005,14 +1013,13 @@ pub fn cmd_work_parallel(
     for result in rx {
         main_pb.inc(1);
 
-        // Update group stats if this is a member spec
         let group_context =
             if let Some(driver_id) = chant::spec_group::extract_driver_id(&result.spec_id) {
                 if let Some(stats) = group_stats.get_mut(&driver_id) {
                     if result.success {
-                        stats.0 += 1; // completed
+                        stats.0 += 1;
                     } else {
-                        stats.1 += 1; // failed
+                        stats.1 += 1;
                     }
 
                     let group_index = group_order
@@ -1020,17 +1027,7 @@ pub fn cmd_work_parallel(
                         .position(|g| g == &driver_id)
                         .unwrap_or(0)
                         + 1;
-                    let total_groups = group_order.len();
-                    let completed_in_group = stats.0;
-                    let failed_in_group = stats.1;
-                    let total_in_group = stats.2;
-
-                    Some((
-                        group_index,
-                        total_groups,
-                        completed_in_group + failed_in_group,
-                        total_in_group,
-                    ))
+                    Some((group_index, group_order.len(), stats.0 + stats.1, stats.2))
                 } else {
                     None
                 }
@@ -1040,26 +1037,19 @@ pub fn cmd_work_parallel(
 
         if result.success {
             completed += 1;
-
-            // Print with group context
-            let prefix =
-                if let Some((group_idx, total_groups, member_idx, total_members)) = group_context {
-                    format!(
-                        "[group {}/{}] [member {}/{}]",
-                        group_idx, total_groups, member_idx, total_members
-                    )
-                } else {
-                    "[standalone]".to_string()
-                };
+            let prefix = if let Some((g_idx, g_tot, m_idx, m_tot)) = group_context {
+                format!("[group {}/{}] [member {}/{}]", g_idx, g_tot, m_idx, m_tot)
+            } else {
+                "[standalone]".to_string()
+            };
 
             if let Some(ref commits) = result.commits {
-                let commits_str = commits.join(", ");
                 main_pb.println(format!(
                     "{} [{}] {} Completed (commits: {})",
                     prefix,
                     result.spec_id.cyan(),
                     "✓".green(),
-                    commits_str
+                    commits.join(", ")
                 ));
             } else {
                 main_pb.println(format!(
@@ -1070,7 +1060,6 @@ pub fn cmd_work_parallel(
                 ));
             }
 
-            // Print running tally
             main_pb.println(format!(
                 "  {} [{}/{}] completed, {} failed, {} remaining",
                 "→".dimmed(),
@@ -1080,7 +1069,6 @@ pub fn cmd_work_parallel(
                 assignments.len().saturating_sub(completed + failed)
             ));
 
-            // Collect branch info
             if result.is_direct_mode {
                 direct_mode_results.push(result.clone());
             } else if let Some(ref branch) = result.branch_name {
@@ -1088,24 +1076,18 @@ pub fn cmd_work_parallel(
             }
         } else {
             failed += 1;
-            let error_msg = result.error.as_deref().unwrap_or("Unknown error");
-
-            let prefix =
-                if let Some((group_idx, total_groups, member_idx, total_members)) = group_context {
-                    format!(
-                        "[group {}/{}] [member {}/{}]",
-                        group_idx, total_groups, member_idx, total_members
-                    )
-                } else {
-                    "[standalone]".to_string()
-                };
+            let prefix = if let Some((g_idx, g_tot, m_idx, m_tot)) = group_context {
+                format!("[group {}/{}] [member {}/{}]", g_idx, g_tot, m_idx, m_tot)
+            } else {
+                "[standalone]".to_string()
+            };
 
             main_pb.println(format!(
                 "{} [{}] {} Failed: {}",
                 prefix,
                 result.spec_id.cyan(),
                 "✗".red(),
-                error_msg
+                result.error.as_deref().unwrap_or("Unknown error")
             ));
         }
         all_results.push(result);
@@ -1123,56 +1105,111 @@ pub fn cmd_work_parallel(
                     total_members
                 ));
             } else if *failed_members > 0 {
-                let skipped_members = total_members - completed_members - failed_members;
+                let skipped = total_members - completed_members - failed_members;
                 main_pb.println(format!(
                     "{} Group {} partially failed: {} completed, {} failed, {} skipped",
                     "⚠".yellow(),
                     driver_id,
                     completed_members,
                     failed_members,
-                    skipped_members
+                    skipped
                 ));
             }
         }
     }
 
-    // Finish progress bar
     main_pb.finish_and_clear();
 
-    // Wait for all threads to finish
+    Ok(CollectionResults {
+        completed,
+        failed,
+        all_results,
+        branch_mode_branches,
+        direct_mode_results,
+    })
+}
+
+/// Spawn workers and collect results
+fn spawn_and_collect(
+    assignments: &[AgentAssignment],
+    ready_specs: &[Spec],
+    specs_dir: &Path,
+    prompts_dir: &Path,
+    config: &Config,
+    options: &ParallelOptions,
+    execution_state: &Arc<ParallelExecutionState>,
+) -> Result<CollectionResults> {
+    let (tx, rx, handles, main_pb) = spawn_worker_threads(
+        assignments,
+        ready_specs,
+        specs_dir,
+        prompts_dir,
+        config,
+        options,
+        execution_state,
+    )?;
+    drop(tx);
+
+    let results = collect_results_from_workers(rx, main_pb, assignments, ready_specs, specs_dir)?;
+
     for handle in handles {
         let _ = handle.join();
     }
 
-    // =========================================================================
-    // SERIALIZED MERGE PHASE - Handle all direct mode merges sequentially
-    // =========================================================================
+    Ok(results)
+}
 
+/// Merge phase results
+struct MergeResults {
+    merged_count: usize,
+    merge_failed: Vec<(String, bool)>,
+    branch_mode_merged: usize,
+    branch_mode_failed: Vec<(String, bool)>,
+    branch_mode_skipped: Vec<(String, String)>,
+}
+
+/// Execute merge phase for both direct and branch modes
+fn merge_phase(
+    direct_mode_results: &[ParallelResult],
+    branch_mode_branches: &[(String, String)],
+    specs_dir: &Path,
+    config: &Config,
+    no_merge: bool,
+    no_rebase: bool,
+) -> Result<MergeResults> {
+    // Handle direct mode merges
     let (merged_count, merge_failed) =
-        handle_direct_mode_merges(&direct_mode_results, specs_dir, config, options.no_rebase)?;
+        handle_direct_mode_merges(direct_mode_results, specs_dir, config, no_rebase)?;
 
-    // =========================================================================
-    // BRANCH MODE MERGE PHASE - Auto-merge branch mode branches unless --no-merge
-    // =========================================================================
+    // Handle branch mode merges
+    let (branch_mode_merged, branch_mode_failed, branch_mode_skipped) =
+        handle_branch_mode_merges(branch_mode_branches, specs_dir, config, no_merge, no_rebase)?;
 
-    let (branch_mode_merged, branch_mode_failed, branch_mode_skipped) = handle_branch_mode_merges(
-        &branch_mode_branches,
-        specs_dir,
-        config,
-        options.no_merge,
-        options.no_rebase,
-    )?;
+    Ok(MergeResults {
+        merged_count,
+        merge_failed,
+        branch_mode_merged,
+        branch_mode_failed,
+        branch_mode_skipped,
+    })
+}
 
-    // =========================================================================
-    // CLEANUP PHASE - Remove worktrees for successful specs
-    // =========================================================================
-
-    cleanup_successful_worktrees(&all_results);
+/// Execute cleanup and reporting phase
+fn cleanup_and_report(
+    all_results: &[ParallelResult],
+    direct_mode_results: &[ParallelResult],
+    specs_dir: &Path,
+    config: &Config,
+    completed: usize,
+    failed: usize,
+    merge_results: &MergeResults,
+) -> Result<()> {
+    cleanup_successful_worktrees(all_results);
 
     // Auto-complete drivers if all their members completed
     let all_specs = spec::load_all_specs(specs_dir).unwrap_or_default();
 
-    for result in &all_results {
+    for result in all_results {
         if result.success {
             // Check if this completed spec triggers driver auto-completion
             if let Ok(true) =
@@ -1191,16 +1228,16 @@ pub fn cmd_work_parallel(
     }
 
     // Detect issues and print summary
-    let pitfalls = detect_parallel_pitfalls(&all_results, specs_dir);
+    let pitfalls = detect_parallel_pitfalls(all_results, specs_dir);
     print_parallel_summary(
         completed,
         failed,
-        &direct_mode_results,
-        merged_count,
-        &merge_failed,
-        branch_mode_merged,
-        &branch_mode_failed,
-        &branch_mode_skipped,
+        direct_mode_results,
+        merge_results.merged_count,
+        &merge_results.merge_failed,
+        merge_results.branch_mode_merged,
+        &merge_results.branch_mode_failed,
+        &merge_results.branch_mode_skipped,
         &pitfalls,
     );
 
@@ -1210,6 +1247,54 @@ pub fn cmd_work_parallel(
 
     // Ensure main repo is back on main branch after merge phase
     let _ = chant::git::ensure_on_main_branch(&config.defaults.main_branch);
+
+    Ok(())
+}
+
+pub fn cmd_work_parallel(
+    specs_dir: &Path,
+    prompts_dir: &Path,
+    config: &Config,
+    options: ParallelOptions,
+) -> Result<()> {
+    // Initialize parallel execution state for cleanup on interrupt
+    let execution_state = Arc::new(ParallelExecutionState::new(&config.defaults.branch_prefix));
+    setup_parallel_cleanup_handlers(execution_state.clone());
+
+    // Phase 1: Validate and assign specs to agents
+    let validated = validate_and_assign(specs_dir, config, &options)?;
+
+    // Phase 2: Spawn workers and collect results
+    let collection = spawn_and_collect(
+        &validated.assignments,
+        &validated.ready_specs,
+        specs_dir,
+        prompts_dir,
+        config,
+        &options,
+        &execution_state,
+    )?;
+
+    // Phase 3: Merge branches
+    let merge_results = merge_phase(
+        &collection.direct_mode_results,
+        &collection.branch_mode_branches,
+        specs_dir,
+        config,
+        options.no_merge,
+        options.no_rebase,
+    )?;
+
+    // Phase 4: Cleanup and report
+    cleanup_and_report(
+        &collection.all_results,
+        &collection.direct_mode_results,
+        specs_dir,
+        config,
+        collection.completed,
+        collection.failed,
+        &merge_results,
+    )?;
 
     Ok(())
 }
