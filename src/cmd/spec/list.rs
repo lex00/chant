@@ -125,11 +125,31 @@ struct SpecGitMetadata {
 /// Performance optimization:
 /// - last_modified: Uses limited history (recent 200 commits) for fast lookup
 /// - creator: Only loaded when `include_creator` is true, as it requires full history scan
+/// - Both git commands run in parallel when creator info is needed
 fn batch_load_spec_git_metadata(
     specs_dir: &Path,
     include_creator: bool,
 ) -> HashMap<String, SpecGitMetadata> {
     let mut metadata: HashMap<String, SpecGitMetadata> = HashMap::new();
+
+    // Spawn both git commands in parallel when creator is needed
+    let creator_handle = if include_creator {
+        let specs_dir_owned = specs_dir.to_path_buf();
+        Some(std::thread::spawn(move || {
+            Command::new("git")
+                .args([
+                    "log",
+                    "--name-only",
+                    "--format=COMMIT|%an|%aI",
+                    "--diff-filter=A", // Only file additions
+                    "--",
+                ])
+                .arg(&specs_dir_owned)
+                .output()
+        }))
+    } else {
+        None
+    };
 
     // Get last_modified: Use limited history for fast lookup
     // We check the last 200 commits which should cover all active specs
@@ -190,20 +210,9 @@ fn batch_load_spec_git_metadata(
         }
     }
 
-    // Get creator: Only when needed (requires scanning full history for file additions)
-    if include_creator {
-        let output = Command::new("git")
-            .args([
-                "log",
-                "--name-only",
-                "--format=COMMIT|%an|%aI",
-                "--diff-filter=A", // Only file additions
-                "--",
-            ])
-            .arg(specs_dir)
-            .output();
-
-        if let Ok(ref output) = output {
+    // Get creator: Join parallel thread if it was spawned
+    if let Some(handle) = creator_handle {
+        if let Ok(Ok(output)) = handle.join() {
             if output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 let mut current_author: Option<String> = None;
