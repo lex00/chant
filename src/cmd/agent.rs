@@ -12,6 +12,29 @@ use chant::paths::SPECS_DIR;
 use chant::provider;
 use chant::spec::Spec;
 
+/// RAII guard that removes a temp file on drop
+struct TempFileGuard {
+    path: Option<PathBuf>,
+}
+
+impl TempFileGuard {
+    fn new(path: PathBuf) -> Self {
+        Self { path: Some(path) }
+    }
+
+    fn disarm(&mut self) {
+        self.path = None;
+    }
+}
+
+impl Drop for TempFileGuard {
+    fn drop(&mut self) {
+        if let Some(path) = &self.path {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
 /// Invoke an agent with a message and return captured output
 pub fn invoke_agent(
     message: &str,
@@ -58,6 +81,7 @@ pub fn invoke_agent_with_command_override(
 
     // Write prompt to temp file and create stub message
     let (stub_message, temp_file_path) = write_prompt_to_temp_file(&spec.id, message)?;
+    let mut _temp_guard = TempFileGuard::new(temp_file_path.clone());
 
     let mut cmd = Command::new(command);
     cmd.arg("--print")
@@ -122,8 +146,9 @@ pub fn invoke_agent_with_command_override(
 
     let status = child.wait()?;
 
-    // Clean up temp prompt file
+    // Clean up temp prompt file and disarm guard
     let _ = std::fs::remove_file(&temp_file_path);
+    _temp_guard.disarm();
 
     // Clean up PID file
     if let Err(e) = chant::pid::remove_pid_file(&spec.id) {
@@ -181,6 +206,7 @@ pub fn invoke_agent_with_command(
 
     // Write prompt to temp file and create stub message
     let (stub_message, temp_file_path) = write_prompt_to_temp_file(spec_id, message)?;
+    let mut _temp_guard = TempFileGuard::new(temp_file_path.clone());
 
     let mut cmd = Command::new(agent_command);
     cmd.arg("--print")
@@ -257,8 +283,9 @@ pub fn invoke_agent_with_command(
 
     let status = child.wait()?;
 
-    // Clean up temp prompt file
+    // Clean up temp prompt file and disarm guard
     let _ = std::fs::remove_file(&temp_file_path);
+    _temp_guard.disarm();
 
     // Clean up PID file
     if let Err(e) = chant::pid::remove_pid_file(spec_id) {
@@ -331,6 +358,7 @@ pub fn invoke_agent_with_model(
 
         // Write prompt to temp file and create stub message
         let (stub_message, temp_file_path) = write_prompt_to_temp_file(&spec.id, message)?;
+        let mut _temp_guard = TempFileGuard::new(temp_file_path.clone());
 
         let mut cmd = Command::new(command);
         cmd.arg("--print")
@@ -395,8 +423,9 @@ pub fn invoke_agent_with_model(
 
         let status = child.wait()?;
 
-        // Clean up temp prompt file
+        // Clean up temp prompt file and disarm guard
         let _ = std::fs::remove_file(&temp_file_path);
+        _temp_guard.disarm();
 
         // Clean up PID file
         if let Err(e) = chant::pid::remove_pid_file(&spec.id) {
