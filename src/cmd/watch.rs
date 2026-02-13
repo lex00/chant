@@ -426,57 +426,67 @@ fn run_startup_recovery(
                                     .num_hours();
 
                                 if age_hours > 1 {
-                                    logger.log_event(&format!(
-                                        "Found stale working worktree for spec {} (age: {}h)",
-                                        spec_id.cyan(),
-                                        age_hours
-                                    ))?;
+                                    // Check if agent PID is still alive before marking failed
+                                    let should_mark_failed =
+                                        match chant::pid::read_pid_file(spec_id) {
+                                            Ok(Some(pid)) => !chant::pid::is_process_running(pid),
+                                            Ok(None) => true, // No PID file = definitely stale
+                                            Err(_) => true,   // Error reading PID = treat as stale
+                                        };
 
-                                    if dry_run {
+                                    if should_mark_failed {
                                         logger.log_event(&format!(
-                                            "  {} would mark spec failed and cleanup",
-                                            "→".dimmed()
+                                            "Found stale working worktree for spec {} (age: {}h, PID dead)",
+                                            spec_id.cyan(),
+                                            age_hours
                                         ))?;
-                                    } else {
-                                        // Mark spec as failed
-                                        let specs_dir = PathBuf::from(".chant/specs");
-                                        if let Ok(mut spec) =
-                                            spec::resolve_spec(&specs_dir, spec_id)
-                                        {
-                                            let _ = spec::TransitionBuilder::new(&mut spec)
-                                                .force()
-                                                .to(SpecStatus::Failed);
-                                            let spec_path =
-                                                specs_dir.join(format!("{}.md", spec_id));
-                                            if let Err(e) = spec.save(&spec_path) {
-                                                logger.log_event(&format!(
-                                                    "  {} failed to mark spec failed: {}",
-                                                    "✗".red(),
-                                                    e
-                                                ))?;
-                                            } else {
-                                                logger.log_event(&format!(
-                                                    "  {} marked spec as failed",
-                                                    "✓".green()
-                                                ))?;
 
-                                                // Cleanup worktree
-                                                match chant::worktree::remove_worktree(
-                                                    &worktree.path,
-                                                ) {
-                                                    Ok(()) => {
-                                                        logger.log_event(&format!(
-                                                            "  {} cleaned up worktree",
-                                                            "✓".green()
-                                                        ))?;
-                                                        actions += 1;
-                                                    }
-                                                    Err(e) => {
-                                                        logger.log_event(&format!(
-                                                            "  {} failed to cleanup: {}",
-                                                            "✗".red(),
-                                                            e
-                                                        ))?;
+                                        if dry_run {
+                                            logger.log_event(&format!(
+                                                "  {} would mark spec failed and cleanup",
+                                                "→".dimmed()
+                                            ))?;
+                                        } else {
+                                            // Mark spec as failed
+                                            let specs_dir = PathBuf::from(".chant/specs");
+                                            if let Ok(mut spec) =
+                                                spec::resolve_spec(&specs_dir, spec_id)
+                                            {
+                                                let _ = spec::TransitionBuilder::new(&mut spec)
+                                                    .force()
+                                                    .to(SpecStatus::Failed);
+                                                let spec_path =
+                                                    specs_dir.join(format!("{}.md", spec_id));
+                                                if let Err(e) = spec.save(&spec_path) {
+                                                    logger.log_event(&format!(
+                                                        "  {} failed to mark spec failed: {}",
+                                                        "✗".red(),
+                                                        e
+                                                    ))?;
+                                                } else {
+                                                    logger.log_event(&format!(
+                                                        "  {} marked spec as failed",
+                                                        "✓".green()
+                                                    ))?;
+
+                                                    // Cleanup worktree
+                                                    match chant::worktree::remove_worktree(
+                                                        &worktree.path,
+                                                    ) {
+                                                        Ok(()) => {
+                                                            logger.log_event(&format!(
+                                                                "  {} cleaned up worktree",
+                                                                "✓".green()
+                                                            ))?;
+                                                            actions += 1;
+                                                        }
+                                                        Err(e) => {
+                                                            logger.log_event(&format!(
+                                                                "  {} failed to cleanup: {}",
+                                                                "✗".red(),
+                                                                e
+                                                            ))?;
+                                                        }
                                                     }
                                                 }
                                             }
@@ -813,12 +823,24 @@ pub fn run_watch(once: bool, dry_run: bool, poll_interval: Option<u64>) -> Resul
 
             // Check idle timeout
             if last_activity.elapsed() >= idle_timeout && !once {
-                logger.log_event(&format!(
-                    "Idle for {} minutes, exiting",
-                    config.watch.idle_timeout_minutes
-                ))?;
-                remove_watch_pid()?;
-                break;
+                // Re-check immediately before exit to avoid TOCTOU race
+                let final_specs = spec::load_all_specs(&PathBuf::from(".chant/specs"))?;
+                let final_in_progress: Vec<_> = final_specs
+                    .iter()
+                    .filter(|s| matches!(s.frontmatter.status, SpecStatus::InProgress))
+                    .collect();
+
+                if final_in_progress.is_empty() {
+                    logger.log_event(&format!(
+                        "Idle for {} minutes, exiting",
+                        config.watch.idle_timeout_minutes
+                    ))?;
+                    remove_watch_pid()?;
+                    break;
+                } else {
+                    logger.log_event("New in-progress specs detected, continuing watch")?;
+                    last_activity = Instant::now();
+                }
             }
         } else {
             // Reset activity timer when there's work

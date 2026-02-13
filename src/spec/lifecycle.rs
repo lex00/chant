@@ -268,7 +268,7 @@ pub(crate) fn has_success_signals(spec_id: &str) -> Result<bool> {
 ///
 /// A spec is considered failed if:
 /// - Status is `in_progress`
-/// - Agent has exited (no lock file present)
+/// - Agent has exited (no lock file present or PID is dead)
 /// - Some acceptance criteria are still incomplete
 /// - No success signals present (commits matching `chant(spec_id):` pattern)
 ///
@@ -291,9 +291,8 @@ pub fn is_failed(spec_id: &str) -> Result<bool> {
         return Ok(false);
     }
 
-    // Check if agent is still running (lock file exists)
-    let lock_file = Path::new(crate::paths::LOCKS_DIR).join(format!("{}.lock", spec_id));
-    if lock_file.exists() {
+    // Check if agent is still running using PID-aware lock check
+    if crate::lock::is_locked(spec_id) {
         return Ok(false);
     }
 
