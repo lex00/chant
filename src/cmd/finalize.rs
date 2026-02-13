@@ -15,11 +15,8 @@ use chant::spec::{self, load_all_specs, Spec, SpecStatus, TransitionBuilder};
 use chant::worktree;
 
 use chant::operations::{
-    detect_agent_in_commit, get_commits_for_spec, get_commits_for_spec_allow_no_commits,
-    get_commits_for_spec_with_branch, get_model_name,
+    detect_agent_in_commit, get_commits_for_spec_allow_no_commits, get_commits_for_spec_with_branch,
 };
-
-use crate::cmd::validate::{Severity, ValidationCategory, ValidationIssue, ValidationResult};
 
 /// Maximum characters to store in agent output section
 pub const MAX_AGENT_OUTPUT_CHARS: usize = 5000;
@@ -43,185 +40,21 @@ pub fn finalize_spec(
     // Acquire spec-level lock to prevent concurrent finalization
     let _lock = LockGuard::new(&spec.id).context("Failed to acquire lock for spec finalization")?;
 
-    // Check for uncommitted changes in worktree before finalization
-    if let Some(worktree_path) = worktree::get_active_worktree(&spec.id, None) {
-        if worktree::has_uncommitted_changes(&worktree_path)? {
-            anyhow::bail!(
-                "Cannot finalize: uncommitted changes in worktree. Commit your changes first.\nWorktree: {}",
-                worktree_path.display()
-            );
-        }
-    }
-
-    // Check if this is a driver spec with incomplete members
-    let incomplete_members = spec::get_incomplete_members(&spec.id, all_specs);
-    if !incomplete_members.is_empty() {
-        anyhow::bail!(
-            "Cannot complete driver spec '{}' while {} member spec(s) are incomplete: {}",
-            spec.id,
-            incomplete_members.len(),
-            incomplete_members.join(", ")
-        );
-    }
-
-    // Use provided commits or fetch them
-    // Check the spec's branch field first if available (Issue 1 fix)
-    let commits = match commits {
-        Some(c) => c,
-        None => {
-            // If spec has a branch field, search that branch first
-            let spec_branch = spec.frontmatter.branch.as_deref();
-            if spec_branch.is_some() && !allow_no_commits {
-                // Use branch-aware search
-                get_commits_for_spec_with_branch(&spec.id, spec_branch)?
-            } else if allow_no_commits {
-                get_commits_for_spec_allow_no_commits(&spec.id)?
-            } else {
-                get_commits_for_spec(&spec.id)?
-            }
-        }
+    // Call the operations layer with appropriate options
+    let options = chant::operations::finalize::FinalizeOptions {
+        allow_no_commits,
+        commits,
+        force: true, // CLI always bypasses agent log gate
     };
 
-    // Check for agent co-authorship if config requires approval for agent work
-    if config.approval.require_approval_for_agent_work {
-        check_and_set_agent_approval(spec, &commits, config)?;
-    }
-
-    // Update spec to completed using SpecStateMachine
-    // Note: clean tree check is already done above via worktree::has_uncommitted_changes
-    TransitionBuilder::new(spec)
-        .to(SpecStatus::Completed)
-        .context("Failed to transition spec to Completed status")?;
-    spec.frontmatter.commits = if commits.is_empty() {
-        None
-    } else {
-        Some(commits)
-    };
-    spec.frontmatter.completed_at = Some(chant::utc_now_iso());
-    spec.frontmatter.model = get_model_name(Some(config));
+    // Delegate core finalization logic to operations layer
+    chant::operations::finalize::finalize_spec(spec, spec_repo, config, all_specs, options)?;
 
     eprintln!(
-        "{} [{}] Saving spec with status=Completed, commits={}, completed_at={:?}, model={:?}",
-        "→".cyan(),
-        spec.id,
-        spec.frontmatter
-            .commits
-            .as_ref()
-            .map(|c| c.len())
-            .unwrap_or(0),
-        spec.frontmatter.completed_at,
-        spec.frontmatter.model
-    );
-
-    // Save the spec - this must not fail silently
-    spec_repo
-        .save(spec)
-        .context("Failed to save finalized spec")?;
-
-    eprintln!(
-        "{} [{}] Spec successfully saved to disk with status=Completed",
+        "{} [{}] Spec successfully finalized with status=Completed",
         "✓".green(),
         spec.id
     );
-
-    // Run validation checks through unified framework
-    let mut validation_result = ValidationResult::new(ValidationCategory::Lint);
-    validation_result.total = 1;
-
-    // Validation 1: Verify that status was actually changed to Completed
-    if spec.frontmatter.status != SpecStatus::Completed {
-        validation_result.add_issue(ValidationIssue::new(
-            Severity::Error,
-            ValidationCategory::Lint,
-            &spec.id,
-            "Status was not set to Completed after finalization",
-        ));
-    }
-
-    // Validation 2: Verify that completed_at timestamp is set and in valid ISO format
-    match &spec.frontmatter.completed_at {
-        Some(completed_at) => {
-            // Parse timestamp to validate ISO 8601 format
-            if chrono::DateTime::parse_from_rfc3339(completed_at).is_err() {
-                validation_result.add_issue(ValidationIssue::new(
-                    Severity::Error,
-                    ValidationCategory::Lint,
-                    &spec.id,
-                    format!(
-                        "completed_at must be valid ISO 8601 format, got: {}",
-                        completed_at
-                    ),
-                ));
-            }
-        }
-        None => {
-            validation_result.add_issue(ValidationIssue::new(
-                Severity::Error,
-                ValidationCategory::Lint,
-                &spec.id,
-                "completed_at timestamp was not set",
-            ));
-        }
-    }
-
-    // Validation 3: Verify that spec was actually saved (reload and check)
-    let saved_spec = spec_repo
-        .load(&spec.id)
-        .context("Failed to reload spec from disk to verify persistence")?;
-
-    if saved_spec.frontmatter.status != SpecStatus::Completed {
-        validation_result.add_issue(ValidationIssue::new(
-            Severity::Error,
-            ValidationCategory::Lint,
-            &spec.id,
-            "Persisted spec status is not Completed - save may have failed",
-        ));
-    }
-
-    if saved_spec.frontmatter.completed_at.is_none() {
-        validation_result.add_issue(ValidationIssue::new(
-            Severity::Error,
-            ValidationCategory::Lint,
-            &spec.id,
-            "Persisted spec is missing completed_at - save may have failed",
-        ));
-    }
-
-    // Model may be None if no model was detected, but commits should match memory
-    match (&spec.frontmatter.commits, &saved_spec.frontmatter.commits) {
-        (Some(mem_commits), Some(saved_commits)) => {
-            if mem_commits != saved_commits {
-                validation_result.add_issue(ValidationIssue::new(
-                    Severity::Error,
-                    ValidationCategory::Lint,
-                    &spec.id,
-                    "Persisted commits don't match memory - save may have failed",
-                ));
-            }
-        }
-        (None, None) => {
-            // Both None is correct
-        }
-        _ => {
-            validation_result.add_issue(ValidationIssue::new(
-                Severity::Error,
-                ValidationCategory::Lint,
-                &spec.id,
-                "Persisted commits don't match memory - save may have failed",
-            ));
-        }
-    }
-
-    // Check validation result and fail if there are errors
-    if validation_result.has_errors() {
-        validation_result.failed = 1;
-        for issue in &validation_result.issues {
-            eprintln!("{} {}: {}", "✗".red(), issue.item_id, issue.message);
-        }
-        anyhow::bail!("Finalization validation failed");
-    }
-
-    validation_result.passed = 1;
 
     // Check what this spec unblocked
     let specs_dir = spec_repo.specs_dir();
@@ -282,102 +115,18 @@ pub fn re_finalize_spec(
         get_commits_for_spec(&spec.id)?
     };
 
-    // Update spec with new commit info
-    spec.frontmatter.commits = if commits.is_empty() {
-        None
-    } else {
-        Some(commits)
+    // Call operations layer for re-finalization
+    // Load all specs for driver/member validation
+    let specs_dir = spec_repo.specs_dir();
+    let all_specs = spec::load_all_specs(specs_dir)?;
+
+    let options = chant::operations::finalize::FinalizeOptions {
+        allow_no_commits,
+        commits: Some(commits),
+        force: true, // Bypass agent log gate for re-finalization
     };
 
-    // Update the timestamp to now
-    spec.frontmatter.completed_at = Some(chant::utc_now_iso());
-
-    // Update model name
-    spec.frontmatter.model = get_model_name(Some(config));
-
-    // Ensure spec is marked as completed
-    let _ = spec::TransitionBuilder::new(spec)
-        .force()
-        .to(SpecStatus::Completed);
-
-    // Save the spec
-    spec_repo
-        .save(spec)
-        .context("Failed to save re-finalized spec")?;
-
-    // Run validation checks through unified framework
-    let mut validation_result = ValidationResult::new(ValidationCategory::Lint);
-    validation_result.total = 1;
-
-    // Validation 1: Verify that status is Completed
-    if spec.frontmatter.status != SpecStatus::Completed {
-        validation_result.add_issue(ValidationIssue::new(
-            Severity::Error,
-            ValidationCategory::Lint,
-            &spec.id,
-            "Status was not set to Completed after re-finalization",
-        ));
-    }
-
-    // Validation 2: Verify completed_at timestamp is set and valid
-    match &spec.frontmatter.completed_at {
-        Some(completed_at) => {
-            // Parse timestamp to validate ISO 8601 format
-            if chrono::DateTime::parse_from_rfc3339(completed_at).is_err() {
-                validation_result.add_issue(ValidationIssue::new(
-                    Severity::Error,
-                    ValidationCategory::Lint,
-                    &spec.id,
-                    format!(
-                        "completed_at must be valid ISO 8601 format, got: {}",
-                        completed_at
-                    ),
-                ));
-            }
-        }
-        None => {
-            validation_result.add_issue(ValidationIssue::new(
-                Severity::Error,
-                ValidationCategory::Lint,
-                &spec.id,
-                "completed_at timestamp was not set",
-            ));
-        }
-    }
-
-    // Validation 3: Verify spec was saved (reload and check)
-    let saved_spec = spec_repo
-        .load(&spec.id)
-        .context("Failed to reload spec from disk to verify persistence")?;
-
-    if saved_spec.frontmatter.status != SpecStatus::Completed {
-        validation_result.add_issue(ValidationIssue::new(
-            Severity::Error,
-            ValidationCategory::Lint,
-            &spec.id,
-            "Persisted spec status is not Completed - save may have failed",
-        ));
-    }
-
-    if saved_spec.frontmatter.completed_at.is_none() {
-        validation_result.add_issue(ValidationIssue::new(
-            Severity::Error,
-            ValidationCategory::Lint,
-            &spec.id,
-            "Persisted spec is missing completed_at - save may have failed",
-        ));
-    }
-
-    // Check validation result and fail if there are errors
-    if validation_result.has_errors() {
-        validation_result.failed = 1;
-        for issue in &validation_result.issues {
-            eprintln!("{} {}: {}", "✗".red(), issue.item_id, issue.message);
-        }
-        anyhow::bail!("Re-finalization validation failed");
-    }
-
-    validation_result.passed = 1;
+    chant::operations::finalize::finalize_spec(spec, spec_repo, config, &all_specs, options)?;
     Ok(())
 }
 

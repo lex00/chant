@@ -14,6 +14,47 @@ use crate::cmd::prep::strip_agent_conversation;
 use crate::cmd::ui::render;
 
 // ============================================================================
+// CROSS-REPO HELPERS
+// ============================================================================
+
+/// Resolve a cross-repo spec ID and return the spec with full repo:spec-id format.
+/// Takes an ID like "repo:spec-id" and resolves it to the actual spec, preserving the repo prefix.
+fn resolve_cross_repo_spec(id: &str) -> Result<spec::Spec> {
+    let parts: Vec<&str> = id.splitn(2, ':').collect();
+    if parts.len() != 2 {
+        anyhow::bail!("Invalid spec ID format. Use 'repo:spec-id' for cross-repo specs");
+    }
+
+    let repo_name = parts[0];
+    let spec_id = parts[1];
+
+    // Load from global config repos
+    let config = Config::load_merged()?;
+    if !config.repos.iter().any(|r| r.name == repo_name) {
+        anyhow::bail!(
+            "Repository '{}' not found in global config. Available repos: {}",
+            repo_name,
+            config
+                .repos
+                .iter()
+                .map(|r| r.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+
+    let repo_config = config.repos.iter().find(|r| r.name == repo_name).unwrap();
+    let repo_path = shellexpand::tilde(&repo_config.path).to_string();
+    let repo_path = PathBuf::from(repo_path);
+    let specs_dir = repo_path.join(".chant/specs");
+
+    let mut resolved = spec::resolve_spec(&specs_dir, spec_id)?;
+    // Keep the full cross-repo ID format
+    resolved.id = format!("{}:{}", repo_name, resolved.id);
+    Ok(resolved)
+}
+
+// ============================================================================
 // DISPLAY HELPERS
 // ============================================================================
 
@@ -105,36 +146,7 @@ pub fn cmd_show(id: &str, show_body: bool, no_render: bool, raw: bool, clean: bo
     // Handle --raw mode: output just the body
     if raw {
         let spec = if id.contains(':') {
-            // Cross-repo spec ID format: "repo:spec-id"
-            let parts: Vec<&str> = id.splitn(2, ':').collect();
-            if parts.len() != 2 {
-                anyhow::bail!("Invalid spec ID format. Use 'repo:spec-id' for cross-repo specs");
-            }
-
-            let repo_name = parts[0];
-            let spec_id = parts[1];
-
-            // Load from global config repos
-            let config = Config::load_merged()?;
-            if !config.repos.iter().any(|r| r.name == repo_name) {
-                anyhow::bail!(
-                    "Repository '{}' not found in global config. Available repos: {}",
-                    repo_name,
-                    config
-                        .repos
-                        .iter()
-                        .map(|r| r.name.as_str())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                );
-            }
-
-            let repo_config = config.repos.iter().find(|r| r.name == repo_name).unwrap();
-            let repo_path = shellexpand::tilde(&repo_config.path).to_string();
-            let repo_path = PathBuf::from(repo_path);
-            let specs_dir = repo_path.join(".chant/specs");
-
-            spec::resolve_spec(&specs_dir, spec_id)?
+            resolve_cross_repo_spec(id)?
         } else {
             // Local spec ID
             let specs_dir = crate::cmd::ensure_initialized()?;
@@ -155,39 +167,7 @@ pub fn cmd_show(id: &str, show_body: bool, no_render: bool, raw: bool, clean: bo
     }
 
     let spec = if id.contains(':') {
-        // Cross-repo spec ID format: "repo:spec-id"
-        let parts: Vec<&str> = id.splitn(2, ':').collect();
-        if parts.len() != 2 {
-            anyhow::bail!("Invalid spec ID format. Use 'repo:spec-id' for cross-repo specs");
-        }
-
-        let repo_name = parts[0];
-        let spec_id = parts[1];
-
-        // Load from global config repos
-        let config = Config::load_merged()?;
-        if !config.repos.iter().any(|r| r.name == repo_name) {
-            anyhow::bail!(
-                "Repository '{}' not found in global config. Available repos: {}",
-                repo_name,
-                config
-                    .repos
-                    .iter()
-                    .map(|r| r.name.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
-        }
-
-        let repo_config = config.repos.iter().find(|r| r.name == repo_name).unwrap();
-        let repo_path = shellexpand::tilde(&repo_config.path).to_string();
-        let repo_path = PathBuf::from(repo_path);
-        let specs_dir = repo_path.join(".chant/specs");
-
-        let mut resolved = spec::resolve_spec(&specs_dir, spec_id)?;
-        // Keep the full cross-repo ID format
-        resolved.id = format!("{}:{}", repo_name, resolved.id);
-        resolved
+        resolve_cross_repo_spec(id)?
     } else {
         // Local spec ID
         let specs_dir = crate::cmd::ensure_initialized()?;
