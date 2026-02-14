@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.1] - 2026-02-13
+
+### Fixed
+
+- **Config parsing error with `round-robin` rotation strategy**: The enum migration in 0.23.0 changed the accepted value from `round-robin` (kebab-case) to `round_robin` (snake_case), breaking existing configs. Both formats are now accepted.
+
 ## [0.23.0] - 2026-02-13
 
 ### Fixed

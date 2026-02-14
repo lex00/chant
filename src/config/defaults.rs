@@ -11,6 +11,7 @@ pub enum RotationStrategy {
     #[default]
     None,
     Random,
+    #[serde(alias = "round-robin")]
     RoundRobin,
 }
 
@@ -451,5 +452,24 @@ impl Default for DefaultsConfig {
             rotation_strategy: default_rotation_strategy_enum(),
             prompt_extensions: vec![],
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rotation_strategy_accepts_kebab_case() {
+        let json = r#""round-robin""#;
+        let strategy: RotationStrategy = serde_json::from_str(json).unwrap();
+        assert_eq!(strategy, RotationStrategy::RoundRobin);
+    }
+
+    #[test]
+    fn rotation_strategy_accepts_snake_case() {
+        let json = r#""round_robin""#;
+        let strategy: RotationStrategy = serde_json::from_str(json).unwrap();
+        assert_eq!(strategy, RotationStrategy::RoundRobin);
     }
 }
