@@ -330,13 +330,13 @@ pub fn all_prior_siblings_completed(member_id: &str, all_specs: &[Spec]) -> bool
                 let sibling_id = format!("{}.{}", driver_id, i);
                 let sibling = all_specs.iter().find(|s| s.id == sibling_id);
                 if let Some(s) = sibling {
-                    if s.frontmatter.status != SpecStatus::Completed {
+                    if s.frontmatter.status != SpecStatus::Completed
+                        && s.frontmatter.status != SpecStatus::Cancelled
+                    {
                         return false;
                     }
-                } else {
-                    // Sibling doesn't exist, so it's not completed
-                    return false;
                 }
+                // Missing siblings are skipped — don't block on deleted/nonexistent specs
             }
             return true;
         }
@@ -614,8 +614,8 @@ status: pending
     }
 
     #[test]
-    fn test_all_prior_siblings_completed_missing() {
-        // Test spec for member .3 with missing prior sibling
+    fn test_all_prior_siblings_completed_missing_skipped() {
+        // Missing siblings should not block later members
         let spec_prior_1 = Spec::parse(
             "2026-01-24-001-abc.1",
             r#"---
@@ -636,9 +636,36 @@ status: pending
         )
         .unwrap();
 
-        // Only spec .1 exists, .2 is missing
+        // Only spec .1 exists, .2 is missing — should still pass
         let all_specs = vec![spec_prior_1, spec3.clone()];
-        assert!(!all_prior_siblings_completed(&spec3.id, &all_specs));
+        assert!(all_prior_siblings_completed(&spec3.id, &all_specs));
+    }
+
+    #[test]
+    fn test_all_prior_siblings_completed_cancelled() {
+        // Cancelled siblings should not block later members
+        let spec_prior_1 = Spec::parse(
+            "2026-01-24-001-abc.1",
+            r#"---
+status: cancelled
+---
+# Test
+"#,
+        )
+        .unwrap();
+
+        let spec2 = Spec::parse(
+            "2026-01-24-001-abc.2",
+            r#"---
+status: pending
+---
+# Test
+"#,
+        )
+        .unwrap();
+
+        let all_specs = vec![spec_prior_1, spec2.clone()];
+        assert!(all_prior_siblings_completed(&spec2.id, &all_specs));
     }
 
     #[test]
