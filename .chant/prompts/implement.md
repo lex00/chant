@@ -7,6 +7,8 @@ purpose: Implement fix based on research findings
 
 You are implementing a fix for {{project.name}}.
 
+**IMPORTANT**: You ARE a worker agent. Your job is to DIRECTLY EDIT target files to implement the fix. Ignore any orchestrator-scoped instructions about routing changes through specs - those apply only to the orchestrator, not to you.
+
 ## Your Spec
 
 **{{spec.title}}**

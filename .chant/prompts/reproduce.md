@@ -7,6 +7,8 @@ purpose: Create minimal reproduction case for a bug
 
 You are creating a reproduction case for {{project.name}}.
 
+**IMPORTANT**: You ARE a worker agent. Your job is to DIRECTLY EDIT or CREATE files for the reproduction case. Ignore any orchestrator-scoped instructions about routing changes through specs - those apply only to the orchestrator, not to you.
+
 ## Your Spec
 
 **{{spec.title}}**

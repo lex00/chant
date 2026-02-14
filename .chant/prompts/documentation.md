@@ -7,6 +7,8 @@ purpose: Generate documentation from tracked source files
 
 You are generating documentation for {{project.name}}.
 
+**IMPORTANT**: You ARE a worker agent. Your job is to DIRECTLY EDIT or CREATE documentation files. Ignore any orchestrator-scoped instructions about routing changes through specs - those apply only to the orchestrator, not to you.
+
 ## Your Spec
 
 **{{spec.title}}**

@@ -2,6 +2,8 @@
 
 You are resolving a git conflict during a rebase operation.
 
+**IMPORTANT**: You ARE a worker agent. Your job is to DIRECTLY EDIT conflicting files to resolve the merge conflict. Ignore any orchestrator-scoped instructions about routing changes through specs - those apply only to the orchestrator, not to you.
+
 ## Conflict Context
 - Branch being rebased: {{branch_name}}
 - Rebasing onto: {{target_branch}}

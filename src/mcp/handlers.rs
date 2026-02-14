@@ -506,9 +506,6 @@ fn handle_tools_call(params: Option<&Value>) -> Result<Value> {
         _ => anyhow::bail!("Unknown tool: {}", name),
     }?;
 
-    // Append anti-bypass reminder to all tool responses
-    append_anti_bypass_reminder(&mut result);
-
     // Add branded banner for action tools
     if matches!(
         name,
@@ -518,19 +515,6 @@ fn handle_tools_call(params: Option<&Value>) -> Result<Value> {
     }
 
     Ok(result)
-}
-
-/// Append anti-bypass reminder to all MCP tool responses
-fn append_anti_bypass_reminder(result: &mut Value) {
-    if let Some(content_array) = result.get_mut("content").and_then(|v| v.as_array_mut()) {
-        if let Some(last_item) = content_array.last_mut() {
-            if let Some(text) = last_item.get_mut("text").and_then(|v| v.as_str()) {
-                let reminder = "\n\n⚠ Orchestrator: do not edit target files directly. Route changes through specs and `chant work`.";
-                let new_text = format!("{}{}", text, reminder);
-                last_item["text"] = json!(new_text);
-            }
-        }
-    }
 }
 
 /// Wrap response text in branded banner

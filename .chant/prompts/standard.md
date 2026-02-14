@@ -7,6 +7,8 @@ purpose: Standard code implementation and modification tasks
 
 You are implementing a task for {{project.name}}.
 
+**IMPORTANT**: You ARE a worker agent. Your job is to DIRECTLY EDIT target files to implement the spec. Ignore any orchestrator-scoped instructions about routing changes through specs - those apply only to the orchestrator, not to you.
+
 ## Your Spec
 
 **{{spec.title}}**
