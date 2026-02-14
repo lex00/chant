@@ -506,6 +506,11 @@ impl Spec {
             if let Some(driver_spec) = all_specs.iter().find(|s| s.id == driver_id) {
                 if let Some(driver_deps) = &driver_spec.frontmatter.depends_on {
                     for dep_id in driver_deps {
+                        // Skip dependencies that are siblings or self (members of the same driver)
+                        if crate::spec_group::is_member_of(dep_id, &driver_id) {
+                            continue;
+                        }
+
                         let dep = all_specs.iter().find(|s| s.id == *dep_id);
                         match dep {
                             Some(d) if d.frontmatter.status == SpecStatus::Completed => continue,
@@ -697,5 +702,195 @@ impl Spec {
         } else {
             false
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::spec::SpecType;
+
+    #[test]
+    fn test_is_blocked_circular_dependency_with_driver_members() {
+        // Reproduce the bug: driver depends on its own members, causing circular blocking
+
+        // Create a driver spec that depends on its member (as set by chant split)
+        let driver = Spec {
+            id: "2026-02-13-001-abc".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                r#type: SpecType::Group,
+                depends_on: Some(vec!["2026-02-13-001-abc.1".to_string()]),
+                ..Default::default()
+            },
+            title: Some("Driver spec".to_string()),
+            body: "# Driver spec\n\nBody.".to_string(),
+        };
+
+        // Create a member spec with no dependencies
+        let member = Spec {
+            id: "2026-02-13-001-abc.1".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                depends_on: None,
+                ..Default::default()
+            },
+            title: Some("Member spec".to_string()),
+            body: "# Member spec\n\nBody.".to_string(),
+        };
+
+        let all_specs = vec![driver.clone(), member.clone()];
+
+        // Member should NOT be blocked by the driver's dependency on itself
+        assert!(
+            !member.is_blocked(&all_specs),
+            "Member spec should not be blocked by driver's self-reference"
+        );
+    }
+
+    #[test]
+    fn test_is_blocked_external_driver_dependency() {
+        // Member specs should still be blocked by external dependencies on the driver
+
+        // Create an external spec that the driver depends on
+        let external = Spec {
+            id: "2026-02-13-000-xyz".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                ..Default::default()
+            },
+            title: Some("External spec".to_string()),
+            body: "# External spec\n\nBody.".to_string(),
+        };
+
+        // Create a driver spec that depends on both an external spec and its member
+        let driver = Spec {
+            id: "2026-02-13-001-abc".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                r#type: SpecType::Group,
+                depends_on: Some(vec![
+                    "2026-02-13-000-xyz".to_string(),   // external dependency
+                    "2026-02-13-001-abc.1".to_string(), // member (should be ignored)
+                ]),
+                ..Default::default()
+            },
+            title: Some("Driver spec".to_string()),
+            body: "# Driver spec\n\nBody.".to_string(),
+        };
+
+        // Create a member spec
+        let member = Spec {
+            id: "2026-02-13-001-abc.1".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                depends_on: None,
+                ..Default::default()
+            },
+            title: Some("Member spec".to_string()),
+            body: "# Member spec\n\nBody.".to_string(),
+        };
+
+        let all_specs = vec![external.clone(), driver.clone(), member.clone()];
+
+        // Member SHOULD be blocked by external dependency
+        assert!(
+            member.is_blocked(&all_specs),
+            "Member spec should be blocked by driver's external dependency"
+        );
+
+        // Now complete the external dependency
+        let external_completed = Spec {
+            id: "2026-02-13-000-xyz".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Completed,
+                ..Default::default()
+            },
+            title: Some("External spec".to_string()),
+            body: "# External spec\n\nBody.".to_string(),
+        };
+
+        let all_specs_updated = vec![external_completed, driver.clone(), member.clone()];
+
+        // Member should NOT be blocked anymore
+        assert!(
+            !member.is_blocked(&all_specs_updated),
+            "Member spec should not be blocked after external dependency is completed"
+        );
+    }
+
+    #[test]
+    fn test_is_blocked_multiple_siblings() {
+        // Driver depends on multiple members - none should block each other
+
+        let driver = Spec {
+            id: "2026-02-13-002-def".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                r#type: SpecType::Group,
+                depends_on: Some(vec![
+                    "2026-02-13-002-def.1".to_string(),
+                    "2026-02-13-002-def.2".to_string(),
+                    "2026-02-13-002-def.3".to_string(),
+                ]),
+                ..Default::default()
+            },
+            title: Some("Driver spec".to_string()),
+            body: "# Driver spec\n\nBody.".to_string(),
+        };
+
+        let member1 = Spec {
+            id: "2026-02-13-002-def.1".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                depends_on: None,
+                ..Default::default()
+            },
+            title: Some("Member 1".to_string()),
+            body: "# Member 1\n\nBody.".to_string(),
+        };
+
+        let member2 = Spec {
+            id: "2026-02-13-002-def.2".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                depends_on: None,
+                ..Default::default()
+            },
+            title: Some("Member 2".to_string()),
+            body: "# Member 2\n\nBody.".to_string(),
+        };
+
+        let member3 = Spec {
+            id: "2026-02-13-002-def.3".to_string(),
+            frontmatter: SpecFrontmatter {
+                status: SpecStatus::Pending,
+                depends_on: None,
+                ..Default::default()
+            },
+            title: Some("Member 3".to_string()),
+            body: "# Member 3\n\nBody.".to_string(),
+        };
+
+        let all_specs = vec![
+            driver.clone(),
+            member1.clone(),
+            member2.clone(),
+            member3.clone(),
+        ];
+
+        // None of the members should be blocked by the driver's dependency on siblings
+        assert!(
+            !member1.is_blocked(&all_specs),
+            "Member 1 should not be blocked by driver's dependency on siblings"
+        );
+        assert!(
+            !member2.is_blocked(&all_specs),
+            "Member 2 should not be blocked by driver's dependency on siblings"
+        );
+        assert!(
+            !member3.is_blocked(&all_specs),
+            "Member 3 should not be blocked by driver's dependency on siblings"
+        );
     }
 }

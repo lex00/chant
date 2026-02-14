@@ -5,7 +5,7 @@ defaults:
   prompt: standard
   branch: false
   model: sonnet
-  rotation_strategy: round-robin
+  rotation_strategy: round_robin
   provider: claude
   prompt_extensions:
   - output-concise
